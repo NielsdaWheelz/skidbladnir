@@ -1,6 +1,6 @@
 # desktop browser runtime acceptance
 
-## browser simplification — source qualified; installed review pending
+## browser simplification — deployed; human review pending
 
 2026-10-15: `codex/desktop-browser-simplification` from `b253c05` implements the
 [current contract](../desktop-browser-simplification.md); its
@@ -20,8 +20,11 @@ gateways/terminals closed and only recorded owned sessions/inert sockets were
 removed. `scripts/check verify host` and local documentation links pass after
 probe deletion.
 
-installed version, hierarchy/path readability and acceptable density remain
-`NOT_RUN`; [row](desktop-row-readability.md) and
+v0.17.1 is installed on all three hosts and android.
+[installed qualification](../desktop-browser-simplification.md#installed-release)
+records exact identity, fleet/configuration/session continuity and read-only
+80×24/160×24 desktop smoke. human hierarchy/path readability and acceptable
+density remain `NOT_RUN`; [row](desktop-row-readability.md) and
 [cwd](desktop-cwd-truncation.md) records stay open. stop/close and live metadata
 editing below remain unqualified by this slice. [usage composition](../desktop-browser-simplification.md#merge-composition)
 passes focused model/view checks on `367f889`; live evidence remains attached to

@@ -3,8 +3,8 @@
 2026-10-15: source finding at `aaf4691`. the replacement
 [preceding correction](../desktop-session-rows.md#selected-directory) was
 source-qualified. [browser simplification](../desktop-browser-simplification.md)
-now owns acceptance and moves the directory into every row. installed usability
-remains pending.
+now owns acceptance and moves the directory into every row. v0.17.1 is installed
+and its desktop smoke passes; human path-readability acceptance remains pending.
 
 problem/impact: selected-directory presentation preserves the cwd tail only
 when the new-shell action is available; checking/unavailable local and known

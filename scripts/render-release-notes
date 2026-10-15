@@ -91,12 +91,15 @@ render_notes() {
     'configuration, and attention state. devbox owns readiness.' \
     'respect platform focus/do-not-disturb; all alert reasons use default sound.' "" \
     '## rollback' "" \
-    'follow the complete previous-release procedure in dev-server: stop notification' \
-    'owners, restore the saved fleet client and admitted previous runtime/unit pair,' \
-    'remove only owned notification serve handlers, and use the qualified android' \
-    'platform rollback. ordinary apk downgrade is not a recovery mechanism.' \
-    'activation of notification services follows gateway activation; a failure can' \
-    'leave the new gateway active. repair by reapplying or restore the verified pair.' "" \
+    "before updating the phone, follow dev-server's rollback procedure for the selected" \
+    'previous release: repin that release and return all three hosts to its admitted' \
+    'runtime/unit pair; leave hosts already on that release unchanged.' \
+    'preserve unchanged credentials, client configuration, notification ingress and' \
+    'workspace recovery state. gateway rollback alone does not qualify a compatible fleet.' \
+    'after the phone advances, recover with a forward release; ordinary apk downgrade' \
+    'is unsupported. notification activation follows gateway activation, so a failure' \
+    'can leave the new gateway active. repair by managed reapply, or use the selected' \
+    'rollback procedure before the phone advances.' "" \
     '## Assets' "" \
     '| Asset | SHA-256 |' \
     '|---|---|' \

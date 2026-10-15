@@ -4,7 +4,8 @@
 [preceding readability plan](../desktop-session-rows.md) was source-qualified.
 [browser simplification](../desktop-browser-simplification.md) now owns acceptance:
 every row adds its directory and the footer loses selected facts. source evidence
-is recorded there; the changed density still needs installed usability review.
+is recorded there. v0.17.1 is installed and its desktop smoke passes; the changed
+density still needs human usability review.
 
 problem/impact: all-view headings, names and narrow metadata share an axis;
 consecutive sessions lack structural separation. needs input puts membership

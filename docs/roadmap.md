@@ -15,13 +15,15 @@ it, preserved existing macbook/devbox lifetimes and passed fleet verification.
 the spec records exact evidence and limits; the confirmed defect is resolved.
 [wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
 
-## desktop browser simplification — implemented; installed review pending
+## desktop browser simplification — deployed; human review pending
 
 2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
 its directory, removes selected-footer facts and machine collection filtering,
 and gives `n`/`N`/`T` ordinary descriptive hints. needs-input/all/group views and
-explicit creation destinations remain. source qualification is recorded in the
-spec; release/deployment and installed usability remain separate.
+explicit creation destinations remain. the spec records source qualification
+and the v0.17.1 deployment on all three hosts and android, preserved baseline
+session identities, fleet verification and the installed desktop smoke.
+human hierarchy/path/density review remains separate.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
 acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)
