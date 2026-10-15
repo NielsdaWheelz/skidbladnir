@@ -605,9 +605,10 @@ deleted (§1.2), drawn in the operator's own terminal. the operator's theme supp
 the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
-[session rows](desktop-session-rows.md) owns the accepted compact column and
-responsive entry budgets; source `6974851` is implemented and
-[qualified](desktop-session-rows.md#qualification). observed footer
+[session rows](desktop-session-rows.md) owns the accepted readability revision
+and responsive budgets; source and isolated runtime pass, with installed
+usability pending. prior source `6974851` is
+[qualified](desktop-session-rows.md#qualification) only for its preceding layout. observed footer
 text uses the existing faint metadata register, with full text and source meaning
 in info. earlier row qualification applies only to its recorded source.
 
@@ -635,8 +636,9 @@ hints, so requests and shown errors stay the table's only red statuses and are
 found at a glance. colour never carries meaning alone: every status is a word;
 the cursor is a glyph plus bold; the current view is bold, between gold `‹ ›` at
 the table; form chevrons stay faint because the `▌` gutter marks focus. faint
-varies by terminal and disappears under mosh; the hierarchy then flattens
-without losing information. one rule separates content from controls. no boxes,
+varies by terminal and disappears under mosh. the accepted row revision requires
+section, record and continuation hierarchy to survive complete style stripping;
+geometry owns those distinctions. one rule separates content from controls. no boxes,
 fret, runes, icons or motion.
 
 ## 20. session naming content

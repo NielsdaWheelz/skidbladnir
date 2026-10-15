@@ -1,211 +1,286 @@
 # desktop session rows
 
-2026-10-15: source implemented and [qualified](#qualification) at `6974851`.
-supersedes the 2026-10-14 width rules, whose [qualification](issues/desktop-browser-runtime-acceptance.md#session-row-qualification)
-remains historical. [terminal model and effort](terminal-model-effort.md) owns
-observation and transport; this document owns presentation and delivery.
+2026-10-15: readability revision implemented and isolated-runtime qualified;
+installed usability remains pending. this document
+owns roster and selected-directory presentation and the implementation plan.
+it replaces the preceding same-axis, uniform-two-line, group-first layout and
+conditional cwd truncation. [qualification](#qualification) separates this
+revision from source-attributed historical evidence.
 
-shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
-records the matching fleet and android generation. the browser behavior below
-retains its isolated qualification boundary.
+## scope and capability contract
 
-## outcome and content
+make sections, sessions and continuations distinguishable in plain text at
+80×24. preserve complete status, session recognition and truthful directory
+context. [terminal model/effort](terminal-model-effort.md) owns observed text;
+[desktop browser](desktop-browser.md) owns navigation/actions;
+[session views](session-views.md) owns membership/order.
 
-one borderless list. keep identity, status and related metadata close together;
-leave unused width on the right. cards spend space without adding meaning to
-this keyboard roster. retain ordering, keys, footer, forms, captured info lifetime
-and exact session-reference actions. no headers or density setting.
+composition remains `admitted fleet observations → sessionui model → local
+layout/viewport → View`. reuse `current`, `tableStatus`, `rowMetadata`,
+`rowFooter`, `GroupHeading`, `SessionEqual` and existing sanitizing/styles.
+no public api, wire/config/persistence schema, endpoint or model state changes.
+tmux/providers retain their owners. names, shortened paths and row positions
+never become control identities. refresh, queue order, keys, captured info and
+pending targets retain their contracts.
 
-| view | order and grouping |
+## content and design ownership
+
+| surface | content and order |
 | --- | --- |
-| all | `name  status  provider  profile  observed label`; existing group headings, including unassigned |
-| named group / unassigned | same columns; tab supplies group; no repeated heading |
-| needs input | optional group column first; unassigned cells blank; omit only when every row is unassigned |
+| all | existing group order; quiet `label:` heading; sessions below |
+| named group / unassigned | tab supplies scope; no heading or membership cell |
+| needs input | existing flat ready/action order; name/status before membership |
+| inline record | `name  status  [membership]  provider  profile  observed label` |
+| stacked record | `name  status`, then `[membership]  provider  profile  observed label` |
 
-the layout designer owns hierarchy, spacing and rendered examples; the
-observation designer owns label/absence copy in the linked contract. good
-content preserves native spelling and uncertainty, keeps name/status dominant,
-and makes every continuation visibly belong to its session. both review actual
-renders before acceptance; neither changes product scope.
-
-use `current`, `tableStatus` and existing profile precedence: provider/profile
-keys with the width truncation below; `unknown` only for an agent without a
-profile; plain terminals leave metadata blank. info uses configured profile
-label, then known key, then `profile unknown`. known remote retains
-`name on destination`; unknown remote
-uses `remote unknown` across the provider/profile span. remote context never
-becomes source-terminal activity or an action target.
-
-group-heading text and names share the axis after the two-cell cursor gutter.
-the selected entry's first line alone carries the cursor; its name alone is
-bold. preserve current status tones, faint metadata/remote qualifiers and
-unavailable names. `NO_COLOR` preserves words, cursor and spacing. sanitize with
-`attention.SingleLine` before cell measurement; reuse `ansi.StringWidth`,
-`ansi.Truncate` and `cell`, styling only finished fragments.
+row designer defines good content as recognizable section/record/continuation/
+selection without styling, with complete status explaining queue inclusion.
+directory designer defines it as explicit local/remote/unknown and path/absence
+distinctions, preserving the path suffix. both own dummy examples and review
+actual renders. retain native spelling, profile precedence, unknown/dash
+semantics, status tones and remote attribution from existing owners.
 
 ## deterministic geometry
 
-body width is terminal width minus two outer cells. gaps are two cells.
+body width `b = terminal width − 2`; columns have two-cell gaps. body column 0
+holds headings/cursor, names start at 2, stacked metadata at 4. all/group uses
+inline records at width ≥120; needs input at ≥138. otherwise stack. mode depends
+only on width/view; retain the existing minimum-size screen below 80×24.
 
-| view | one line per session | otherwise |
-| --- | --- | --- |
-| all / named group / unassigned | terminal width ≥120 | two lines |
-| needs input | terminal width ≥135 | two lines |
+measure across every current row, never the visible slice. omit globally empty
+columns and their gaps. no elastic filler; leave unused width on the right.
 
-mode depends only on width and view. below 80×24, keep existing minimum-size
-behavior. in two-line mode, every session uses two lines, including terminals
-with an empty second line; metadata starts at the name axis:
+| field | cell budget |
+| --- | --- |
+| name | widest displayed name/remote qualifier, capped at 28 |
+| status | widest complete `tableStatus`; never truncate |
+| membership | needs input only: `3 + min(16, max(1, widest assigned label))` |
+| provider | widest actual content; current closed bound 6 |
+| profile | widest actual content, capped at 11 |
+| observed label | widest label/absence dash, capped at 30 |
+
+sanitize with `attention.SingleLine` before `ansi.StringWidth`/truncation;
+style finished fragments. preserve existing remote-name allocation: desired
+width `min(28, nameWidth + 4 + min(12, destinationWidth))`; after shared name
+width `n`, destination budget `min(12, n − 4 − min(12, nameWidth))` and remaining
+space belongs to the name. unknown remote reserves ≥6 cells each for provider
+and profile and displays `remote unknown` across their span. remove the old
+narrow needs-input name cap; membership no longer occupies the primary line.
+
+membership renders `in ` plus the label truncated to its label budget. unassigned
+leaves that entire cell blank, including the prefix; retain padding/gap for
+alignment. omit the column when every row is unassigned. a named group literally
+called `unassigned` remains named. headings use existing heading text, truncated
+to `b−1`, then append `:`; preserve authored punctuation and add the colon only
+in tui presentation. selected names alone are bold; selected content lines carry
+`▌` in the same gutter. retain faint headings/metadata/unavailable names.
+
+stack only semantically present metadata: a dash and `remote unknown` count;
+column-padding whitespace does not. every record therefore has one or two
+content lines. no empty continuation or selection bar on a separator/heading.
+
+| worst occupied width, including margins | primary / metadata when stacked | inline |
+| --- | ---: | ---: |
+| all / group | 67 / 57 | 120 |
+| needs input | 64 / 78 | 138 |
+
+these bounds use status 33/30 respectively. vocabulary changes must recheck them.
+stacked records have one blank between entries. inline records have one blank
+at an all-view group boundary and no gap elsewhere. needs input never acquires headings or
+inline inter-record gaps. never insert a gap
+between heading and first entry, double a boundary gap, or retain viewport-edge
+separators. dummy stacked examples:
 
 ```text
-[group]  name  status
-         provider  profile  observed label
+research:
+  review-api  ready
+    Codex  work  sample-model · high
+
+▌ shell       terminal
 ```
 
-measure across **all current rows**, never the visible slice. omit globally
-empty metadata columns and their gaps. cursor/scroll cannot change widths;
-admitted inventory may. use these content widths, with no elastic filler:
+```text
+▌ review-api     ready
+▌   in research  Codex   work  sample-model · high
 
-| column | width |
+  inspect-cache  needs input
+                 Claude  work  sample-model · max
+```
+
+the second queue row above is unassigned; padding preserves metadata columns.
+
+## composition and viewport contract
+
+keep one ephemeral `tableLayout` owning column widths, mode and per-session
+content height/group boundary. replace uniform-height and suffix-slicing
+assumptions. one private viewport calculation takes layout, first session and
+body capacity; it returns admitted session indexes, explicit gap/heading choices
+and the exclusive end index. this is a local value, not a stored projection or
+new framework. rendering, fitting/backfill and footer pagination consume that
+same calculation; `view.go` must not reimplement prefix admission.
+
+from a candidate first session, scan forward:
+
+1. suppress its leading gap. if it opens an all-view group, include its heading whenever
+   heading plus complete content fits; otherwise admit content alone if it fits.
+   never repeat a heading when starting midway through a group.
+2. each later entry requires its whole content and the gap required by its mode.
+   an all-view group transition additionally requires its heading. admit that entire block or
+   stop; never hide an interior transition to squeeze in a session.
+3. stop at the first non-fitting entry; do not skip sessions or emit partial
+   content. no trailing gap or dangling heading.
+
+`top`/cursor count sessions. before fitting, clamp top to the valid session range
+and no later than cursor. if selected content cannot fit, set top to cursor so
+the shared plan is empty; retain selection, including in footer accounting.
+otherwise preserve top while selection is visible and the tail is not reached.
+when selection is below the viewport, use the earliest preceding top whose
+forward plan includes it. when the tail is visible, backfill from the earliest
+top whose plan retains the final session and selection. if all entries fit,
+reset top to zero. use the same plan rather than the old backward-height credit.
+footer `i of n` counts sessions and uses actual remaining body capacity.
+
+## selected directory
+
+keep its existing single footer line and action eligibility. separate real cwd,
+absence and remote qualification before formatting; preserve full cwd/destination
+in existing wrapped info. no filesystem resolution/normalization or interpretation
+of paths embedded in provider footer text.
+
+| context | rendering and width allocation |
 | --- | --- |
-| group | `min(16, max(1, widest sanitized group))`, when present |
-| name | widest required displayed name/remote qualifier, capped at 28 |
-| status | widest complete existing `tableStatus`; never truncate |
-| provider | widest actual content; closed contract bound 6 |
-| profile | widest actual content, capped at 11; longer accepted keys truncate |
-| observed label | widest label or absence dash, capped at 30; truncate once, preserving full value in info |
+| local | real cwd uses existing `tail`; empty cwd reads `directory unavailable` |
+| available local with shell action | reserve measured `shift+t new shell here` width + 2; remaining cells belong to cwd/absence; right-align the action with at least two spaces |
+| checking/unavailable local | same suffix policy, all `b` cells available; no action |
+| known remote | `running on <destination>: <cwd or absence>`; head-truncate sanitized destination to 24 cells, retain framing, tail-truncate only cwd within remaining cells |
+| unknown remote | exact `remote context unknown`; no cwd or shell action |
 
-if any row has unknown remote context, reserve at least six cells each for
-provider/profile: their combined span is at least fourteen, enough for `remote unknown`.
-in narrow needs input, also cap name at
-`body − 2 − (group + 2 if present) − status − 2`.
-future status/provider vocabulary changes must recheck these budgets.
-
-remote desired width is `min(28, actualNameWidth + 4 + min(12, destinationWidth))`.
-after shared name width `n` is known, destination budget is
-`min(12, n − 4 − min(12, actualNameWidth))`; remaining cells after ` on ` and
-the rendered destination belong to the name. long remote names keep twelve
-cells; short names create no artificial minimum gap. full destination stays
-in info. remote rows remain excluded from needs input.
-
-worst occupied widths, including outer margins, use status 33 in all/group,
-status 30 and group 16 in needs input, provider 6, profile 11 and label 30:
-
-| terminal | all/group | needs input |
-| ---: | --- | --- |
-| 80 | two lines: 67 / 55 | two lines: 80 / 73; name cap 26 |
-| 100 | two lines: 67 / 55 | two lines: 82 / 73 |
-| 120 | one line: 120 | two lines: 82 / 73 |
-| 160 | one line: 120 | one line: 135 |
-
-## composition and scrolling
-
-derive one local layout from view, dimensions and rows; reuse its entry height
-and row spans for total height, `fitViewports`, rendering and footer scroll
-indication. no stored row projection, column registry or general layout engine.
-reuse existing group, context, style, sanitizing and session-identity primitives.
-
-retain selection by lifetime through resize/refresh/regrouping while the session
-remains in the current view; otherwise keep the existing fallback. captured info
-and operations retain `SessionEqual` targeting independently. render whole
-entries, never an orphan metadata line or a heading without an entry. include
-an immediately preceding heading when it and its first entry fit; otherwise show
-the complete entry without a heading. add no sticky/repeated headings. when the
-final entry fits, backfill complete entries from above into newly available
-space while retaining selection. leave remaining spare space blank.
-when body capacity is below entry height, leave it blank and
-retain selection. `i of n` counts sessions, excluding headings and continuation lines.
+absence is prose, not a path. keep the existing wide-grapheme correction in
+`tail`; never byte/rune-slice text. at 80 columns the actionable local path gets
+54 cells, the known remote path ≥41; all absence copy fits.
 
 ## exclusive implementation boundaries
 
-all builders read both feature contracts first. transport follows the frozen
-observation contract; presentation follows transport. independent file work may
-overlap in time; edits never overlap in ownership.
+freeze the private viewport input/output contract before parallel edits.
 
-| owner | exclusive paths and responsibility |
+| owner | exclusive write paths and responsibilities |
 | --- | --- |
-| observation builder | `internal/sessions/{types,usage,footer}.go` (`footer.go` new); `internal/agentcontrol/{detect,terminal,codex,claude,claude_usage}.go`, optional new `internal/agentcontrol/footer.go`; existing `frames_test.go` and `testdata/frames/`; `internal/gateway/dto.go`: value, extraction, attachment validation and host serialization |
-| client builder | `internal/fleetclient/{response,client}.go`; `android/app/src/main/java/dev/niels/skidbladnir/ProductModel.kt`: strict ingress, projection, list/create/shell parity, explained-inspection clearing; no phone visuals |
-| presentation builder | `internal/sessionui/{view,details,session}.go`, optional new `internal/sessionui/layout.go`: row layout, info, all height accounting and clearing creation metadata before insertion into older inventory; the new file only if it absorbs shared calculation |
-| root integrator | owning feature docs, provider grammar docs, architecture/roadmap/browser/design links and existing acceptance issues; disposable probes below, orchestration and cleanup |
-| two feature designers | read-only content/interaction review of their respective feature and actual output |
-| independent verifier | read-only challenge of specification, red sensitivity, boundaries, results and final diff; no test or production writes |
+| layout builder | `internal/sessionui/layout.go`: measurement, row content, viewport calculation, fitting/backfill and rendering |
+| composition/directory builder | `internal/sessionui/view.go`: only table-body composition, footer pagination, selected-directory rendering and directly necessary helper edits; consumes layout result |
+| root integrator | this spec; affected browser/design/architecture/roadmap clauses; the two source issues and existing desktop acceptance issue; disposable `internal/sessionui/readable_rows_test.go` and `readable_rows_live_test.go`; orchestration and evidence |
+| row and directory designers | read-only content definitions/examples and actual-render review for their feature |
+| independent verifier | read-only adversarial review at each stage; no test or production writes |
 
-replace the existing fill-the-width layout in place. remove its surplus name
-padding, independent one-line height assumptions and superseded calculations.
-search callers before deleting helpers; retain still-used footer and context
-primitives. no compatibility branch, old renderer, feature flag, dependency,
-profile catalogue copy or unrelated cleanup. serialize any concurrent work in
-these files; only root edits shared scope documents.
+layout and composition work may overlap after contract freeze; root alone writes
+shared docs/probes. no other source paths are assigned. seek a scope decision if
+evidence requires one. search all callers before deleting/replacing helpers.
+reuse existing cell/sanitizing/status/context primitives. hard-cut the old
+renderer, group-leading column, empty-continuation rule, 135 threshold,
+conditional cwd policy and duplicated height arithmetic; keep no parallel path.
 
 ## red green refactor and acceptance
 
-follow [testing policy](rules/testing.md). root authors disposable
-`session_rows_test.go` / `session_rows_live_test.go` in `internal/sessionui/`,
-`terminal_footer_integration_test.go` in `internal/gateway/`, and disposable
-`android/app/src/test/java/dev/niels/skidbladnir/TerminalFooterDecodeProbe.kt`.
-run its ordinary jvm entry point against the actual decoder with existing gradle
-compile/runtime dependencies; no junit/framework dependency or permanent task.
-observation builder
-extends the retained dummy frame corpus/replay instead of duplicating it.
+follow [testing policy](rules/testing.md). root authors the two disposable
+probes; designers freeze output
+requirements, verifier challenges oracles and boundary coverage before execution.
 
-1. **red:** freeze target assertions first. use actual decoding, `Update`/`View`
-   and gateway composition. baseline must compile and fail the requested
-   behavior; absent new symbols are not a red result. use raw json to probe the
-   new field against baseline. designers approve content; verifier challenges
-   misleading positives, missing boundaries and test sensitivity.
-2. **green:** implement each exclusive slice; run the same assertions and
-   inspect actual renders. qualify source extraction separately from transport,
-   layout and live providers. do not weaken assertions to fit the code.
-3. **refactor:** consolidate only demonstrated duplication, remove replaced
-   paths and rerun affected checks. verifier reviews final composition. delete
-   disposable probes/artifacts; retain the explicitly excepted provider corpus
-   and replay. run `go test ./internal/agentcontrol` and `scripts/check verify all`.
+1. red: actual strict loopback decoding and `Update`/`View`, not a replica renderer.
+   baseline must compile and fail the new hierarchy/path assertions. unchanged
+   attachment invariants may pass baseline; do not manufacture a live failure.
+2. green: builders implement only their assigned slice; run the same probes.
+   both designers inspect actual output; verifier challenges boundary clipping,
+   content truth and targeting. fix findings at their owner without weakening
+   acceptance. run the isolated live boundary below.
+3. refactor: remove superseded/duplicate paths after caller checks; review final
+   composition and rerun affected probes. root then deletes probes and temporary
+   artifacts, runs `scripts/check verify host`, and records content-free evidence.
+   verifier checks the final diff and deletion. engineering checks prove no live
+   behavior. source completion and installed acceptance are separate milestones.
 
-| boundary | acceptance |
+| boundary | required evidence |
 | --- | --- |
-| row content | actual views at widths 80/100/119/120/134/135/160, 24 rows, color and `NO_COLOR`; correct axes, exact statuses/keys, known/missing/stale labels, long/unicode names, remote contexts, no overflow; unused width remains right |
-| viewport and targeting | all/group/needs-input/empty views; long groups and worst statuses; footer growth down to 0/1 body lines; top/bottom scrolling, final entry, resize across thresholds; no partial entry/dangling heading; selection retains admitted lifetime or existing fallback; pending/info/attach targets stay pinned |
-| observation and transport | linked capability acceptance: retained dummy frames plus actual gateway → go and actual android decoder, including list/create/shell and failure paths; valid phrases survive exactly, invalid evidence never reaches presentation |
-| live browser | actual event loop → loopback gateway → owned isolated tmux; grid at 80×24 and wide; navigate/info/attach/`ctrl-] d`/first navigation key/refresh preserve selection, cwd and both terminal lifetimes |
-| live providers | installed codex and claude on darwin/linux: two same-account sessions with different settings, interactive changes, hidden/custom/clipped footers and process replacement; content-free receipts distinguish exercised provider/version/host from omissions |
-| hard cut and cleanup | no old layout/schema path, changed polling or mutation behavior; disposable probes removed; retained replay and engineering checks pass; designer and verifier findings resolved |
+| rendered content | actual all/group/needs-input/empty views at 80/119/120/135/137/138/160 columns, height 24; inspect color and `NO_COLOR`; long names/groups/statuses, assigned/unassigned, known/missing labels, mixed terminal/agent/remote records; exact status, axes, whole selected bars, no overflow |
+| viewport/identity | first/middle/last selection; body capacities 0–7, group boundaries and 1/2-line records; strict interior heading admission, optional top heading, no edge gaps; threshold/height resize and tail backfill; refresh/regroup/filter preserve surviving lifetime; captured info/pending/attach targets remain pinned |
+| cwd | actual selected footer and info for fresh/checking/unavailable local, known/unknown remote, missing cwd, overlong destination, long/shared basenames and wide/combining graphemes; suffix/framing/absence/action eligibility/full values preserved |
+| isolated runtime | real browser/event loop → loopback gateway → owned isolated tmux on darwin and linux at 80×24 and 160×24; navigate/info/attach/`ctrl-] d`/first navigation/refresh preserve selection, original cwd and both lifetimes; terminal-only fixtures suffice here, agent metadata/status combinations belong to decoded model/view fixtures |
+| installed usability | after separate release/deployment, verify matching installed version; user reviews actual all/needs-input at narrow/wide sizes in their normal terminal, including group boundaries, two-line selection and long directories; explicitly confirm readable hierarchy and acceptable density |
+| cleanup | no old presentation branch, changed schema/runtime owner or retained probe; both designer reviews and independent final review resolved; engineering checks pass |
 
-live tests require execution-turn approval under `AGENTS.md`. compose existing
-`sessions.New(Config{SocketName: ...})` and `gateway.New` against unique owned
-`-L` sockets; the gateway cli uses the default socket and is unsuitable. use a
-second owned socket for the browser grid, temporary state/cwds and only owned
-sessions. inspect terminal bytes in assertion memory, never logs. cleanup reaps
-children, closes gateway live terminals with a fresh bounded context, closes tls
-and removes only recorded sessions; browser probes never use `kill-server`.
-the existing frame generator retains its own isolated-socket cleanup. no
-production session or phone operations. provider/account access and each execution host must be in
-the approved live scope. missing boundaries are `NOT_RUN`, never passes.
+live execution requires current-turn approval under [AGENTS.md](../AGENTS.md).
+reuse the [isolated-browser composition](issues/desktop-browser-runtime-acceptance.md#session-row-qualification):
+`sessions.New` with unique `SocketName`, `gateway.New`, temporary client/state/cwd/
+credentials, and an owned browser-grid socket if needed. never use the gateway
+cli's default socket or unrelated sessions/provider accounts/phone. bounded
+cleanup closes terminals/tls, reaps children and removes recorded owned artifacts;
+no `kill-server`. terminal assertions stay in memory; evidence stays content-free.
+unexecuted boundaries are `NOT_RUN`. installed review does not authorize deployment.
 
-record source/version, outcomes and cleanup in the existing
-[desktop acceptance](issues/desktop-browser-runtime-acceptance.md) and
-[capability qualification](terminal-model-effort.md#qualification). delete the
-resolved source issue. do not recreate gates or a proof ledger. prior
-qualification and engineering checks prove no new live behavior.
-release/deployment remain separate.
+record source/version, checks, review outcomes and cleanup below and in the
+existing [desktop acceptance issue](issues/desktop-browser-runtime-acceptance.md).
+keep [readability](issues/desktop-row-readability.md) and
+[cwd truncation](issues/desktop-cwd-truncation.md) open until their source and
+installed criteria pass; delete resolved records. no proof ledger/new test gate.
 
-## costs and non goals
+## costs and non-goals
 
-narrow views show fewer sessions; plain terminals retain an empty continuation.
-fixed thresholds can use two lines even when current content would fit one.
-long names, profile keys and observed labels truncate even on wide screens;
-info retains full values under its existing profile label/key precedence.
-columns can shift after inventory changes, never while scrolling.
-terminal evidence has the limitations in its contract; strict schema deployment
-requires coordinated consumers. deleting probes leaves no lasting integration
-regression protection beyond the retained detector corpus.
+fifteen body lines hold about five separated agent records instead of seven;
+group headings and intact transitions may leave more spare lines. mixed heights
+recover empty-terminal space but can shift rows on provider appearance/exit;
+selection remains by lifetime. membership is less immediate than a leading
+column; blank unassigned cells retain alignment. `in ` costs three cells and
+moves the queue breakpoint to 138. fixed modes can stack otherwise fitting
+content; inventory can change intrinsic widths, scrolling/selection cannot.
 
-excluded: cards, footer redesign, new keys, sorting/filtering, phone presentation,
-cli text changes, effective per-inference settings, native getters, new hooks or
-pollers, persistence, configuration, remote model attribution, release/deployment
-and unrelated cleanup. the [invisible group-label issue](issues/group-label-invisible-characters.md)
-keeps its existing owner.
+existing field caps still truncate even on wide screens. path suffixes can
+collide after ancestor loss; full info resolves ambiguity. remote labels cap at
+24 even on wide screens to reserve useful path space. no sticky heading means
+mid-group scrolling can hide group context. deleting probes leaves no retained
+automatic regression coverage. installed review adds a separate delivery step.
+
+excluded: cards/backgrounds/icons, density settings, selected-row expansion,
+new keys/sorting/filtering, footer redesign beyond cwd, phone/cli presentation,
+provider observation/schema changes, pollers/state/dependencies, filesystem
+inference, unrelated cleanup and release/deployment in this implementation.
 
 ## qualification
+
+### readability revision
+
+2026-10-15: source in this commit, from `aaf4691`, implements the revision on
+`codex/desktop-row-readability`. the frozen strict tls/model/view probes compile
+on the baseline and fail the intended hierarchy, viewport and cwd assertions.
+the changed source passes:
+
+- actual decoding and `Update`/`View` at 80/119/120/135/137/138/160 columns,
+  color and `NO_COLOR`; all/group/needs-input/empty views, maximal status and
+  field budgets, unicode, known/unknown remotes and assigned/unassigned labels.
+- body capacities 0–9, mixed one/two-line entries, optional leading headings,
+  intact interior transitions, selected gutters and footer counts. dense resize
+  sequences preserve middle scrolling and maximally backfill the selected tail.
+  regroup/filter/refresh keep surviving selection, captured info and pending refs.
+- selected local/checking/unavailable/remote/unknown cwd, exact ascii suffixes,
+  wide/combining endings, capped destination framing, absence, action eligibility
+  and full info values.
+- real browser/event loop → loopback gateway → owned isolated tmux on darwin
+  and linux arm64 at 80×24 and 160×24. info, exact attachment, detach, first
+  navigation, visible rename/refresh, cwd and both original lifetimes pass.
+  unchanged darwin attachment invariants also pass on the baseline.
+
+both designers approve actual dummy output and raw styles, including maximal
+inline needs input at 138. independent adversarial review approves interfaces,
+oracles, source and cleanup design; no further structural refactor is warranted.
+both disposable repository probes, detached baseline worktree, render artifacts,
+linux binary and owned container/image are removed. browser helpers exit, gateway
+terminals close, and exact owned sessions are removed before fixture teardown.
+`scripts/check verify host` passes after probe deletion; local documentation links
+and diff checks pass. no new behavioral suite or production test seam remains.
+
+release/deployment and matching installed usability are `NOT_RUN`. the two source
+issues stay open for that separately agreed acceptance; no installed pass is
+inferred from source or isolated runtime.
+
+### preceding compact layout
+
 
 2026-10-15: source `6974851` on `codex/terminal-model-effort`, from `16a6ed9`.
 the compiling baseline fails compact row/footer assertions and the actual

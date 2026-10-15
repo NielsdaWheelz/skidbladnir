@@ -5,9 +5,23 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## compact desktop rows and terminal footer — shipped in v0.16.0
+## desktop readability — source qualified; installed review pending
 
-2026-10-15: [rows and delivery](desktop-session-rows.md) implements compact
+2026-10-15: [the revised spec and plan](desktop-session-rows.md) owns distinct
+group/session/continuation geometry and consistent cwd suffix display. work is
+split between layout and browser composition, with separate content designers
+and independent adversarial review. source/model checks, isolated darwin/linux
+runtime checks and a separate installed-tui review after deployment are required.
+[row readability](issues/desktop-row-readability.md) and
+[cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
+acceptance. [this revision's qualification](desktop-session-rows.md#readability-revision)
+passes model/view and isolated darwin/linux runtime checks; release/deployment
+and installed usability remain separate. prior compact-row evidence stays
+source-attributed.
+
+## preceding compact desktop rows and terminal footer — shipped in v0.16.0
+
+2026-10-15: the [preceding row implementation](desktop-session-rows.md#qualification) implements compact
 columns, uniform narrow entries and complete scrolling. [terminal model and
 effort](terminal-model-effort.md) carries claude's native phrase and codex's whole
 native status line through one optional strict session field and go/android

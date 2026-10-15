@@ -1,5 +1,17 @@
 # desktop browser runtime acceptance
 
+## readable rows and directories — installed review pending
+
+2026-10-15: the [accepted plan](../desktop-session-rows.md) requires revised
+model/view checks, isolated darwin/linux browser/gateway/tmux journeys, and a
+separate installed-tui usability review after deployment. revised model/view
+checks and both isolated runtime platforms pass; [source evidence](../desktop-session-rows.md#readability-revision)
+records the exercised cases. release/deployment and installed review are `NOT_RUN`.
+the user requires intact interior group transitions; spare viewport lines are
+accepted. source and installed acceptance remain separate milestones. record
+exact source/version, content-free outcomes and cleanup here; the older evidence
+below does not qualify the replacement or close unrelated browser gaps.
+
 ## session-row qualification
 
 2026-10-14; row/info source `2c918070874e` on darwin, isolated branch
@@ -31,7 +43,7 @@ this scoped pass does not qualify the broader historical matrix below.
 
 ## compact rows and displayed footer
 
-2026-10-15: source `6974851` implements the [revised row plan](../desktop-session-rows.md).
+2026-10-15: source `6974851` implements the preceding compact-row layout.
 its [qualification](../desktop-session-rows.md#qualification) passes frozen red/green
 behavior, responsive geometry, complete-entry scrolling, exact targets and full
 info values, with 36 actual renders approved by both designers. the actual

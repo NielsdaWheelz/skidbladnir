@@ -208,7 +208,7 @@ func (m *model) footerLines() []string {
 			detail = m.rowDetailLines(*row, width)
 			layout := m.tableLayout(width)
 			height := m.height - 3 - len(usage) - len(notices) - len(detail) - len(keys)
-			if m.top > 0 || layout.end(m.top, height) < len(m.rows) {
+			if m.top > 0 || layout.viewport(m.top, height).end < len(m.rows) {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
@@ -408,23 +408,32 @@ func (m *model) rowDetailLines(row listedRow, width int) []string {
 	case !row.available:
 		facts = "unavailable; " + facts
 	}
-	where := current.CWD
-	if where == "" {
-		where = "directory unavailable"
-	}
-	switch current.Kind {
-	case "remote":
-		where = "running on " + current.Label + ": " + where
-	case "remoteUnknown":
-		where = "remote context unknown"
-	}
-	status := attention.SingleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
-	directory := ansi.Truncate(attention.SingleLine(where), width, "…")
+	action, room := "", width
 	if row.available && row.session.Connection == nil {
-		action := bold.Styled("shift+t") + " new shell here"
-		directory = tail(attention.SingleLine(where), width-ansi.StringWidth(action)-2)
+		action = bold.Styled("shift+t") + " new shell here"
+		room -= ansi.StringWidth(action) + 2
+	}
+	directory := ""
+	switch current.Kind {
+	case "local", "remote":
+		prefix := ""
+		if current.Kind == "remote" {
+			prefix = "running on " + ansi.Truncate(attention.SingleLine(current.Label), 24, "…") + ": "
+		}
+		directory = "directory unavailable"
+		if current.CWD != "" {
+			directory = tail(attention.SingleLine(current.CWD), room-ansi.StringWidth(prefix))
+		}
+		directory = prefix + directory
+	case "remoteUnknown":
+		directory = "remote context unknown"
+	default:
+		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
+	}
+	if action != "" {
 		directory += strings.Repeat(" ", width-ansi.StringWidth(directory)-ansi.StringWidth(action)) + action
 	}
+	status := attention.SingleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
 	return []string{faint.Styled(ansi.Truncate(status, width, "…")), directory}
 }
 
@@ -608,16 +617,7 @@ func (m *model) bodyLines(height int) []string {
 		return []string{"no sessions in this view"}
 	}
 	layout := m.tableLayout(width)
-	all, lines := m.tableLines(width), []string{}
-	for index := m.top; index < len(m.rows); index++ {
-		length := layout.entryLines(index, height-len(lines))
-		if length == 0 {
-			break
-		}
-		span := layout.spans[index]
-		lines = append(lines, all[span.end-length:span.end]...)
-	}
-	return lines
+	return m.tableLines(layout, layout.viewport(m.top, height))
 }
 
 // window keeps a form's focused field visible; a field taller than the page
