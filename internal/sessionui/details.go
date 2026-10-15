@@ -118,11 +118,11 @@ func (m *model) details(row *listedRow) [][2]string {
 
 func (m *model) rowForReference(encoded string) *listedRow {
 	target, _ := fleetclient.DecodeReference(encoded)
-	for _, peer := range m.scopedPeers() {
+	for _, peer := range m.peers {
 		for _, session := range peer.Sessions {
 			ref, _ := fleetclient.DecodeReference(session.Ref)
 			if ref.SessionEqual(target) {
-				return &listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
+				return &listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
 			}
 		}
 	}
@@ -130,7 +130,7 @@ func (m *model) rowForReference(encoded string) *listedRow {
 }
 
 // refreshInfo follows info's lifetime through each inventory. A lifetime that
-// leaves scoped inventory keeps its last observed facts and their time,
+// leaves inventory keeps its last observed facts and their time,
 // labelled unavailable.
 func (m *model) refreshInfo() {
 	if row := m.rowForReference(m.pageRow.session.Ref); row != nil {

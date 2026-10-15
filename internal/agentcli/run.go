@@ -73,8 +73,9 @@ unknown delivery is never replayed; a nonzero exit alone permits no retry
 
 browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
-  f selects needs input (ready, response requests, error/interruption notices)
-  m chooses machine; n opens terminal; N opens options
+  n quick terminal: create and enter at home on the configured default machine,
+  in the selected named group; otherwise unassigned
+  N new terminal options: choose machine, launch, name, directory and group
   enter attaches; space opens info
   u opens all-machine usage; arrows/j/k scroll; q/escape returns
   one record per profile selects its latest received eligible source
@@ -85,8 +86,8 @@ browser (80x24 minimum)
   directory: type search words (150 ms), ~, ~/path or /path; blank means home
   shift-tab returns without accepting; ctrl-u clears to home/unassigned
   create/save: enter submits; group editor ctrl-s saves the typed draft
-  shift+t creates and enters a shell on the selected session's machine,
-  in its current directory and group; the original session keeps running
+  T new terminal here (shift+t): create and enter on the selected session's machine,
+  in its current directory and group; unavailable for ssh/mosh; source keeps running
   s sends interrupt; x interrupts and closes terminal
   ctrl-r refreshes inventory and native usage on the table and usage page
   escape closes a page; q quits from the table

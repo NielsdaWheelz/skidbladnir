@@ -81,7 +81,7 @@ func groupChoices(draft string, observed []group.Label) []groupChoice {
 }
 
 func (m *model) groupChoices(draft string) []groupChoice {
-	return groupChoices(draft, fleetclient.ObservedGroups(m.scopedPeers()))
+	return groupChoices(draft, fleetclient.ObservedGroups(m.peers))
 }
 
 // groupSelection stores only a highlight's identity. Drafts and choices stay

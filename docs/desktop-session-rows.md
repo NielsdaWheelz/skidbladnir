@@ -1,11 +1,12 @@
 # desktop session rows
 
-2026-10-15: readability revision implemented and isolated-runtime qualified;
-installed usability remains pending. this document
-owns roster and selected-directory presentation and the implementation plan.
-it replaces the preceding same-axis, uniform-two-line, group-first layout and
-conditional cwd truncation. [qualification](#qualification) separates this
-revision from source-attributed historical evidence.
+2026-10-15: [browser simplification](desktop-browser-simplification.md) now owns
+row/directory/footer presentation. it retains this revision's summary geometry,
+group transitions and viewport mechanism, adds a directory to every row and
+removes selected-footer details and remote-name qualifiers. the plan below and
+its [qualification](#qualification) describe the preceding readability revision;
+superseded clauses are historical, not alternative renderers. installed usability
+remains pending under the current spec.
 
 ## scope and capability contract
 

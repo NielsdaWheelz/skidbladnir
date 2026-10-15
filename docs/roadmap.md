@@ -5,19 +5,18 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## desktop readability — source qualified; installed review pending
+## desktop browser simplification — implemented; installed review pending
 
-2026-10-15: [the revised spec and plan](desktop-session-rows.md) owns distinct
-group/session/continuation geometry and consistent cwd suffix display. work is
-split between layout and browser composition, with separate content designers
-and independent adversarial review. source/model checks, isolated darwin/linux
-runtime checks and a separate installed-tui review after deployment are required.
+2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
+its directory, removes selected-footer facts and machine collection filtering,
+and gives `n`/`N`/`T` ordinary descriptive hints. needs-input/all/group views and
+explicit creation destinations remain. source qualification is recorded in the
+spec; release/deployment and installed usability remain separate.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
-acceptance. [this revision's qualification](desktop-session-rows.md#readability-revision)
-passes model/view and isolated darwin/linux runtime checks; release/deployment
-and installed usability remain separate. prior compact-row evidence stays
-source-attributed.
+acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)
+and compact-row evidence remain source-attributed. separate desktop-usage work
+must be composed and requalified before a joint release.
 
 ## preceding compact desktop rows and terminal footer — shipped in v0.16.0
 

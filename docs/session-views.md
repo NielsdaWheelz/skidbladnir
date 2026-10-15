@@ -139,8 +139,8 @@ one closed selected-view value replaces the independent collection dimensions:
 
 `needs input | all | named group | unassigned`
 
-desktop keeps its separate machine scope, including the visible narrowed-scope
-label and `m` picker. phone collection scope is always the accepted fleet.
+both clients browse the full retained fleet. [desktop simplification](desktop-browser-simplification.md)
+removes the desktop machine picker/scope; phone machine administration stays in overflow.
 view changes are local projections; they never discard inventory or narrow
 refresh to hosts previously observed in the selected group.
 
@@ -269,12 +269,10 @@ does not clear pairings, terminal text size or the independent v2 attention stor
 
 ## desktop interaction
 
-replace the agents view with needs input and retire its independent `f` toggle.
-`f` selects needs input through the ordinary view-selection path; repeated `f`
-is a no-op. retire `a`, whose agents view disappears. left/right and h/l keep
-their clamped stepping order. `m`, creation, details, captured controls and
-fullscreen attachment retain their existing contracts. update footer and cli
-browser help together; remove the old filter mark and agents empty-state copy.
+needs input replaces the agents view. left/right and h/l retain their clamped
+stepping order. `f`, `m` and `a` have no table action. creation, details, captured
+controls and fullscreen attachment retain their owners;
+[desktop simplification](desktop-browser-simplification.md) owns the final footer/help.
 
 the first view keeps the current flat table and group column. the longer fixed
 label consumes five more terminal cells; retain whole system labels, the current
@@ -336,7 +334,7 @@ ownership boundaries, not requirements for new modules or separate agents.
 | phone scope and creation | all machines participate in every view and pull; notices survive empty filtering; access loss, source-forge, draft recovery, confirmed creation and cancellation cannot restore hidden machine scope; standalone creation requires a host and source creation retains its host |
 | phone return and task state | detach/back and task recreation preserve view/anchor without an all/top flash; group/all heading anchors and flat-queue session anchors restore; delayed attention completion cannot prematurely consume a ready-row anchor or produce a false settled empty view; modeled storage failure allows restoration to finish; old capsule resets once; pending save-again and unresolved labels retain their meaning; selected tab is revealed |
 | phone interaction | overflowing groups, long/unicode/selector-like labels, 2× text, landscape, spoken names/selection, manual strip scrolling during polls, flat priority order and group context; every machine's pressure details and reconnect remain reachable without changing collection selection; details back returns to list, explicit/gesture dismissal closes the sheet, reconnect closes it before navigation |
-| desktop interaction | f and arrows select the documented views; a has no obsolete action; 80×24 with long machine/group labels keeps system/current tabs and overflow markers usable; return, creation and captured controls retain exact targets |
+| desktop interaction | arrows select the documented views; f/m have no table action; a has no obsolete action; 80×24 with long machine/group labels keeps system/current tabs and overflow markers usable; return, creation and captured controls retain exact targets |
 
 use a small set of temporary production-projection/model probes and real client
 journeys, not a second collection implementation. establish the intended
@@ -362,7 +360,7 @@ content-free and credential-free. recording the plan supplies no runtime pass.
 - unknown may conceal an unrecognized request; all/groups remain the inspection
   route. failed machines and notification storage remain separately visible.
 - exclusive views remove requests-within-group and phone machine-only browsing.
-  desktop machine scope remains. standalone phone creation loses machine prefill.
+  desktop machine-only browsing is also removed. standalone phone creation loses machine prefill.
 - the flat phone queue gains one group-context line per card; ordinary grouped
   views retain their density. tie order can differ across clients by existing
   contract, while tiers and membership rules agree.

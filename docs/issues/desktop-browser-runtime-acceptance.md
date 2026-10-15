@@ -1,5 +1,31 @@
 # desktop browser runtime acceptance
 
+## browser simplification — source qualified; installed review pending
+
+2026-10-15: `codex/desktop-browser-simplification` from `b253c05` implements the
+[current contract](../desktop-browser-simplification.md); its
+[qualification](../desktop-browser-simplification.md#source-qualification) owns
+the final source boundary. the frozen baseline fails the intended changes;
+strict decoder/model/view checks and actual isolated browser/pty/gateway/tmux
+journeys pass on darwin/arm64 and linux/arm64, at 80×24 and 160×24.
+
+the live journey establishes configured-default `n`, explicit `N`, exact-source
+`T`, cwd/group/host and exact auto-attachment, busy suppression, detach/first
+navigation, refresh, original source survival, unavailable-default refusal and
+lost-successful-reply non-replay. rows/footer and asynchronous ownership pass
+the spec's rendered integration matrix. content and independent review pass.
+no production fleet, provider account, phone or deployment was involved.
+both temporary probes and owned artifacts are removed; browsers exited,
+gateways/terminals closed and only recorded owned sessions/inert sockets were
+removed. `scripts/check verify host` and local documentation links pass after
+probe deletion.
+
+installed version, hierarchy/path readability and acceptable density remain
+`NOT_RUN`; [row](desktop-row-readability.md) and
+[cwd](desktop-cwd-truncation.md) records stay open. stop/close and live metadata
+editing below remain unqualified by this slice. composing the separate usage
+branch requires affected checks on the composed source.
+
 ## readable rows and directories — installed review pending
 
 2026-10-15: the [accepted plan](../desktop-session-rows.md) requires revised
@@ -72,7 +98,9 @@ immediate space selection, then passed on the composed candidate (2.660s).
 ssh authentication initially failed, and the user instructed skipping darwin
 in that turn. access was later restored; a later turn approved isolated tmux
 work, but the `v0.10.3` delivery still did not record a darwin browser journey.
-that boundary remains `NOT_RUN`.
+that delivery left the boundary `NOT_RUN`. the current simplification journey
+above qualifies the specified terminal creation/attachment/navigation cases on
+its own source, not that historical delivery.
 
 with current-turn approval, use a temporary real browser → pty → gateway →
 isolated tmux journey under
@@ -80,7 +108,7 @@ isolated tmux journey under
 filters and selection, the first navigation key after detach, escape after
 `ctrl-] d` staying in skid, `ctrl-c` quitting, source survival, and no creation
 replay after a lost reply. record content-free results in the change; delete
-this issue when the boundary passes.
+this issue when all remaining boundaries pass.
 
 the terminal-continuity extension adds final-release `n` quick creation,
 `N` options, and `T` new-terminal-here to this live boundary, including target
@@ -88,7 +116,8 @@ and default selection, offline failure, duplicate suppression, and uncertain
 creation without replay. [pr 4](https://github.com/NielsdaWheelz/skidbladnir/pull/4)
 passed temporary component checks but explicitly left the rebased browser's
 live fleet run unperformed. the `v0.10.3` delivery did not record this browser
-journey. these cases remain `NOT_RUN` and belong in the same approved proof.
+journey. the current simplification journey above now qualifies these cases on
+its own source; installed acceptance remains separate.
 
 2026-09-30: browser `x` now interrupts then closes; `c` is removed and `s` retains
 the terminal. temporary browser/client checks against a loopback tls fixture

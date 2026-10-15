@@ -22,10 +22,17 @@ const (
 	directorySearchFailed
 )
 
-func (m *model) directoryAvailable() bool {
-	if !m.scopeReady {
-		return false
+// targetChecking distinguishes an unobserved or invalidated peer from a failed host.
+func (m *model) targetChecking(label string) bool {
+	for _, peer := range m.peers {
+		if peer.Label == label {
+			return !peer.OK && peer.Error == nil
+		}
 	}
+	return false
+}
+
+func (m *model) directoryAvailable() bool {
 	for _, peer := range m.peers {
 		if peer.Label == m.form[0] {
 			return peer.OK
@@ -35,9 +42,6 @@ func (m *model) directoryAvailable() bool {
 }
 
 func (m *model) createAvailable() bool {
-	if !m.scopeReady {
-		return false
-	}
 	for _, peer := range m.peers {
 		if peer.Label != m.form[0] || !peer.OK {
 			continue
@@ -93,6 +97,9 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		}
 		if !m.createAvailable() {
 			m.inform("host unavailable; refresh before creating")
+			if m.targetChecking(m.form[0]) {
+				m.inform("checking inventory; refresh before creating")
+			}
 			return nil
 		}
 		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: cwd, Group: label}
@@ -258,6 +265,9 @@ func (m *model) searchDirectory() tea.Cmd {
 	}
 	if !m.directoryAvailable() {
 		m.inform("host unavailable; refresh before searching")
+		if m.targetChecking(m.form[0]) {
+			m.inform("checking inventory; refresh before searching")
+		}
 		return nil
 	}
 	m.searchState = directorySearchLoading
@@ -308,6 +318,9 @@ func (m *model) directoryStatus() string {
 		return problem
 	}
 	if !m.directoryAvailable() {
+		if m.targetChecking(m.form[0]) {
+			return "checking inventory; refresh before searching"
+		}
 		return "host unavailable; refresh before searching"
 	}
 	switch m.searchState {
