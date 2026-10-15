@@ -1,8 +1,10 @@
 # native codex profile usage
 
 [terminal usage](terminal-usage.md) owns all-host collection, consolidated desktop
-selection, claude terminal evidence and presentation. this document owns codex's
-native acquisition, normalization and report clocks. the 2026-10-14 cutover
+selection and claude terminal evidence. [desktop usage](desktop-usage.md) owns
+presentation and freshness policy, with [isolated desktop qualification](desktop-usage.md#qualification).
+this document owns codex's native acquisition, normalization and report clocks.
+the 2026-10-14 cutover
 supersedes the earlier claude publisher and devbox-only contracts.
 
 ## acquisition and normalization
@@ -65,16 +67,16 @@ monotonic elapsed time, anchored at each bounded response's receipt before fleet
 aggregation. never compare host clocks with desktop wall time or other hosts.
 a report dated after the gateway sample is unavailable.
 
-report age at least 120 seconds or a failed latest read means stale. retained
-reports keep their original receipt, host time and descriptor; successful reads
-replace the whole report, including omissions. descriptor/identity changes
+the [desktop policy](desktop-usage.md#percentage-and-time-rules) owns the stale
+threshold and failed-read presentation. retained reports keep their original
+receipt, host time and descriptor; successful reads replace the whole report,
+including omissions. descriptor/identity changes
 discard the old report. source selection follows [terminal usage](terminal-usage.md),
 including selection of a newer stale eligible report ahead of older healthy data.
 
-at a known reset, omit that window and disclose `awaiting report after reset`;
-never infer zero or renewed capacity. absent resets remain unknown. weekly
-remaining capacity is `floor(max(0,100-usedPercent))`, computed from the unrounded
-native value. optional short windows appear only when actually reported.
+at a known reset, stop presenting that window's capacity; never infer zero or
+renewed capacity. absent resets remain unknown. [desktop usage](desktop-usage.md)
+owns remaining conversion, expired-window copy and optional short-window display.
 
 ## evidence
 

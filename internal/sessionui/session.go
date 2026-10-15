@@ -173,6 +173,9 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 			command = tea.Batch(command, m.refreshUsage(time.Now(), false))
 		}
+		if m.page == "usage" && m.width >= 80 && m.height >= 24 {
+			m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity()))
+		}
 		m.fitViewports()
 	}()
 	switch message := message.(type) {
@@ -471,15 +474,15 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				return m, nil
 			}
 		}
-		if key == "ctrl+r" {
-			if m.page == "" || m.page == "usage" {
-				return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), true))
-			}
-			return m, m.refresh()
-		}
 		if m.page == "usage" {
 			m.usageKey(key)
 			return m, nil
+		}
+		if key == "ctrl+r" {
+			if m.page == "" {
+				return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), true))
+			}
+			return m, m.refresh()
 		}
 		if m.page == "machine-picker" {
 			return m, m.editPicker(key)
