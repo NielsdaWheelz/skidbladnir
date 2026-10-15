@@ -284,6 +284,7 @@ internal data class TmuxSession(
     val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
     val terminalUsage: TerminalUsage? = null,
+    val terminalFooter: String? = null,
     val connection: RemoteConnection? = null,
 )
 
@@ -413,6 +414,7 @@ private data class WireTmuxSession(
     val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
     val terminalUsage: TerminalUsage? = null,
+    val terminalFooter: String? = null,
     val connection: WireRemoteConnection? = null,
 )
 
@@ -1149,7 +1151,8 @@ internal fun sessionStatusContent(
 
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection", "terminalUsage"))
+    if ("terminalFooter" in this) requiredString("terminalFooter")
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection", "terminalUsage", "terminalFooter"))
     if ("terminalUsage" in this) {
         val usage = requiredObject("terminalUsage")
         usage.requireAbsentOrNonNull(setOf("fiveHourUsedPercent", "sevenDayUsedPercent"))
@@ -1191,6 +1194,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     conversation = session.conversation,
     terminalStatus = session.terminalStatus,
     terminalUsage = session.terminalUsage,
+    terminalFooter = session.terminalFooter,
     connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
 ).also(::acceptSession)
 
@@ -1219,13 +1223,24 @@ private fun acceptSession(session: TmuxSession) {
     require(session.objective?.isNotEmpty() != false)
     require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
     require(session.agent == null || session.connection == null)
-    if (session.terminalUsage != null) {
-        require(session.agent?.provider == AgentProvider.Claude && session.connection == null)
+    if (session.terminalUsage != null) require(session.agent?.provider == AgentProvider.Claude)
+    if (session.terminalUsage != null || session.terminalFooter != null) {
+        require(session.agent != null && session.connection == null)
         require(session.terminalStatus.source == TerminalStatusSource.Terminal)
         require(session.terminalStatus.reason in setOf(
             TerminalStatusReason.Recognized, TerminalStatusReason.Partial, TerminalStatusReason.LayoutUnknown,
             TerminalStatusReason.EvidenceClipped, TerminalStatusReason.EvidenceConflict,
         ))
+    }
+    session.terminalFooter?.let { footer ->
+        require(footer.isNotEmpty() && footer.utf8ByteCountWithin(1024) != null && footer == footer.trim())
+        require(footer.codePoints().noneMatch { codePoint ->
+            when (Character.getType(codePoint)) {
+                Character.CONTROL.toInt(), Character.FORMAT.toInt(),
+                Character.LINE_SEPARATOR.toInt(), Character.PARAGRAPH_SEPARATOR.toInt() -> true
+                else -> false
+            }
+        })
     }
 }
 

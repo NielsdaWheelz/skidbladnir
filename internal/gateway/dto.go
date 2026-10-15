@@ -101,6 +101,7 @@ type connectionDTO struct {
 type sessionDTO struct {
 	TerminalStatus  sessions.TerminalStatus    `json:"terminalStatus"`
 	TerminalUsage   *sessions.TerminalUsage    `json:"terminalUsage,omitempty"`
+	TerminalFooter  *sessions.TerminalFooter   `json:"terminalFooter,omitempty"`
 	TmuxID          string                     `json:"tmuxId"`
 	ActivePaneID    string                     `json:"activePaneId"`
 	TmuxName        string                     `json:"tmuxName"`
@@ -377,6 +378,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		Conversation:    session.Conversation,
 		TerminalStatus:  session.TerminalStatus,
 		TerminalUsage:   session.TerminalUsage,
+		TerminalFooter:  session.TerminalFooter,
 		Connection:      connection,
 		Objective:       session.Objective,
 		Group:           session.Group.String(),
@@ -390,6 +392,9 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	}
 	if card.TerminalUsage != nil && (!card.TerminalUsage.ValidFor(card.TerminalStatus) || agent == nil || agent.Provider != agentruntime.ProviderClaude.String() || connection != nil) {
 		return sessionDTO{}, errors.New("invalid terminal usage attachment")
+	}
+	if card.TerminalFooter != nil && (!card.TerminalFooter.ValidFor(card.TerminalStatus) || agent == nil || connection != nil) {
+		return sessionDTO{}, errors.New("invalid terminal footer attachment")
 	}
 	return card, nil
 }

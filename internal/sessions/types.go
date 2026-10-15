@@ -96,6 +96,7 @@ type Session struct {
 	Conversation     *agentruntime.Conversation
 	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol.Enrich observes the session
 	TerminalUsage    *TerminalUsage
+	TerminalFooter   *TerminalFooter
 	Connection       *Connection
 	Objective        string
 	Group            group.Label

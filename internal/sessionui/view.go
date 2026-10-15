@@ -206,7 +206,9 @@ func (m *model) footerLines() []string {
 		} else if row := m.selectedRow(); row != nil {
 			legend = target(row.session.Name, row.label, width)
 			detail = m.rowDetailLines(*row, width)
-			if m.tableLength() > m.height-3-len(usage)-len(notices)-len(detail)-len(keys) {
+			layout := m.tableLayout(width)
+			height := m.height - 3 - len(usage) - len(notices) - len(detail) - len(keys)
+			if m.top > 0 || layout.end(m.top, height) < len(m.rows) {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
@@ -427,6 +429,9 @@ func (m *model) rowDetailLines(row listedRow, width int) []string {
 }
 
 func (m *model) bodyLines(height int) []string {
+	if height <= 0 {
+		return nil
+	}
 	width := m.width - 2
 	switch m.page {
 	case "confirm":
@@ -602,9 +607,17 @@ func (m *model) bodyLines(height int) []string {
 		}
 		return []string{"no sessions in this view"}
 	}
-	lines := m.tableLines(width)
-	top := min(m.top, max(0, len(lines)-height))
-	return lines[top:min(len(lines), top+height)]
+	layout := m.tableLayout(width)
+	all, lines := m.tableLines(width), []string{}
+	for index := m.top; index < len(m.rows); index++ {
+		length := layout.entryLines(index, height-len(lines))
+		if length == 0 {
+			break
+		}
+		span := layout.spans[index]
+		lines = append(lines, all[span.end-length:span.end]...)
+	}
+	return lines
 }
 
 // window keeps a form's focused field visible; a field taller than the page
@@ -666,10 +679,11 @@ func (m *model) groupPreview(draft string, selection *groupSelection, axis, widt
 
 func (m *model) detailLines() []string {
 	width := m.width - 2
-	lines := []string{}
+	facts := m.details(&m.pageRow)
 	row := m.rowForReference(m.pageRow.session.Ref)
-	for _, fact := range m.details(&m.pageRow) {
-		label := fact[0]
+	axis := 16
+	for index := range facts {
+		label := facts[index][0]
 		if row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
 			if label == "name" {
 				label += " [r]"
@@ -677,7 +691,18 @@ func (m *model) detailLines() []string {
 				label += " [g]"
 			}
 		}
-		lines = append(lines, field(label, fact[1], false, false, 16, width)...)
+		facts[index][0] = label
+		axis = max(axis, ansi.StringWidth(attention.SingleLine(label)))
+	}
+	lines := []string{}
+	for _, fact := range facts {
+		if fact[0] == "" {
+			for _, line := range wrapped(fact[1], max(1, width-axis-8)) {
+				lines = append(lines, strings.Repeat(" ", axis+4)+line)
+			}
+			continue
+		}
+		lines = append(lines, field(fact[0], fact[1], false, false, axis, width)...)
 	}
 	return lines
 }
@@ -693,98 +718,6 @@ func (m *model) headings() bool {
 // opensGroup reports whether a group heading precedes this row.
 func (m *model) opensGroup(index int) bool {
 	return m.headings() && (index == 0 || m.rows[index].session.Group != m.rows[index-1].session.Group)
-}
-
-func (m *model) tableLength() int {
-	length := len(m.rows)
-	for index := range m.rows {
-		if m.opensGroup(index) {
-			length++
-		}
-	}
-	return length
-}
-
-func (m *model) fitViewports() {
-	if m.width < 80 || m.height < 24 || m.page != "" || m.cursor < 0 {
-		return
-	}
-	height := m.height - 2 - len(m.footerLines())
-	// anchor is the cursor's group heading when its row opens a group.
-	line, anchor := 0, 0
-	for index := range m.rows {
-		anchor = line
-		if m.opensGroup(index) {
-			line++
-		}
-		if index == m.cursor {
-			break
-		}
-		line++
-	}
-	m.top = min(m.top, max(0, m.tableLength()-height), anchor)
-	m.top = max(m.top, line-height+1, 0)
-}
-
-// tableLines lays out one line per row, with a quiet heading wherever the
-// all view enters another group. needs input names each row's group in its
-// first column instead. names take the space left by complete status and identity.
-func (m *model) tableLines(width int) []string {
-	const providerWidth, profileWidth = 6, 11
-	statusWidth, groupWidth := 0, 0
-	for _, row := range m.rows {
-		printed, _ := m.tableStatus(row)
-		statusWidth = max(statusWidth, ansi.StringWidth(attention.SingleLine(printed)))
-		if m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned() {
-			groupWidth = max(groupWidth, 1, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
-		}
-	}
-	nameWidth := width - 2 - statusWidth - providerWidth - profileWidth - 3*2
-	if groupWidth > 0 {
-		groupWidth = min(groupWidth, 16, nameWidth-2-12)
-		nameWidth -= groupWidth + 2
-	}
-	lines := []string{}
-	for index, row := range m.rows {
-		if m.opensGroup(index) {
-			lines = append(lines, faint.Styled(ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
-		}
-		// the projected tone keys colour; unavailable rows recede.
-		gutter, nameStyle := "  ", plain
-		printed, statusStyle := m.tableStatus(row)
-		if !row.available {
-			nameStyle = faint
-		}
-		if index == m.cursor {
-			gutter, nameStyle = here.Styled("▌")+" ", bold
-		}
-		current := m.current(&row)
-		qualifier := ""
-		if current.Kind == "remote" {
-			qualifier = " on " + ansi.Truncate(attention.SingleLine(current.Label), min(12, nameWidth-16), "…")
-		}
-		name := ansi.Truncate(attention.SingleLine(row.session.Name), nameWidth-ansi.StringWidth(qualifier), "…")
-		line := gutter
-		if groupWidth > 0 {
-			line += faint.Styled(cell(row.session.Group.String(), groupWidth)) + "  "
-		}
-		line += nameStyle.Styled(name) + faint.Styled(qualifier) + strings.Repeat(" ", nameWidth-ansi.StringWidth(name)-ansi.StringWidth(qualifier))
-		line += "  " + statusStyle.Styled(cell(printed, statusWidth)) + "  "
-		if current.Kind == "remoteUnknown" {
-			line += faint.Styled(cell("remote unknown", providerWidth+2+profileWidth))
-		} else {
-			provider, profile := "", ""
-			if agent := current.Agent; agent != nil {
-				provider, profile = agent.Provider, agent.Profile
-				if profile == "" {
-					profile = "unknown"
-				}
-			}
-			line += faint.Styled(cell(provider, providerWidth) + "  " + cell(profile, profileWidth))
-		}
-		lines = append(lines, line)
-	}
-	return lines
 }
 
 // statusView projects a row's terminal status. A row without remote actions

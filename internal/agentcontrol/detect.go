@@ -13,6 +13,7 @@ type detection struct {
 	status   sessions.TerminalStatus
 	composer composer
 	usage    *sessions.TerminalUsage
+	footer   *sessions.TerminalFooter
 	rules    []DiagnosticRule
 }
 
@@ -39,6 +40,7 @@ type reading struct {
 	composer         composer
 	notice           turnNotice
 	usage            *sessions.TerminalUsage
+	footer           *sessions.TerminalFooter
 	rules            []DiagnosticRule
 }
 
@@ -135,5 +137,5 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}
-	return detection{status: status, composer: read.composer, usage: read.usage, rules: read.rules[:min(len(read.rules), maxDiagnosticRules)]}
+	return detection{status: status, composer: read.composer, usage: read.usage, footer: read.footer, rules: read.rules[:min(len(read.rules), maxDiagnosticRules)]}
 }

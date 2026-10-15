@@ -699,6 +699,7 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 	read := reading{activity: sessions.ActivityUnknown}
 	if ordinary && footer.kind == claudeFooterOrdinary {
 		read.usage = claudeReadUsage(screen, bottom, footer.mode)
+		read.footer = claudeReadTerminalFooter(screen, bottom, footer.mode)
 	}
 	var activity DiagnosticRule
 	// The panel, the waiting row and a work pill are independent of the

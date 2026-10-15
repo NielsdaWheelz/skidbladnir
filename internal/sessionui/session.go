@@ -295,9 +295,10 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		switch message.operation {
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
-			// Creation is a separate sample; only inventory supplies quota receipt
-			// context. Do not attach new figures to this peer's earlier receipt.
+			// Creation is a separate sample. Do not attach its observation metadata
+			// to this peer's earlier inventory receipt.
 			value.Session.TerminalUsage = nil
+			value.Session.TerminalFooter = nil
 			// Confirmed creation reveals the new session in its group.
 			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
