@@ -8,7 +8,7 @@ installation updates skid in place and preserves existing pairings and identitie
 
 2026-09-29 source amendment: [automatic session names](automatic-session-names.md)
 removes provider naming and codex pre-creation. the launch contract below reflects
-that source; historical release evidence does not qualify this unpublished change.
+that source; historical release evidence does not qualify later changes.
 
 provider continuity: skid uses the existing provider accounts.
 preserve `.codex`, `.codex-work`, `.codex-work2`, native personal claude's default
@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.15.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.15.0).
+current published generation: [v0.16.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.16.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
@@ -56,6 +56,19 @@ android phone through managed paths.
 owns exact artifact/service checks, session/config preservation and their limits.
 this in-place upgrade requires no credential rotation, client reprovisioning or
 phone re-enrollment; notification and reboot acceptance remain separate.
+
+2026-10-15: immutable v0.16.0 from `d8c3c5574569ddf6d4c43747f72961dc14be0eb1`
+passes published-release verification of all five assets, signatures and source.
+[upstream pin pr 79](https://github.com/NielsdaWheelz/skidbladnir/pull/79) and
+[dev-server pin pr 171](https://github.com/NielsdaWheelz/dev-server/pull/171) are merged.
+gateway-only managed applies and final fleet verification pass on all three hosts.
+[checkpoint installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+records exact installed identity, preserved sessions/processes and private
+configuration, and resumed checkpoint advancement. jarvis remains disabled,
+inactive and paused; its root cli matches the admitted gateway. android
+`0.16.0` / `16000` passes in-place artifact/signer, data-preservation and fresh
+paired-fleet read checks. no production tmux control, fault injection or provider
+binary upgrade formed part of the rollout; unrelated acceptance remains open.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
@@ -526,8 +539,8 @@ above; no home is inferred from cwd.
 
 [native interaction source qualification](native-agent-qualification.md) records
 the 2026-09-28 isolated provider/helper, client and immutable-installer checks.
-these changes are not installed on the fleet; the following deployed evidence
-belongs to the earlier restoration.
+the following deployed evidence belongs to the earlier restoration and does not
+qualify later native changes; current installed releases are recorded above.
 
 the root operator's immutable
 [separation qualification](https://github.com/NielsdaWheelz/herdr-mobile/blob/0dd92df41090c156b53bc8632c4b34281d3b32ce/docs/separation-qualification.md)

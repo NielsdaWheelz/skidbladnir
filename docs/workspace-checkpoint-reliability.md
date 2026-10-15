@@ -1,10 +1,12 @@
 # workspace checkpoint reliability
 
-status: implemented and isolated-runtime qualified, 2026-10-15.
+status: released as v0.16.0 and installed on all three hosts and android,
+2026-10-15.
 this document owns the replacement failure policy, diagnostics, client contract
 and [qualification](#qualification). [workspace recovery](session-recovery.md)
 retains graph capture/reconstruction, file schema, ownership and deployment.
-coordinated release/activation and actual host reboots remain separate.
+[installed qualification](#installed-qualification) records the coordinated
+rollout; actual host reboots remain separate.
 
 ## goal and capability contract
 
@@ -372,9 +374,10 @@ restore-verification refusal before the format correction. green runs exercise
 real native/filesystem work around injected boundaries; subprocess interposers
 and the directory-sync overlay are disposable, with no production fault seam.
 
-limits: physical power loss, full-disk exhaustion, reboot and release/deployment
-were not exercised. the desktop driver uses authored admitted
-inventory; it is not a full authenticated fleet journey. phone acceptance uses
+limits of this isolated qualification: physical power loss, full-disk exhaustion,
+reboot and release/deployment were not exercised by those probes. the desktop
+driver uses authored admitted inventory; it is not a full authenticated fleet
+journey. phone acceptance uses
 the exact gateway envelope plus an isolated dashboard fixture, not phone↔gateway
 authentication/transport. merged Android view/gesture code is byte-identical to
 the physically qualified source; post-rebase decoder fixtures verify composition.
@@ -383,7 +386,51 @@ no qualification transfers to a different native version or cross-format file.
 the source defect behind permanent saving cessation is resolved. the original
 installed incident's exact triggering error was discarded and remains unknown;
 current free space, permissions and a live saved source never proved its cause.
-this work did not change the installed v0.15.0 gateway. coordinated activation
-must replace host/go/android together; [the incident follow-up](issues/workspace-checkpoint-failure.md)
-owns that operational confirmation. [actual reboot](issues/session-recovery-reboot.md) and
-[retained regression coverage](issues/test-system-reset.md) remain open separately.
+
+## installed qualification
+
+2026-10-15: immutable [v0.16.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.16.0),
+source `d8c3c5574569ddf6d4c43747f72961dc14be0eb1`, passes published-release
+verification for all five assets, signatures and exact source.
+[upstream pin pr 79](https://github.com/NielsdaWheelz/skidbladnir/pull/79) and
+[dev-server pin pr 171](https://github.com/NielsdaWheelz/dev-server/pull/171) are merged.
+managed gateway-only applies and final `scripts/fleet verify` pass on macbook,
+devbox and arch; every installed gateway reports that exact version/source.
+
+authenticated before/after observations preserve every pre-upgrade session
+authority and native pane/process membership. each server, checkpoint-source,
+bearer, machine-handle and private fleet-client hash is independently unchanged.
+additive work on devbox is retained. two post-upgrade observations
+show `tracking` without failure, unchanged schema 1, mode `0600`,
+`attempted=false`, and advancing confirmed checkpoints on the existing owner:
+
+| host | sessions before → after | confirmed savedAt, 2026-10-15 utc |
+| --- | --- | --- |
+| macbook | 11 → 11 | `18:38:01.122126Z` → `18:38:31.198088Z` |
+| devbox | 3 → 4 | `18:37:53.482579576Z` → `18:38:53.568202312Z` |
+| arch | 0 → 0 | `18:38:20.227217866Z` → `18:38:50.221587331Z` |
+
+the macbook's checkpoint, formerly stuck at `2026-10-15T06:55:13.972475Z`, now
+advances against its surviving source. its stale 17-session recipe is replaced
+with the 11-session live graph preserved through deployment. these observations
+prove healthy confirmed advancement, not the absence of every intervening failure.
+deployment used no production tmux controls, fault injection or provider binary
+upgrades. jarvis remains disabled, inactive and paused; its root cli matches the
+new gateway.
+
+android `0.16.0` / `16000` is installed in place on the selected physical phone.
+the installed apk matches the exact published bytes and pinned signing
+certificate; first-install time and both user-0 data-directory inodes are
+unchanged. the stock installer refused multiple devices; installation used the
+known serial and user 0 after signer admission. ordinary production paired-fleet
+reads pass: dashboard → native machines sheet → dashboard shows all three paired
+hosts with fresh inventory and no availability notices. hierarchy inspection
+streamed through memory without persisted ui files. this journey did not exercise
+terminal attachment/actions, pairing/reset, notifications or production failures.
+
+temporary rollout probes, downloads and copied apks were removed.
+
+actual reboot, physical power loss, full-disk exhaustion and cloud inference
+were not performed. [actual reboot](issues/session-recovery-reboot.md) and
+[retained regression coverage](issues/test-system-reset.md) remain open;
+this rollout does not close unrelated feature acceptance.

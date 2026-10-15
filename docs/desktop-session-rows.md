@@ -5,6 +5,10 @@ supersedes the 2026-10-14 width rules, whose [qualification](issues/desktop-brow
 remains historical. [terminal model and effort](terminal-model-effort.md) owns
 observation and transport; this document owns presentation and delivery.
 
+shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+records the matching fleet and android generation. the browser behavior below
+retains its isolated qualification boundary.
+
 ## outcome and content
 
 one borderless list. keep identity, status and related metadata close together;

@@ -4,6 +4,10 @@
 [session rows](desktop-session-rows.md) owns layout, exclusive file ownership
 and delivery. this contract owns optional terminal text and its meaning.
 
+shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+verifies the matching fleet and android generation. production cloud inference
+and per-request settings remain outside that deployment check.
+
 ## capability and schema
 
 show what the sampled terminal displays. claude supplies its identifiable
@@ -171,4 +175,5 @@ both designers and independent adversarial review pass. every recorded native
 pid exited; owned sessions, mock servers, container/image, disposable probes and
 artifacts were removed. only the retained provider corpus/replay remains.
 `go test ./internal/agentcontrol` and `scripts/check verify all` pass after
-repository probe deletion. release and coordinated deployment were not performed.
+repository probe deletion. release and coordinated deployment were not part of
+this isolated qualification; the installed record above owns those later checks.

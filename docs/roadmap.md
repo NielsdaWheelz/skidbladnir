@@ -5,7 +5,7 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## compact desktop rows and terminal footer — source implemented and qualified
+## compact desktop rows and terminal footer — shipped in v0.16.0
 
 2026-10-15: [rows and delivery](desktop-session-rows.md) implements compact
 columns, uniform narrow entries and complete scrolling. [terminal model and
@@ -16,8 +16,9 @@ retained frames, actual transport/decoders, model/view boundaries, native browse
 journeys and installed provider rendering on darwin and a linux container.
 content and adversarial review pass; disposable tests are removed and
 `scripts/check verify all` passes. the model-observation source issue is resolved.
-release, installed-fleet qualification and [broader desktop gaps](issues/desktop-browser-runtime-acceptance.md)
-remain separate.
+[installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+records the v0.16.0 fleet and android cutover. cloud inference and
+[broader desktop gaps](issues/desktop-browser-runtime-acceptance.md) remain separate.
 
 ## compact dashboard chrome — implemented and qualified
 
@@ -27,7 +28,7 @@ within existing touch targets and retains one setup action on unhealthy notices.
 the shared menu and compact tabs are implemented. temporary screen/native
 checks, physical phone geometry/text-scale checks and owner terminal-return
 observation passed; tests were retired and android engineering checks passed.
-the spec records qualification and limits. no production release was made.
+the spec records isolated qualification and limits; the source ships in v0.16.0.
 
 ## compact dashboard roster — implemented; roster acceptance verified
 
@@ -40,7 +41,7 @@ plus names; readability outranks fixed height.
 probes, owner-confirmed talkback/readability and engineering checks. unchanged
 [real-session card qualification](issues/session-card-hands-on.md) remains open.
 
-## tmux workspace recovery — reliability correction qualified; rollout pending
+## tmux workspace recovery — reliability correction deployed
 
 2026-10-15: [checkpoint reliability](workspace-checkpoint-reliability.md) replaces
 the blanket failure latch with delayed saving, exact confirmed-recipe claims,
@@ -48,8 +49,9 @@ content-free transition diagnostics and a strict host/go/android union.
 [qualification](workspace-checkpoint-reliability.md#qualification) covers isolated
 native darwin/linux, real gateway/storage boundaries, desktop tty and physical
 phone notices. temporary tests are removed; engineering checks pass. the
-correction requires coordinated release/activation; it has not repaired the
-installed v0.15.0 owner's stopped-saving state.
+[installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+records coordinated v0.16.0 activation on all three hosts and android. the
+original macbook workspace keeps its authority and now advances checkpoints.
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers
 30-second checkpoints and automatic reconstruction after reboot or tmux loss.
@@ -315,15 +317,15 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.15.0` from
-`f92cb454b2484a5a0ddf88f14d385ab6b16ccbe1`; it does not assert the
+source and artifact digests. it pins immutable `v0.16.0` from
+`d8c3c5574569ddf6d4c43747f72961dc14be0eb1`; it does not assert the
 installed version of any host or phone.
 
-2026-10-14 [installed qualification](terminal-usage.md#installed-qualification)
-independently verifies v0.15.0 on macbook, devbox, arch and the attached android
-phone. all three hosts pass fleet verification; machine identities and
-bearer/peer credentials are preserved. published-release verification passes
-for the exact source and all five assets.
+2026-10-15 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+independently verifies v0.16.0 on macbook, devbox, arch and the attached android
+phone. all three hosts pass fleet verification and advance confirmed checkpoints;
+live authority and bearer/peer credentials are preserved. published-release
+verification passes for the exact source and all five assets.
 
 `dev-server` owns machine-local installation, services and configuration.
 `scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.
