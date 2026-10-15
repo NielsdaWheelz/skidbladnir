@@ -99,84 +99,63 @@ type Profile struct {
 	HistoryScope string `json:"historyScope,omitempty"`
 }
 
-type recoveryState string
-type recoveryReason string
+// Recovery contains one strictly admitted host fact. Clients never persist it.
+type Recovery struct{ fact sessions.Recovery }
 
-const (
-	recoveryTracking  recoveryState = "tracking"
-	recoveryRecovered recoveryState = "recovered"
-	recoveryBroken    recoveryState = "broken"
+type recoveryJSON struct {
+	State   sessions.RecoveryState `json:"state"`
+	SavedAt *string                `json:"savedAt,omitempty"`
+	Failure *recoveryFailureJSON   `json:"failure,omitempty"`
+}
 
-	recoveryCheckpointInvalid recoveryReason = "checkpoint_invalid"
-	recoveryCheckpointFailed  recoveryReason = "checkpoint_failed"
-	recoveryServerUnreachable recoveryReason = "server_unreachable"
-	recoveryServerNotEmpty    recoveryReason = "server_not_empty"
-	recoveryRestoreFailed     recoveryReason = "restore_failed"
-)
-
-// Recovery is one strictly admitted host fact. Clients never persist it.
-type Recovery struct {
-	state   recoveryState
-	savedAt *time.Time
-	reason  recoveryReason
+type recoveryFailureJSON struct {
+	At    string                 `json:"at"`
+	Phase sessions.RecoveryPhase `json:"phase"`
+	Cause sessions.RecoveryCause `json:"cause"`
 }
 
 func (r *Recovery) UnmarshalJSON(encoded []byte) error {
-	var value *struct {
-		State   recoveryState   `json:"state"`
-		SavedAt *string         `json:"savedAt,omitempty"`
-		Reason  *recoveryReason `json:"reason,omitempty"`
-	}
+	var value *recoveryJSON
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil {
 		return errors.New("invalid recovery response")
 	}
-	var savedAt *time.Time
+	fact := sessions.Recovery{State: value.State}
 	if value.SavedAt != nil {
 		instant, err := sessions.ParseProjectionInstant(*value.SavedAt)
 		if err != nil {
 			return errors.New("invalid recovery response")
 		}
-		savedAt = &instant
+		fact.SavedAt = &instant
 	}
-	switch value.State {
-	case recoveryTracking:
-		if value.Reason != nil {
+	if value.Failure != nil {
+		at, err := sessions.ParseProjectionInstant(value.Failure.At)
+		if err != nil {
 			return errors.New("invalid recovery response")
 		}
-	case recoveryRecovered:
-		if value.SavedAt == nil || value.Reason != nil {
-			return errors.New("invalid recovery response")
-		}
-	case recoveryBroken:
-		if value.Reason == nil {
-			return errors.New("invalid recovery response")
-		}
-		switch *value.Reason {
-		case recoveryCheckpointInvalid, recoveryCheckpointFailed, recoveryServerUnreachable, recoveryServerNotEmpty, recoveryRestoreFailed:
-		default:
-			return errors.New("invalid recovery response")
-		}
-	default:
+		fact.Failure = &sessions.RecoveryFailure{At: at, Phase: value.Failure.Phase, Cause: value.Failure.Cause}
+	}
+	if !fact.Valid() {
 		return errors.New("invalid recovery response")
 	}
-	*r = Recovery{state: value.State, savedAt: savedAt}
-	if value.Reason != nil {
-		r.reason = *value.Reason
-	}
+	*r = Recovery{fact: fact}
 	return nil
 }
 
 func (r Recovery) MarshalJSON() ([]byte, error) {
-	switch r.state {
-	case recoveryTracking, recoveryRecovered, recoveryBroken:
+	switch r.fact.State {
+	case sessions.RecoveryTracking, sessions.RecoveryRecovered, sessions.RecoveryDelayed, sessions.RecoveryBroken:
 	default:
-		panic("invalid recovery state") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
+		panic("invalid recovery state") // justify-defect: Recovery's private fact is admitted by UnmarshalJSON.
 	}
-	return json.Marshal(struct {
-		State   recoveryState  `json:"state"`
-		SavedAt *time.Time     `json:"savedAt,omitempty"`
-		Reason  recoveryReason `json:"reason,omitempty"`
-	}{r.state, r.savedAt, r.reason})
+	value := recoveryJSON{State: r.fact.State}
+	if r.fact.SavedAt != nil {
+		savedAt := r.fact.SavedAt.UTC().Format(time.RFC3339Nano)
+		value.SavedAt = &savedAt
+	}
+	if failure := r.fact.Failure; failure != nil {
+		value.Failure = &recoveryFailureJSON{At: failure.At.UTC().Format(time.RFC3339Nano), Phase: failure.Phase, Cause: failure.Cause}
+	}
+	return json.Marshal(value)
 }
 
 type Peer struct {

@@ -583,7 +583,7 @@ func (manager *Manager) scanSessions(ctx context.Context) (sessionScan, error) {
 	}
 	for _, id := range ids {
 		if !sessionIDPattern.MatchString(id) {
-			return sessionScan{}, errors.New("tmux returned an invalid session id")
+			return sessionScan{}, tmuxclient.WorkspaceProtocolInvalid
 		}
 		observed, found, err := manager.scanSession(ctx, id)
 		if err != nil {
@@ -658,6 +658,9 @@ func (manager *Manager) normalizeCharacters(
 		committed, err := manager.tmux.AssignCharacterIfUnchanged(
 			ctx, observed.id, observed.characterRaw, selected.Key, server,
 		)
+		if errors.Is(err, tmuxclient.WorkspaceProtocolInvalid) {
+			return nil, err
+		}
 		if err != nil || !committed {
 			reread, found, rereadErr := manager.scanSession(ctx, observed.id)
 			if rereadErr != nil {
@@ -684,7 +687,7 @@ func (manager *Manager) normalizeCharacters(
 				return nil, fmt.Errorf("retry tmux character assignment for %s: %w", observed.id, err)
 			}
 			if !committed {
-				return nil, fmt.Errorf("tmux character assignment for %s did not converge", observed.id)
+				return nil, tmuxclient.WorkspaceTopologyChanged
 			}
 		}
 		observed.character = selected
@@ -750,8 +753,8 @@ func (manager *Manager) sessionIdentity(ctx context.Context, id string) (string,
 		return "", false, err
 	}
 	observedID, name, separated := strings.Cut(identity, "|")
-	if !separated {
-		return "", false, errors.New("tmux returned an invalid session identity")
+	if !separated || !sessionIDPattern.MatchString(observedID) {
+		return "", false, tmuxclient.WorkspaceProtocolInvalid
 	}
 	if observedID != id {
 		return "", false, nil
@@ -776,7 +779,7 @@ func (manager *Manager) ensureServerIdentity(ctx context.Context) (tmuxclient.Se
 		return tmuxclient.ServerIdentity{}, err
 	}
 	if !present {
-		return tmuxclient.ServerIdentity{}, errors.New("tmux server is absent")
+		return tmuxclient.ServerIdentity{}, errRecoveryUnavailable
 	}
 	proposed, err := newServerEpoch()
 	if err != nil {
@@ -791,7 +794,7 @@ func (manager *Manager) requireServerIdentity(ctx context.Context, expected tmux
 		return err
 	}
 	if observed != expected {
-		return errors.New("tmux server identity changed during operation")
+		return tmuxclient.WorkspaceSourceChanged
 	}
 	return nil
 }

@@ -133,9 +133,15 @@ type sessionsResponseDTO struct {
 }
 
 type recoveryDTO struct {
-	State   sessions.RecoveryState  `json:"state"`
-	SavedAt string                  `json:"savedAt,omitempty"`
-	Reason  sessions.RecoveryReason `json:"reason,omitempty"`
+	State   sessions.RecoveryState `json:"state"`
+	SavedAt string                 `json:"savedAt,omitempty"`
+	Failure *recoveryFailureDTO    `json:"failure,omitempty"`
+}
+
+type recoveryFailureDTO struct {
+	At    string                 `json:"at"`
+	Phase sessions.RecoveryPhase `json:"phase"`
+	Cause sessions.RecoveryCause `json:"cause"`
 }
 
 type createSessionResponseDTO struct {
@@ -411,9 +417,16 @@ func mapSessionsResponse(
 	if !inventory.Recovery.Valid() {
 		panic("inventory contains an invalid workspace recovery fact") // justify-defect: sessions.Manager owns the closed recovery union before returning inventory.
 	}
-	recovery := recoveryDTO{State: inventory.Recovery.State, Reason: inventory.Recovery.Reason}
+	recovery := recoveryDTO{State: inventory.Recovery.State}
 	if inventory.Recovery.SavedAt != nil {
 		recovery.SavedAt = inventory.Recovery.SavedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if failure := inventory.Recovery.Failure; failure != nil {
+		recovery.Failure = &recoveryFailureDTO{
+			At:    failure.At.UTC().Format(time.RFC3339Nano),
+			Phase: failure.Phase,
+			Cause: failure.Cause,
+		}
 	}
 	profiles, err := mapProfiles(configuredProfiles)
 	if err != nil {
