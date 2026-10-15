@@ -5,13 +5,14 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## claude update recognition — source qualified; deployment pending
+## claude update recognition — qualified and deployed in v0.17.0
 
 2026-10-15: [the spec and plan](claude-update-recognition.md) replaces comparison
 against today's launch-symlink target with direct-child matching in the configured
-canonical versions directory. [the confirmed defect](issues/claude-update-recognition.md)
-stays open until installed-continuity evidence exists. isolated darwin/linux
-red/green and admission/matching checks pass; the spec records their limits.
+canonical versions directory. isolated darwin/linux checks pass; installed
+qualification restored the original affected macbook process without restarting
+it, preserved existing macbook/devbox lifetimes and passed fleet verification.
+the spec records exact evidence and limits; the confirmed defect is resolved.
 [wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
 
 ## desktop readability — source qualified; installed review pending

@@ -3,8 +3,8 @@
 problem: stock npm or waiting-shell launchers can remain the terminal's
 foreground process-group leader while the native provider runs as a child.
 skid observes only the leader, so a healthy provider can remain unrecognized.
-this is independent of the [claude update defect](claude-update-recognition.md)
-and excluded from its [implementation plan](../claude-update-recognition.md).
+this is independent of the resolved [claude update defect](../claude-update-recognition.md)
+and excluded from that implementation.
 
 impact: the session can read as an ordinary terminal, omitting provider-derived
 status/footer/usage and optional runtime identity. terminal attachment and
