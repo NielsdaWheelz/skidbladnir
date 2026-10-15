@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.16.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.16.0).
+current published generation: [v0.17.1](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.1).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
@@ -69,6 +69,13 @@ inactive and paused; its root cli matches the admitted gateway. android
 `0.16.0` / `16000` passes in-place artifact/signer, data-preservation and fresh
 paired-fleet read checks. no production tmux control, fault injection or provider
 binary upgrade formed part of the rollout; unrelated acceptance remains open.
+
+2026-10-15: v0.17.1 from `6b1442fa8e5c19dd20c49a2ab74a5522f57e66fe`
+passes published-release verification and is installed on macbook, arch, devbox
+and android through managed paths. [browser installed qualification](desktop-browser-simplification.md#installed-release)
+owns the exact installer pin, preserved session/configuration identities,
+fleet checks, desktop smoke and phone update evidence. human readability review
+remains open; gateway restarts preserve the observed workers and jarvis remains stopped.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.

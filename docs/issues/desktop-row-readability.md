@@ -4,7 +4,9 @@
 [preceding readability plan](../desktop-session-rows.md) was source-qualified.
 [browser simplification](../desktop-browser-simplification.md) now owns acceptance:
 every row adds its directory and the footer loses selected facts. source evidence
-is recorded there; the changed density still needs installed usability review.
+is recorded there. v0.17.1 is installed and its desktop smoke passes. owner review
+is broadly positive but asks for one compact machine/current-path label; final
+acceptance remains open through that refinement.
 
 problem/impact: all-view headings, names and narrow metadata share an axis;
 consecutive sessions lack structural separation. needs input puts membership
@@ -20,4 +22,5 @@ resolved when: the spec's rendered-content, viewport/identity and isolated
 runtime criteria pass, then the user confirms hierarchy and density in the
 matching installed tui after separate deployment. source and installed evidence
 belong in [desktop acceptance](desktop-browser-runtime-acceptance.md); installed
-review is `NOT_RUN`. delete this record only when both milestones pass.
+review requests the single-location refinement. delete this record only when
+both milestones pass.

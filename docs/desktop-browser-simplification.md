@@ -1,7 +1,8 @@
 # desktop browser simplification
 
-2026-10-15: implemented on `codex/desktop-browser-simplification` from `b253c05`.
-source qualification is recorded below; installed usability remains pending.
+2026-10-15: implemented from `b253c05`, merged and deployed in `v0.17.1`.
+source and installed checks are recorded below; owner review requests a compact
+single-location refinement, recorded under installed release.
 this contract supersedes the machine-scope,
 selected-footer, remote-row attribution and affected creation-copy clauses in
 [desktop browser](desktop-browser.md), [session rows](desktop-session-rows.md),
@@ -254,8 +255,8 @@ excluded: android changes, host/provider observation or launch changes, native
 controls, protocol/persistence migrations, new commands/search/palettes,
 registries/settings, live failover, extra pollers, unrelated cleanup and deployment.
 hard-cut the replaced client paths; no compatibility aliases, hidden filters,
-fallbacks or parallel renderer. release/deployment and installed usability remain
-unperformed.
+fallbacks or parallel renderer. subsequent authorized release/deployment is
+recorded below; human usability review remains pending.
 
 planning review: row and interaction designers approve the content contract.
 independent review corrected available-path claims, startup/error precedence,
@@ -293,7 +294,7 @@ owned sessions were removed; no owned live process remains. local documentation
 links and `git diff --check` pass. `scripts/check verify host` passes after probe
 deletion: formatting/syntax/lint, generated assets, dependencies, go vet and build.
 
-installed version/usability remains `NOT_RUN`; no source result substitutes for
+at this source qualification, installed version/usability was `NOT_RUN`; no source result substitutes for
 it. the broader live stop/close and metadata-editing gaps retain their existing
 issue record.
 
@@ -320,3 +321,49 @@ evidence remains attached to its original source. installed usability stays
 the composition probe is deleted. local documentation links and
 `scripts/check verify host` pass after retirement; no production change followed
 the qualified merge.
+
+### installed release
+
+2026-10-15: immutable [v0.17.1](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.1)
+ships merged source `6b1442fa8e5c19dd20c49a2ab74a5522f57e66fe`.
+exact-source hosted verification, signed build, downloaded artifact checks and
+`scripts/check published-release` pass. both committed pins match all relevant
+published digests; independent release/deployment review passes.
+
+installer `ba5a3d4e4e0acdc6836658370f977d2cd394ff45`
+([pin pr](https://github.com/NielsdaWheelz/dev-server/pull/173)) applied the
+gateway generation on macbook, arch and devbox. `scripts/fleet verify` passes
+all three installed gateways and desktop clients. baseline session handles,
+active-pane selections and observed native-agent pid/start identities survive:
+11 macbook sessions, two devbox sessions; arch was empty. gateway bearers,
+machine identities and desktop client configurations are byte-identical.
+this witnesses the observed identities, not every pane-root process. jarvis
+remains inactive with successful stop and pid zero; its managed cli matches
+the new gateway.
+
+the installed mac desktop passes a read-only 80×24/160×24 smoke: retained tabs,
+ordinary `n`/`N`/`T` labels and clean `q` exit. it checks emitted text, not final
+grid geometry or shortcut effects; earlier isolated journeys retain those
+source-attributed claims. screen bytes stayed in memory.
+
+after host verification, the connected android phone updated in place from
+`0.16.0` / `16000` to `0.17.1` / `17001`. its installed apk matches the published
+digest; package app id and first-install timestamp are unchanged. the production
+activity opens the paired dashboard with needs-input/all tabs. no pairing
+reset, phone terminal operation or notification-delivery claim is involved.
+
+owner review finds the layout broadly good but requests one compact current
+location, including machine and trailing path, with full paths in info. the
+native provider footer can repeat the cwd: these are separate observations,
+not two directory lookups. the raw-footer/model-effort presentation decision
+remains open; no provider-text substring removal or backend schema change is
+authorized by this finding. the existing row/cwd issues stay open through this
+refinement. release integrity and the installed smoke do not close that criterion.
+
+disposable installed probes and private snapshots are removed; no owned browser
+process remains. release-note review also corrected the generator's obsolete
+blanket rollback recipe. the actual renderer's baseline fails the intended
+guidance assertions; the final eight checks pass, including partial rollout and
+byte-identical surrounding content. independent review passes and the probe is
+retired. this qualifies prose, not runtime rollback.
+`scripts/check verify all` and changed-document link checks pass after probe retirement.
