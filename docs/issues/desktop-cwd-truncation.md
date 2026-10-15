@@ -17,8 +17,10 @@ full cwd already survives in wrapped info. this establishes the source defect,
 not which installed row the user saw.
 
 the current spec owns path/absence/remote separation and suffix truncation within
-the row's directory budget. known host identity moves to info; the former remote
-label and its cap disappear. no filesystem inference or stored-value change.
+the row's directory budget. installed owner feedback adds current machine to that
+compact label; full machine/path details remain in info. cwd already comes from
+tmux or resolved remote context, independently of provider status text. no
+filesystem inference or stored-value change.
 
 resolved when: the spec's cwd criteria pass for all availability/context cases,
 with complete remote framing, truthful absence, Unicode cell bounds and full info;
