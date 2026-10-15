@@ -231,3 +231,24 @@ renders and container/image are removed. retained replay and
 `scripts/check verify all` pass after repository test deletion. the
 [broader browser journeys](issues/desktop-browser-runtime-acceptance.md#remaining-browser-acceptance)
 retain their existing scope; no release or installed-fleet deployment is claimed.
+
+### layout follow-up
+
+2026-10-15: source `78d66e1`, from merge `6c70ee0`, carries the two layout
+corrections identified in `be996c5`. the preceding qualification missed long
+accepted profile keys and maximal tail backfill after viewport growth.
+
+the compiling merged base fails the core 24 profile and six backfill cases.
+the corrected source passes 36 profile cases across all/group/needs-input,
+80/119/120/134/135/160 columns and color/`NO_COLOR`, with full-key and
+configured-label info precedence. seven backfill cases cover threshold and
+height growth, named groups and selection above the visible tail; resized
+output matches navigation at its final geometry. middle scrolling stays put,
+and zero/one-line body capacity retains selection without partial entries.
+
+independent adversarial review and design review of eleven actual dummy renders
+pass. the temporary model integration probe and render artifacts are removed;
+`scripts/check verify host` passes after deletion. transport and provider code
+are unchanged; no new native/live run is claimed. the separately reported
+[native cold-home startup failure](issues/codex-cold-home-startup.md) remains
+outside these layout fixes, with no runtime workaround.
