@@ -177,6 +177,7 @@ const (
 	eventAuthenticationRejected    eventKind = "Authentication.Rejected"
 	eventTerminalCleanupFailed     eventKind = "Terminal.CleanupFailed"
 	eventTerminalObservationFailed eventKind = "Terminal.ObservationFailed"
+	eventWorkspaceRecoveryChanged  eventKind = "Workspace.RecoveryChanged"
 )
 
 type Event struct {
@@ -192,11 +193,19 @@ type Event struct {
 	observationReason sessions.StatusReason
 	level             PressureLevel
 	reasons           []PressureReason
+	recovery          *sessions.RecoveryChange
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
 
 func NewTerminalCleanupFailed() Event { return Event{kind: eventTerminalCleanupFailed} }
+
+func NewWorkspaceRecoveryChanged(change sessions.RecoveryChange) (Event, error) {
+	if !change.Valid() {
+		return Event{}, errors.New("invalid workspace recovery log event")
+	}
+	return Event{kind: eventWorkspaceRecoveryChanged, recovery: &change}, nil
+}
 
 func NewRequestCompleted(method Method, route Route, status int, duration time.Duration, errorCode ErrorCode) (Event, error) {
 	event := Event{kind: eventRequestCompleted, method: method, route: route, status: status, duration: duration, errorCode: errorCode}
@@ -289,6 +298,8 @@ func (event Event) valid() bool {
 		return true
 	case eventAuthenticationRejected:
 		return event.route.valid()
+	case eventWorkspaceRecoveryChanged:
+		return event.recovery != nil && event.recovery.Valid()
 	default:
 		return false
 	}
@@ -347,6 +358,24 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventAuthenticationRejected:
 		fields["http.route"] = event.route
+	case eventWorkspaceRecoveryChanged:
+		change := event.recovery
+		fields["skidbladnir.recovery.at"] = change.At.UTC().Format(time.RFC3339Nano)
+		fields["skidbladnir.recovery.state"] = change.Recovery.State
+		if change.Recovery.SavedAt != nil {
+			fields["skidbladnir.recovery.saved_at"] = change.Recovery.SavedAt.UTC().Format(time.RFC3339Nano)
+		}
+		if failure := change.Recovery.Failure; failure != nil {
+			fields["skidbladnir.recovery.failure_at"] = failure.At.UTC().Format(time.RFC3339Nano)
+			fields["skidbladnir.recovery.phase"] = failure.Phase
+			fields["skidbladnir.recovery.cause"] = failure.Cause
+		}
+		if change.Operation != "" {
+			fields["skidbladnir.recovery.operation"] = change.Operation
+		}
+		if change.Errno != 0 {
+			fields["skidbladnir.recovery.errno"] = uint64(change.Errno)
+		}
 	}
 	if err := json.NewEncoder(logger.output).Encode(fields); err != nil {
 		return &WriteError{Err: err}

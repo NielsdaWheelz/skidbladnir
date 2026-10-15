@@ -170,8 +170,11 @@ func (client Client) HasSession(ctx context.Context, id string) (bool, error) {
 }
 
 func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerIdentity, proposed string) (ServerIdentity, error) {
-	if !serverEpochPattern.MatchString(proposed) || !serverPIDPattern.MatchString(expected.PID) || !startTimePattern.MatchString(expected.StartTime) || expected.Epoch != "" && !serverEpochPattern.MatchString(expected.Epoch) {
-		return ServerIdentity{}, errors.New("proposed tmux server epoch is invalid")
+	if !serverEpochPattern.MatchString(proposed) {
+		panic("proposed tmux server epoch is invalid") // justify-defect: the manager generates a canonical epoch.
+	}
+	if !serverPIDPattern.MatchString(expected.PID) || !startTimePattern.MatchString(expected.StartTime) || expected.Epoch != "" && !serverEpochPattern.MatchString(expected.Epoch) {
+		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
 	branch := commandText("display-message", "-p", "#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
 	if expected.Epoch == "" {
@@ -182,13 +185,19 @@ func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerId
 	if err != nil {
 		return ServerIdentity{}, err
 	}
+	if output == identityMismatchMarker {
+		return ServerIdentity{}, WorkspaceSourceChanged
+	}
 	fields := strings.Split(output, "|")
 	if len(fields) != 3 {
-		return ServerIdentity{}, errors.New("tmux server identity changed during initialization")
+		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
 	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-	if !identity.valid() || identity.PID != expected.PID || identity.StartTime != expected.StartTime || expected.Epoch != "" && identity.Epoch != expected.Epoch {
-		return ServerIdentity{}, errors.New("tmux server identity changed during initialization")
+	if !identity.valid() {
+		return ServerIdentity{}, WorkspaceProtocolInvalid
+	}
+	if identity.PID != expected.PID || identity.StartTime != expected.StartTime || expected.Epoch != "" && identity.Epoch != expected.Epoch {
+		return ServerIdentity{}, WorkspaceSourceChanged
 	}
 	return identity, nil
 }
@@ -201,11 +210,11 @@ func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error)
 	}
 	fields := strings.Split(output, "|")
 	if len(fields) != 3 {
-		return ServerIdentity{}, errors.New("tmux server identity is invalid")
+		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
 	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
 	if !identity.valid() {
-		return ServerIdentity{}, errors.New("tmux server identity is invalid")
+		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
 	return identity, nil
 }
@@ -256,7 +265,7 @@ func (client Client) AssignCharacterIfUnchanged(
 	case identityMismatchMarker:
 		return false, nil
 	default:
-		return false, errors.New("tmux conditional character assignment returned unexpected output")
+		return false, WorkspaceProtocolInvalid
 	}
 }
 

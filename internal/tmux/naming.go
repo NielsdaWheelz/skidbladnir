@@ -44,6 +44,6 @@ func (client Client) SetNamingIfUnchanged(ctx context.Context, guard NamingGuard
 	case identityMismatchMarker:
 		return false, nil
 	default:
-		return false, errors.New("unexpected naming mutation output")
+		return false, WorkspaceProtocolInvalid
 	}
 }

@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import java.text.Normalizer
 import java.time.DateTimeException
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -342,27 +343,56 @@ internal data class SessionsResponse(
 internal sealed interface WorkspaceRecovery {
     data class Tracking(val savedAt: Instant?) : WorkspaceRecovery
     data class Recovered(val savedAt: Instant) : WorkspaceRecovery
-    data class Broken(val reason: WorkspaceRecoveryReason, val savedAt: Instant?) : WorkspaceRecovery
+    data class Delayed(val failure: WorkspaceRecoveryFailure, val savedAt: Instant?) : WorkspaceRecovery
+    data class Broken(val failure: WorkspaceRecoveryFailure, val savedAt: Instant?) : WorkspaceRecovery
 }
 
-@Serializable internal enum class WorkspaceRecoveryReason {
-    @kotlinx.serialization.SerialName("checkpoint_invalid") CheckpointInvalid,
-    @kotlinx.serialization.SerialName("checkpoint_failed") CheckpointFailed,
-    @kotlinx.serialization.SerialName("server_unreachable") ServerUnreachable,
-    @kotlinx.serialization.SerialName("server_not_empty") ServerNotEmpty,
-    @kotlinx.serialization.SerialName("restore_failed") RestoreFailed,
+internal data class WorkspaceRecoveryFailure(
+    val at: Instant,
+    val phase: WorkspaceRecoveryPhase,
+    val cause: WorkspaceRecoveryCause,
+)
+
+@Serializable internal enum class WorkspaceRecoveryPhase {
+    @kotlinx.serialization.SerialName("ownership") Ownership,
+    @kotlinx.serialization.SerialName("checkpoint_read") CheckpointRead,
+    @kotlinx.serialization.SerialName("source") Source,
+    @kotlinx.serialization.SerialName("capture") Capture,
+    @kotlinx.serialization.SerialName("checkpoint_write") CheckpointWrite,
+    @kotlinx.serialization.SerialName("restore") Restore,
+}
+
+@Serializable internal enum class WorkspaceRecoveryCause {
+    @kotlinx.serialization.SerialName("timeout") Timeout,
+    @kotlinx.serialization.SerialName("changed") Changed,
+    @kotlinx.serialization.SerialName("unavailable") Unavailable,
+    @kotlinx.serialization.SerialName("invalid") Invalid,
+    @kotlinx.serialization.SerialName("limit") Limit,
+    @kotlinx.serialization.SerialName("busy") Busy,
+    @kotlinx.serialization.SerialName("permission") Permission,
+    @kotlinx.serialization.SerialName("no_space") NoSpace,
+    @kotlinx.serialization.SerialName("io") IO,
+    @kotlinx.serialization.SerialName("already_attempted") AlreadyAttempted,
+    @kotlinx.serialization.SerialName("not_empty") NotEmpty,
 }
 
 @Serializable private enum class WireWorkspaceRecoveryState {
     @kotlinx.serialization.SerialName("tracking") Tracking,
     @kotlinx.serialization.SerialName("recovered") Recovered,
+    @kotlinx.serialization.SerialName("delayed") Delayed,
     @kotlinx.serialization.SerialName("broken") Broken,
 }
+
+@Serializable private data class WireWorkspaceRecoveryFailure(
+    @Serializable(with = IsoInstantSerializer::class) val at: Instant,
+    val phase: WorkspaceRecoveryPhase,
+    val cause: WorkspaceRecoveryCause,
+)
 
 @Serializable private data class WireWorkspaceRecovery(
     val state: WireWorkspaceRecoveryState,
     @Serializable(with = IsoInstantSerializer::class) val savedAt: Instant? = null,
-    val reason: WorkspaceRecoveryReason? = null,
+    val failure: WireWorkspaceRecoveryFailure? = null,
 )
 
 @Serializable
@@ -675,7 +705,7 @@ private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = strictJsonObject(encoded)
-    element.requiredObject("recovery").requireAbsentOrNonNull(setOf("savedAt", "reason"))
+    element.requiredObject("recovery").requireAbsentOrNonNull(setOf("savedAt", "failure"))
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
         (encodedSession as? JsonObject ?: throw SerializationException("session is not an object"))
             .requireSessionOptionalFields()
@@ -687,17 +717,63 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
     val savedAt = wire.recovery.savedAt?.let(::acceptProjectionInstant)
+    val failure = wire.recovery.failure?.let { failure ->
+        val allowed = when (failure.phase) {
+            WorkspaceRecoveryPhase.Ownership -> setOf(
+                WorkspaceRecoveryCause.Busy, WorkspaceRecoveryCause.Permission,
+                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
+            )
+            WorkspaceRecoveryPhase.CheckpointRead -> setOf(
+                WorkspaceRecoveryCause.Permission, WorkspaceRecoveryCause.IO,
+                WorkspaceRecoveryCause.Invalid, WorkspaceRecoveryCause.Limit,
+                WorkspaceRecoveryCause.AlreadyAttempted,
+            )
+            WorkspaceRecoveryPhase.Source -> setOf(
+                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
+                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
+                WorkspaceRecoveryCause.Permission, WorkspaceRecoveryCause.IO,
+            )
+            WorkspaceRecoveryPhase.Capture -> setOf(
+                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
+                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
+                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
+                WorkspaceRecoveryCause.IO,
+            )
+            WorkspaceRecoveryPhase.CheckpointWrite -> setOf(
+                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
+                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
+            )
+            WorkspaceRecoveryPhase.Restore -> setOf(
+                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
+                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
+                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
+                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
+                WorkspaceRecoveryCause.NotEmpty,
+            )
+        }
+        require(failure.cause in allowed)
+        WorkspaceRecoveryFailure(acceptProjectionInstant(failure.at), failure.phase, failure.cause)
+    }
     val recovery = when (wire.recovery.state) {
         WireWorkspaceRecoveryState.Tracking -> {
-            require(wire.recovery.reason == null)
+            require(failure == null)
             WorkspaceRecovery.Tracking(savedAt)
         }
         WireWorkspaceRecoveryState.Recovered -> {
-            require(wire.recovery.reason == null)
+            require(failure == null)
             WorkspaceRecovery.Recovered(requireNotNull(savedAt))
         }
+        WireWorkspaceRecoveryState.Delayed -> {
+            requireNotNull(failure)
+            require(
+                failure.phase == WorkspaceRecoveryPhase.Capture ||
+                    failure.phase == WorkspaceRecoveryPhase.CheckpointWrite ||
+                    failure.phase == WorkspaceRecoveryPhase.Source && failure.cause == WorkspaceRecoveryCause.Timeout,
+            )
+            WorkspaceRecovery.Delayed(failure, savedAt)
+        }
         WireWorkspaceRecoveryState.Broken ->
-            WorkspaceRecovery.Broken(requireNotNull(wire.recovery.reason), savedAt)
+            WorkspaceRecovery.Broken(requireNotNull(failure), savedAt)
     }
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
     val profiles = wire.profiles.map { profile ->
@@ -935,28 +1011,57 @@ internal fun workspaceRecoveryNotice(machine: MachineState): MachineNotice? {
     if (machine.access != MachineAccess.Ready) return null
     val recovery = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.recovery ?: return null
     val label = machine.machine.label.text
-    return when (recovery) {
-        is WorkspaceRecovery.Tracking -> null
-        is WorkspaceRecovery.Recovered -> MachineNotice(
+    val failure: WorkspaceRecoveryFailure
+    val savedAt: Instant?
+    val delayed: Boolean
+    when (recovery) {
+        is WorkspaceRecovery.Tracking -> return null
+        is WorkspaceRecovery.Recovered -> return MachineNotice(
             "$label: terminals restored as shells. resume conversations using the same provider account.",
             NoticeTone.Degraded,
         )
+        is WorkspaceRecovery.Delayed -> {
+            failure = recovery.failure
+            savedAt = recovery.savedAt
+            delayed = true
+        }
         is WorkspaceRecovery.Broken -> {
-            val reason = when (recovery.reason) {
-                WorkspaceRecoveryReason.CheckpointInvalid -> "saved workspace is invalid or unreadable"
-                WorkspaceRecoveryReason.CheckpointFailed -> "workspace could not be saved"
-                WorkspaceRecoveryReason.ServerUnreachable -> "the previous tmux server may still be running"
-                WorkspaceRecoveryReason.ServerNotEmpty -> "tmux already has sessions"
-                WorkspaceRecoveryReason.RestoreFailed -> "workspace could not be restored"
-            }
-            MachineNotice(
-                "$label: workspace recovery stopped: $reason. " +
-                    "last saved: ${recovery.savedAt?.let(::formatWireInstant) ?: "unknown"}. " +
-                    "current workspace changes are not being saved.",
-                NoticeTone.Failure,
-            )
+            failure = recovery.failure
+            savedAt = recovery.savedAt
+            delayed = false
         }
     }
+    val phase = when (failure.phase) {
+        WorkspaceRecoveryPhase.Ownership -> "writer lock"
+        WorkspaceRecoveryPhase.CheckpointRead -> "checkpoint read"
+        WorkspaceRecoveryPhase.Source -> "tmux server check"
+        WorkspaceRecoveryPhase.Capture -> "workspace capture"
+        WorkspaceRecoveryPhase.CheckpointWrite -> "checkpoint save"
+        WorkspaceRecoveryPhase.Restore -> "workspace restore"
+    }
+    val cause = when (failure.cause) {
+        WorkspaceRecoveryCause.Timeout -> "timed out"
+        WorkspaceRecoveryCause.Changed -> "workspace or server changed"
+        WorkspaceRecoveryCause.Unavailable -> "required resource unavailable"
+        WorkspaceRecoveryCause.Invalid -> "invalid data or configuration"
+        WorkspaceRecoveryCause.Limit -> "supported limit exceeded"
+        WorkspaceRecoveryCause.Busy -> "lock already held"
+        WorkspaceRecoveryCause.Permission -> "access denied"
+        WorkspaceRecoveryCause.NoSpace -> "storage space exhausted"
+        WorkspaceRecoveryCause.IO -> "input/output error"
+        WorkspaceRecoveryCause.AlreadyAttempted -> "prior restore may be incomplete"
+        WorkspaceRecoveryCause.NotEmpty -> "replacement server has sessions"
+    }
+    val saved = savedAt?.let {
+        "last confirmed save: " + DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss 'utc'xxx", Locale.ROOT)
+            .withZone(ZoneId.systemDefault()).format(it)
+    } ?: "no confirmed save"
+    val status = if (delayed) "workspace saving delayed" else "workspace recovery stopped"
+    val action = if (delayed) "retrying automatically" else "manual repair required"
+    return MachineNotice(
+        "$label: $status. $phase: $cause. $saved. $action; live terminals remain usable.",
+        if (delayed) NoticeTone.Degraded else NoticeTone.Failure,
+    )
 }
 
 internal data class VisibleSession(

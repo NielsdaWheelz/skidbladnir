@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 const (
@@ -51,7 +52,13 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (resu
 	}()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stopRecovery := gateway.sessions.StartRecovery(ctx)
+	stopRecovery := gateway.sessions.StartRecovery(ctx, func(change sessions.RecoveryChange) {
+		event, err := logging.NewWorkspaceRecoveryChanged(change)
+		if err != nil {
+			panic("invalid workspace recovery log event") // justify-defect: sessions owns the closed recovery change before invoking its observer.
+		}
+		gateway.log(event)
+	})
 	defer func() {
 		if err := stopRecovery(); err != nil {
 			result = errors.Join(result, fmt.Errorf("close workspace recovery: %w", err))

@@ -116,6 +116,9 @@ func (manager *Manager) normalizeNames(ctx context.Context, visible []scannedSes
 		}
 		if desired != "" && desired != session.tmuxName || marker != session.autoMarker {
 			_, err := manager.tmux.SetNamingIfUnchanged(ctx, guard, desired, marker)
+			if errors.Is(err, tmuxclient.WorkspaceProtocolInvalid) {
+				return nil, err
+			}
 			if err != nil { // An external destination race defers to the next inventory.
 				token, tokenErr := makeIdentityToken(server, session.id)
 				if tokenErr != nil {

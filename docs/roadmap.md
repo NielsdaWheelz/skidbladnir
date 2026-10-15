@@ -40,7 +40,16 @@ plus names; readability outranks fixed height.
 probes, owner-confirmed talkback/readability and engineering checks. unchanged
 [real-session card qualification](issues/session-card-hands-on.md) remains open.
 
-## tmux workspace recovery — deployed; reboot checks deferred
+## tmux workspace recovery — reliability correction qualified; rollout pending
+
+2026-10-15: [checkpoint reliability](workspace-checkpoint-reliability.md) replaces
+the blanket failure latch with delayed saving, exact confirmed-recipe claims,
+content-free transition diagnostics and a strict host/go/android union.
+[qualification](workspace-checkpoint-reliability.md#qualification) covers isolated
+native darwin/linux, real gateway/storage boundaries, desktop tty and physical
+phone notices. temporary tests are removed; engineering checks pass. the
+correction requires coordinated release/activation; it has not repaired the
+installed v0.15.0 owner's stopped-saving state.
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers
 30-second checkpoints and automatic reconstruction after reboot or tmux loss.

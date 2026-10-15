@@ -21,9 +21,19 @@ const maximumCheckpointBytes = 8 << 20
 
 var (
 	errCheckpointInvalid = errors.New("workspace checkpoint is invalid or unreadable")
-	errCheckpointFailed  = errors.New("workspace checkpoint could not be saved")
+	errCheckpointLimit   = errors.New("workspace checkpoint exceeds the supported limit")
 	bootIdentityPattern  = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
+
+type checkpointError struct {
+	operation string
+	err       error
+}
+
+func (failure *checkpointError) Error() string {
+	return "workspace checkpoint " + failure.operation + " failed"
+}
+func (failure *checkpointError) Unwrap() error { return failure.err }
 
 type checkpoint struct {
 	Schema    int                           `json:"schema"`
@@ -56,16 +66,23 @@ func (recipe checkpoint) workspace() tmuxclient.Workspace {
 
 func (manager *Manager) acquireRecoveryLock() (*os.File, error) {
 	directory := filepath.Dir(manager.recovery.path)
-	if os.MkdirAll(directory, 0700) != nil || os.Chmod(directory, 0700) != nil {
-		return nil, errCheckpointFailed
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return nil, &checkpointError{"mkdir", err}
+	}
+	if err := os.Chmod(directory, 0700); err != nil {
+		return nil, &checkpointError{"chmod", err}
 	}
 	lock, err := os.OpenFile(filepath.Join(directory, "workspace.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return nil, errCheckpointFailed
+		return nil, &checkpointError{"open", err}
 	}
-	if lock.Chmod(0600) != nil || syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+	if err := lock.Chmod(0600); err != nil {
 		_ = lock.Close() // justify-ignore-error: ownership was not acquired; that failure is authoritative.
-		return nil, errCheckpointFailed
+		return nil, &checkpointError{"chmod", err}
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = lock.Close() // justify-ignore-error: ownership was not acquired; that failure is authoritative.
+		return nil, &checkpointError{"lock", err}
 	}
 	return lock, nil
 }
@@ -76,21 +93,34 @@ func (manager *Manager) readCheckpoint() (*checkpoint, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, errCheckpointInvalid
+		return nil, &checkpointError{"open", err}
 	}
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+	if err != nil {
+		_ = file.Close() // justify-ignore-error: the stat failure is authoritative.
+		return nil, &checkpointError{"stat", err}
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
 		_ = file.Close() // justify-ignore-error: invalid checkpoint storage is authoritative.
 		return nil, errCheckpointInvalid
 	}
 	encoded, readErr := io.ReadAll(io.LimitReader(file, maximumCheckpointBytes+1))
 	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(encoded) > maximumCheckpointBytes {
-		return nil, errCheckpointInvalid
+	if readErr != nil {
+		return nil, &checkpointError{"read", readErr}
+	}
+	if closeErr != nil {
+		return nil, &checkpointError{"close", closeErr}
+	}
+	if len(encoded) > maximumCheckpointBytes {
+		return nil, errCheckpointLimit
 	}
 	var recipe checkpoint
-	if strictjson.Decode(encoded, &recipe) != nil || !checkpointFieldsPresent(encoded) || manager.validateCheckpoint(recipe) != nil {
+	if strictjson.Decode(encoded, &recipe) != nil || !checkpointFieldsPresent(encoded) {
 		return nil, errCheckpointInvalid
+	}
+	if err := manager.validateCheckpoint(recipe); err != nil {
+		return nil, err
 	}
 	return &recipe, nil
 }
@@ -99,39 +129,48 @@ func (manager *Manager) readCheckpoint() (*checkpoint, error) {
 // The caller retains its last acknowledged fact when replacement is uncertain.
 func (manager *Manager) writeCheckpoint(recipe checkpoint) (resultErr error) {
 	encoded, err := json.Marshal(recipe)
-	if err != nil || len(encoded) > maximumCheckpointBytes {
-		return errCheckpointFailed
+	if err != nil {
+		panic("admitted workspace checkpoint cannot be encoded") // justify-defect: the admitted schema contains only json-supported values and valid timestamps.
+	}
+	if len(encoded) > maximumCheckpointBytes {
+		return errCheckpointLimit
 	}
 	directory := filepath.Dir(manager.recovery.path)
 	file, err := os.CreateTemp(directory, ".workspace-*")
 	if err != nil {
-		return errCheckpointFailed
+		return &checkpointError{"create", err}
 	}
 	name := file.Name()
 	defer func() {
-		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
-			resultErr = errCheckpointFailed
+		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) && resultErr == nil {
+			resultErr = &checkpointError{"cleanup", err}
 		}
 	}()
 	if _, err := file.Write(encoded); err != nil {
 		_ = file.Close() // justify-ignore-error: the write failure is authoritative; nothing was published.
-		return errCheckpointFailed
+		return &checkpointError{"write", err}
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close() // justify-ignore-error: the sync failure is authoritative; nothing was published.
-		return errCheckpointFailed
+		return &checkpointError{"file_sync", err}
 	}
-	if file.Close() != nil || os.Rename(name, manager.recovery.path) != nil {
-		return errCheckpointFailed
+	if err := file.Close(); err != nil {
+		return &checkpointError{"close", err}
+	}
+	if err := os.Rename(name, manager.recovery.path); err != nil {
+		return &checkpointError{"rename", err}
 	}
 	parent, err := os.Open(directory)
 	if err != nil {
-		return errCheckpointFailed
+		return &checkpointError{"directory_open", err}
 	}
 	syncErr := parent.Sync()
 	closeErr := parent.Close()
-	if syncErr != nil || closeErr != nil {
-		return errCheckpointFailed
+	if syncErr != nil {
+		return &checkpointError{"directory_sync", syncErr}
+	}
+	if closeErr != nil {
+		return &checkpointError{"directory_close", closeErr}
 	}
 	return nil
 }
@@ -147,6 +186,9 @@ func (manager *Manager) validateCheckpoint(recipe checkpoint) error {
 		return errCheckpointInvalid
 	}
 	if err := tmuxclient.ValidateWorkspace(recipe.workspace()); err != nil {
+		if errors.Is(err, tmuxclient.WorkspaceLimit) {
+			return errCheckpointLimit
+		}
 		return errCheckpointInvalid
 	}
 	for _, session := range recipe.Sessions {

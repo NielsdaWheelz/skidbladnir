@@ -1,8 +1,11 @@
 # tmux workspace recovery
 
-status: source implemented and isolated runtime qualified, 2026-10-07. actual
-linux/mac reboots are owner-deferred. release and production activation remain
-separate; this document grants no execution or deployment authority.
+status: original mechanism implemented and isolated-runtime qualified, 2026-10-07.
+[checkpoint reliability](workspace-checkpoint-reliability.md), implemented and
+qualified 2026-10-15, supersedes the blanket failure latch, wire/content contract
+and implementation plan. this document retains the file/graph/reconstruction
+contract and original qualification. the correction's coordinated rollout and
+actual linux/mac reboots remain separate.
 
 ## target and decisions
 
@@ -21,8 +24,9 @@ owner decisions, 2026-10-07:
   absent or empty server. a populated replacement server is broken recovery.
 - preserve saved session names as manual names; existing automatic-title reset
   remains available.
-- report failure, preserve the checkpoint and stop recovery. no recovery
-  controls, pages, commands, retry buttons, merge or repair service in skid.
+- retain the confirmed checkpoint and disclose failure. the 2026-10-15 revision
+  separates delayed saving from blocked recovery. no recovery controls, pages,
+  commands, retry buttons, merge or repair service in skid.
 - retain existing shell startup behavior; reject already-missing directories
   before recovery rather than changing every new terminal's cwd failure policy.
 
@@ -62,9 +66,10 @@ only a reconstruction recipe. it never supplies inventory or agent status.
 | dev-server | tmux configuration, sole recovery-owner cutover, existing linux service/mac launch agent and shell integration |
 
 acquire a process-held exclusive lock beside the checkpoint before recovery
-effects; a second gateway cannot become its writer. lock/storage failure reports
-broken recovery without disabling ordinary terminals. listener admission precedes
-starting recovery. stop/join the loop before releasing the lock. serialize
+effects; a second gateway cannot become its writer. initial ownership/storage
+admission failure reports broken recovery without disabling ordinary terminals.
+listener admission precedes starting recovery. stop/join the loop before releasing
+the lock. serialize
 capture, reconstruction and skid structural mutations under the existing manager
 lock; that lock does not serialize native tmux clients.
 
@@ -104,6 +109,10 @@ checkpoint = {
 `zoomed`/`attempted` are booleans; other scalar values are strings. panes are in native pane-index order.
 `layout` is the full, unzoomed native layout. server fields use existing identity
 grammars; the kernel start identity plus boot id distinguishes pid reuse.
+restoration passes that original layout to tmux. verification remaps native pane
+ids for comparison in json v2 or checksum-prefixed text layouts, retaining every
+other field; tmux still owns geometry. the current correction is qualified on
+tmux 3.8 json layouts, not a text-to-json checkpoint migration.
 
 admit one complete graph: globally unique keys and session names, unique window
 indices within each session, resolved links/selections, nonempty windows/sessions,
@@ -112,8 +121,8 @@ and bounded native layout strings. window names may repeat. empty
 workspaces have both arrays empty. native names use tmux's literal
 name rules, not skid's narrower create-name grammar. validate utf-8 and bound
 strings; reuse cwd's 4096-byte contract. limit the record/capture to 8 mib,
-256 sessions, 512 unique windows and 1024 panes. exceeding a limit breaks saving;
-never silently omit entries or truncate values.
+256 sessions, 512 unique windows and 1024 panes. exceeding a limit rejects that
+complete capture; never silently omit entries or truncate values.
 
 discover live session ids, then capture required tmux facts in one synchronous
 `source-file -` stdin queue, with source
@@ -129,28 +138,19 @@ capture no terminal bytes, provider state or user environment. process observati
 retains only server identity; discard its incidental argv observation.
 
 publication: write a same-directory temporary file, sync it, close it, rename
-over the checkpoint, sync the parent directory. reuse the pattern in
-`internal/fleetclient/notifications.go`; extract a helper only if both callers
-actually share the complete operation. use `strictjson` for admission. a failed
-write never becomes a successful save; retain any surviving checkpoint and
-report broken. no rolling history, sqlite, journal or per-pane receipts.
+over the checkpoint, sync the parent directory. retain the existing recovery
+writer and use `strictjson` for admission. a failed write never becomes a
+successful save; retain the confirmed in-memory recipe and report according to
+the [failure policy](workspace-checkpoint-reliability.md#state-and-ordering).
+no rolling history, sqlite, journal or per-pane receipts.
 
 ## state and restoration algorithm
 
-only `attempted` is extra durable recovery state. pending, restoring and broken
-are derived or in-memory facts. broken latches for this gateway lifetime: stop
-checkpointing/restoration, retain the file, keep ordinary live terminals usable.
-
-| observation | action |
-| --- | --- |
-| no checkpoint | baseline a successfully observed live server; absent server stays absent |
-| invalid, wrong-machine or unreadable checkpoint | broken; no replacement or recovery tmux effects |
-| `attempted=true` | broken; no automatic retry or checkpoint replacement |
-| same exact source server | checkpoint its current graph, including an observed empty graph |
-| saved graph empty, source gone | nothing to restore; baseline a new live server when present |
-| source inaccessible but still alive, or liveness uncertain | broken; never start a duplicate server |
-| source gone, different populated server | broken; preserve both live work and checkpoint |
-| source gone, target absent/empty | preflight, then attempt reconstruction once |
+only `attempted` is extra durable recovery state. all other states are in memory.
+[checkpoint reliability](workspace-checkpoint-reliability.md#state-and-ordering)
+owns transitions: ordinary saving can be delayed and retried by the existing
+owner; broken still latches for this gateway lifetime. ordinary terminals remain
+usable. the last confirmed recipe remains eligible regardless of age.
 
 missing socket is not proof of death. differing boot id proves the old process
 gone; on the same boot use the saved pid/kernel start identity. absent or reused
@@ -160,8 +160,10 @@ pid proves it gone; observation failures do not. no pid-only test.
    panes. no partial admission or substitute directory. for a live empty target,
    also validate configured executable bash/zsh shell, empty `default-command`,
    `exit-empty off` and `exit-unattached off`.
-2. durably publish the **same** checkpoint with `attempted=true` before any
-   recovery tmux effect. publication uncertainty prohibits proceeding. if absent,
+2. durably publish the **same confirmed** checkpoint with `attempted=true` before
+   any recovery tmux effect. this can replace an unconfirmed candidate left by a
+   failed ordinary save; successful durable claim resolves that uncertainty.
+   claim publication uncertainty prohibits proceeding. if absent,
    start the server without panes. for either new or existing empty destination,
    initialize/read its canonical server identity and validate the configuration
    above. startup/configuration failure is broken.
@@ -208,7 +210,8 @@ and close, before releasing their mutation lock. preserve each mutation's actual
 result if saving fails; a checkpoint error never invites repeating a confirmed
 terminal effect. input, resize and agent stop are not structural checkpoints.
 30 seconds is the healthy sampling cadence, not a hard real-time guarantee;
-capture latency is additional and `savedAt` is the honest durability boundary.
+capture latency is additional. `savedAt` is the capture time of the last
+durably published recipe, not the instant its final sync completed.
 
 ## shell boundary and accepted limits
 
@@ -236,46 +239,13 @@ workspace size and operation time can reject an unusually large workspace.
 
 ## api and authored content
 
-no new route, mutation, recovery command or client-side recovery store. add one
-required member to the existing authenticated `GET /v1/sessions` envelope:
+[checkpoint reliability](workspace-checkpoint-reliability.md#failure-boundary-and-strict-api)
+owns the required `GET /v1/sessions` recovery union, strict host/go/android
+cutover and exact passive copy. the old reason-only union is retired at that
+cutover. ordinary live inventory remains authoritative even when recovery fails.
 
-```text
-recovery =
-  {state: "tracking", savedAt?: timestamp}
-  | {state: "recovered", savedAt: timestamp}
-  | {state: "broken", savedAt?: timestamp, reason:
-      "checkpoint_invalid" | "checkpoint_failed" | "server_unreachable"
-      | "server_not_empty" | "restore_failed"}
-```
-
-`tracking` without `savedAt` means no checkpoint yet. `recovered` lasts until
-the next ordinary successful checkpoint; it is not persisted. `savedAt` is
-omitted when no valid checkpoint time is known. use the existing top-level machine
-binding; do not send saved topology, stderr, paths, prompts or provider metadata.
-all clients hard-cut to the required schema together; no optional-field reader.
-update `Peer.MarshalJSON` as well as its model so fleet output carries the fact.
-ordinary live inventory remains authoritative even when recovery is broken.
-
-the content designer owns the following closed state/reason projection in each
-existing client content owner. success means recognizable shells; failure means
-the user can identify the host, stopped capability and lost checkpoint coverage.
-
-| fact | authored content |
-| --- | --- |
-| tracking | no notice |
-| recovered | `<host>: terminals restored as shells. resume conversations using the same provider account.` |
-| broken | `<host>: workspace recovery stopped: <reason>. last saved: <time or unknown>. current workspace changes are not being saved.` |
-| checkpoint_invalid | `saved workspace is invalid or unreadable` |
-| checkpoint_failed | `workspace could not be saved` |
-| server_unreachable | `the previous tmux server may still be running` |
-| server_not_empty | `tmux already has sessions` |
-| restore_failed | `workspace could not be restored` |
-
-reuse phone machine notices and desktop `noticeLines`; recovered uses existing
-degraded tone, broken uses failure. no new visual system, actions, shell banner,
-provider picker, toast loop or dismissal state. show outside session filters,
-including empty needs-input. preserve selected view and ordinary action outcomes;
-coexist with machine/pressure notices rather than replacing their projection.
+reuse phone machine notices and desktop `noticeLines`. show outside session
+filters, including empty needs-input; preserve action/pressure notice coexistence.
 phone recovery notices precede cards in the existing scrollable collection;
 gesture starts on notices do not initiate pull-to-refresh. transient item offsets
 preserve semantic card anchors. the dashboard top bar retains its 64 dp minimum
@@ -302,46 +272,28 @@ killing it. old gateway shutdown must finish before the new recovery owner start
 use existing linux user-service startup and mac login launch agent; no new boot
 service. mac recovery starts after login, not before disk unlock/login.
 
-manual repair is outside skid: stop the gateway, preserve/move `workspace.json`
-aside, repair tmux directly, restart the gateway to checkpoint the current
-workspace as a fresh baseline. stopping the gateway is also the maintenance
-escape hatch before intentional `kill-server`. partial reconstruction is left
-visible for manual repair. rollback preserves live tmux and provider data; it
-must not reactivate the retired plugins. there is no backward recovery reader.
+manual repair is outside skid. delayed saving resumes automatically once its
+cause clears. for broken recovery, stop the gateway and diagnose the named
+phase/cause; repair storage/source access before restarting with the same valid
+recipe. preserve/move the file aside only when deliberately abandoning an invalid
+or claimed recipe or choosing the live workspace as a new baseline. this loses
+that recipe's automatic recovery. inspect partial construction before that choice.
+stop the gateway before intentional `kill-server`. rollback preserves live tmux
+and provider data; it must not reactivate retired plugins or compatibility readers.
 
 ## implementation slices and review order
 
-each builder owns temporary tests only in its slice. assign a designer to each
-acceptance feature: author input/event, expected graph/state, exact notice or
-silence, and one adverse case before its builder starts. review notices at
-desktop 80×24 and enlarged phone type. a separate adversary reviews the contract,
-red-test sensitivity, implementation and green/refactor result.
-designers/reviewers write no production files. the final verifier writes neither
-production files nor tests. no unassigned cross-slice edits.
+the original mechanism and correction are implemented. the narrower
+[checkpoint reliability slices and workflow](workspace-checkpoint-reliability.md#exclusive-implementation-slices)
+records ownership and qualification of the correction. it does not repeat
+deployment-owner retirement or the original feature's whole implementation.
 
-| exclusive builder | files / responsibility |
-| --- | --- |
-| tmux mechanism | `internal/tmux/recovery.go`, `client.go`; capture/restore/presence and exact guards |
-| host policy | `internal/sessions/recovery.go`, `recovery_store.go`, `manager.go`, `naming.go`, `group.go`, `control.go`, `types.go`; file/state/loop, metadata and mutation checkpointing; `internal/group/group.go` owns shared metadata decoding |
-| composition/api | `cmd/skidbladnir/main.go`, `internal/gateway/{server,gateway,dto}.go`, `internal/logging/logger.go`; lifecycle and required recovery DTO, closed content-free logs |
-| desktop/cli projection | `internal/fleetclient/{response,client,content}.go`, `internal/sessionui/{session,view}.go`, `internal/agentcli/run.go`; decode/store/passive notice, existing list output only |
-| phone projection | `android/app/src/main/java/dev/niels/skidbladnir/{ProductModel,GatewayClient,SkidbladnirController,DashboardScreen,DashboardEntryState}.kt`; strict model, passive grid notices and transient semantic-anchor offsets |
-| deployment | sibling `dev-server/assets/dotfiles/tmux.conf`, `dev-server/lib/{dotfiles,tmux}.sh`; plugin retirement, server options, startup qualification; read that repo's instructions first |
-| root integrator | `docs/{session-recovery,architecture,roadmap,dev-server-handoff,codebase-map,dashboard-pull-to-refresh}.md`; temporary `scripts/tmp-workspace-recovery` e2e driver and final integration |
+## original acceptance
 
-order: freeze contracts/content → write temporary red acceptance against current
-source → implement tmux and host/deployment prerequisites → compose api and
-clients → green at real boundaries → adversarial refactor review → run required
-engineering checks → delete temporary tests/harnesses → build/link review.
-independent slices may proceed in parallel only after their interfaces are fixed.
-reuse existing primitives; delete superseded plugin wiring in its owning slice.
-do not recreate behavioral gates or a general persistence utility.
-update [architecture](architecture.md) §§1/2/5/8 and
-affected deployment/api docs at implementation cutover; shell startup is unchanged.
-
-## acceptance
-
-qualification below records the actual boundaries; source reading is not a pass.
+this historical matrix belongs to the 2026-10-07 source, including its original
+blanket failure policy. [new acceptance](workspace-checkpoint-reliability.md#red-green-refactor-acceptance)
+supersedes the affected rows; [current evidence](workspace-checkpoint-reliability.md#qualification)
+records their new boundaries. qualification below records only the original source.
 temporary tests follow [testing policy](rules/testing.md). tmux/live/device use
 requires explicit current-turn approval; every destructive tmux test uses only
 its own isolated `-L` socket and temporary checkpoint/lock paths injected through
