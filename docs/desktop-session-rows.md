@@ -25,9 +25,10 @@ and makes every continuation visibly belong to its session. both review actual
 renders before acceptance; neither changes product scope.
 
 use `current`, `tableStatus` and existing profile precedence: provider/profile
-keys verbatim; `unknown` only for an agent without a profile; plain terminals
-leave metadata blank. info uses configured profile label, then known key, then
-`profile unknown`. known remote retains `name on destination`; unknown remote
+keys with the width truncation below; `unknown` only for an agent without a
+profile; plain terminals leave metadata blank. info uses configured profile
+label, then known key, then `profile unknown`. known remote retains
+`name on destination`; unknown remote
 uses `remote unknown` across the provider/profile span. remote context never
 becomes source-terminal activity or an action target.
 
@@ -65,14 +66,15 @@ admitted inventory may. use these content widths, with no elastic filler:
 | group | `min(16, max(1, widest sanitized group))`, when present |
 | name | widest required displayed name/remote qualifier, capped at 28 |
 | status | widest complete existing `tableStatus`; never truncate |
-| provider / profile | widest actual content; closed contract bounds 6 / 11 |
+| provider | widest actual content; closed contract bound 6 |
+| profile | widest actual content, capped at 11; longer accepted keys truncate |
 | observed label | widest label or absence dash, capped at 30; truncate once, preserving full value in info |
 
 if any row has unknown remote context, reserve at least six cells each for
 provider/profile: their combined span is at least fourteen, enough for `remote unknown`.
 in narrow needs input, also cap name at
 `body − 2 − (group + 2 if present) − status − 2`.
-future status/profile vocabulary changes must recheck these budgets.
+future status/provider vocabulary changes must recheck these budgets.
 
 remote desired width is `min(28, actualNameWidth + 4 + min(12, destinationWidth))`.
 after shared name width `n` is known, destination budget is
@@ -103,8 +105,10 @@ remains in the current view; otherwise keep the existing fallback. captured info
 and operations retain `SessionEqual` targeting independently. render whole
 entries, never an orphan metadata line or a heading without an entry. include
 an immediately preceding heading when it and its first entry fit; otherwise show
-the complete entry without a heading. add no sticky/repeated headings. leave
-spare space blank. when body capacity is below entry height, leave it blank and
+the complete entry without a heading. add no sticky/repeated headings. when the
+final entry fits, backfill complete entries from above into newly available
+space while retaining selection. leave remaining spare space blank.
+when body capacity is below entry height, leave it blank and
 retain selection. `i of n` counts sessions, excluding headings and continuation lines.
 
 ## exclusive implementation boundaries
@@ -184,8 +188,9 @@ release/deployment remain separate.
 
 narrow views show fewer sessions; plain terminals retain an empty continuation.
 fixed thresholds can use two lines even when current content would fit one.
-long names and observed labels truncate even on wide screens; info holds the
-full values. columns can shift after inventory changes, never while scrolling.
+long names, profile keys and observed labels truncate even on wide screens;
+info retains full values under its existing profile label/key precedence.
+columns can shift after inventory changes, never while scrolling.
 terminal evidence has the limitations in its contract; strict schema deployment
 requires coordinated consumers. deleting probes leaves no lasting integration
 regression protection beyond the retained detector corpus.
@@ -226,3 +231,24 @@ renders and container/image are removed. retained replay and
 `scripts/check verify all` pass after repository test deletion. the
 [broader browser journeys](issues/desktop-browser-runtime-acceptance.md#remaining-browser-acceptance)
 retain their existing scope; no release or installed-fleet deployment is claimed.
+
+### layout follow-up
+
+2026-10-15: source `78d66e1`, from merge `6c70ee0`, carries the two layout
+corrections identified in `be996c5`. the preceding qualification missed long
+accepted profile keys and maximal tail backfill after viewport growth.
+
+the compiling merged base fails the core 24 profile and six backfill cases.
+the corrected source passes 36 profile cases across all/group/needs-input,
+80/119/120/134/135/160 columns and color/`NO_COLOR`, with full-key and
+configured-label info precedence. seven backfill cases cover threshold and
+height growth, named groups and selection above the visible tail; resized
+output matches navigation at its final geometry. middle scrolling stays put,
+and zero/one-line body capacity retains selection without partial entries.
+
+independent adversarial review and design review of eleven actual dummy renders
+pass. the temporary model integration probe and render artifacts are removed;
+`scripts/check verify host` passes after deletion. transport and provider code
+are unchanged; no new native/live run is claimed. the separately reported
+[native cold-home startup failure](issues/codex-cold-home-startup.md) remains
+outside these layout fixes, with no runtime workaround.
