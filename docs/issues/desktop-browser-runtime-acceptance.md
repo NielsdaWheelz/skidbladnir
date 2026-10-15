@@ -23,20 +23,23 @@ probe deletion.
 v0.17.1 is installed on all three hosts and android.
 [installed qualification](../desktop-browser-simplification.md#installed-release)
 records exact identity, fleet/configuration/session continuity and read-only
-80×24/160×24 desktop smoke. human hierarchy/path readability and acceptable
-density remain `NOT_RUN`; [row](desktop-row-readability.md) and
-[cwd](desktop-cwd-truncation.md) records stay open. stop/close and live metadata
+80×24/160×24 desktop smoke. owner review is broadly positive but requests one
+compact machine/current-path label instead of duplicated directory presentation
+from cwd plus the raw provider footer. that refinement remains pending;
+[row](desktop-row-readability.md) and [cwd](desktop-cwd-truncation.md) records
+stay open. stop/close and live metadata
 editing below remain unqualified by this slice. [usage composition](../desktop-browser-simplification.md#merge-composition)
 passes focused model/view checks on `367f889`; live evidence remains attached to
 the source that ran it.
 
-## readable rows and directories — installed review pending
+## preceding readable rows and directories — historical source qualification
 
 2026-10-15: the [accepted plan](../desktop-session-rows.md) requires revised
 model/view checks, isolated darwin/linux browser/gateway/tmux journeys, and a
 separate installed-tui usability review after deployment. revised model/view
 checks and both isolated runtime platforms pass; [source evidence](../desktop-session-rows.md#readability-revision)
-records the exercised cases. release/deployment and installed review are `NOT_RUN`.
+records the exercised cases. release/deployment and installed review were `NOT_RUN`
+at that source qualification; the deployed successor is recorded above.
 the user requires intact interior group transitions; spare viewport lines are
 accepted. source and installed acceptance remain separate milestones. record
 exact source/version, content-free outcomes and cleanup here; the older evidence

@@ -1,7 +1,8 @@
 # desktop browser simplification
 
 2026-10-15: implemented from `b253c05`, merged and deployed in `v0.17.1`.
-source and installed checks are recorded below; human usability review remains pending.
+source and installed checks are recorded below; owner review requests a compact
+single-location refinement, recorded under installed release.
 this contract supersedes the machine-scope,
 selected-footer, remote-row attribution and affected creation-copy clauses in
 [desktop browser](desktop-browser.md), [session rows](desktop-session-rows.md),
@@ -293,7 +294,7 @@ owned sessions were removed; no owned live process remains. local documentation
 links and `git diff --check` pass. `scripts/check verify host` passes after probe
 deletion: formatting/syntax/lint, generated assets, dependencies, go vet and build.
 
-installed version/usability remains `NOT_RUN`; no source result substitutes for
+at this source qualification, installed version/usability was `NOT_RUN`; no source result substitutes for
 it. the broader live stop/close and metadata-editing gaps retain their existing
 issue record.
 
@@ -351,9 +352,13 @@ digest; package app id and first-install timestamp are unchanged. the production
 activity opens the paired dashboard with needs-input/all tabs. no pairing
 reset, phone terminal operation or notification-delivery claim is involved.
 
-human narrow/wide hierarchy, long-path readability and density acceptance remain
-`NOT_RUN`; the existing row/cwd issues stay open. release integrity and the
-installed smoke do not close that criterion.
+owner review finds the layout broadly good but requests one compact current
+location, including machine and trailing path, with full paths in info. the
+native provider footer can repeat the cwd: these are separate observations,
+not two directory lookups. the raw-footer/model-effort presentation decision
+remains open; no provider-text substring removal or backend schema change is
+authorized by this finding. the existing row/cwd issues stay open through this
+refinement. release integrity and the installed smoke do not close that criterion.
 
 disposable installed probes and private snapshots are removed; no owned browser
 process remains. release-note review also corrected the generator's obsolete

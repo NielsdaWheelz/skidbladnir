@@ -4,7 +4,8 @@
 [preceding correction](../desktop-session-rows.md#selected-directory) was
 source-qualified. [browser simplification](../desktop-browser-simplification.md)
 now owns acceptance and moves the directory into every row. v0.17.1 is installed
-and its desktop smoke passes; human path-readability acceptance remains pending.
+and its desktop smoke passes. owner review requests one compact machine/current-path
+label with full paths in info; final path-readability acceptance remains pending.
 
 problem/impact: selected-directory presentation preserves the cwd tail only
 when the new-shell action is available; checking/unavailable local and known
@@ -23,4 +24,4 @@ resolved when: the spec's cwd criteria pass for all availability/context cases,
 with complete remote framing, truthful absence, Unicode cell bounds and full info;
 then the user confirms long-directory readability in the matching installed tui.
 record both milestones in [desktop acceptance](desktop-browser-runtime-acceptance.md).
-installed review is `NOT_RUN`; delete this record only when both pass.
+installed review requests that refinement; delete this record only when both pass.
