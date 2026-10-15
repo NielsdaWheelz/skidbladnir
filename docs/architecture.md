@@ -145,7 +145,7 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 | `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex` |
 | `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | same | same |
 | `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | same | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | configured claude `executablePath` |
+| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | immediate executable child of configured canonical `executableDirectory` |
 
 2026-09-17 accepted launch policy: new agent sessions use the explicit provider
 permission bypasses above on all three hosts. deployment owns these arguments;
@@ -184,7 +184,8 @@ wrappers are not used. direct raw-provider
 launches bypass that plugin and remain honestly unregistered. A row also owns exact
 foreground-process signatures for honest presence detection; the
 [deployment schema](dev-server-handoff.md#host-config-and-validator) owns
-matching, including npm's node launcher. the shared observer resolves the pane
+native-image matching; [wrapper discovery](issues/provider-wrapper-recognition.md)
+remains deferred. the shared observer resolves the pane
 tty's foreground process group using Linux `/proc` or native Darwin process facts.
 
 ### Product language
@@ -750,8 +751,10 @@ history item is `current`.
   unclassified.
   Unknown/null members, relative paths, duplicate keys,
   runtime platform mismatch, or a missing/broken/noncanonical tmux executable
-  fail startup. a foreground signature's `executablePath` must be absolute and
-  clean and resolve to an executable regular file. `skidbladnir validate-host-config
+  fail startup. a foreground signature's `executableDirectory` must be absolute
+  and clean and resolve to an existing directory; admission stores its canonical
+  path. recognition is independent of the launch alias's current target.
+  `skidbladnir validate-host-config
   --host-config=ABSOLUTE_PATH` checks strict config/platform admission without
   invoking tmux or providers; other executable availability and live behavior
   remain separate checks.
@@ -1114,6 +1117,14 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-15 accepted claude update-recognition correction: [the spec and plan](claude-update-recognition.md)
+replaces the mutable `executablePath` rule with direct-child matching in a
+configured canonical versions directory. launch configuration stays separate;
+foreground group-leader selection, codex basename matching, registration,
+controls, parsers and clients are unchanged. wrapper discovery and deleted-image
+recovery remain excluded. source qualification passes on darwin/linux; release
+and installed continuity remain pending.
 
 2026-10-15 accepted readability revision: [desktop rows](desktop-session-rows.md)
 owns section/record hierarchy, complete-entry viewport admission and selected
