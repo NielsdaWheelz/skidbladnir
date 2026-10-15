@@ -36,13 +36,12 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [browser simplification](desktop-browser-simplification.md) owns the fleet-wide
 desktop cutover, per-row directories and ordinary creation shortcuts.
-[desktop session rows](desktop-session-rows.md) owns the accepted readability
-revision and preceding compact layout; readability source and isolated runtime
-are qualified, with installed usability pending.
+[desktop session rows](desktop-session-rows.md) owns the preceding compact layout
+and readability revision; its source and isolated runtime are qualified.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
-footer evidence. source `6974851` passes the scoped
-[qualification](terminal-model-effort.md#qualification); release and installed-fleet
-qualification remain separate.
+footer evidence. [current installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+records the v0.17.2 fleet cutover and owner acceptance of its bounded codex phrase
+and compact current-location display.
 [terminal usage](terminal-usage.md) owns quota acquisition and source selection;
 [desktop usage](desktop-usage.md) owns remaining presentation and its isolated
 qualification; [native usage](profile-usage.md) owns codex account reads.
@@ -663,8 +662,9 @@ footer holds notices, quota, pagination and ordinary action hints.
 the preceding [session-row revision](desktop-session-rows.md#qualification) caps
 intrinsic widths and uses uniform two-line entries at narrow sizes. the accepted
 [readability replacement](desktop-session-rows.md) adds structural record/group
-boundaries and consistent cwd suffix display; source and isolated runtime pass,
-with installed usability pending. the optional
+boundaries and consistent cwd suffix display; source and isolated runtime pass.
+[v0.17.2 qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+records installed acceptance of the successor's compact current-location display. the optional
 [displayed footer](terminal-model-effort.md) comes from the existing terminal
 sample and extends the strict shared session schema; it adds no state owner.
 ordinary commands expose list, info, enter,
@@ -1159,7 +1159,8 @@ owns section/record hierarchy, complete-entry viewport admission and selected
 directory presentation. this is a client presentation hard cut with no public
 api, wire schema, stored state or execution change. source, isolated runtime and
 separate installed usability acceptance are required. source and isolated runtime
-pass; installed usability remains pending.
+passed; the successor's [v0.17.2 qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+records the later installed usability acceptance.
 
 2026-10-15 preceding design: [compact desktop rows](desktop-session-rows.md) keeps
 identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).

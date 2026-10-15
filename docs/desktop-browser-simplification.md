@@ -3,7 +3,8 @@
 2026-10-15: implemented from `b253c05`, merged and deployed in `v0.17.1`.
 source and installed checks are recorded below. the subsequent compact
 current-location and parsed-footer refinement is [source-qualified](#location-refinement-qualification);
-its deployment and installed readability review remain pending.
+its [v0.17.2 deployment and installed readability review](#location-refinement-installed-release)
+pass. the owner accepts the revised rows.
 this contract supersedes the machine-scope,
 selected-footer, remote-row attribution and affected creation-copy clauses in
 [desktop browser](desktop-browser.md), [session rows](desktop-session-rows.md),
@@ -244,10 +245,9 @@ unexecuted boundaries are `NOT_RUN`; engineering checks prove no live behavior.
 
 record source/platform, red/green outcomes, designer/verifier conclusions and
 cleanup in this spec and [desktop acceptance](issues/desktop-browser-runtime-acceptance.md).
-update the existing [row](issues/desktop-row-readability.md) and
-[cwd](issues/desktop-cwd-truncation.md) records for relocated acceptance; deleting
-the footer does not resolve them. delete resolved records only after their
-source and installed criteria pass. preserve unrelated outstanding acceptance.
+delete resolved row/cwd records only after their source and installed criteria
+pass; removing the footer alone does not resolve them. the v0.17.2 installed
+qualification below closes both records. preserve unrelated outstanding acceptance.
 
 ## deliberate costs and exclusions
 
@@ -267,8 +267,8 @@ controls, protocol/persistence migrations, new commands/search/palettes,
 registries/settings, live failover, extra pollers, unrelated cleanup and deployment.
 hard-cut the replaced client paths; no compatibility aliases, hidden filters,
 fallbacks or parallel renderer. the sole observation refinement is the bounded
-model/effort parser owned by its linked contract. subsequent authorized release/deployment is
-recorded below; human usability review remains pending.
+model/effort parser owned by its linked contract. subsequent authorized release/deployment
+and the owner's v0.17.2 readability acceptance are recorded below.
 
 planning review: row and interaction designers approve the content contract.
 independent review corrected available-path claims, startup/error precedence,
@@ -373,8 +373,8 @@ model/effort into info is not the accepted correction. the owner subsequently
 authorized the [bounded parser](terminal-model-effort.md#observation-composition)
 for displayed model/effort instead of a new native source. cwd requires no
 provider status-line change.
-the existing row/cwd issues stay open through this refinement. release integrity
-and the installed smoke do not close that criterion.
+the row/cwd issues remained open after this review. release integrity and the
+installed smoke did not close that criterion; v0.17.2 owner acceptance follows below.
 
 disposable installed probes and private snapshots are removed; no owned browser
 process remains. release-note review also corrected the generator's obsolete
@@ -413,6 +413,41 @@ independent adversarial review passes. all five temporary probes pass and are
 deleted; owned sessions, native process, servers and tempdirs are cleaned.
 only the authored provider corpus/replay remains. retained replay,
 `scripts/check verify host` and all 315 local links in changed documents pass
-after retirement. no live linux/remote, phone, release or installed-fleet
-check was run for this refinement. installed owner review remains with the
-[row/cwd acceptance records](issues/desktop-browser-runtime-acceptance.md).
+after retirement. no live linux/remote, phone, release or installed-fleet check
+was run during this source qualification. the later installed checks follow.
+
+## location refinement installed release
+
+2026-10-15: immutable [v0.17.2](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.2)
+ships source `37b87cab5c7d17f064950a1bdc33cacd61efe561`. exact-main hosted
+verification, signed build, downloaded artifact/signature checks and
+`scripts/check published-release` pass; all five published digests match the
+committed pin. independent release and deployment review pass.
+
+installer `b528c79845b0568c991e470d9cf40c0ff2bf2c2a`
+([pin pr 174](https://github.com/NielsdaWheelz/dev-server/pull/174)) applied all
+three hosts through managed gateway-only commands. fleet verification passes.
+baseline session lifetimes, pane pids and active selections survive: seven
+macbook sessions, three devbox sessions; arch was empty. bearer, machine identity
+and desktop client bytes are unchanged on every host; helper revisions are
+unchanged. jarvis remains paused and inactive, with successful stop and pid zero;
+its root cli equals the installed gateway binary.
+
+the broad native-process sample retains 48/48 macbook, 4/4 arch and 13/14 devbox
+pid/start pairs. one devbox process ended during the interval; its role and
+cause are unclassified. this sample was not limited to foreground workers and
+does not establish every provider lifetime's continuity.
+
+the installed mac desktop emits compact machine/path labels, model/effort and
+ordinary shortcuts at 80×24 and 160×24 and quits cleanly. this checks emitted
+text, not grid geometry. after host verification, the phone updated in place
+to `0.17.2` / `17002`; its installed apk equals the published artifact, app id
+and first-install time survive, and the paired dashboard opens. no phone
+terminal was opened. terminal/UI bytes stayed in memory.
+
+the owner confirms the single machine/path labels, retained model/effort, narrow
+rows and long-path truncation are readable. source and installed acceptance are
+complete; the row-readability and cwd-truncation issue records are removed.
+unrelated browser, notification and provider acceptance remains separate.
+disposable observations and private snapshots are removed; no owned browser
+process remains.

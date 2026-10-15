@@ -6,7 +6,8 @@ instead of copying its entire bar. [current qualification](desktop-browser-simpl
 records 452 passing frames and the unchanged installed native footer, including
 interactive effort changes. [browser simplification](desktop-browser-simplification.md)
 owns current layout and delivery. this contract owns optional terminal text and
-its meaning.
+its meaning. [v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+records fleet/phone deployment and owner acceptance of the revised rows.
 
 the preceding source shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 verifies the matching fleet and android generation. production cloud inference
