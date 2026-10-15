@@ -49,7 +49,9 @@ and remaining release, sleep and deployment work.
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost
 tmux workspaces as fresh shells, its private recipe and passive recovery facts.
-source is implemented; actual reboot qualification remains deferred.
+[checkpoint reliability](workspace-checkpoint-reliability.md) owns delayed saving,
+confirmed-recipe retention and typed diagnostics. source is implemented and
+isolated-runtime qualified; actual reboot qualification remains deferred.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
@@ -428,10 +430,11 @@ outside the session lock. that clock is sampled evidence, not an atomic provider
 snapshot; host clocks are never compared. phone pressure state and colour come
 from host-evaluated signals, never locally inferred thresholds.
 
-`GET /v1/sessions` requires one closed `recovery` fact: tracking, recovered or
-broken, with an optional canonical utc save time and a closed broken reason.
-[workspace recovery](session-recovery.md#api-and-authored-content) owns its exact
-schema and passive copy. failed recovery preserves ordinary live inventory;
+`GET /v1/sessions` requires one closed `recovery` fact: tracking, recovered,
+delayed or broken. delayed/broken require a canonical failure instant and closed
+phase/cause pair; savedAt is the last confirmed recipe's capture time.
+[checkpoint reliability](workspace-checkpoint-reliability.md#failure-boundary-and-strict-api)
+owns its exact schema and passive copy. failed recovery preserves ordinary live inventory;
 clients never use the saved recipe as inventory or revive old terminal authority.
 
 ### agent observation and identity hooks
@@ -727,7 +730,10 @@ history item is `current`.
   boot identity and kernel process-start identity prove loss; a missing socket
   alone cannot. restoration durably claims one attempt before effects, requires
   an absent or empty target, and verifies the complete native graph before
-  saving success. failure freezes the recipe; manual repair remains outside skid.
+  saving success. safe ordinary-save failures retain the confirmed recipe and
+  retry on the existing tick; source/admission contradictions and possible
+  reconstruction effects remain blocked. transition-only diagnostics carry no
+  authority. manual repair remains outside skid.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
   an exact tmux path, an advisory `testedVersion`, an absolute
@@ -1231,6 +1237,13 @@ history copies.
 isolated darwin/linux and physical-phone qualification is recorded in that spec;
 actual host reboots are deferred. release and installed-fleet activation remain
 separate. dev-server must retire the old recovery owner before activation.
+
+2026-10-15 source correction: [checkpoint reliability](workspace-checkpoint-reliability.md)
+replaces the blanket failure latch with delayed saving, typed transition
+diagnostics and a strict host/go/android wire cutover. isolated darwin/linux,
+desktop tty and physical-phone evidence is recorded there. it preserves the
+file schema, writer, budgets and sole owner. mixed versions are unsupported;
+coordinated release/activation and actual reboots remain separate.
 
 push, cross-device unread sync, provenance, copied provider history, durable
 receipts and replay remain excluded. any new capability requires an explicit
