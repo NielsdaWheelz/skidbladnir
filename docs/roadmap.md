@@ -24,7 +24,9 @@ explicit creation destinations remain. the spec records source qualification
 and the v0.17.1 deployment on all three hosts and android, preserved baseline
 session identities, fleet verification and the installed desktop smoke.
 owner review is broadly positive but requests one compact machine/current-path
-label; its raw provider-footer/model-effort trade-off remains open.
+label while retaining name/status/provider/profile/model/effort. the
+[provider-field source gap](issues/desktop-provider-fields.md) is independent of
+cwd detection; no provider status-line change is needed for location.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
 acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)

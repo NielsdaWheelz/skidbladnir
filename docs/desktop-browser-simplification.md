@@ -355,10 +355,13 @@ reset, phone terminal operation or notification-delivery claim is involved.
 owner review finds the layout broadly good but requests one compact current
 location, including machine and trailing path, with full paths in info. the
 native provider footer can repeat the cwd: these are separate observations,
-not two directory lookups. the raw-footer/model-effort presentation decision
-remains open; no provider-text substring removal or backend schema change is
-authorized by this finding. the existing row/cwd issues stay open through this
-refinement. release integrity and the installed smoke do not close that criterion.
+not two directory lookups. the owner requires name, session status, provider,
+profile, model, effort, machine and location to remain visible; moving all
+model/effort into info is not the accepted correction. the
+[provider-field source gap](issues/desktop-provider-fields.md) records the
+independent observation limitation. cwd requires no provider status-line change.
+the existing row/cwd issues stay open through this refinement. release integrity
+and the installed smoke do not close that criterion.
 
 disposable installed probes and private snapshots are removed; no owned browser
 process remains. release-note review also corrected the generator's obsolete
