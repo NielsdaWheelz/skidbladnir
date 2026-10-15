@@ -218,9 +218,9 @@ unexecuted boundaries are `NOT_RUN`. installed review does not authorize deploym
 
 record source/version, checks, review outcomes and cleanup below and in the
 existing [desktop acceptance issue](issues/desktop-browser-runtime-acceptance.md).
-keep [readability](issues/desktop-row-readability.md) and
-[cwd truncation](issues/desktop-cwd-truncation.md) open until their source and
-installed criteria pass; delete resolved records. no proof ledger/new test gate.
+the successor's [v0.17.2 installed acceptance](desktop-browser-simplification.md#location-refinement-installed-release)
+closes the readability and cwd-truncation records after both source and installed
+criteria pass. no proof ledger/new test gate.
 
 ## costs and non-goals
 

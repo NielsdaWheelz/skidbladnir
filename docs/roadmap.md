@@ -15,7 +15,7 @@ it, preserved existing macbook/devbox lifetimes and passed fleet verification.
 the spec records exact evidence and limits; the confirmed defect is resolved.
 [wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
 
-## desktop browser simplification — deployed; location refinement source-qualified
+## desktop browser simplification — deployed and accepted in v0.17.2
 
 2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
 its directory, removes selected-footer facts and machine collection filtering,
@@ -29,10 +29,10 @@ label while retaining name/status/provider/profile/model/effort. the accepted
 displayed codex phrase without changing provider configuration; cwd detection
 remains independent. [refinement qualification](desktop-browser-simplification.md#location-refinement-qualification)
 passes rendered rows, isolated darwin transport/cwd, 452 retained frames and
-installed native codex effort changes. the refinement is not yet deployed.
-[row readability](issues/desktop-row-readability.md) and
-[cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
-acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)
+installed native codex effort changes. [v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+records three-host and phone deployment, fleet checks, continuity evidence and
+the owner's readability acceptance. the row/cwd records are resolved and removed.
+the [preceding readability qualification](desktop-session-rows.md#readability-revision)
 and compact-row evidence remain source-attributed. [usage composition](desktop-browser-simplification.md#merge-composition)
 passes focused model/view checks; prior live evidence retains its recorded source.
 
@@ -358,9 +358,14 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.16.0` from
-`d8c3c5574569ddf6d4c43747f72961dc14be0eb1`; it does not assert the
+source and artifact digests. it pins immutable `v0.17.2` from
+`37b87cab5c7d17f064950a1bdc33cacd61efe561`; it does not assert the
 installed version of any host or phone.
+
+2026-10-15 [current installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+verifies v0.17.2 on macbook, devbox, arch and android, including fleet health,
+session/configuration continuity, the native-process observation limit and
+owner acceptance of the desktop rows.
 
 2026-10-15 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 independently verifies v0.16.0 on macbook, devbox, arch and the attached android
