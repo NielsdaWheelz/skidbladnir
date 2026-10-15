@@ -294,5 +294,29 @@ links and `git diff --check` pass. `scripts/check verify host` passes after prob
 deletion: formatting/syntax/lint, generated assets, dependencies, go vet and build.
 
 installed version/usability remains `NOT_RUN`; no source result substitutes for
-it. the broader
-live stop/close and metadata-editing gaps retain their existing issue record.
+it. the broader live stop/close and metadata-editing gaps retain their existing
+issue record.
+
+### merge composition
+
+2026-10-15: source `367f889` composes this change with desktop usage from
+`fb6e03e` and current main `d22d46f`. independent review preserves both contracts:
+usage keeps its key dispatch, scope-free chrome and viewport; the table keeps
+full-fleet rows, per-row cwd and ordinary creation hints.
+
+the temporary `TestBrowserComposition` exercises real model events and rendered
+views at 80/119/120/137/138/160×24, color and `NO_COLOR`. its four-profile quota
+footer and overflow fixtures verify complete rows, selected visibility,
+pagination, usage arrows/ignored keys, exact view/session/scroll return and table
+refresh. a transition case verifies 80→160→80 footer-height changes, complete
+selected-row visibility and usage-offset clamping when notices clear. frozen
+`fb6e03e` has 13 intended failures (12 roster, one directory continuation), while
+12 usage-return cases pass; all 25 cases pass on `367f889` (0.597s). independent
+review approves the source and final probe. the probe schedules but does not
+execute commands; no network, pty or tmux boundary is claimed. earlier live
+evidence remains attached to its original source. installed usability stays
+`NOT_RUN`.
+
+the composition probe is deleted. local documentation links and
+`scripts/check verify host` pass after retirement; no production change followed
+the qualified merge.

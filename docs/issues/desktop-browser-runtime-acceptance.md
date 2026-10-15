@@ -23,8 +23,9 @@ probe deletion.
 installed version, hierarchy/path readability and acceptable density remain
 `NOT_RUN`; [row](desktop-row-readability.md) and
 [cwd](desktop-cwd-truncation.md) records stay open. stop/close and live metadata
-editing below remain unqualified by this slice. composing the separate usage
-branch requires affected checks on the composed source.
+editing below remain unqualified by this slice. [usage composition](../desktop-browser-simplification.md#merge-composition)
+passes focused model/view checks on `367f889`; live evidence remains attached to
+the source that ran it.
 
 ## readable rows and directories — installed review pending
 

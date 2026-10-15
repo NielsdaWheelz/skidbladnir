@@ -24,8 +24,8 @@ spec; release/deployment and installed usability remain separate.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
 acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)
-and compact-row evidence remain source-attributed. separate desktop-usage work
-must be composed and requalified before a joint release.
+and compact-row evidence remain source-attributed. [usage composition](desktop-browser-simplification.md#merge-composition)
+passes focused model/view checks; prior live evidence retains its recorded source.
 
 ## preceding compact desktop rows and terminal footer — shipped in v0.16.0
 
