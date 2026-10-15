@@ -297,21 +297,14 @@ func paneTerminalAncestry(ancestry []processinfo.Observation, paneTerminal proce
 	return nil, false
 }
 
-// matchesSignature resolves ExecutablePath at every comparison: a relink
-// (a provider auto-update) then reaches the next launch without a configuration
-// reload, at the cost of no longer matching a still-running older image.
 func matchesSignature(observation processinfo.Observation, signature ForegroundSignature) bool {
 	if signature.ExecutableBase != "" && observation.ExecutableBase() != signature.ExecutableBase {
 		return false
 	}
-	if signature.ExecutablePath == "" {
+	if signature.ExecutableDirectory == "" {
 		return true
 	}
-	resolved, err := filepath.EvalSymlinks(signature.ExecutablePath)
-	// justify-ignore-error: a configured path that no longer resolves (provider
-	// uninstalled or unreadable) matches nothing; the pane reads as an ordinary
-	// terminal.
-	return err == nil && observation.Executable == resolved
+	return !strings.HasSuffix(observation.Executable, " (deleted)") && filepath.Dir(observation.Executable) == signature.ExecutableDirectory
 }
 
 func claudeName(argv []string) string {

@@ -217,27 +217,22 @@ dropped or routed through an old detector.
 in json launch arguments, `-c` and the expression are separate argv elements;
 the expression contains no surrounding shell quote characters.
 
-manual claude recognition is a prerequisite, not a footer problem. it uses
-optional `ForegroundSignature.ExecutablePath` / json `executablePath`. admission
-requires the configured path to be absolute and clean and to resolve through
-symlinks to an executable regular file, and keeps the configured spelling.
-matching resolves it again at each comparison and compares the result with the
-kernel's `Observation.Executable`; a failed resolution matches nothing. claude
-relinks its command on every auto-update, so a relink reaches the next launch
-without a configuration refresh, and a session still running the previous image
-is unrecognized. claude's signature is `{executablePath: "@CLAUDE@"}`; codex's is
-`{executableBase: "codex"}`. populated signature fields remain conjunctive;
-multiple signatures are alternatives; cross-provider ambiguity stays unrecognized.
-missing/unresolvable configured paths fail configuration admission; script wrappers
-do not match the native process; a deleted or replaced image matches nothing.
-recognition never reads argv: npm's node launcher leads the foreground group of a
-codex started through it, so that codex is a generic terminal, while managed
-launches and `codex` typed in a skid shell run the native executable. no argv
-fallback, version-basename matching, installation scan or new process api.
-qualification covers bare, relative, absolute and symlink launches and a provider
-upgrade's relink on darwin and linux (§8; the installed claude's linux spellings
-in [their own record](terminal-agent-control-qualification.md#2026-10-01-linux-claude-launch-spellings)).
-native resume identity is separate.
+manual claude recognition is a prerequisite, not a footer problem.
+[claude update recognition](claude-update-recognition.md) owns the replacement
+contract and qualification: optional `ForegroundSignature.ExecutableDirectory` /
+json `executableDirectory` names the canonical native versions directory. admission
+resolves that directory once; matching compares the kernel executable's immediate
+parent with it. launch configuration stays separate, so relinking the launcher
+does not exclude an older surviving image. linux's deleted-image suffix is rejected
+by the directory predicate; deleted-image recovery is unsupported.
+
+codex retains `{executableBase: "codex"}`. populated signature fields remain
+conjunctive; multiple signatures are alternatives; cross-provider ambiguity stays
+unrecognized. missing/unresolvable directories fail admission. recognition retains
+foreground process-group leader selection and never reads argv. npm or waiting-shell
+launchers can therefore hide a provider; [wrapper discovery](issues/provider-wrapper-recognition.md)
+is separate. no wrapper fallback, version-name matching, installation scan or new
+process api. native resume identity and provider screen grammar remain independent.
 
 ## 5. controls and diagnostic api
 
@@ -513,9 +508,10 @@ explicit costs:
 - tall panes: one capture holds at most 256 rows, so rows `192..h−65` of a taller
   pane are clipped evidence, and idle there needs the transcript tail within the
   bottom 64 rows.
-- after a claude update relinks the configured path, a session still running the
-  previous image is unrecognized (a generic terminal) until relaunched; new
-  launches are recognized without a configuration refresh.
+- claude recognition trusts the configured versions directory; moving that
+  directory requires configuration repair. wrappers and deleted images remain
+  unsupported. [update recognition](claude-update-recognition.md) supersedes the
+  former accepted loss of older running images after a launcher relink.
 - provider ui upgrades require requalification (each grammar's last section);
   broader capture costs more per sample; the capsule hard cut resets old dashboard
   context; deleting tests removes automatic future behavioral regression
