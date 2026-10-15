@@ -15,7 +15,7 @@ it, preserved existing macbook/devbox lifetimes and passed fleet verification.
 the spec records exact evidence and limits; the confirmed defect is resolved.
 [wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
 
-## desktop browser simplification — deployed; location refinement requested
+## desktop browser simplification — deployed; location refinement source-qualified
 
 2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
 its directory, removes selected-footer facts and machine collection filtering,
@@ -24,9 +24,12 @@ explicit creation destinations remain. the spec records source qualification
 and the v0.17.1 deployment on all three hosts and android, preserved baseline
 session identities, fleet verification and the installed desktop smoke.
 owner review is broadly positive but requests one compact machine/current-path
-label while retaining name/status/provider/profile/model/effort. the
-[provider-field source gap](issues/desktop-provider-fields.md) is independent of
-cwd detection; no provider status-line change is needed for location.
+label while retaining name/status/provider/profile/model/effort. the accepted
+[bounded parser](terminal-model-effort.md#observation-composition) extracts the
+displayed codex phrase without changing provider configuration; cwd detection
+remains independent. [refinement qualification](desktop-browser-simplification.md#location-refinement-qualification)
+passes rendered rows, isolated darwin transport/cwd, 452 retained frames and
+installed native codex effort changes. the refinement is not yet deployed.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
 acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)

@@ -67,18 +67,8 @@ func (m *model) details(row *listedRow) [][2]string {
 			profile = "profile unknown"
 		}
 		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile})
-		label, explanation := "", ""
-		switch a.Provider {
-		case "Codex":
-			label = "native status line"
-			explanation = "includes other status-line items; model and effort appear only when shown there. native truncation is preserved."
-		case "Claude":
-			label = "displayed model / effort"
-			explanation = "native wording may include service tier."
-		default:
-			panic("invalid agent provider") // justify-defect: ingress admits only the closed providers.
-		}
-		facts = append(facts, [2]string{label, m.rowFooter(*row)})
+		facts = append(facts, [2]string{"displayed model / effort", m.rowFooter(*row)})
+		explanation := "native wording may include service tier."
 		if current.Kind == "remote" {
 			explanation = "remote terminal text is not observed"
 		} else {

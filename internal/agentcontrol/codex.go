@@ -582,11 +582,8 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	main, side := showing("Ask Codex to do anything"), showing("Ask a follow-up question")
 
 	var read reading
-	if statusLine >= 0 && !side && !editor && !disconnected && screen.rows[statusLine].presence == rowParsed {
-		footer := sessions.TerminalFooter(strings.Trim(cellText(screen.rows[statusLine].cells), " "))
-		if footer.Valid() {
-			read.footer = &footer
-		}
+	if !side && !editor && !disconnected && screen.rows[footerFirst].presence == rowParsed {
+		read.footer = codexReadTerminalFooter(screen.rows[footerFirst], screen.width)
 	}
 	// Composer (4), first match wins.
 	switch {

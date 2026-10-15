@@ -10,6 +10,33 @@ import (
 
 var claudeTerminalFooterSuffix = regexp.MustCompile(`^ │ ctx ` + claudeUsageContext + `(?: │ ` + claudeUsageWindows + `)?$`)
 
+var codexTerminalFooterPhrase = regexp.MustCompile(`^(?:[gG][pP][tT]-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*|codex-auto-review|Codex Auto Review) (?:default|minimal|low|medium|high|xhigh|max|ultra|persistent)(?: Fast)?$`)
+
+// codexReadTerminalFooter recognizes one complete model/effort item in the
+// composer-anchored footer. This is displayed text, not an execution setting: an
+// unrelated item can imitate the grammar, and aliases remain unsupported.
+func codexReadTerminalFooter(line row, width int) *sessions.TerminalFooter {
+	text := strings.TrimRight(cellText(line.cells), " ")
+	items := strings.Split(strings.TrimLeft(text, " "), " · ")
+	var footer *sessions.TerminalFooter
+	for index, item := range items {
+		if !codexTerminalFooterPhrase.MatchString(item) {
+			continue
+		}
+		// A separator closes an item. Without one, require room at the right
+		// edge; byte length conservatively bounds columns after authored text.
+		if footer != nil || index == len(items)-1 && len(text) >= width {
+			return nil
+		}
+		phrase := sessions.TerminalFooter(item)
+		if !phrase.Valid() {
+			return nil
+		}
+		footer = &phrase
+	}
+	return footer
+}
+
 // claudeReadTerminalFooter reads one complete managed phrase immediately above
 // the ordinary mode row. It shares quota productions, not quota admission.
 func claudeReadTerminalFooter(screen *claudeScreen, bottom, mode int) *sessions.TerminalFooter {

@@ -7,6 +7,9 @@ every row adds its directory and the footer loses selected facts. source evidenc
 is recorded there. v0.17.1 is installed and its desktop smoke passes. owner review
 is broadly positive but asks for one compact machine/current-path label; final
 acceptance remains open through that refinement.
+the [refinement source](../desktop-browser-simplification.md#location-refinement-qualification)
+now passes its rendered matrix and isolated darwin journey. matching deployment
+and owner review remain pending.
 
 problem/impact: all-view headings, names and narrow metadata share an axis;
 consecutive sessions lack structural separation. needs input puts membership

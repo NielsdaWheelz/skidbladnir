@@ -1,8 +1,9 @@
 # desktop browser simplification
 
 2026-10-15: implemented from `b253c05`, merged and deployed in `v0.17.1`.
-source and installed checks are recorded below; owner review requests a compact
-single-location refinement, recorded under installed release.
+source and installed checks are recorded below. the subsequent compact
+current-location and parsed-footer refinement is [source-qualified](#location-refinement-qualification);
+its deployment and installed readability review remain pending.
 this contract supersedes the machine-scope,
 selected-footer, remote-row attribution and affected creation-copy clauses in
 [desktop browser](desktop-browser.md), [session rows](desktop-session-rows.md),
@@ -14,8 +15,9 @@ evidence remain source-attributed. no open product decision blocks implementatio
 ## scope and final state
 
 one fleet-wide browser with the existing needs-input/all/named-group/unassigned
-views. every session row owns its sampled directory; info owns host identity and
-detailed facts. the resting footer owns notices, usage, pagination and actions.
+views. every session row owns its current machine and sampled directory; info
+owns full machine/path details. the resting footer owns notices, usage, pagination
+and actions.
 
 | feature / content owner | good content and required result |
 | --- | --- |
@@ -26,7 +28,7 @@ detailed facts. the resting footer owns notices, usage, pagination and actions.
 phone already has no machine collection filter. retain its tabs, restoration,
 machines/pressure/reconnect overflow and explicit forge destination. no android
 production change. host names remain in info, creation forms/outcomes, captured
-confirmations and host-failure notices; only ordinary roster identity is deferred.
+confirmations and host-failure notices; rows show the current execution machine.
 
 ## row content and geometry
 
@@ -34,10 +36,10 @@ reuse `current(row)`, never raw launch cwd or parsed provider text:
 
 | resolved execution context | final directory line |
 | --- | --- |
-| local with cwd | sampled path |
-| local without cwd | `directory unavailable` |
-| known remote with cwd | `remote: <sampled path>` |
-| known remote without cwd | `remote: directory unavailable` |
+| local with cwd | `<machine> · <compact sampled path>` |
+| local without cwd | `<machine> · directory unavailable` |
+| known remote with cwd | `<machine> (remote) · <compact sampled path>` |
+| known remote without cwd | `<machine> (remote) · directory unavailable` |
 | unknown remote | `remote context unknown` |
 
 stale/checking local rows retain sampled cwd under their existing whole-row
@@ -48,10 +50,13 @@ remove name `on <host>` qualifiers and the duplicate `remote unknown` metadata
 placeholder, including their width reservations. preserve other metadata rules.
 
 body width `b = terminal width - 2`; names start at body column 2, metadata and
-directory at 4. directory gets `b - 4` cells; `remote: ` consumes eight of them.
-sanitize before measuring; `tail` truncates real paths from the left, preserving
-wide/combining characters. absence prose stays whole. no home abbreviation,
-filesystem lookup, new path normalization, path/action coupling or extra prefix.
+directory at 4. directory gets `b - 4` cells. sanitize before measuring; cap the
+machine label at 16 display cells with a trailing ellipsis. retain the final two
+nonempty slash-delimited path components, prefixing `…/` when ancestors were
+omitted. preserve roots, short paths, intervening separators and trailing slash.
+the existing `tail` truncates that suffix to the remaining display-cell budget,
+preserving wide/combining characters. absence prose stays whole. no home
+abbreviation, filesystem lookup, path normalization or path/action coupling.
 use plain directory text for an available row, faint when its owning host is
 checking/unavailable. fresh absence/unknown uses the literal text above; path
 absence does not introduce a separate styling or readiness state.
@@ -65,12 +70,17 @@ every content line; no blank metadata row, partial record or dangling heading.
 ```text
 research:
 ▌ review-api  ready
-▌   Codex  work  sample-model · high
-▌   /work/project
+▌   Codex  work  gpt-6-astra max
+▌   macbook · …/code/project
 
   shell       terminal
-    /work/other-project
+    devbox (remote) · /work/other-project
 ```
+
+name, session status, provider, profile, model, effort, machine and location
+remain visible when observed. [terminal model and effort](terminal-model-effort.md)
+owns the bounded provider-footer parser; the row never copies the entire codex
+bar or extracts cwd from provider text. cwd acquisition remains independent.
 
 `tableLayout` owns measured content heights. its existing `viewport` alone
 admits records; rendering, fitting/backfill and pagination use that contract
@@ -243,19 +253,21 @@ source and installed criteria pass. preserve unrelated outstanding acceptance.
 
 - one extra directory line per session reduces density; the two removed footer
   detail lines do not generally offset it. no third packing mode or density setting.
-- machine/attachment/detail inspection takes `space`; identical names/paths
-  across hosts require it. full directory inspection also resolves truncated ties.
+- full machine/path and attachment inspection takes `space`. capped machine
+  labels and two-component path suffixes improve scanning but can collide;
+  session names and full info resolve those ties. remote framing costs nine cells.
 - `n` no longer shows its destination before dispatch; its fixed configured
   default and help own that meaning. `N` shows the destination before submission.
 - host-only browsing disappears; reaching needs input takes tab navigation.
 - deleted probes provide change-specific evidence without retained regression
   coverage. installed readability remains a separate, explicit acceptance step.
 
-excluded: android changes, host/provider observation or launch changes, native
+excluded: android changes, provider launch/configuration changes, native
 controls, protocol/persistence migrations, new commands/search/palettes,
 registries/settings, live failover, extra pollers, unrelated cleanup and deployment.
 hard-cut the replaced client paths; no compatibility aliases, hidden filters,
-fallbacks or parallel renderer. subsequent authorized release/deployment is
+fallbacks or parallel renderer. the sole observation refinement is the bounded
+model/effort parser owned by its linked contract. subsequent authorized release/deployment is
 recorded below; human usability review remains pending.
 
 planning review: row and interaction designers approve the content contract.
@@ -357,9 +369,10 @@ location, including machine and trailing path, with full paths in info. the
 native provider footer can repeat the cwd: these are separate observations,
 not two directory lookups. the owner requires name, session status, provider,
 profile, model, effort, machine and location to remain visible; moving all
-model/effort into info is not the accepted correction. the
-[provider-field source gap](issues/desktop-provider-fields.md) records the
-independent observation limitation. cwd requires no provider status-line change.
+model/effort into info is not the accepted correction. the owner subsequently
+authorized the [bounded parser](terminal-model-effort.md#observation-composition)
+for displayed model/effort instead of a new native source. cwd requires no
+provider status-line change.
 the existing row/cwd issues stay open through this refinement. release integrity
 and the installed smoke do not close that criterion.
 
@@ -370,3 +383,36 @@ guidance assertions; the final eight checks pass, including partial rollout and
 byte-identical surrounding content. independent review passes and the probe is
 retired. this qualifies prose, not runtime rollback.
 `scripts/check verify all` and changed-document link checks pass after probe retirement.
+
+## location refinement qualification
+
+2026-10-15: branch `codex/desktop-location-refinement` from `2c14727`.
+one compact current-machine/path replaces the full directory; codex contributes
+only its recognized model/effort phrase. provider configuration, cwd acquisition,
+status classification, transport schema and row geometry are unchanged.
+
+- frozen row probes fail the baseline's missing machine, excess path ancestors
+  and duplicated location. the final model/view/details matrix passes at
+  80/119/120/137/138/160 columns, styled and plain, across local/remote/unknown,
+  fresh/checking/stale, unicode and path edge cases, views and viewport heights.
+- isolated darwin tmux → sessions → tls gateway → strict fleetclient → model
+  proves ordinary shell cwd changes independently of provider text. an authored
+  codex process/frame through the same pipeline proves model/effort and exactly
+  one compact location, with full values in info.
+- the retained corpus grows from 421 to 452 frames. intended footer assertions
+  fail before the parser changes and pass afterward, including native display
+  names and a one-row footer. all prior status/composer/rule/usage expectations
+  and all 243 claude observations remain unchanged.
+- installed codex 0.162.1 on macos 26.4.1 arm64/tmux 3.8 passes unchanged native
+  one-row rendering and interactive high → medium effort, with the same process,
+  terminal identity and cwd. picker display omits the phrase. the fixture uses
+  a temporary home, direct no-daemon launch and loopback api; zero inference
+  requests or account credentials. this does not qualify cloud or daemon use.
+
+independent adversarial review passes. all five temporary probes pass and are
+deleted; owned sessions, native process, servers and tempdirs are cleaned.
+only the authored provider corpus/replay remains. retained replay,
+`scripts/check verify host` and all 315 local links in changed documents pass
+after retirement. no live linux/remote, phone, release or installed-fleet
+check was run for this refinement. installed owner review remains with the
+[row/cwd acceptance records](issues/desktop-browser-runtime-acceptance.md).

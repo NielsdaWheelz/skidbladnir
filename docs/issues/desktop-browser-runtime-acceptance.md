@@ -25,7 +25,10 @@ v0.17.1 is installed on all three hosts and android.
 records exact identity, fleet/configuration/session continuity and read-only
 80×24/160×24 desktop smoke. owner review is broadly positive but requests one
 compact machine/current-path label instead of duplicated directory presentation
-from cwd plus the raw provider footer. that refinement remains pending;
+from cwd plus the raw provider footer. [refinement source qualification](../desktop-browser-simplification.md#location-refinement-qualification)
+now passes the row/context matrix, isolated darwin cwd/transport, 452 retained
+provider frames and installed native codex effort changes. matching deployment
+and installed readability review remain pending;
 [row](desktop-row-readability.md) and [cwd](desktop-cwd-truncation.md) records
 stay open. stop/close and live metadata
 editing below remain unqualified by this slice. [usage composition](../desktop-browser-simplification.md#merge-composition)
