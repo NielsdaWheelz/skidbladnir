@@ -1,8 +1,10 @@
 # claude recognition across native updates
 
-2026-10-15: source qualified; release and installed continuity pending.
-[the issue](issues/claude-update-recognition.md) records the confirmed
-macbook failure: running image `2.1.296`, launch alias pointing to `2.1.300`.
+2026-10-15: implemented, qualified and deployed in `v0.17.0`.
+the confirmed macbook failure had a running image `2.1.296` while the launch
+alias pointed to `2.1.300`. both images existed; native process observation and
+registration still agreed on the old process lifetime. the installed `v0.16.0`
+matcher rejected that image before projecting registration or sampling its screen.
 this specification replaces only the mutable executable-path recognition rule.
 
 ## target and invariants
@@ -107,7 +109,7 @@ production edits are assigned.
 | preserved controls | existing captured native target does not change; existing lifetime revalidation/refusal remains effective; no stronger terminal-delivery guarantee is claimed |
 | deployment | candidate binary validates candidate config; new launch target outside the configured directory rejects activation; existing provider/tmux processes survive gateway generation change |
 
-1. later, with required current-turn runtime approval, write temporary probes.
+1. with required current-turn runtime approval, write temporary probes.
    reproduce the original bug through real tmux/gateway/native process boundaries
    before editing production. baseline-compatible probes must fail behaviorally,
    not merely fail to compile or reject a new schema. reviewer checks sensitivity.
@@ -168,11 +170,42 @@ composition, content and refactoring. no further refactor was warranted.
   `c77b278865ad9bf520ca7ab40292541a8e5ceb8f` accepted an unrelated launch target;
   the candidate rejected it. valid rendered config passed candidate-binary
   admission. cloned assets and temporary output isolated this check from live
-  activation; installed generation continuity remains separate.
+  activation; installed generation continuity is recorded below.
 
 probes sent no prompts or inference requests and recorded no terminal content,
 credentials or conversation identifiers. owned isolated sessions were cleaned
 up. temporary probe sources were deleted after review; `scripts/check verify host`
-passed. installer shell syntax/lint and template parity passed. release and
-installed continuity remain pending; no phone or actual quota-value qualification
-is claimed.
+passed, including after incorporating current main. installer shell syntax/lint
+and template parity passed. no phone or independent quota-value accuracy
+qualification is claimed.
+
+### installed continuity
+
+immutable [v0.17.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.0)
+ships source `d22d46f40968d187863ac93ad0480bf08bfa461f`; its exact-source hosted
+verification, signed-asset checks and `scripts/check published-release` passed.
+the latter used android studio's bundled jdk after the first invocation lacked
+a java runtime. matching pins were derived from the published checksum manifest.
+installer source `fc8c7cac6290c5184267dba3ad50471ce2147a06` activated the candidate
+binary/config through gateway-only apply on macbook, arch and devbox; existing
+candidate-config admission and atomic generation switching were unchanged.
+
+- the ORIGINAL affected macbook process survived: same pid, kernel start and
+  old `2.1.296` image; launch alias still selected `2.1.300`. first post-activation
+  inventory restored registered profile/conversation projection and footer/usage
+  fields. the subsequent explicit provider check confirmed `Claude`. no provider
+  input or restart was used; values and identifiers were not logged.
+- all 12 macbook pane-root and foreground lifetimes present immediately before
+  activation survived unchanged, including registration hashes. one unrelated
+  pane had exited before that cutover snapshot and is not counted as preserved.
+- both devbox pane-root and native codex foreground lifetimes, images and
+  registration hashes survived unchanged. arch had zero existing sessions before
+  and after activation; linux runtime recognition is qualified by the isolated
+  native-provider checks above, not an invented installed-session witness.
+- `scripts/fleet verify` passed all three installed gateway/desktop-client checks
+  against the committed matching installer pin. jarvis remained paused and
+  cleanly stopped through its managed cli replacement. no phone operation ran.
+
+the confirmed update-recognition issue is resolved. wrapper discovery, deleted
+images, screen grammar drift and the retired regression suite remain outside
+this acceptance.

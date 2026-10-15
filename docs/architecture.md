@@ -1125,8 +1125,8 @@ replaces the mutable `executablePath` rule with direct-child matching in a
 configured canonical versions directory. launch configuration stays separate;
 foreground group-leader selection, codex basename matching, registration,
 controls, parsers and clients are unchanged. wrapper discovery and deleted-image
-recovery remain excluded. source qualification passes on darwin/linux; release
-and installed continuity remain pending.
+recovery remain excluded. source qualification passes on darwin/linux; `v0.17.0`
+is installed across the host fleet, with original-process continuity qualified.
 
 2026-10-15 accepted desktop usage revision: [the spec](desktop-usage.md) owns
 uniform remaining presentation, one-hour age staleness, compact weekly/short
