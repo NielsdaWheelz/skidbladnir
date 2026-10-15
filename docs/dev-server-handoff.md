@@ -190,6 +190,7 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
 | `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
+| `@CLAUDE_VERSIONS_DIRECTORY@` | canonical `HOME/.local/share/claude/versions`, independently configured for recognition |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 the shared provider installer installs ordinary upstream `@openai/codex` through
@@ -216,21 +217,22 @@ exact schema (all named members required unless marked optional):
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
   within each provider. other explicitly configured environment values retain
   their existing meaning.
-- signature: optional `executableBase` and `executablePath` strings; at least
+- signature: optional `executableBase` and `executableDirectory` strings; at least
   one is required, and both must match when both are set. `executableBase` is a
-  bare file name. `executablePath` must be absolute and clean and must resolve
-  through symlinks to an executable regular file at admission; a missing or
-  unresolvable path, a directory or a non-executable file is rejected. matching
-  resolves it again at each comparison and compares the kernel's executable
-  image; a failed resolution matches nothing. accepted cost: after a claude
-  update relinks `@CLAUDE@`, a session still running the previous image is
-  unrecognized and reads as a generic terminal. matching never reads argv: a
+  bare file name. `executableDirectory` must be absolute and clean and resolve
+  to an existing directory at admission; the canonical directory is stored.
+  matching accepts only native executable paths directly within it, rejecting
+  linux's deleted-image suffix before the parent comparison. it never resolves
+  the launch command, scans versions or stats the running image. old and new
+  native versions remain recognizable across launch-symlink changes.
+  matching never reads argv: a
   node launcher leading the foreground, including npm's codex launcher, is a
   generic terminal; managed launches and `codex` typed in a skid shell run the
   native executable.
   `argument0` and `argument1` are rejected as unknown members. use the
   template's native signatures: codex `{"executableBase": "codex"}`, claude
-  `{"executablePath": "@CLAUDE@"}`.
+  `{"executableDirectory": "@CLAUDE_VERSIONS_DIRECTORY@"}`.
+  `executablePath` is rejected outright; no compatibility reader remains.
   overlapping signatures across providers are invalid.
 - arguments: string array. claude forbids configured `-n`, `--name`, or
   `--name=...`; skid never supplies a provider conversation name.
@@ -246,10 +248,14 @@ regular non-symlink file, at most 64 kib. validate before switching a generation
 this source candidate adds that command. it performs the same strict config
 load as gateway startup and `agent-hook` against the current os and returns `0`
 only on valid configuration; diagnostics are content-free. it requires each
-configured `executablePath` to resolve to an executable regular file. it does not
+configured `executableDirectory` to resolve to a directory. it does not
 invoke tmux, start a provider, inspect credentials, or prove other
 executable/dependency availability. the installer separately checks the declared
-executables and helper pins. an installed generation whose config still carries
+executables and helper pins, including that the rendered claude launch target is
+an immediate child of the independently configured canonical versions directory.
+update the binary, templates and producer in one generation under
+[the recognition cutover](claude-update-recognition.md); old `executablePath`
+configuration fails admission. an installed generation whose config still carries
 `argument0` fails gateway startup and this validator, and `agent-hook` publishes
 nothing, so claude sessions start unregistered; re-render it from the current
 template in the same cutover.

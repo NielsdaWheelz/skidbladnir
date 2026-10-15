@@ -5,6 +5,15 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## claude update recognition — source qualified; deployment pending
+
+2026-10-15: [the spec and plan](claude-update-recognition.md) replaces comparison
+against today's launch-symlink target with direct-child matching in the configured
+canonical versions directory. [the confirmed defect](issues/claude-update-recognition.md)
+stays open until installed-continuity evidence exists. isolated darwin/linux
+red/green and admission/matching checks pass; the spec records their limits.
+[wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
+
 ## desktop browser simplification — implemented; installed review pending
 
 2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row

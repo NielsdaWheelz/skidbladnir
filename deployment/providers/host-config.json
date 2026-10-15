@@ -80,7 +80,7 @@
       ],
       "foregroundSignatures": [
         {
-          "executablePath": "@CLAUDE@"
+          "executableDirectory": "@CLAUDE_VERSIONS_DIRECTORY@"
         }
       ],
       "arguments": [

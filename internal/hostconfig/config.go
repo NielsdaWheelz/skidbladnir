@@ -115,8 +115,8 @@ type environmentVariableDTO struct {
 }
 
 type foregroundSignatureDTO struct {
-	ExecutableBase stringField `json:"executableBase"`
-	ExecutablePath stringField `json:"executablePath"`
+	ExecutableBase      stringField `json:"executableBase"`
+	ExecutableDirectory stringField `json:"executableDirectory"`
 }
 
 func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
@@ -178,20 +178,24 @@ func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		}
 		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
-			if signature.ExecutablePath.present {
-				if !validAbsolutePath(signature.ExecutablePath.value) {
-					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
+			directory := ""
+			if signature.ExecutableDirectory.present {
+				if !validAbsolutePath(signature.ExecutableDirectory.value) {
+					return nil, fmt.Errorf("host config profile %s foreground executable directory is invalid", candidate.Key.value)
 				}
-				// Stat follows symlinks: the spelling must resolve to an
-				// executable regular file now, and is stored unresolved.
-				info, err := os.Stat(signature.ExecutablePath.value)
-				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-					return nil, fmt.Errorf("host config profile %s foreground executable path is not an executable file", candidate.Key.value)
+				canonical, err := filepath.EvalSymlinks(signature.ExecutableDirectory.value)
+				if err != nil {
+					return nil, fmt.Errorf("host config profile %s foreground executable directory cannot be resolved", candidate.Key.value)
 				}
+				info, err := os.Stat(canonical)
+				if err != nil || !info.IsDir() {
+					return nil, fmt.Errorf("host config profile %s foreground executable directory is not a directory", candidate.Key.value)
+				}
+				directory = canonical
 			}
 			signatures[signatureIndex] = agentruntime.ForegroundSignature{
-				ExecutableBase: signature.ExecutableBase.value,
-				ExecutablePath: signature.ExecutablePath.value,
+				ExecutableBase:      signature.ExecutableBase.value,
+				ExecutableDirectory: directory,
 			}
 		}
 		arguments := make([]string, len(*candidate.Arguments))

@@ -55,11 +55,11 @@ func ParseProfileKey(value string) (ProfileKey, error) {
 }
 
 // ForegroundSignature fields are conjunctive; a profile's signatures are
-// alternatives. ExecutablePath is the configured absolute, clean spelling,
-// matched against the kernel's executable after resolving its symlinks.
+// alternatives. ExecutableDirectory is canonicalized at config admission and
+// matches only immediate executable children.
 type ForegroundSignature struct {
-	ExecutableBase string
-	ExecutablePath string
+	ExecutableBase      string
+	ExecutableDirectory string
 }
 
 type EnvironmentVariable struct {
@@ -142,14 +142,14 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 			return nil, fmt.Errorf("profile %s has no foreground signature", profile.Key)
 		}
 		for _, signature := range profile.ForegroundSignatures {
-			if signature.ExecutableBase == "" && signature.ExecutablePath == "" {
+			if signature.ExecutableBase == "" && signature.ExecutableDirectory == "" {
 				return nil, fmt.Errorf("profile %s has no foreground process identity", profile.Key)
 			}
 			if signature.ExecutableBase != "" && (!utf8.ValidString(signature.ExecutableBase) || filepath.Base(signature.ExecutableBase) != signature.ExecutableBase || hasTerminalControl(signature.ExecutableBase)) {
 				return nil, fmt.Errorf("profile %s has an invalid foreground executable", profile.Key)
 			}
-			if signature.ExecutablePath != "" && (!filepath.IsAbs(signature.ExecutablePath) || filepath.Clean(signature.ExecutablePath) != signature.ExecutablePath || !utf8.ValidString(signature.ExecutablePath) || strings.ContainsRune(signature.ExecutablePath, 0)) {
-				return nil, fmt.Errorf("profile %s has an invalid foreground executable path", profile.Key)
+			if signature.ExecutableDirectory != "" && (!filepath.IsAbs(signature.ExecutableDirectory) || filepath.Clean(signature.ExecutableDirectory) != signature.ExecutableDirectory || !utf8.ValidString(signature.ExecutableDirectory) || strings.ContainsRune(signature.ExecutableDirectory, 0)) {
+				return nil, fmt.Errorf("profile %s has an invalid foreground executable directory", profile.Key)
 			}
 			allSignatures = append(allSignatures, providerSignature{provider: profile.Provider, signature: signature})
 		}
