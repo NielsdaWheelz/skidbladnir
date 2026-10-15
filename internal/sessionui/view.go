@@ -59,18 +59,13 @@ func (m *model) View() tea.View {
 	return view
 }
 
-// header is the wordmark, then the strip of views in stepping order, then the
-// machine filter at the right edge when one narrows the scope. usage omits the
-// table's scope controls.
+// header is the wordmark, then the strip of views in stepping order.
+// usage omits the table's view strip.
 func (m *model) header() string {
 	if m.page == "usage" {
 		return wordmark.Styled(" skid ")
 	}
-	machine, room := "", m.width-2-7
-	if m.machine != "" {
-		machine = ansi.Truncate("machine: "+attention.SingleLine(m.machine), 24, "…")
-		room -= ansi.StringWidth(machine) + 2
-	}
+	room := m.width - 2 - 7
 	tabs, current := []tab{}, 0
 	for index, view := range m.viewOptions() {
 		switch view.kind {
@@ -91,11 +86,7 @@ func (m *model) header() string {
 			current = index
 		}
 	}
-	line := wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
-	if machine == "" {
-		return line
-	}
-	return line + strings.Repeat(" ", max(0, m.width-2-ansi.StringWidth(line)-ansi.StringWidth(machine))) + machine
+	return wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
 }
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
@@ -107,8 +98,7 @@ type tab struct{ fixed, label string }
 // that fits; while a group is current the fit reserves room for the widest
 // label whole, so stepping between groups keeps the cap. below the floor, the
 // groups farthest from the current view hide behind counted markers. the
-// current label shows whole up to 24 cells unless a long machine filter leaves
-// no room.
+// current label shows whole up to 24 cells.
 func strip(tabs []tab, current, room int, stepping bool) string {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
@@ -194,30 +184,22 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	return line
 }
 
-// footerLines holds notices, quota context, the rule naming the session the keys
-// act on, that session's facts, and the keys.
+// footerLines holds notices, quota context, the content boundary, and the keys.
+// Only pages name a captured target in the boundary.
 func (m *model) footerLines() []string {
 	width := m.width - 2
 	notices := m.noticeLines(width)
 	usage := m.usageSummary()
 	keys := keyLines(width, m.hints()...)
-	legend, detail, end := "", []string{}, ""
+	legend, end := "", ""
 	switch m.page {
 	case "":
-		position := ""
-		if m.busy {
-			legend = target(m.pendingName, m.pendingLabel, width)
-		} else if row := m.selectedRow(); row != nil {
-			legend = target(row.session.Name, row.label, width)
-			detail = m.rowDetailLines(*row, width)
+		if m.selectedRow() != nil {
 			layout := m.tableLayout(width)
-			height := m.height - 3 - len(usage) - len(notices) - len(detail) - len(keys)
+			height := m.height - 3 - len(usage) - len(notices) - len(keys)
 			if m.top > 0 || layout.viewport(m.top, height).end < len(m.rows) {
-				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
+				end = faint.Styled(fmt.Sprintf(" %d of %d", m.cursor+1, len(m.rows)))
 			}
-		}
-		if position != "" {
-			end += faint.Styled(" " + position)
 		}
 	case "confirm":
 		legend = target(m.pendingName, m.pendingLabel, width)
@@ -228,7 +210,6 @@ func (m *model) footerLines() []string {
 	}
 	lines := append(notices, usage...)
 	lines = append(lines, rule(legend, end, width))
-	lines = append(lines, detail...)
 	return append(lines, keys...)
 }
 
@@ -255,7 +236,7 @@ func (m *model) noticeLines(width int) []string {
 		lines = append(lines, faint.Styled("notifications unavailable"))
 	}
 	// A peer without an error is unobserved or being checked, not unavailable.
-	for _, peer := range m.scopedPeers() {
+	for _, peer := range m.peers {
 		if !peer.OK && peer.Error != nil {
 			suffix := " unavailable (" + attention.SingleLine(peer.Error.Code) + "); showing its last observation"
 			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
@@ -282,8 +263,6 @@ func (m *model) hints() [][]hint {
 			effect = "send interrupt"
 		}
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
-	case "machine-picker":
-		return [][]hint{{{"↑↓", "choose"}, {"enter", "select"}, {"escape", "cancel"}}}
 	case "group-edit", "name-edit":
 		if m.metadata.checking {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
@@ -330,19 +309,18 @@ func (m *model) hints() [][]hint {
 		return [][]hint{{{"q escape", "back"}}}
 	}
 	session := []hint{}
+	global := []hint{{"n", "quick terminal"}, {"N", "new terminal options"}}
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
 		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
+		if !m.busy && row.session.Connection == nil {
+			global = append(global, hint{"T", "new terminal here"})
+		}
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
 	}
-	target := m.machine
-	if target == "" {
-		target = m.client.DefaultMachine().Label
-	}
-	// The strip's chevrons and --help teach ←→, so the global keys keep one 80-column line
-	// for host labels up to 9 cells.
-	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + attention.SingleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
+	global = append(global, hint{"u", "usage"}, hint{"q", "quit"})
+	return [][]hint{session, global}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -377,8 +355,8 @@ func keyLines(width int, groups ...[]hint) []string {
 	return lines
 }
 
-// rule is the one boundary between content and controls; its legend names the
-// target, and its styled end carries the table's filter and scrolled position.
+// rule separates content and controls. A page legend names its target; the
+// table's styled end carries its scrolled position.
 func rule(legend, end string, width int) string {
 	if end != "" {
 		end += faint.Styled(" ──")
@@ -394,49 +372,6 @@ func rule(legend, end string, width int) string {
 func target(name, machine string, width int) string {
 	half := max(1, (width-10)/2)
 	return bold.Styled(ansi.Truncate(attention.SingleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(attention.SingleLine(machine), half, "…")
-}
-
-func (m *model) rowDetailLines(row listedRow, width int) []string {
-	current := m.current(&row)
-	facts := m.statusView(row).Detail
-	if row.session.Agent == nil && row.session.ActiveCommand != "" {
-		facts += ": " + row.session.ActiveCommand
-	}
-	// a row without remote actions names why: its host failed a read, or it
-	// is being checked.
-	switch {
-	case m.hostChecking(row):
-		facts = "checking; " + facts
-	case !row.available:
-		facts = "unavailable; " + facts
-	}
-	action, room := "", width
-	if row.available && row.session.Connection == nil {
-		action = bold.Styled("shift+t") + " new shell here"
-		room -= ansi.StringWidth(action) + 2
-	}
-	directory := ""
-	switch current.Kind {
-	case "local", "remote":
-		prefix := ""
-		if current.Kind == "remote" {
-			prefix = "running on " + ansi.Truncate(attention.SingleLine(current.Label), 24, "…") + ": "
-		}
-		directory = "directory unavailable"
-		if current.CWD != "" {
-			directory = tail(attention.SingleLine(current.CWD), room-ansi.StringWidth(prefix))
-		}
-		directory = prefix + directory
-	case "remoteUnknown":
-		directory = "remote context unknown"
-	default:
-		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
-	}
-	if action != "" {
-		directory += strings.Repeat(" ", width-ansi.StringWidth(directory)-ansi.StringWidth(action)) + action
-	}
-	status := attention.SingleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
-	return []string{faint.Styled(ansi.Truncate(status, width, "…")), directory}
 }
 
 func (m *model) bodyLines(height int) []string {
@@ -457,18 +392,6 @@ func (m *model) bodyLines(height int) []string {
 		ref, _ := fleetclient.DecodeReference(m.pending.Ref)
 		lines = append(lines, wrapped("selected pane "+ref.PaneID+" · terminal host "+attention.SingleLine(m.pendingLabel), width)...)
 		return window(append(lines, wrapped(effect, width)...), 0, 0, height)
-	case "machine-picker":
-		lines := []string{bold.Styled("machine"), ""}
-		for index, option := range m.pickerOptions() {
-			text := ansi.Truncate(attention.SingleLine(option), width-2, "…")
-			if index == m.picker {
-				text = here.Styled("▌") + " " + bold.Styled(text)
-			} else {
-				text = "  " + text
-			}
-			lines = append(lines, text)
-		}
-		return window(lines, m.picker+2, m.picker+3, height)
 	case "group-edit", "name-edit":
 		editor := m.metadata
 		title, label, draft, axis := "group", "group", groupDraftDisplay(editor.draft), 7
@@ -588,7 +511,11 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, "type search words or a path (/… or ~/…); tab uses the match.")
 		}
 		if !m.createAvailable() {
-			lines = append(lines, "host unavailable; create disabled")
+			status := "host unavailable; create disabled"
+			if m.targetChecking(m.form[0]) {
+				status = "checking inventory; create disabled"
+			}
+			lines = append(lines, status)
 		}
 		if _, err := group.ParseDraft(m.form[4]); err != nil {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
@@ -605,11 +532,11 @@ func (m *model) bodyLines(height int) []string {
 	}
 	if len(m.rows) == 0 {
 		partial := false
-		for _, peer := range m.scopedPeers() {
+		for _, peer := range m.peers {
 			partial = partial || !peer.OK
 		}
 		switch {
-		case !m.scopeReady:
+		case !m.inventoryReceived:
 			return []string{"checking inventory"}
 		case m.view.kind == viewNeedsInput:
 			return []string{"no sessions currently need input in this view"}
@@ -737,7 +664,7 @@ func (m *model) statusView(row listedRow) fleetclient.StatusView {
 }
 
 // hostChecking reports a row without remote actions whose host has not failed a
-// read: a pending scoped read or a re-read after metadata is checking it.
+// read: its host is unobserved or being re-read after a metadata change.
 func (m *model) hostChecking(row listedRow) bool {
 	if row.available {
 		return false

@@ -15,19 +15,18 @@ it, preserved existing macbook/devbox lifetimes and passed fleet verification.
 the spec records exact evidence and limits; the confirmed defect is resolved.
 [wrapper discovery](issues/provider-wrapper-recognition.md) remains deferred.
 
-## desktop readability — source qualified; installed review pending
+## desktop browser simplification — implemented; installed review pending
 
-2026-10-15: [the revised spec and plan](desktop-session-rows.md) owns distinct
-group/session/continuation geometry and consistent cwd suffix display. work is
-split between layout and browser composition, with separate content designers
-and independent adversarial review. source/model checks, isolated darwin/linux
-runtime checks and a separate installed-tui review after deployment are required.
+2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
+its directory, removes selected-footer facts and machine collection filtering,
+and gives `n`/`N`/`T` ordinary descriptive hints. needs-input/all/group views and
+explicit creation destinations remain. source qualification is recorded in the
+spec; release/deployment and installed usability remain separate.
 [row readability](issues/desktop-row-readability.md) and
 [cwd truncation](issues/desktop-cwd-truncation.md) remain open through installed
-acceptance. [this revision's qualification](desktop-session-rows.md#readability-revision)
-passes model/view and isolated darwin/linux runtime checks; release/deployment
-and installed usability remain separate. prior compact-row evidence stays
-source-attributed.
+acceptance. the [preceding readability qualification](desktop-session-rows.md#readability-revision)
+and compact-row evidence remain source-attributed. [usage composition](desktop-browser-simplification.md#merge-composition)
+passes focused model/view checks; prior live evidence retains its recorded source.
 
 ## preceding compact desktop rows and terminal footer — shipped in v0.16.0
 

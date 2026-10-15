@@ -26,7 +26,7 @@ macbook, devbox and arch. grouping by profile key/provider rests on that explici
 fleet invariant, not inferred equivalence of homes or labels. changing accounts
 behind a profile reopens this contract; no account registry or discovery is added.
 
-accepted costs: all-host inventory/native reads even with a machine filter;
+accepted costs: all-host inventory/native reads even in a group view;
 bounded batches can wait for a slow host; receipt-order source changes may reflect
 network timing rather than newer provider data. claude loses full precision,
 backend report age, reset times and inactive-session coverage. custom-format,
@@ -163,11 +163,11 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
 
 ## collection, selection and lifetime
 
-1. the existing desktop inventory read requests the full fleet. machine/view/group
-   filters remain local projections; creation defaults and captured action targets
-   retain their owners. preserve the current result/admission fence and
-   `scopeReady`; a globally failed all-host batch marks every requested peer
-   unavailable, not only the visible filter.
+1. desktop inventory reads the full fleet. views remain local projections;
+   machine filtering is removed by [browser simplification](desktop-browser-simplification.md).
+   preserve result/admission and post-write fences. peer `OK` owns admission;
+   monotonic `inventoryReceived` owns initial empty-state presentation only. a
+   globally failed batch marks every requested peer unavailable.
 2. stamp each successful host response with client-local monotonic `ReceivedAt`
    at the existing bounded-body receipt boundary, before fleet aggregation.
    extend inventory `Peer` with this non-wire value, following native usage.

@@ -38,9 +38,9 @@ func (m *model) rebuild() {
 	m.rows = nil
 	switch m.view.kind {
 	case viewNeedsInput:
-		for _, peer := range m.scopedPeers() {
+		for _, peer := range m.peers {
 			for _, session := range peer.Sessions {
-				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
+				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
 				if m.statusView(row).Queue != fleetclient.QueueExcluded {
 					m.rows = append(m.rows, row)
 				}
@@ -57,9 +57,9 @@ func (m *model) rebuild() {
 				filter, _ = group.NamedFilter(m.view.label)
 			}
 		}
-		for _, group := range fleetclient.Groups(m.scopedPeers(), filter) {
+		for _, group := range fleetclient.Groups(m.peers, filter) {
 			for _, row := range group.Rows {
-				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available && m.scopeReady})
+				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available})
 			}
 		}
 	default:
@@ -77,26 +77,12 @@ func (m *model) rebuild() {
 	}
 }
 
-// rebuildForFilter keeps the selected session when it survives a scope change;
-// otherwise it selects the first row.
-func (m *model) rebuildForFilter() {
-	var selected fleetclient.Session
-	if row := m.selectedRow(); row != nil {
-		selected = row.session
-	}
-	m.rebuild()
-	if row := m.selectedRow(); row != nil && !sameSession(row.session, selected) {
-		m.cursor = 0
-	}
-	m.top = 0
-}
-
-// viewOptions includes every group observed in scope plus the selected group,
+// viewOptions includes every group observed in the fleet plus the selected group,
 // in group order, so an empty selection survives and unassigned comes last.
 // step walks it and header draws it, so drawn and stepped order are one.
 func (m *model) viewOptions() []selectedView {
 	labels := []group.Label{}
-	for _, observed := range fleetclient.Groups(m.scopedPeers(), group.Filter{}) {
+	for _, observed := range fleetclient.Groups(m.peers, group.Filter{}) {
 		labels = append(labels, observed.Label)
 	}
 	if m.view.kind == viewGroup && !slices.Contains(labels, m.view.label) {
@@ -121,8 +107,17 @@ func (m *model) selectView(view selectedView) {
 	if m.view == view {
 		return
 	}
+	var selected fleetclient.Session
+	if row := m.selectedRow(); row != nil {
+		selected = row.session
+	}
 	m.view = view
-	m.rebuildForFilter()
+	m.rebuild()
+	// keep a surviving selection; otherwise begin at the first row of the view.
+	if row := m.selectedRow(); row != nil && !sameSession(row.session, selected) {
+		m.cursor = 0
+	}
+	m.top = 0
 }
 
 func (m *model) move(delta int) {

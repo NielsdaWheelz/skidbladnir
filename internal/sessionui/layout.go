@@ -17,8 +17,8 @@ type tableLayout struct {
 }
 
 type tableEntry struct {
-	height  int
-	heading bool
+	height            int
+	heading, metadata bool
 }
 
 type tablePlacement struct {
@@ -43,22 +43,18 @@ func (m *model) tableLayout(width int) tableLayout {
 		if assigned {
 			layout.group = max(layout.group, 1, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
 		}
-		current := m.current(&row)
-		nameWidth := ansi.StringWidth(attention.SingleLine(row.session.Name))
-		if current.Kind == "remote" {
-			nameWidth += 4 + min(12, ansi.StringWidth(attention.SingleLine(current.Label)))
-		}
-		layout.name = max(layout.name, nameWidth)
+		layout.name = max(layout.name, ansi.StringWidth(attention.SingleLine(row.session.Name)))
 		provider, profile, footer := m.rowMetadata(row)
 		layout.provider = max(layout.provider, ansi.StringWidth(attention.SingleLine(provider)))
 		layout.profile = max(layout.profile, ansi.StringWidth(attention.SingleLine(profile)))
 		layout.footer = max(layout.footer, ansi.StringWidth(attention.SingleLine(footer)))
-		if current.Kind == "remoteUnknown" {
-			layout.provider, layout.profile = max(layout.provider, 6), max(layout.profile, 6)
+		entry := tableEntry{
+			height:   2,
+			heading:  m.opensGroup(index),
+			metadata: assigned || provider != "" || profile != "" || footer != "",
 		}
-		entry := tableEntry{height: 1, heading: m.opensGroup(index)}
-		if layout.stacked && (assigned || provider != "" || profile != "" || footer != "" || current.Kind == "remoteUnknown") {
-			entry.height = 2
+		if layout.stacked && entry.metadata {
+			entry.height++
 		}
 		layout.entries = append(layout.entries, entry)
 	}
@@ -109,6 +105,23 @@ func (m *model) rowMetadata(row listedRow) (provider, profile, footer string) {
 		footer = m.rowFooter(row)
 	}
 	return
+}
+
+func rowDirectory(current fleetclient.ExecutionContext, width int) string {
+	prefix := ""
+	switch current.Kind {
+	case "local":
+	case "remote":
+		prefix = "remote: "
+	case "remoteUnknown":
+		return "remote context unknown"
+	default:
+		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
+	}
+	if current.CWD == "" {
+		return prefix + "directory unavailable"
+	}
+	return prefix + tail(attention.SingleLine(current.CWD), width-len(prefix))
 }
 
 func (m *model) fitViewports() {
@@ -163,15 +176,9 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 		if index == m.cursor {
 			gutter, nameStyle = here.Styled("▌")+" ", nameStyle.Bold()
 		}
-		current := m.current(&row)
-		name, qualifier := attention.SingleLine(row.session.Name), ""
-		if current.Kind == "remote" {
-			budget := min(12, layout.name-4-min(12, ansi.StringWidth(name)))
-			qualifier = " on " + ansi.Truncate(attention.SingleLine(current.Label), budget, "…")
-		}
-		name = ansi.Truncate(name, layout.name-ansi.StringWidth(qualifier), "…")
+		name := ansi.Truncate(attention.SingleLine(row.session.Name), layout.name, "…")
 		printed, statusStyle := m.tableStatus(row)
-		line := gutter + nameStyle.Styled(name) + faint.Styled(qualifier) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)-ansi.StringWidth(qualifier)))
+		line := gutter + nameStyle.Styled(name) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)))
 		line += "  " + statusStyle.Styled(cell(printed, layout.status))
 		provider, profile, footer := m.rowMetadata(row)
 		metadata := []string{}
@@ -182,27 +189,28 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 			}
 			metadata = append(metadata, membership)
 		}
-		if current.Kind == "remoteUnknown" {
-			metadata = append(metadata, cell("remote unknown", layout.provider+2+layout.profile))
-		} else {
-			if layout.provider > 0 {
-				metadata = append(metadata, cell(provider, layout.provider))
-			}
-			if layout.profile > 0 {
-				metadata = append(metadata, cell(profile, layout.profile))
-			}
+		if layout.provider > 0 {
+			metadata = append(metadata, cell(provider, layout.provider))
+		}
+		if layout.profile > 0 {
+			metadata = append(metadata, cell(profile, layout.profile))
 		}
 		if layout.footer > 0 {
 			metadata = append(metadata, cell(footer, layout.footer))
 		}
 		text := strings.Join(metadata, "  ")
-		if !layout.stacked && strings.TrimSpace(text) != "" {
+		if !layout.stacked && layout.entries[index].metadata {
 			line += "  " + faint.Styled(text)
 		}
 		lines = append(lines, line)
-		if layout.entries[index].height == 2 {
+		if layout.stacked && layout.entries[index].metadata {
 			lines = append(lines, gutter+"  "+faint.Styled(text))
 		}
+		directoryStyle := plain
+		if !row.available {
+			directoryStyle = faint
+		}
+		lines = append(lines, gutter+"  "+directoryStyle.Styled(rowDirectory(m.current(&row), layout.width-4)))
 	}
 	return lines
 }

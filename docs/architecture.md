@@ -34,6 +34,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[browser simplification](desktop-browser-simplification.md) owns the fleet-wide
+desktop cutover, per-row directories and ordinary creation shortcuts.
 [desktop session rows](desktop-session-rows.md) owns the accepted readability
 revision and preceding compact layout; readability source and isolated runtime
 are qualified, with installed usability pending.
@@ -130,7 +132,7 @@ machine does not block or authorize action against another.
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
 | State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude quota is ephemeral evidence in current inventory; native codex reports remain desktop-local observations. devbox persists content-free transition summaries and one private push subscription; device owners persist local notification acknowledgement/handling. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
-| groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
+| groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
@@ -486,7 +488,8 @@ there is no quota file, publisher, extra capture, hook extension or new poller.
 The Forge first requires a machine and then offers terminal and that machine's
 declared agent profiles. Terminal remains available with zero profiles.
 phone standalone creation requires an explicit machine; source creation retains
-its exact source host. desktop machine scope may preselect its create target.
+its exact source host. desktop quick creation and initial options use the
+configured default machine; options permit an explicit other host.
 directory and group use the same native field mechanics within each client:
 typing supplies choices, acceptance fills the visible draft, and a separate
 create/save action submits it. directory search waits 150 ms; group filtering
@@ -648,13 +651,14 @@ of target, not semantic safety.
 
 the implemented [desktop browser](desktop-browser.md) presents one table:
 needs input ordered ready first then requests/notices, all and per-group views
-in stable order, with forms/details in the same frame. `f` selects needs input
-through the ordinary exclusive view path. it owns the exact selection, keys,
+in stable order across the fleet, with forms/details in the same frame. arrows
+select views; machine filtering and the `f` jump are removed. it owns the exact selection, keys,
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
-the implemented row simplification separates provider/profile and moves repeated
-owner/directory context to selected details, with explicit remote qualifiers.
+the implemented [browser simplification](desktop-browser-simplification.md)
+puts sampled directories in every row and host identity in info; the resting
+footer holds notices, quota, pagination and ordinary action hints.
 the preceding [session-row revision](desktop-session-rows.md#qualification) caps
 intrinsic widths and uses uniform two-line entries at narrow sizes. the accepted
 [readability replacement](desktop-session-rows.md) adds structural record/group
@@ -679,8 +683,8 @@ conversation separately from its current native observation; only a later
 explicitly authorized action may choose the separate `observedRef`. terminal
 reassociation or deletion does not retarget captured conversation inspection.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
-the tui's `n` immediately creates and attaches a home terminal on the visible
-machine or configured default; `N` opens the advanced form. mobile retains
+the tui's `n` immediately creates and attaches a home terminal on the configured
+default machine; `N` opens explicit new-terminal options. mobile retains
 its machine, directory, and provider chooser. `stop` means `stop current work`;
 `close` attempts interruption then independently closes the exact terminal. `close --terminal-only` closes the
 exact session without halt. pending provider input may remain; history is retained.
@@ -1120,6 +1124,13 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
+2026-10-15 implemented [browser simplification](desktop-browser-simplification.md):
+the desktop removes machine collection scope and selected-footer facts, gives
+every row its sampled directory, and presents `n`/`N`/`T` as ordinary actions.
+needs-input/all/group views, explicit creation destinations and asynchronous
+ownership remain. no public api, wire/config schema, persistence or polling change.
+the spec owns source qualification and the separate installed usability step.
+
 2026-10-15 accepted claude update-recognition correction: [the spec and plan](claude-update-recognition.md)
 replaces the mutable `executablePath` rule with direct-child matching in a
 configured canonical versions directory. launch configuration stays separate;
@@ -1134,7 +1145,7 @@ records and usage-page key removal. acquisition, source selection, external
 schemas and cadence stay unchanged. [isolated desktop acceptance](desktop-usage.md#qualification)
 passes; deployment remains separate.
 
-2026-10-15 accepted readability revision: [desktop rows](desktop-session-rows.md)
+2026-10-15 preceding readability revision: [desktop rows](desktop-session-rows.md)
 owns section/record hierarchy, complete-entry viewport admission and selected
 directory presentation. this is a client presentation hard cut with no public
 api, wire schema, stored state or execution change. source, isolated runtime and
@@ -1205,7 +1216,8 @@ replaces phone machine/group/needs-input controls and the desktop agents view
 with exclusive needs-input/all/group views. needs input includes ready, explicit
 requests and current error/interruption notices, ordered ready first; quiet idle
 is excluded. phone browsing spans the fleet, with pressure/reconnect in a
-separate machine disclosure. desktop machine scope remains. the spec owns the
+separate machine disclosure. the later desktop simplification also removes
+desktop machine scope. the spec owns the
 replacement navigation, schema-4 task capsule, narrow implementation plan and
 acceptance, superseding affected collection/pressure clauses in §§2, 4 and 6.
 source implements this design; observation, attention persistence/visits and

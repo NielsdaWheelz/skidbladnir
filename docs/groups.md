@@ -85,7 +85,7 @@ supplies a cwd, checkout, profile, machine, prompt, or agent context.
 8. groups, suggestions, and emptiness derive from observed inventory. unavailable
    hosts and stale rows stay explicit. an empty view never proves fleet-wide
    absence. neither a view nor a suggestion is action authority.
-9. editing retains the selected view and desktop machine scope. selection and
+9. editing retains the selected view. selection and
    pending actions follow session lifetimes, never row positions. terminal entry
    and detach/back retain navigation and semantic viewport. creation has the
    narrow exception in section 7.
@@ -340,8 +340,7 @@ headings are presentation only. `info` includes membership with its other facts.
 
 ## 7. collection behavior and creation
 
-phone selects one needs-input/all/group view across the accepted fleet; desktop
-retains a separate machine scope. [session views](session-views.md) owns that
+phone and desktop select one needs-input/all/group view across the retained fleet. [session views](session-views.md) owns that
 exclusive navigation and its bare named-group tabs. selected empty groups
 remain selected; other empty labels need not remain suggestions. no collapsed
 group state exists.
@@ -354,21 +353,20 @@ suggestions are sorted distinct labels from currently retained observations,
 independent of the selected view. they may include stale evidence; they promise
 neither existence nor completeness and confer no action readiness. label the
 list `observed groups`. no extra discovery request or durable suggestion cache.
-desktop machine scope can expose fewer observed suggestions than all machines;
-phone suggestions use the accepted fleet. free text always permits another valid label.
+both clients derive suggestions from the retained fleet. free text always permits another valid label.
 
 retain unfiltered source inventories for refresh and stale-row retention.
 `list --machine` reads that host; phone manual verification snapshots every live
-fleet poller; tui refresh reads its selected machine scope. a group view never
+fleet poller; tui refresh reads the full fleet. a group view never
 chooses hosts. phone's independent automatic pollers and pull/read completion
 ordering remain unchanged; [session views](session-views.md#phone-presentation-and-machine-scope-removal)
 owns the machines disclosure and pressure placement.
 
-zero-row copy: `no sessions in this view` after complete fresh scoped reads;
+zero-row copy: `no sessions in this view` after complete fresh fleet reads;
 `no matching sessions in available inventory` with existing unavailable/stale
-notices when scoped hosts cannot establish current inventory. initial reads
-retain checking. never say a group was deleted. phone machine notices remain visible outside every view; desktop out-of-scope
-outages do not affect its narrowed machine collection.
+notices when hosts cannot establish current inventory. initial reads
+retain checking. never say a group was deleted. every host failure remains visible
+in every view on both clients, including empty groups.
 
 ### selection and edits
 
@@ -406,9 +404,8 @@ creation. when selection changes, cancel saved restoration and reset the
 viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
-admission and returns to the resulting view. desktop also reveals the created
-machine when its scope requires it; phone creation never sets a hidden machine
-scope. group never silently chooses another creation host.
+admission and returns to the resulting view. neither client installs a hidden
+machine scope. group never silently chooses another creation host.
 
 unknown/failed creation does not switch views or assign separately. preserve
 its group draft in the existing in-memory create recovery, never android saved
@@ -432,18 +429,13 @@ refresh, at most one inventory request in flight, and the boundary rules below.
 historical groups evidence describes the preceding table; source follows the
 desktop-browser and session-views contracts.
 
-the machine picker lists configured peers, including unavailable ones, plus all
-machines. expose only labels/handles from fleetclient configuration to this
-consumer, never origins/bearers. initial state is all/all. changing machine
-requests fresh inventory for that scope before enabling its actions. carry
-requested scope in the existing inventory message: an old-scope result cannot
-satisfy the new-scope read; coalesce one follow-up refresh if necessary. group
-changes need no request. no second poll loop or request-generation framework.
-
-retain complete received session rows before group filtering. a failed scoped
-peer retains its previous rows as unavailable; an unqueried peer is not reported
-as freshly checked. no per-filter row histories. returning to all performs an
-all-machine read before enabling its collection.
+the browser has no machine picker or hidden machine scope. initial state is the
+all view across the fleet. group changes are local and need no request. retain
+complete received sessions before view projection; failed peers keep their prior
+rows as unavailable. peer `OK` owns action eligibility. preserve the existing
+post-write read fence; a rejected read cannot settle initial presentation or
+restore admission. [desktop simplification](desktop-browser-simplification.md)
+owns the cutover. no per-view row histories or additional polling machinery.
 
 desktop group editing opens with `g` inside the session's spacebar info page;
 save/cancel returns to that captured info, without changing the table's view.
@@ -467,7 +459,7 @@ characters in the tui while retaining their original editable bytes; valid
 unicode labels retain their ordinary presentation.
 
 the create form has one visible group field, with input and suggestions shared
-with its editor. desktop machine scope may visibly prefill its create machine;
+with its editor. desktop options initially use the configured default machine;
 phone standalone creation requires an explicit machine and source creation keeps
 its source host. confirmed creation reveals the returned membership under
 [session views](session-views.md#selected-views-and-continuity); cancellation and
@@ -642,8 +634,8 @@ not label values, terminal bytes, prompts, credentials, or provider output.
 | a2 · host membership | create assigned/unassigned; set/change/clear/no-op; list/create/info projection; invalid input mutates nothing; invalid/local-absent/global-only metadata projects unassigned without repair |
 | a3 · lifetime | old ref survives rename and pane/foreground replacement; stale session/server ref rejects; process identities, pane/window, cwd, name, character and attachment survive assignment; members of a tmux session group have independent labels |
 | a4 · ordering/uncertainty | concurrent absolute assignments yield whole last-applied values; possible dispatch never permits replay; one client write; pre-mutation reads cannot clear phone fence; a later differing label is authoritative without a fabricated failed-write claim |
-| a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; exclusive views; separate desktop machine scope; selector-looking labels distinguishable; peer json and partial status honest |
-| a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; all/group views reveal retained rows; refresh discovers new membership across the phone fleet or desktop machine scope; old tui scope result cannot admit new scope |
+| a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; exclusive fleet-wide views; selector-looking labels distinguishable; peer json and partial status honest |
+| a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; all/group views reveal retained rows; refresh discovers membership across the fleet; pre-write tui reads cannot restore admission |
 | a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed creation changes a non-admitting view to the returned group |
 | a8 · navigation | selection follows lifetime or specified clamped session index; heading/card viewport survives detach/back, insertion/reorder and recreation; missing anchor clamps rendered index; absent label stays selected; unavailable restore settles; capsule contains only exact current-schema primitives |
 | a9 · regression/scope | unassigned terminals preserve controls/defaults/host rules; no shell launcher, tmux grouping, provider meaning, launch context, persistent group resource, or compatibility path |
@@ -697,7 +689,7 @@ release and runtime workflows.
 | last applied write, no replay | edits can overwrite and acknowledgements can be lost; no versions, receipts, conflict subsystem, or repair daemon |
 | observed suggestions | incomplete/stale names are typing assistance, not a catalogue or readiness claim |
 | filtering source inventory locally | no source payload reduction or group-derived host scope; preserve discovery and honest partial results |
-| confirmed creation can change views | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the created machine when needed |
+| confirmed creation can change views | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the exact created lifetime |
 | phone editing on dashboard | detach to refile; no terminal-chrome cost or added terminal navigation |
 | phone suggestions and overflow | one extra tap opens suggestions; change group sits one tap behind the card's overflow, so cards stay compact with 48dp menu rows |
 | saved label fingerprint | disappeared name becomes generic after recreation; creation requires explicit choice; hashes do not conceal guessable labels |

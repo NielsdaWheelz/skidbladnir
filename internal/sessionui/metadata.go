@@ -174,7 +174,7 @@ func (m *model) reconcileMetadata() {
 	pageRef, _ := fleetclient.DecodeReference(m.pageRow.session.Ref)
 	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && ref.SessionEqual(pageRef)
 	if row == nil {
-		for _, peer := range m.scopedPeers() {
+		for _, peer := range m.peers {
 			if peer.Machine == ref.Machine && peer.OK {
 				if m.page == "name-edit" || m.page == "group-edit" {
 					m.page = "details"

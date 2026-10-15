@@ -1,8 +1,9 @@
 # desktop browser
 
-2026-10-15: [session rows](desktop-session-rows.md) owns the accepted readability
-replacement, selected-directory display and preceding compact layout;
-readability source and isolated runtime pass; installed usability is pending.
+2026-10-15: [browser simplification](desktop-browser-simplification.md) owns
+the fleet-wide roster, per-row directories, footer and creation shortcuts.
+[session rows](desktop-session-rows.md) records the preceding layouts.
+installed usability remains a separate acceptance boundary.
 [displayed footer](terminal-model-effort.md)
 owns observed text and adds only its optional session field to this document's
 api/state limit. preceding source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
@@ -33,8 +34,8 @@ replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
 and the strict request predicate; [terminal control](terminal-agent-control.md) owns
 ordinary read/send/wait/stop/close. [terminal attention](reply-notifications.md)
 owns notices and visits. native history/control remains explicitly addressed.
-[darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
-skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
+[remaining live and installed acceptance](issues/desktop-browser-runtime-acceptance.md)
+keeps its feature-specific boundaries. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
 owns visual values. this spec replaces the desktop table/picker layout and affected
 navigation rules in [groups](groups.md) and [agent-control ux](agent-control-ux.md).
@@ -46,8 +47,8 @@ display. [pr 4](groups-and-shells.md) separately investigates terminal embedding
 
 one keyboard-only browser: one table, one cursor, one scope. a view strip on row
 1 lists the views in stepping order, counting any that overflow, and marks the
-current one; the table lists every session in it, and one rule names the session
-the keys act on. forms, confirmations, details and explicitly requested output
+current one; the table lists every session in it. each row owns its directory;
+info owns host identity. an unlabelled rule separates the table from its keys. forms, confirmations, details and explicitly requested output
 take the table's place. entering a session still replaces the whole screen.
 detach resumes the same browser state and refreshes.
 
@@ -77,21 +78,21 @@ tmux still owns processes; groups are labels, rows present sessions, agent statu
 is a sampled property of a session. names and row positions are never control
 identities.
 
-the model owns scoped peer observations, the machine filter, one selected view
+the model owns full-fleet peer observations, one selected view
 (needs input, all or a group), the selected session lifetime (or none),
 the table's scroll position, and existing modal/pending-operation state. rows
 derive from those observations. no independent highlighted-session,
 preview-session or open-tab state.
 
-keep five-second refresh, one inventory in flight, scoped-result admission,
-post-write read fences, stale-row retention, and existing operation timeouts.
-machine changes require a fresh scoped read before remote actions; view changes
-are local. refresh cannot rewrite a draft, captured action reference, or read snapshot.
+keep five-second refresh, one inventory in flight, post-write read fences,
+stale-row retention, and existing operation timeouts. owning-peer availability
+admits actions; view changes are local. `inventoryReceived` records the first
+admitted outcome for initial empty-state presentation only. refresh cannot rewrite a draft, captured action reference, or read snapshot.
 
 ## 3. selection and navigation
 
 initial state: all machines, all view; select the first row after inventory,
-or none. the machine filter applies to every view.
+or none. every view uses the full retained fleet.
 
 | view | rows and order |
 | --- | --- |
@@ -99,7 +100,7 @@ or none. the machine filter applies to every view.
 | all | every session, including terminals, in existing `Groups` order, each group under a heading |
 | a named group, unassigned | that group's sessions in `Groups` order |
 
-the views are needs input, all, then the labels observed in scope plus the current
+the views are needs input, all, then the labels observed in the fleet plus the current
 view's label in `group.Compare` order (ascii-case-folded; unassigned, the zero
 label, last), so drawn, stepped and all-view heading order are one order and a
 selected empty label stays. the current view is a value, never a position: a
@@ -108,9 +109,7 @@ label appearing or vanishing to its left moves its tab, never the view.
 left/right (also h/l) step to the previous or next view in the strip, clamping
 at the ends, never wrapping. a new view keeps the current session if it contains
 it, otherwise selects its first row. up/down (also j/k) move the cursor, clamping.
-`f` selects needs input through ordinary view selection; repeated `f` is a
-no-op. movement never attaches or fetches output. changing machine uses the
-same keep-if-matching/otherwise-first rule. `a` has no obsolete action.
+`f`, `m` and `a` have no table action. movement never attaches or fetches output.
 
 the queue rederives after admitted inventory/attention and attachment
 acknowledgement. its cursor follows the exact session lifetime through reorder.
@@ -124,13 +123,13 @@ have a blank membership cell. current hidden
 menu notices appear in queue status/detail so inclusion has a visible reason.
 
 session actions require a selected row and target exactly the session named by
-the rule. refresh retains the selected lifetime while it stays in the view;
+the selected row. refresh retains the selected lifetime while it stays in the view;
 otherwise it uses the previous index clamped to the surviving rows, or none.
 never auto-attach. external membership changes never change the view.
 rows of a host whose read failed retain their last-observed facts, their status
 cell reading `last observed: <label>`, also while that host is re-read; rows of
 any other host being re-read read `checking` (§5). remote actions stay disabled
-on both. once a scoped host fails a read, its notice names the failure and shows
+on both. once a host fails a read, its notice names the failure and shows
 in every view, even with no retained rows; an unobserved host is not announced
 as unavailable. inventory failures never replace an action's outcome notice, so
 an unknown outcome stays visible. reuse existing honest empty copy.
@@ -139,7 +138,7 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 
 | context | keys/behavior |
 | --- | --- |
-| ordinary navigation | `f` needs input; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
+| ordinary navigation | left/right view; `n` quick terminal on the configured default; `N` new terminal options; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
 | name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
@@ -154,7 +153,7 @@ duplicate suppression, completion guards, and unknown-outcome/no-replay behavior
 info owns a captured session lifetime, independently of table selection and
 group filtering. its name, naming mode and group appear first, with `r`/`g`
 beside the editable rows. both editors resolve that lifetime from underlying
-scoped inventory, so regrouping or agent exit can remove its table row without
+full-fleet inventory, so regrouping or agent exit can remove its table row without
 retargeting or disabling info. unavailable or replaced lifetimes disable editing.
 the table has no metadata-edit shortcut.
 
@@ -164,9 +163,9 @@ unknown writes are never replayed: preserve the draft and uncertainty while
 checking, including after dismissal to info. matching fresh state resolves the
 editor with an unknown-outcome notice; differing state retains the draft for
 review, reopened with its `r`/`g` key. a definite rejection never becomes success
-because another writer happens to match the draft. the machine picker and `N`
-options are unavailable while checking, keeping the unresolved target in the
-existing scoped refresh. other pages still close to the table.
+because another writer happens to match the draft. `N` remains available while
+checking; its form and the editor retain independent captured targets. another
+metadata edit remains blocked until reconciliation. other pages close to the table.
 
 the name editor follows [automatic/manual ownership](automatic-session-names.md#client-composition):
 saving a name selects manual naming, including unchanged text in automatic
@@ -175,9 +174,9 @@ validation; automatic reconciliation compares ownership, never a predicted title
 title updates do not rewrite the draft; changed manual naming or ownership
 retains it with a conflict notice and a fresh expectation for deliberate resubmission.
 
-`n` creates a terminal at home on the target machine (the machine filter,
-otherwise the configured default; never the first reachable peer) in the selected
-named group. `N` opens machine/launch/name/cwd/group followed by an explicit
+`n` creates a terminal at home on the configured default machine, never the
+cursor host, last form choice or first reachable peer, in the selected named
+group (otherwise unassigned). `N` opens machine/launch/name/cwd/group followed by an explicit
 `create` action, under [directory and group entry](directory-group-entry.md#terminal-interaction). its
 directory field starts empty, visibly defaulting to home: typing ordinary words
 searches that machine's visited directories after a 150 ms pause, without a `z`
@@ -212,9 +211,7 @@ input-reader cancellation/joining, geometry, and session preservation.
 
 ## 5. presentation
 
-row 1 is the reversed ` skid ` wordmark, the view strip and, only when a machine
-filter narrows the scope, `machine: <label>` (at most 24 cells) at the right
-edge; its absence means all machines. one blank row follows. the strip reads
+row 1 is the reversed ` skid ` wordmark and the view strip. one blank row follows. the strip reads
 `needs input`, `all`, then each named group with its bare label, followed by the
 `unassigned` view. truncate long labels directly.
 the current tab is bold,
@@ -222,63 +219,56 @@ between gold `‹ ›` at the table while no operation is in flight; nothing in 
 strip is faint. skid's words never truncate; `needs input`, `all` and the current tab
 never hide. other labels share one cap, 24 cells down to 7, that does not change
 while the current view moves between groups; the current label is whole up to 24
-cells unless a long machine filter leaves no room. past the floor, the groups
+cells. past the floor, the groups
 farthest from the current tab hide behind `←n` and `n→`, which count tabs, never
 work; once groups hide, a step between groups never moves a marker against it.
 from 80 columns row 1 fits in width − 1. with nothing hidden, a step between
 groups changes the text of only the two tabs it crosses; entering the groups
 from `all` may reflow the strip once.
 
-the accepted [session-row contract](desktop-session-rows.md#deterministic-geometry)
-owns columns, group placement, remote qualifiers and fitting. its readability
-replacement preserves the following status behavior.
+the [simplification contract](desktop-browser-simplification.md#row-content-and-geometry)
+owns columns, group placement, directory continuations and fitting. every record
+has two content lines, plus semantically present stacked metadata. it preserves
+the following status behavior.
 the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
 copy, coloured by its tone. only in needs input, a menu with a qualifying notice
-adds that notice to the status cell and selected detail, as specified by
+adds that notice to the status cell and info, as specified by
 [session views](session-views.md#membership-and-ordering).
 [terminal attention](reply-notifications.md) owns
 exclusive green `ready`, durable non-idle-to-idle memory and visit boundaries.
-creation responses enter the same scoped owner before auto-entry. only actual
+creation responses enter the same model before auto-entry. only actual
 output presentation acknowledges ready; armed work survives entry and departure.
 recorded native identity never supplies status. shell/remote rows use
 `terminal`/existing unknown context. a row of a host whose read failed is stale:
 its cell reads muted `last observed: <label>` and is never ready, and it stays
 stale while that host is re-read. a row of any other host being re-read (a
-pending scoped read, or the re-read after a metadata change) is never ready, and
+pending initial read, or the re-read after a metadata change) is never ready, and
 its cell makes no status claim: it reads faint `checking`. a failed host keeps
 its notice. the stale cell is up to 33 cells (`last observed: status
 unavailable`); the longest ordinary fresh label is 18 cells, while the longest
 queue menu/notice label is 30 cells. the accepted row budget preserves them
 whole; `checking` requires eight cells.
 
-below the table, top to bottom: scoped notices; the consolidated remaining
-summary under [desktop usage](desktop-usage.md); the rule, with the target set into
-it and, only when the table scrolls, the faint cursor position (`i of n`) at its
-end; the selected session's facts on one line:
-`unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
-status label (`last observed: <label>` on those rows) with `work continues` and
-`inferred from terminal` when they apply, `: <command>` for a non-agent program,
-then `· N attached`; its directory on a separate line; the keys.
-[selected-directory presentation](desktop-session-rows.md#selected-directory)
-owns path/absence/remote wording and width allocation. for an available local
-session the directory line ends with `shift+t new shell here`, with the key bold
-and label plain.
-the action is absent for ssh/mosh sources, unavailable sessions, modal pages and
-pending operations. it creates and enters an independent shell on the named
-target's machine, in its current directory and group; the original session keeps
-running. while an action is in flight the rule names that action's captured
-target instead. observed text is sanitized for display: controls, format
-characters such as bidi overrides, and line separators become spaces.
+below the table: fleet notices, the remaining summary under [desktop usage](desktop-usage.md),
+an unlabelled rule
+with `i of n` only when scrolling, then ordinary shortcuts. no selected-session
+facts or busy target legend remain there. captured pages and operation notices
+retain their explicit targets. every row owns its sampled directory; info retains
+full available paths, host identity and detailed status. sanitize displayed text
+before cell measurement; formatted text never becomes an action input.
 
-hints list actions, not navigation: the selected session's remaining verbs, then
-`f needs input  m machine  n terminal on <host>  N options  u usage  q quit`. each
-set of hints stays on one line when it fits and otherwise wraps by whole hints; the
-key is bold, the label plain. the global keys fit one 80-column line for host
-labels up to 9 cells; a longer label wraps them and costs one table row. the
-strip's `‹ ›` chevrons, shown exactly when stepping is possible, and `--help` teach
-←→. the directory owns the shell-here hint; do not repeat it in this list.
-navigation and session keys are in `--help`.
+```text
+enter attach  space info  s send interrupt  x interrupt and close terminal
+n quick terminal  N new terminal options  T new terminal here  u usage  q quit
+```
+
+whole hints wrap when necessary and merge at wide sizes. `T` appears only for an
+available local selection while the table is idle. it creates independently from
+the exact source reference, using the gateway's sampled cwd/group; it never
+uses displayed paths. available remote sources refuse with no fallback. the
+strip chevrons and help teach view navigation. [the command contract](desktop-browser-simplification.md#footer-and-commands)
+owns exact copy, defaults and error/checking precedence.
 
 pages keep row 1 and the rule; [usage](desktop-usage.md) owns its scope-free header,
 unlabelled rule and fixed column headings. the page title is bold, and labels
@@ -300,7 +290,7 @@ is a glyph plus bold, the current view is bold, and every status and unavailable
 row carries a word. nothing that must be read is faint. below 80×24, show
 `80 × 24 minimum; ctrl-c quits` above the current outcome notice, wrapped, retain
 state, and accept only resize, escape to close or cancel a page, `q` to close
-details or the machine picker, `q` or `n` to cancel a confirmation, `q` to quit
+details, `q` or `n` to cancel a confirmation, `q` to quit
 from the table, and `ctrl-c`. pending operations still complete normally.
 do not change fullscreen terminal geometry/admission.
 
@@ -331,9 +321,9 @@ records the boundary of current evidence.
 
 | criterion | proof |
 | --- | --- |
-| a1: arrows, `f`, modal keys, the view strip and the displayed target agree: the strip lists the views in stepping order and marks the current one by value; no arrow attaches; repeated `f` is a no-op and `a` has no action | model interaction cases; verify resulting views and captured exact requests |
+| a1: arrows, modal keys, the view strip and captured targets agree: the strip lists views in stepping order and marks the current one by value; no arrow attaches; `f`, `m` and `a` have no table action | model interaction cases; verify resulting views and captured exact requests |
 | a2: needs-input ordering, identity under reorder, view stepping, unavailable peers, and captured targets under refresh preserve the rules above | small deterministic observation/transition cases; queue qualification belongs to [session views](session-views.md#acceptance) |
-| a3: 80×24 fits the stated working set; long labels, strip overflow (shared cap, counted markers, the current view whole and never hidden, a long machine filter), empty/offline states, forms and resize notice stay usable in color and under NO_COLOR | rendered fixture inspection |
+| a3: 80×24 fits the stated working set; long labels, strip overflow (shared cap, counted markers, the current view whole and never hidden, fleet-wide groups), empty/offline states, forms and resize notice stay usable in color and under NO_COLOR | rendered fixture inspection |
 | a4: create → select, shell-here → exact fullscreen attach → detach on new shell; ordinary enter → detach preserves context and the first subsequent navigation key; escape after `ctrl-] d` stays in skid; `ctrl-c` quits; source survives; lost reply never repeats creation | the real browser → pty → gateway → isolated tmux journey on linux and darwin |
 | a5: old keys gone; escape never quits, `q` quits from the table, `ctrl-c` quits from any browser frame unless an operation is in flight; help and browser agree | diff review, `scripts/check verify`, and the real binary under a pty: a bare escape keeps it running, `q` and 0x03 exit 0 |
 | a6: info alone owns name/group editing; cancellation and reconciled saves return to its exact lifetime, including after leaving the table's view; automatic/manual ownership, conflict drafts, post-write fences and unknown/no-replay behavior are preserved | temporary model and loopback HTTP checks; actual browser/gateway/isolated-tmux editing journey remains with the runtime acceptance issue |
@@ -368,7 +358,7 @@ resolved dismissal and cross-host-creation traps. temporary tests were removed;
 
 accepted costs:
 - attached: chrome/status disappear; navigation requires detach.
-- views: a group view hides sessions elsewhere; needs input is one key away for
+- views: a group view hides sessions elsewhere; needs input is reachable through view stepping for
   qualified attention, and all retains the full roster. group views do not sort
   by urgency. unassigned sorts last, and its tab
   comes and goes with observation.
@@ -382,8 +372,7 @@ accepted costs:
   can read alike until one is current; excess tabs hide behind counted markers.
   bare labels can read like skid's selector words; the longer needs-input label
   also leaves less room. every group view
-  reserves room for the widest label whole, so with a machine filter at 80
-  columns one label of 24 cells can leave a short current label alone between
+  reserves room for the widest label whole. excess labels hide behind counted
   markers. labels differing only in invisible characters can still read alike
   ([issue](issues/group-label-invisible-characters.md)).
 - inference: unknown/unavailable layouts do not establish idle; sampled non-idle-to-idle

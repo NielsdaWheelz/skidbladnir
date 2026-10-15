@@ -22,7 +22,6 @@ type listedRow struct {
 	available                  bool
 }
 type inventoryMsg struct {
-	machine         string
 	value           fleetclient.Inventory
 	failure         *fleetclient.Failure
 	notifications   terminalclient.NotificationView
@@ -61,10 +60,8 @@ type model struct {
 	form                      [5]string
 	field                     int
 	groupSelection            groupSelection
-	machine                   string
 	view                      selectedView
-	scopeReady                bool
-	picker                    int
+	inventoryReceived         bool
 	metadata                  *metadataEditor
 	top                       int
 	// pageRow is info's captured lifetime as last observed; refresh follows it
@@ -115,7 +112,6 @@ func (m *model) Init() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 func (m *model) fetch() tea.Cmd {
-	machine := m.machine
 	return func() tea.Msg {
 		var notifications terminalclient.NotificationView
 		var notificationErr error
@@ -124,7 +120,7 @@ func (m *model) fetch() tea.Cmd {
 		reads.Go(func() { notifications, notificationErr = terminalclient.ReadNotifications(m.ctx, m.client) })
 		reads.Go(func() { result = m.client.Execute(m.ctx, fleetclient.Request{Operation: "list"}) })
 		reads.Wait()
-		message := inventoryMsg{machine: machine, failure: result.Error, notifications: notifications, notificationErr: notificationErr}
+		message := inventoryMsg{failure: result.Error, notifications: notifications, notificationErr: notificationErr}
 		if result.OK {
 			message.value = result.Value.(fleetclient.Inventory)
 		}
@@ -139,11 +135,11 @@ func (m *model) refresh() tea.Cmd {
 	return m.fetch()
 }
 
-// creationPeer is the machine filter, otherwise the configured default; never the first reachable peer.
+// creationPeer is the configured default, never the selected or first reachable host.
 func (m *model) creationPeer() *fleetclient.Peer {
 	handle := m.client.DefaultMachine().Handle
 	for index := range m.peers {
-		if m.machine != "" && m.peers[index].Label == m.machine || m.machine == "" && m.peers[index].Machine == handle {
+		if m.peers[index].Machine == handle {
 			return &m.peers[index]
 		}
 	}
@@ -195,11 +191,11 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 	case inventoryMsg:
 		usageChanged := false
 		m.refreshing = false
-		if m.refreshAfterAction || message.machine != m.machine {
+		if m.refreshAfterAction {
 			m.refreshAfterAction = false
 			return m, m.refresh()
 		}
-		m.scopeReady = true
+		m.inventoryReceived = true
 		if message.failure != nil {
 			for index := range m.peers {
 				m.peers[index].OK = false
@@ -235,7 +231,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		m.observeNotifications(message)
 		m.rebuild()
-		observed := fleetclient.ObservedGroups(m.scopedPeers())
+		observed := fleetclient.ObservedGroups(m.peers)
 		m.groupSelection.retain(groupChoices(m.form[4], observed))
 		if m.metadata != nil && m.metadata.request.Operation == "group" {
 			m.metadata.selection.retain(groupChoices(m.metadata.draft, observed))
@@ -304,10 +300,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			value.Session.TerminalFooter = nil
 			// Confirmed creation reveals the new session in its group.
 			m.page = ""
-			if m.machine != "" && m.machine != value.Label {
-				m.machine = value.Label
-				m.scopeReady = false
-			}
 			if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
 				m.view = selectedView{kind: viewGroup, label: value.Session.Group}
 			}
@@ -465,7 +457,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
-			case "", "machine-picker", "details", "usage":
+			case "", "details", "usage":
 				cancel = cancel || key == "q"
 			case "confirm":
 				cancel = cancel || key == "q" || key == "n"
@@ -484,9 +476,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 			return m, m.refresh()
 		}
-		if m.page == "machine-picker" {
-			return m, m.editPicker(key)
-		}
 		if m.page == "group-edit" || m.page == "name-edit" {
 			return m, m.editMetadata(message)
 		}
@@ -494,7 +483,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			switch key {
 			case "y", "enter":
 				current := m.rowForReference(m.pending.Ref)
-				if current == nil || !current.available || !m.scopeReady {
+				if current == nil || !current.available {
 					m.inform("session unavailable; refresh before confirming")
 					return m, nil
 				}
@@ -534,10 +523,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.metadata != nil && m.metadata.checking && (key == "m" || key == "N") {
-			m.inform("checking metadata change; refresh before changing machine")
-			return m, nil
-		}
 		switch key {
 		case "q":
 			m.usageStopped = true
@@ -549,9 +534,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			return m, nil
 		case "esc":
 			// escape closes pages; the table is its floor, never an exit.
-			return m, nil
-		case "f":
-			m.selectView(selectedView{kind: viewNeedsInput})
 			return m, nil
 		case "up", "k":
 			m.move(-1)
@@ -565,21 +547,16 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		case "right", "l":
 			m.step(1)
 			return m, nil
-		case "m":
-			m.picker = 0
-			m.page = "machine-picker"
-			for index, option := range m.pickerOptions() {
-				if option == m.machine {
-					m.picker = index
-					break
-				}
-			}
-			return m, nil
 		case "n":
 			peer := m.creationPeer()
-			if peer == nil || !peer.OK || !m.scopeReady {
+			if peer == nil {
 				m.inform("target unavailable; refresh before creating")
-				if peer != nil {
+				return m, nil
+			}
+			if !peer.OK {
+				if m.targetChecking(peer.Label) {
+					m.inform("checking inventory; refresh before creating")
+				} else {
 					m.inform(peer.Label + " unavailable")
 				}
 				return m, nil
@@ -612,16 +589,14 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			return m, nil
 		}
 		request := fleetclient.Request{Ref: row.session.Ref}
-		// The rule names this captured target until the action completes.
-		m.pendingName, m.pendingLabel = row.session.Name, row.label
 		switch key {
 		case "T":
 			if row.session.Connection != nil {
-				m.inform("new terminal on " + row.label + ": use n or N")
+				m.inform("terminal here unavailable for a remote connection; use N to choose a machine")
 				return m, nil
 			}
 			request.Operation = "shell"
-			m.inform("opening new shell on " + row.label + "…")
+			m.inform("opening terminal on " + row.label + "…")
 			return m, m.execute(request)
 		case "enter":
 			request.Operation = "enter"
@@ -633,6 +608,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		if request.Operation == "stop" || request.Operation == "close" {
 			m.pending = request
+			m.pendingName, m.pendingLabel = row.session.Name, row.label
 			m.page = "confirm"
 		}
 	}
@@ -643,17 +619,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
-func (m *model) scopedPeers() []fleetclient.Peer {
-	if m.machine == "" {
-		return m.peers
-	}
-	for _, peer := range m.peers {
-		if peer.Label == m.machine {
-			return []fleetclient.Peer{peer}
-		}
-	}
-	return nil
-}
 func (m *model) invalidatePendingPeer() {
 	target, _ := fleetclient.DecodeReference(m.pending.Ref)
 	for index := range m.peers {
@@ -681,41 +646,6 @@ func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()
-}
-func (m *model) pickerOptions() []string {
-	options := []string{"all machines"}
-	for _, machine := range m.client.Machines() {
-		options = append(options, machine.Label)
-	}
-	return options
-}
-func (m *model) editPicker(key string) tea.Cmd {
-	options := m.pickerOptions()
-	m.picker = min(m.picker, len(options)-1)
-	switch key {
-	case "esc", "q":
-		m.page = ""
-	case "up", "k":
-		m.picker = max(0, m.picker-1)
-	case "down", "j":
-		m.picker = min(len(options)-1, m.picker+1)
-	case "enter":
-		selected := ""
-		if m.picker > 0 {
-			selected = options[m.picker]
-		}
-		m.page = ""
-		if selected == m.machine {
-			return nil
-		}
-		m.machine, m.scopeReady = selected, false
-		if m.refreshing {
-			m.refreshAfterAction = true
-		}
-		m.rebuildForFilter()
-		return m.refresh()
-	}
-	return nil
 }
 func (m *model) selectedRow() *listedRow {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {

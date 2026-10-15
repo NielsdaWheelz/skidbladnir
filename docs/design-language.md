@@ -605,9 +605,9 @@ deleted (§1.2), drawn in the operator's own terminal. the operator's theme supp
 the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
-[session rows](desktop-session-rows.md) owns the accepted readability revision
-and responsive budgets; source and isolated runtime pass, with installed
-usability pending. prior source `6974851` is
+[browser simplification](desktop-browser-simplification.md) owns the current
+row/footer contract and responsive budgets; [session rows](desktop-session-rows.md)
+records the preceding readability revision. installed usability remains separate. prior source `6974851` is
 [qualified](desktop-session-rows.md#qualification) only for its preceding layout. observed footer
 text uses the existing faint metadata register, with full text and source meaning
 in info. earlier row qualification applies only to its recorded source.
@@ -616,8 +616,8 @@ in info. earlier row qualification applies only to its recorded source.
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
 | bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
-| plain | — | everything that must be read: names, status words, key labels, notices, the selected directory beside the new-shell action, the exclusive `needs input` view label |
-| faint | 2 | what may recede: group headings/cells, provider/profile, remote qualifiers and unknown remote context, the rule, the selected session's status facts, the names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
+| plain | — | everything that must be read: names, status words, key labels, notices, every available row's directory, the exclusive `needs input` view label |
+| faint | 2 | what may recede: group headings/cells, provider/profile, the rule, names/directories of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |

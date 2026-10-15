@@ -1,8 +1,10 @@
 # desktop session records lose visual boundaries
 
 2026-10-15: user-reported failure; source review at `aaf4691`. the replacement
-[spec and plan](../desktop-session-rows.md) is implemented; source/model and
-isolated darwin/linux runtime checks pass. installed usability remains pending.
+[preceding readability plan](../desktop-session-rows.md) was source-qualified.
+[browser simplification](../desktop-browser-simplification.md) now owns acceptance:
+every row adds its directory and the footer loses selected facts. source evidence
+is recorded there; the changed density still needs installed usability review.
 
 problem/impact: all-view headings, names and narrow metadata share an axis;
 consecutive sessions lack structural separation. needs input puts membership

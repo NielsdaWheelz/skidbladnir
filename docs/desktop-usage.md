@@ -129,8 +129,9 @@ with `attention.SingleLine`, measure with `ansi.StringWidth`, style last. the
 complete header and longest status fit within 78 cells. no number, qualifier,
 datetime or countdown truncation. profile blocks are adjacent, with no blank rows.
 
-page title is only `usage`. hide the table's machine suffix and inactive view
-strip on this page, preserving their state for return. retain the wordmark,
+page title is only `usage`. hide the table's inactive view strip on this page,
+preserving the view for return. [browser simplification](desktop-browser-simplification.md)
+removes machine collection scope throughout the browser. retain the wordmark,
 existing notices and unlabelled footer rule. delete source/terminal/pane/age
 lines, repeated used/remaining prefixes, absence sentences, `all machines`,
 `read only` and the routine provider-freshness warning.
@@ -149,7 +150,7 @@ editor controls. the sole usage hint is `q escape back`.
 title, blank and column heading consume three fixed body rows. content capacity
 is available body height minus three, floored at zero; rendering and arrow bounds
 use that same value. clamp the existing offset after content or size changes.
-no new viewport owner. return preserves table view, machine,
+no new viewport owner. return preserves table view,
 selection and scroll under existing reconciliation. minimum size remains 80×24.
 
 ## non-overlapping work
@@ -200,7 +201,7 @@ these sequential checkpoints:
 | projection and clocks | native fractional/zero/100/over-100 used; claude zero/ordinary/100 approximation; exact one-hour boundary; immediate failed-read stale; claude receipt aging without retention; nil windows, partial replacement, failed/omitted observations; reset equality and minute/hour/day/subsecond carries |
 | shared content | footer/page agree on weekly remaining, approximation and state; 5h-only report leaves weekly unknown; reported expired 5h remains a continuation; valid claude never says checking; expired/no-source failure precedence and no stale dash |
 | live desktop | scripted replies over real loopback tls through production `fleetclient` into `sessionui.Run`, actual pty keyboard input and rendered terminal grid; 80×24 and wider, colour and `NO_COLOR`; every required value, heading and state intact |
-| interaction | table → usage → table preserves view/machine/selection/scroll; scope chrome absent only on usage; arrows move, removed keys do not; usage `ctrl-r` emits no refresh; table refresh survives; no mutation requests |
+| interaction | table → usage → table preserves view/selection/scroll; view chrome absent only on usage; arrows move, removed keys do not; usage `ctrl-r` emits no refresh; table refresh survives; no mutation requests |
 | automatic reads | changed claude fixture appears on inventory tick; changed codex fixture appears after an actual native interval without keypress; opening disclosure reads immediately; no new cadence or lane coupling |
 
 use synthetic data, fixture certificates and private temporary config with

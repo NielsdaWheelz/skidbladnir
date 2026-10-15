@@ -41,10 +41,12 @@ redesign. no remote attach/control api, forced remote persistence or recovery cl
   agent is one foreground child. `/exit`, normal agent exit and agent failure
   return to that same shell. shell `exit` and deliberate `exec` retain ordinary
   shell semantics. detach leaves the terminal running.
-- tui `n` creates at home on the visible target machine and immediately attaches;
-  browser-only `N` opens existing launch options. `T` retains exact-source new-terminal-here.
-  target = explicit machine filter, otherwise configured default; never choose
-  the first reachable peer. inherit the selected named group, as today.
+- tui `n` creates at home on the configured default machine and immediately
+  attaches; never choose the cursor host or first reachable peer. inherit the
+  selected named group, otherwise unassigned. `N` opens existing options with
+  that default and permits explicit host selection. `T` retains exact-source
+  new-terminal-here. [browser simplification](desktop-browser-simplification.md)
+  owns labels, remote refusal, per-row cwd and the fleet-wide browser.
 - mobile keeps the forge's machine, launch/account, directory, optional name,
   objective and group controls. creation attaches the confirmed terminal. menu
   choices specify initial state; subsequent terminal commands change observations.
@@ -291,15 +293,15 @@ one content designer owns the following feature copy and acceptance before each
 builder starts. good content names the target/effect, separates observation from
 certainty, fits existing chrome and works through accessibility without colour.
 configured profile labels and current design tokens remain authoritative.
-the accepted [desktop session rows](desktop-session-rows.md) is the narrow
-exception: rows use exact current profile keys, a bounded ` on <destination>`
-qualifier and `remote unknown` in the empty metadata area. info uses a known key
-when its configured label is absent; other clients retain the copy below. that
-presentation revision is implemented and qualified for its scoped darwin boundary.
+the accepted [browser simplification](desktop-browser-simplification.md) owns
+desktop presentation: rows use exact current profile keys and one directory
+line with explicit remote/unknown framing; host identity belongs to info.
+info uses a known profile key when its configured label is absent. other clients
+retain the copy below; preceding desktop evidence stays source-attributed.
 
 | feature | content contract and designer's quality criterion |
 | --- | --- |
-| desktop creation | `n terminal on <host>`; `opening terminal on <host>…`; `<host> unavailable`. destination visible before acting; `N` options and `T` here are discoverable |
+| desktop creation | `n quick terminal`, `N new terminal options`, `T new terminal here`; `opening terminal on <host>…`; `<host> unavailable`. `n` uses the configured default; `N` shows the chosen destination before acting; `T` captures the exact local source |
 | mobile creation | preserve forge and `create on <host>`; selected directory/account visible; no required terminal typing; existing 48dp targets and traversal |
 | identity/cwd | configured profile label; `<provider> · profile unknown`; `terminal` means no recognized agent in resolved context. existing desktop/cli details: `agent: not detected`, `directory unavailable`, `started with: <profile>`. abbreviate cwd visually only; no repeated polling announcements |
 | search | [directory and group entry](directory-group-entry.md#phone-interaction) owns inline states and focus. preserve host ranking, full spoken paths, omitted-result notice and literal draft; choosing a result edits only cwd |

@@ -1,9 +1,10 @@
 # desktop cwd truncation depends on action availability
 
 2026-10-15: source finding at `aaf4691`. the replacement
-[spec and plan](../desktop-session-rows.md#selected-directory) is accepted;
-implemented; source/model and isolated darwin/linux runtime checks pass.
-installed usability remains pending.
+[preceding correction](../desktop-session-rows.md#selected-directory) was
+source-qualified. [browser simplification](../desktop-browser-simplification.md)
+now owns acceptance and moves the directory into every row. installed usability
+remains pending.
 
 problem/impact: selected-directory presentation preserves the cwd tail only
 when the new-shell action is available; checking/unavailable local and known
@@ -14,8 +15,9 @@ and uses `tail` only inside `row.available && row.session.Connection == nil`.
 full cwd already survives in wrapped info. this establishes the source defect,
 not which installed row the user saw.
 
-the spec owns path/absence/remote separation, width budgets and the accepted
-24-cell remote-label cap. no filesystem inference or stored-value change.
+the current spec owns path/absence/remote separation and suffix truncation within
+the row's directory budget. known host identity moves to info; the former remote
+label and its cap disappear. no filesystem inference or stored-value change.
 
 resolved when: the spec's cwd criteria pass for all availability/context cases,
 with complete remote framing, truthful absence, Unicode cell bounds and full info;
