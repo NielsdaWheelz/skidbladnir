@@ -53,6 +53,7 @@ func (m *model) tableLayout(width int) tableLayout {
 	}
 	layout.group = min(layout.group, 16)
 	layout.name = min(layout.name, 28)
+	layout.profile = min(layout.profile, 11)
 	layout.footer = min(layout.footer, 30)
 	if m.view.kind == viewNeedsInput && layout.entryHeight == 2 {
 		room := width - 2 - layout.status - 2
@@ -112,14 +113,18 @@ func (m *model) fitViewports() {
 		m.top = 0
 		return
 	}
-	if m.cursor < layout.end(m.top, height) {
+	end := layout.end(m.top, height)
+	anchor := m.cursor
+	if end == len(m.rows) {
+		anchor = end - 1
+	} else if m.cursor < end {
 		return
 	}
-	// Pack backward from the selected session. Its heading may be omitted at
-	// the bottom, exactly as entryLines permits while rendering forward.
-	limit := height + layout.spans[m.cursor].first - layout.spans[m.cursor].start
+	// Pack backward from the visible tail or selected session. Its heading may
+	// be omitted at the bottom, as entryLines permits while rendering forward.
+	limit := height + layout.spans[anchor].first - layout.spans[anchor].start
 	length := 0
-	for index := m.cursor; index >= 0; index-- {
+	for index := anchor; index >= 0; index-- {
 		span := layout.spans[index]
 		length += span.end - span.start
 		if length > limit {
