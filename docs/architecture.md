@@ -34,7 +34,9 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
-[desktop session rows](desktop-session-rows.md) owns the accepted compact layout;
+[desktop session rows](desktop-session-rows.md) owns the accepted readability
+revision and preceding compact layout; readability source and isolated runtime
+are qualified, with installed usability pending.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
 footer evidence. source `6974851` passes the scoped
 [qualification](terminal-model-effort.md#qualification); release and installed-fleet
@@ -650,8 +652,11 @@ or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
 the implemented row simplification separates provider/profile and moves repeated
 owner/directory context to selected details, with explicit remote qualifiers.
-the implemented [session-row revision](desktop-session-rows.md) caps intrinsic widths
-and uses uniform two-line entries at narrow sizes. its optional
+the preceding [session-row revision](desktop-session-rows.md#qualification) caps
+intrinsic widths and uses uniform two-line entries at narrow sizes. the accepted
+[readability replacement](desktop-session-rows.md) adds structural record/group
+boundaries and consistent cwd suffix display; source and isolated runtime pass,
+with installed usability pending. the optional
 [displayed footer](terminal-model-effort.md) comes from the existing terminal
 sample and extends the strict shared session schema; it adds no state owner.
 ordinary commands expose list, info, enter,
@@ -1109,6 +1114,13 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-15 accepted readability revision: [desktop rows](desktop-session-rows.md)
+owns section/record hierarchy, complete-entry viewport admission and selected
+directory presentation. this is a client presentation hard cut with no public
+api, wire schema, stored state or execution change. source, isolated runtime and
+separate installed usability acceptance are required. source and isolated runtime
+pass; installed usability remains pending.
 
 2026-10-15 accepted design: [compact desktop rows](desktop-session-rows.md) keeps
 identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).

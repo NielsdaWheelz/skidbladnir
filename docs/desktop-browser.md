@@ -1,9 +1,11 @@
 # desktop browser
 
-2026-10-15: [session rows](desktop-session-rows.md) owns the implemented compact
-width/height rules and [displayed footer](terminal-model-effort.md) presentation.
-the latter adds only its optional session field to this document's api/state
-limit. source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
+2026-10-15: [session rows](desktop-session-rows.md) owns the accepted readability
+replacement, selected-directory display and preceding compact layout;
+readability source and isolated runtime pass; installed usability is pending.
+[displayed footer](terminal-model-effort.md)
+owns observed text and adds only its optional session field to this document's
+api/state limit. preceding source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
 the broader historical gaps retain their recorded scope.
 
 [terminal usage](terminal-usage.md) owns the compact quota summary and read-only
@@ -114,8 +116,9 @@ quiet idle, plain working/unknown, menus alone, remote agents and stale rows
 stay outside it. all/groups retain those rows for inspection. readiness is
 device-local and inferred; no state proves successful task completion.
 
-named tabs, headings/details and the queue's group column use bare labels.
-unassigned rows have a blank group column. current hidden
+named tabs and details retain authored labels. [session rows](desktop-session-rows.md)
+owns heading punctuation and queue membership presentation; unassigned rows
+have a blank membership cell. current hidden
 menu notices appear in queue status/detail so inclusion has a visible reason.
 
 session actions require a selected row and target exactly the session named by
@@ -225,8 +228,8 @@ groups changes the text of only the two tabs it crosses; entering the groups
 from `all` may reflow the strip once.
 
 the accepted [session-row contract](desktop-session-rows.md#deterministic-geometry)
-owns columns, group placement, remote qualifiers and fitting. its implemented
-compact layout and displayed text preserve the following status behavior.
+owns columns, group placement, remote qualifiers and fitting. its readability
+replacement preserves the following status behavior.
 the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
 copy, coloured by its tone. only in needs input, a menu with a qualifying notice
@@ -254,10 +257,11 @@ end; the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
 status label (`last observed: <label>` on those rows) with `work continues` and
 `inferred from terminal` when they apply, `: <command>` for a non-agent program,
-then `· N attached`; its directory on a separate line; the keys. for an available
-local session, the directory line ends with `shift+t new shell here`, with the
-key bold and the label plain. reserve two spaces before the action and truncate a
-long directory from the left so its final components remain visible.
+then `· N attached`; its directory on a separate line; the keys.
+[selected-directory presentation](desktop-session-rows.md#selected-directory)
+owns path/absence/remote wording and width allocation. for an available local
+session the directory line ends with `shift+t new shell here`, with the key bold
+and label plain.
 the action is absent for ssh/mosh sources, unavailable sessions, modal pages and
 pending operations. it creates and enters an independent shell on the named
 target's machine, in its current directory and group; the original session keeps

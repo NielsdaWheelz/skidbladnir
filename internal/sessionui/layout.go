@@ -8,33 +8,39 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// tableLayout measures the whole current collection. Spans include an optional
-// heading and a complete entry; top always names a session, never a text line.
+// tableLayout measures the whole collection; scrolling never changes columns.
+// Entries describe content, while viewport decides which gaps and headings fit.
 type tableLayout struct {
-	entryHeight, group, name, status, provider, profile, footer int
-	spans                                                       []tableSpan
+	width, group, name, status, provider, profile, footer int
+	stacked                                               bool
+	entries                                               []tableEntry
 }
 
-type tableSpan struct{ start, first, end int }
+type tableEntry struct {
+	height  int
+	heading bool
+}
+
+type tablePlacement struct {
+	index        int
+	gap, heading bool
+}
+
+type tableViewport struct {
+	entries []tablePlacement
+	end     int
+}
 
 func (m *model) tableLayout(width int) tableLayout {
-	layout := tableLayout{entryHeight: 2}
-	if m.width >= 135 || (m.width >= 120 && m.view.kind != viewNeedsInput) {
-		layout.entryHeight = 1
+	layout := tableLayout{width: width, stacked: width+2 < 138}
+	if m.view.kind != viewNeedsInput {
+		layout.stacked = width+2 < 120
 	}
-	line := 0
 	for index, row := range m.rows {
-		span := tableSpan{start: line, first: line}
-		if m.opensGroup(index) {
-			span.first++
-		}
-		span.end = span.first + layout.entryHeight
-		layout.spans = append(layout.spans, span)
-		line = span.end
-
 		printed, _ := m.tableStatus(row)
 		layout.status = max(layout.status, ansi.StringWidth(attention.SingleLine(printed)))
-		if m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned() {
+		assigned := m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned()
+		if assigned {
 			layout.group = max(layout.group, 1, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
 		}
 		current := m.current(&row)
@@ -50,42 +56,48 @@ func (m *model) tableLayout(width int) tableLayout {
 		if current.Kind == "remoteUnknown" {
 			layout.provider, layout.profile = max(layout.provider, 6), max(layout.profile, 6)
 		}
+		entry := tableEntry{height: 1, heading: m.opensGroup(index)}
+		if layout.stacked && (assigned || provider != "" || profile != "" || footer != "" || current.Kind == "remoteUnknown") {
+			entry.height = 2
+		}
+		layout.entries = append(layout.entries, entry)
 	}
-	layout.group = min(layout.group, 16)
+	if layout.group > 0 {
+		layout.group = 3 + min(layout.group, 16)
+	}
 	layout.name = min(layout.name, 28)
 	layout.profile = min(layout.profile, 11)
 	layout.footer = min(layout.footer, 30)
-	if m.view.kind == viewNeedsInput && layout.entryHeight == 2 {
-		room := width - 2 - layout.status - 2
-		if layout.group > 0 {
-			room -= layout.group + 2
-		}
-		layout.name = min(layout.name, room)
-	}
 	return layout
 }
 
-// entryLines omits a heading when only its complete entry fits. A continuation
-// or a heading without its entry never enters the viewport.
-func (layout tableLayout) entryLines(index, remaining int) int {
-	if remaining < layout.entryHeight {
-		return 0
-	}
-	span := layout.spans[index]
-	return min(remaining, span.end-span.start)
-}
-
-func (layout tableLayout) end(first, height int) int {
-	end := first
-	for end < len(layout.spans) {
-		length := layout.entryLines(end, height)
-		if length == 0 {
+// viewport admits complete records in order. Only its first heading may be
+// omitted; an interior group transition includes its gap, heading and record.
+func (layout tableLayout) viewport(first, height int) tableViewport {
+	viewport := tableViewport{end: first}
+	for index := first; index < len(layout.entries); index++ {
+		entry := layout.entries[index]
+		placement := tablePlacement{index: index, heading: entry.heading}
+		length := entry.height
+		if index > first && (layout.stacked || entry.heading) {
+			placement.gap = true
+			length++
+		}
+		if placement.heading {
+			if index == first && length+1 > height {
+				placement.heading = false
+			} else {
+				length++
+			}
+		}
+		if length > height {
 			break
 		}
+		viewport.entries = append(viewport.entries, placement)
+		viewport.end = index + 1
 		height -= length
-		end++
 	}
-	return end
+	return viewport
 }
 
 func (m *model) rowMetadata(row listedRow) (provider, profile, footer string) {
@@ -104,44 +116,45 @@ func (m *model) fitViewports() {
 		return
 	}
 	layout := m.tableLayout(m.width - 2)
-	height := m.height - 2 - len(m.footerLines())
 	m.top = min(max(0, m.top), m.cursor)
-	if height < layout.entryHeight {
+	height := m.height - 2 - len(m.footerLines())
+	if height < layout.entries[m.cursor].height {
+		m.top = m.cursor
 		return
 	}
-	if layout.end(0, height) == len(m.rows) {
+	if layout.viewport(0, height).end == len(m.rows) {
 		m.top = 0
 		return
 	}
-	end := layout.end(m.top, height)
+	end := layout.viewport(m.top, height).end
 	anchor := m.cursor
 	if end == len(m.rows) {
 		anchor = end - 1
 	} else if m.cursor < end {
 		return
 	}
-	// Pack backward from the visible tail or selected session. Its heading may
-	// be omitted at the bottom, as entryLines permits while rendering forward.
-	limit := height + layout.spans[anchor].first - layout.spans[anchor].start
-	length := 0
-	for index := anchor; index >= 0; index-- {
-		span := layout.spans[index]
-		length += span.end - span.start
-		if length > limit {
-			break
+	// Choose the earliest top whose actual forward plan includes the anchor;
+	// group boundaries and the optional first heading need no backward credits.
+	for first := 0; first <= m.cursor; first++ {
+		if layout.viewport(first, height).end > anchor {
+			m.top = first
+			return
 		}
-		m.top = index
 	}
 }
 
-// tableLines renders the whole measured collection. The viewport selects
-// complete spans afterward; cursor and scrolling never change column widths.
-func (m *model) tableLines(width int) []string {
-	layout := m.tableLayout(width)
+// tableLines renders the admitted plan without making further fitting choices.
+func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string {
 	lines := []string{}
-	for index, row := range m.rows {
-		if m.opensGroup(index) {
-			lines = append(lines, "  "+faint.Styled(ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.session.Group)), width-2, "…")))
+	for _, placement := range viewport.entries {
+		index := placement.index
+		row := m.rows[index]
+		if placement.gap {
+			lines = append(lines, "")
+		}
+		if placement.heading {
+			heading := ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.session.Group)), layout.width-1, "…") + ":"
+			lines = append(lines, faint.Styled(heading))
 		}
 		gutter, nameStyle := "  ", plain
 		if !row.available {
@@ -157,16 +170,18 @@ func (m *model) tableLines(width int) []string {
 			qualifier = " on " + ansi.Truncate(attention.SingleLine(current.Label), budget, "…")
 		}
 		name = ansi.Truncate(name, layout.name-ansi.StringWidth(qualifier), "…")
-		line, axis := gutter, 2
-		if layout.group > 0 {
-			line += faint.Styled(cell(row.session.Group.String(), layout.group)) + "  "
-			axis += layout.group + 2
-		}
 		printed, statusStyle := m.tableStatus(row)
-		line += nameStyle.Styled(name) + faint.Styled(qualifier) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)-ansi.StringWidth(qualifier)))
+		line := gutter + nameStyle.Styled(name) + faint.Styled(qualifier) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)-ansi.StringWidth(qualifier)))
 		line += "  " + statusStyle.Styled(cell(printed, layout.status))
 		provider, profile, footer := m.rowMetadata(row)
 		metadata := []string{}
+		if layout.group > 0 {
+			membership := strings.Repeat(" ", layout.group)
+			if !row.session.Group.IsUnassigned() {
+				membership = "in " + cell(row.session.Group.String(), layout.group-3)
+			}
+			metadata = append(metadata, membership)
+		}
 		if current.Kind == "remoteUnknown" {
 			metadata = append(metadata, cell("remote unknown", layout.provider+2+layout.profile))
 		} else {
@@ -180,13 +195,13 @@ func (m *model) tableLines(width int) []string {
 		if layout.footer > 0 {
 			metadata = append(metadata, cell(footer, layout.footer))
 		}
-		if layout.entryHeight == 1 {
-			if len(metadata) > 0 {
-				line += "  " + faint.Styled(strings.Join(metadata, "  "))
-			}
-			lines = append(lines, line)
-		} else {
-			lines = append(lines, line, strings.Repeat(" ", axis)+faint.Styled(strings.Join(metadata, "  ")))
+		text := strings.Join(metadata, "  ")
+		if !layout.stacked && strings.TrimSpace(text) != "" {
+			line += "  " + faint.Styled(text)
+		}
+		lines = append(lines, line)
+		if layout.entries[index].height == 2 {
+			lines = append(lines, gutter+"  "+faint.Styled(text))
 		}
 	}
 	return lines
