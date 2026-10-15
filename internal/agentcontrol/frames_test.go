@@ -15,9 +15,10 @@ import (
 
 // TestFrames replays the authored provider frames in testdata/frames: real
 // tmux captures of dummy screens, with each frame's expected status, composer
-// and rules. It is the detector's fixture check, run on demand with
+// rules and optional displayed facts. It is the detector's fixture check, run on demand with
 // `go test ./internal/agentcontrol`; testdata/frames/capture.py regenerates the
-// captures after frames are added or edited.
+// captures after frames are added or edited. L22 explicitly injects an
+// unsupported-CSI writer change after capture; it is synthetic, not tmux output.
 func TestFrames(t *testing.T) {
 	file, err := os.Open("testdata/frames/observations.jsonl")
 	if err != nil {
@@ -39,6 +40,7 @@ func TestFrames(t *testing.T) {
 				Activity, Interaction, Notice, Composer, Reason string
 				Rules                                           []string
 				Usage                                           *sessions.TerminalUsage
+				Footer                                          json.RawMessage
 			} `json:"expect"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
@@ -56,6 +58,20 @@ func TestFrames(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got.usage, frame.Expect.Usage) {
 			t.Errorf("%s: terminal usage does not match authored expectation", frame.ID)
+		}
+		if len(frame.Expect.Footer) != 0 {
+			var want *string
+			if err := json.Unmarshal(frame.Expect.Footer, &want); err != nil {
+				t.Fatal(err)
+			}
+			var actual *string
+			if got.footer != nil {
+				value := string(*got.footer)
+				actual = &value
+			}
+			if !reflect.DeepEqual(actual, want) {
+				t.Errorf("%s: terminal footer does not match authored expectation", frame.ID)
+			}
 		}
 		var rules []string
 		for _, rule := range got.rules {

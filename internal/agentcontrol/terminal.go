@@ -50,6 +50,7 @@ func (service *Service) Enrich(parent context.Context, observed []sessions.Sessi
 				read = detection{status: sessions.UnknownStatus(sessions.ReasonCaptureFailed)}
 			}
 			observed[index].TerminalStatus, observed[index].TerminalUsage = read.status, read.usage
+			observed[index].TerminalFooter = read.footer
 			elapsed[index] = time.Since(startedAt)
 		})
 	}

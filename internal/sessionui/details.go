@@ -20,6 +20,19 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 	return row.session.Current(fleetclient.Peer{Label: row.label, Machine: row.machine})
 }
 
+// rowFooter discloses observed text only for a fresh local agent. A known agent
+// without usable evidence keeps a dash; terminals and unknown remotes stay blank.
+func (m *model) rowFooter(row listedRow) string {
+	current := m.current(&row)
+	if current.Agent == nil {
+		return ""
+	}
+	if current.Kind == "local" && row.available && row.session.TerminalFooter != nil {
+		return string(*row.session.TerminalFooter)
+	}
+	return "—"
+}
+
 func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
@@ -54,6 +67,28 @@ func (m *model) details(row *listedRow) [][2]string {
 			profile = "profile unknown"
 		}
 		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile})
+		label, explanation := "", ""
+		switch a.Provider {
+		case "Codex":
+			label = "native status line"
+			explanation = "includes other status-line items; model and effort appear only when shown there. native truncation is preserved."
+		case "Claude":
+			label = "displayed model / effort"
+			explanation = "native wording may include service tier."
+		default:
+			panic("invalid agent provider") // justify-defect: ingress admits only the closed providers.
+		}
+		facts = append(facts, [2]string{label, m.rowFooter(*row)})
+		if current.Kind == "remote" {
+			explanation = "remote terminal text is not observed"
+		} else {
+			prefix := "text from the sampled terminal. — means no usable observation is available."
+			if row.available && value.TerminalFooter == nil {
+				prefix += " the footer may be hidden, clipped, ambiguous or unsupported."
+			}
+			explanation = prefix + " " + explanation
+		}
+		facts = append(facts, [2]string{"", explanation})
 		if current.Kind == "local" && value.Agent != nil {
 			local := value.Agent
 			if local.ProviderSession != nil {
@@ -72,7 +107,11 @@ func (m *model) details(row *listedRow) [][2]string {
 	}
 	facts = append(facts, [2]string{"observed", row.observedAt}, [2]string{"reference", value.Ref})
 	if !row.available {
-		facts = append(facts, [2]string{"availability", "unavailable"})
+		availability := "unavailable"
+		if m.hostChecking(*row) {
+			availability = "checking"
+		}
+		facts = append(facts, [2]string{"availability", availability})
 	}
 	return facts
 }

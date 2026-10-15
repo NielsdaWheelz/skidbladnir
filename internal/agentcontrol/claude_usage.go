@@ -8,10 +8,13 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-const claudeUsagePercentage = `(0|[1-9][0-9]?|100)`
+const (
+	claudeUsagePercentage = `(0|[1-9][0-9]?|100)`
+	claudeUsageContext    = `(?:(?:0|[1-9][0-9]*)%|--)`
+	claudeUsageWindows    = `(?:5h ` + claudeUsagePercentage + `%(?: · 7d ` + claudeUsagePercentage + `%)?|7d ` + claudeUsagePercentage + `%)`
+)
 
-var claudeUsageSuffix = regexp.MustCompile(` │ ctx (?:(?:0|[1-9][0-9]*)%|--) │ (?:5h ` + claudeUsagePercentage +
-	`%(?: · 7d ` + claudeUsagePercentage + `%)?|7d ` + claudeUsagePercentage + `%)$`)
+var claudeUsageSuffix = regexp.MustCompile(` │ ctx ` + claudeUsageContext + ` │ ` + claudeUsageWindows + `$`)
 
 // claudeReadUsage reads the managed formatter's final suffix from an already
 // anchored ordinary footer (docs/terminal-usage.md). It never traverses screen

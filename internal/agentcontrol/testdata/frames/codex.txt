@@ -3,6 +3,7 @@
 ; docs/terminal-observation-codex.md. frames ending -default-footer or n12/n60 have no run-state word (idle from the screen).
 ; header: #frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer>
 ;         reason=<reason> rules=<id>[@top|@compound],...|none (the classifier's decision order; regions default to bottom).
+;         optional final footer=<JSON string|null> asserts the literal footer or its absence; omission leaves it unchecked.
 ; obs=... drops the rows above <row> from the bottom region and marks it clipped, as a byte cap would.
 ; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
 ; tags: {b}1 {d}2 {i}3 {u}4 {r}7 {br}1;7 {bd}1;2 {/}0 {/fg}39 {red}38;5;1 {grn}38;5;2 {yel}38;5;3 {mag}38;5;5
@@ -12,7 +13,7 @@
 ;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
 ;       {osc:URL}/{/osc}=OSC 8 open/close.
 
-#frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+#frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="dummy-model low · /dummy/project"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Checking the dummy files.
 06|{gly}•{/} {d}Working{/} {d}(12s • {/}{b}esc{/}{d} to interrupt) · 1 background terminal …{/}
@@ -27,7 +28,7 @@
 10|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f03-status-truncated-narrow 24x10 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+#frame codex-f03-status-truncated-narrow 24x10 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="dummy-model low · /du…"
 00|{bd}› {/}dummy task
 04|{gly}•{/} {d}Working{/} {d}(7s • {/}{b}esc{/}{d} to …{/}
 06|{b}›{/} {d}Ask Codex to do anyth{/}
@@ -51,7 +52,7 @@
 10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f06-ready-empty 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+#frame codex-f06-ready-empty 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready footer="Ready · dummy-model low · /dummy/project"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 29s • 12:46 PM{/}
@@ -59,7 +60,7 @@
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f07-ready-draft 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+#frame codex-f07-ready-draft 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="Ready · dummy-model low · /dummy/project"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Dummy answer.
 08|{b}›{/} dummy draft words
@@ -216,7 +217,7 @@
 12|{d}     Pay for what you use{/}
 14|{d}  Press {/}{b}enter{/}{d} to continue{/}
 
-#frame codex-f24-menu-model 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+#frame codex-f24-menu-model 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker footer=null
 00|{bd}› {/}dummy task
 04|  {b}Select Model and Effort{/}
 07|  1. dummy-model-a (default)  {d}Dummy description a.{/}
@@ -445,7 +446,7 @@
 11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 12|  {b}?{/} for shortcuts
 
-#frame codex-f53-side-working 100x13 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.scope.side,codex.interaction.none,codex.activity.status_row,codex.run_state.working
+#frame codex-f53-side-working 100x13 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.scope.side,codex.interaction.none,codex.activity.status_row,codex.run_state.working footer=null
 03|{bd}› {/}dummy side question
 06|{gly}•{/} {d}Working{/} {d}(3s • {/}{b}esc{/}{d} to interrupt){/}
 09|{b}›{/} {d}Ask a follow-up question{/}
@@ -657,7 +658,7 @@
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy{/fg} · Working notes
 11|  {b}?{/} for shortcuts
 
-#frame codex-n08-ready-with-status-row 60x13 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready
+#frame codex-n08-ready-with-status-row 60x13 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready footer="Ready · dummy-model low"
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 06|{gly}•{/} {d}Compacting context{/} {d}(2s • {/}{b}esc{/}{d} to interrupt){/}
@@ -728,7 +729,7 @@
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-n17-disconnected-ready 80x15 alt=1 expect=unknown/none/error/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.activity.disconnected,codex.run_state.ready,codex.notice.error
+#frame codex-n17-disconnected-ready 80x15 alt=1 expect=unknown/none/error/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.activity.disconnected,codex.run_state.ready,codex.notice.error footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Done
 04|{d}  Worked for 13s • 2:11 PM{/}
@@ -747,7 +748,7 @@
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-n20-side-ready 100x9 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.scope.side,codex.interaction.none,codex.run_state.ready
+#frame codex-n20-side-ready 100x9 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.scope.side,codex.interaction.none,codex.run_state.ready footer=null
 00|{d}• {/}Dummy side answer.
 05|{b}›{/} {d}Ask a follow-up question{/}
 07|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
@@ -776,7 +777,7 @@
 12|  {run}Waiting{/fg} · {mdl}dummy-model low{/fg}
 13|  {b}?{/} for shortcuts
 
-#frame codex-n24-clipped-default-footer 80x14 alt=1 obs=bottom.first=6,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none
+#frame codex-n24-clipped-default-footer 80x14 alt=1 obs=bottom.first=6,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none footer="dummy-model low · /dummy/project"
 05|{gly}•{/} {d}Waiting for background terminal{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
 06|{d}  └ dummy detail line one{/}
 07|{d}    dummy detail line two{/}
@@ -865,7 +866,7 @@
 14|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 15|  {b}?{/} for shortcuts
 
-#frame codex-n35-side-draft-no-cue 40x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+#frame codex-n35-side-draft-no-cue 40x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="Ready · dummy-model low"
 00|{d}• {/}Dummy side answer.
 08|{b}›{/} dummy side draft
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
@@ -975,14 +976,14 @@
 18|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 19|  {b}?{/} / {b}esc{/} close
 
-#frame codex-f74-external-editor-ready 100x10 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.composer.external_editor,codex.interaction.none,codex.run_state.ready
+#frame codex-f74-external-editor-ready 100x10 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.composer.external_editor,codex.interaction.none,codex.run_state.ready footer=null
 00|{d}• {/}Dummy answer.
 02|{d}  Worked for 1s • 4:55 PM{/}
 06|{b}›{/} {d}Ask Codex to do anything{/}
 08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 09|  {b}Save and close external editor to continue.{/}
 
-#frame codex-f75-external-editor-working 100x12 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.composer.external_editor,codex.interaction.none,codex.activity.status_row,codex.run_state.working
+#frame codex-f75-external-editor-working 100x12 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.composer.external_editor,codex.interaction.none,codex.activity.status_row,codex.run_state.working footer=null
 00|{bd}› {/}dummy task alpha
 04|{gly}•{/} {d}Working{/} {d}(8s • {/}{b}esc{/}{d} to interrupt){/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
@@ -1320,7 +1321,7 @@
 13|  3. No, and tell Codex what to do differently ({b}esc{/})
 15|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
 
-#frame codex-n57-composer-input-clipped 60x12 alt=1 obs=bottom.first=9,clipped expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none
+#frame codex-n57-composer-input-clipped 60x12 alt=1 obs=bottom.first=9,clipped expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none footer=null
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 29s • 12:46 PM{/}
@@ -1521,4 +1522,93 @@
 02|{bd}› {/}dummy task gamma
 08|{b}›{/} {d}Ask Codex to do anything{/}
 10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+; displayed footer extension: whole anchored rows and exact scalar admission.
+
+#frame codex-footer01-alias-tier-spacing 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="fast   alias-q xhigh · /dummy/project  84% left"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  fast   alias-q xhigh · /dummy/project  84% left
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer02-reordered-items 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="72% left · /dummy/project · alias-q low · fast"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  72% left · /dummy/project · alias-q low · fast
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer03-model-absent 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="/dummy/project · 72% left"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  /dummy/project · 72% left
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer04-native-ellipsis 32x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="alias-q high · /dummy/p…"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  alias-q high · /dummy/p…
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer05-one-row-unanchored 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  alias-q high
+
+#frame codex-footer06-internal-nbsp 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="alias-q  high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  alias-q  high
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer07-format-control 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  alias-q‍ high
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer08-byte-limit 1100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer09-over-byte-limit 1100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer10-outer-nbsp 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|   alias-q high
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer11-outer-nbsp 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  alias-q high 
 11|  {b}?{/} for shortcuts

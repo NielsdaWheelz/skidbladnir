@@ -3,8 +3,8 @@
 ## session-row qualification
 
 2026-10-14; row/info source `2c918070874e` on darwin, isolated branch
-`codex/desktop-session-rows` from `8551cd3`. the [session-row contract](../desktop-session-rows.md)
-is implemented and qualified. the same frozen probes failed the intended old
+`codex/desktop-session-rows` from `8551cd3`. the 2026-10-14 session-row contract
+was implemented and qualified. the same frozen probes failed the intended old
 row/info behavior at `8551cd3`, then passed after the production edit:
 
 - `TestSessionRows`: real tls decoding/context resolution and model updates/view;
@@ -25,8 +25,29 @@ row/info behavior at `8551cd3`, then passed after the production edit:
 
 live traffic reached fixtures only; cleanup reaped the browser, closed gateway
 terminals/tls and removed only recorded owned tmux sessions. no provider accounts,
-production sessions, phone or deployment were involved. model/effort stays deferred.
+production sessions, phone or deployment were involved. model/effort was outside
+that qualification.
 this scoped pass does not qualify the broader historical matrix below.
+
+## compact rows and displayed footer
+
+2026-10-15: source `6974851` implements the [revised row plan](../desktop-session-rows.md).
+its [qualification](../desktop-session-rows.md#qualification) passes frozen red/green
+behavior, responsive geometry, complete-entry scrolling, exact targets and full
+info values, with 36 actual renders approved by both designers. the actual
+browser/gateway/isolated-tmux journey passes on darwin and a linux container at
+80×24 and 160×24, including selected attachment, detach/first navigation,
+visible rename-refresh, cwd and original lifetimes. current creation/shell
+transport also passes.
+
+[footer qualification](../terminal-model-effort.md#qualification) records 421
+retained frames, 306 shared go/actual-android ingress cases, installed native
+provider interactions and old-sample clearing on both platforms. all recorded
+native pids exited; owned sessions, gateways, mocks, container/image and disposable
+probes/artifacts were removed. retained replay and `scripts/check verify all`
+pass after repository test deletion. this resolves the model-observation source
+issue; release and installed-fleet qualification remain separate. broader
+historical browser acceptance below remains open.
 
 ## remaining browser acceptance
 

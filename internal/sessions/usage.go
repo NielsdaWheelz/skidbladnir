@@ -27,7 +27,11 @@ func (usage TerminalUsage) Valid() bool {
 
 // ValidFor excludes statuses from invalidated or failed observation stages.
 func (usage TerminalUsage) ValidFor(status TerminalStatus) bool {
-	if !usage.Valid() || status.Source != SourceTerminal {
+	return usage.Valid() && successfulTerminalSample(status)
+}
+
+func successfulTerminalSample(status TerminalStatus) bool {
+	if status.Source != SourceTerminal {
 		return false
 	}
 	switch status.Reason {

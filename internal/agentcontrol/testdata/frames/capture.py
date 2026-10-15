@@ -7,6 +7,7 @@ Run from this directory: `python3 capture.py`. It uses a fresh random tmux socke
 creates and kills its own server, and needs tmux 3.4 or newer. Expectations live in the authored headers:
 codex `expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id@region>,...|none`, claude
 `expect=<activity>/<interaction>/<notice> <composer> reason=<reason> rules=...`.
+An optional final `footer=<JSON string|null>` asserts displayed text or absence.
 """
 import json
 import os
@@ -46,6 +47,9 @@ def expectation(header):
             usage[window] = int(fields[key])
     if usage:
         expected['usage'] = usage
+    footer = re.search(r'\bfooter=(.+)$', header)
+    if footer:
+        expected['footer'] = json.loads(footer.group(1))
     return expected
 
 
@@ -53,6 +57,11 @@ def regions(frame, rows):
     """ObservePane's regions: the bottom 64 rows, and rows 0..min(h-65,191) above them, then declared drops."""
     height = frame['height']
     header = frame['header']
+    unparseable = re.search(r'\bunparseable=(\d+)', header)
+    if unparseable:
+        rows = rows.copy()
+        index = int(unparseable.group(1))
+        rows[index] = '\x1b[?25h' + rows[index]
     bottom_first = max(0, height - 64)
     bottom = {'kind': 'bottom', 'firstRow': bottom_first, 'rows': rows[bottom_first:], 'clipped': False}
     drop = re.search(r'obs=bottom\.first=(\d+),clipped|\bbclip=(\d+)', header)

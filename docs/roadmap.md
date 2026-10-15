@@ -5,16 +5,18 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## desktop session rows — implemented and qualified
+## compact desktop rows and terminal footer — source implemented and qualified
 
-2026-10-14: [the spec and plan](desktop-session-rows.md) removes repeated
-machine/directory cells, separates current provider/profile keys and gives names
-the remaining width. structural groups, remote context, status and exact targets
-are preserved. info retains a known profile key when its display label is absent.
-source `2c918070874e` passes frozen red/green model/tls and real darwin
-browser/gateway/tmux checks, content/adversarial review and host engineering
-checks; probes are deleted. [model/effort](issues/session-model-effort.md) is deferred
-by the owner. [scoped evidence and broader desktop gaps](issues/desktop-browser-runtime-acceptance.md)
+2026-10-15: [rows and delivery](desktop-session-rows.md) implements compact
+columns, uniform narrow entries and complete scrolling. [terminal model and
+effort](terminal-model-effort.md) carries claude's native phrase and codex's whole
+native status line through one optional strict session field and go/android
+consumers. source `6974851` passes [qualification](terminal-model-effort.md#qualification):
+retained frames, actual transport/decoders, model/view boundaries, native browser
+journeys and installed provider rendering on darwin and a linux container.
+content and adversarial review pass; disposable tests are removed and
+`scripts/check verify all` passes. the model-observation source issue is resolved.
+release, installed-fleet qualification and [broader desktop gaps](issues/desktop-browser-runtime-acceptance.md)
 remain separate.
 
 ## compact dashboard chrome — implemented and qualified

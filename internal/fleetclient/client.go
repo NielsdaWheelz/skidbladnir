@@ -164,6 +164,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 				observed.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 				observed.Session.TerminalStatus, observed.Diagnostics = value.TerminalStatus, value.Diagnostics
 				observed.Session.TerminalUsage = nil
+				observed.Session.TerminalFooter = nil
 			}
 			result = success(observed)
 			break

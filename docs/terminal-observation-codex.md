@@ -1090,3 +1090,33 @@ every record is content-free.
 7. update §1's qualified column and versions, record the run in the
    [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
    and file each new `NOT_RUN` required family as an issue.
+
+## 8. displayed footer extension
+
+2026-10-15: implemented at `6974851`; [scoped qualification](terminal-model-effort.md#qualification)
+passes. this display-only extension
+feeds [terminal model and effort](terminal-model-effort.md), without changing
+the status/composer grammar or its existing qualification.
+
+in `codexComposer`, use only the existing `statusLine` index after composer
+anchoring. exclude surfaces identified by its `side`, `editor` or `disconnected`
+predicates. drafts can hide the main/side placeholder distinction; their whole
+visible status line is still literal evidence, with no main-thread attribution.
+require `statusLine >= 0` and a parsed physical row. take its plain `cellText`,
+removing only outer space padding; preserve internal spacing and every item,
+including run-state, service tier, right-side badges and native ellipses. missing,
+unparseable, empty or contract-invalid rows omit. no row joining, searching,
+item selection, semantic splitting or status-rule change. other screen branches
+omit. a sole footer row which existing anchoring cannot establish as `SL` omits.
+
+tmux capture drops whole rows, not row fragments. native clipping remains
+literal displayed text; do not salvage what was hidden or apply claude's
+complete-field width test to this whole-row observation.
+
+the pinned [status formatter](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/chatwidget/status_surfaces.rs)
+joins model, reasoning and optional service tier without field labels.
+[status-line composition](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/bottom_pane/status_line_style.rs)
+permits arbitrary item order and separators; model aliases cannot establish item
+identity. the accepted output is therefore the whole native status line, never
+an asserted model setting. retained authored frames and scoped installed-provider
+checks must qualify this new field separately.
