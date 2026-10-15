@@ -151,42 +151,53 @@ func (m *model) reconcileUsageProfiles(received fleetclient.Peer) bool {
 	return false
 }
 
+const usageStaleAfter = time.Hour
+
 type usageText struct {
-	fiveHour, sevenDay, fiveReset, sevenReset string
-	age                                       string
-	stale                                     bool
+	fiveHour, sevenDay *windowText
+	stale              bool
+}
+type windowText struct {
+	remaining, resetsAt, resetsIn string
+	expired                       bool
 }
 
 func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usageText {
-	text := usageText{fiveHour: "—", sevenDay: "—", fiveReset: "reset unknown", sevenReset: "reset unknown"}
+	text := usageText{}
 	report := profile.profile.Report
 	if report == nil {
 		return text
 	}
 	elapsed := max(time.Duration(0), now.Sub(profile.receivedAt))
 	age := profile.observedAt.Sub(report.ReportedAt) + elapsed
-	text.age = "report age " + age.Truncate(time.Second).String()
-	text.stale = hostFailed || profile.profile.ReadState == "unavailable" || age >= 2*time.Minute
-	text.fiveHour, text.fiveReset = usageWindowText(report.FiveHour, profile.observedAt, elapsed)
-	text.sevenDay, text.sevenReset = usageWindowText(report.SevenDay, profile.observedAt, elapsed)
+	text.stale = hostFailed || profile.profile.ReadState == "unavailable" || age >= usageStaleAfter
+	text.fiveHour = usageWindowText(report.FiveHour, profile.observedAt, elapsed)
+	text.sevenDay = usageWindowText(report.SevenDay, profile.observedAt, elapsed)
 	return text
 }
 func usageWindowAvailable(window *agentcontrol.UsageWindow, observedAt time.Time, elapsed time.Duration) bool {
 	return window != nil && (window.ResetsAt == nil || window.ResetsAt.Sub(observedAt) > elapsed)
 }
-func usageWindowText(window *agentcontrol.UsageWindow, observedAt time.Time, elapsed time.Duration) (string, string) {
+func usageWindowText(window *agentcontrol.UsageWindow, observedAt time.Time, elapsed time.Duration) *windowText {
 	if window == nil {
-		return "—", "reset unknown"
+		return nil
 	}
+	text := &windowText{remaining: "—", resetsAt: "—", resetsIn: "—"}
 	if !usageWindowAvailable(window, observedAt, elapsed) {
-		return "—", "awaiting report after reset"
+		text.expired = true
+		return text
 	}
-	reset := "reset unknown"
+	text.remaining = strconv.FormatFloat(math.Floor(max(0, 100-window.UsedPercent)), 'f', 0, 64) + "%"
 	if window.ResetsAt != nil {
 		remaining := window.ResetsAt.Sub(observedAt) - elapsed
-		reset = "resets " + window.ResetsAt.UTC().Format("2006-01-02 15:04:05") + " utc · in " + remaining.Round(time.Second).String()
+		seconds := int64(remaining / time.Second)
+		if remaining%time.Second != 0 {
+			seconds++
+		}
+		text.resetsAt = window.ResetsAt.UTC().Format("2006-01-02 15:04:05")
+		text.resetsIn = fmt.Sprintf("%02d:%02d:%02d:%02d", seconds/(24*60*60), seconds/(60*60)%24, seconds/60%60, seconds%60)
 	}
-	return strconv.FormatFloat(math.Floor(max(0, 100-window.UsedPercent)), 'f', 0, 64) + "%", reset
+	return text
 }
 
 // A row is a presentation projection, never another retained observation.
@@ -199,7 +210,22 @@ type usageRow struct {
 	text       usageText
 	state      string
 	failed     bool
-	diagnostic bool
+}
+
+func (row usageRow) windowPresentation(window *windowText) (windowText, string) {
+	text := windowText{remaining: "—", resetsAt: "—", resetsIn: "—"}
+	if window != nil {
+		text = *window
+	}
+	status := row.state
+	if status == "" && window != nil {
+		if window.expired {
+			status = "awaiting update"
+		} else if row.text.stale {
+			status = "stale"
+		}
+	}
+	return text, status
 }
 
 func usageLater(receivedAt time.Time, machine string, previous time.Time, previousMachine string) bool {
@@ -214,7 +240,7 @@ func (m *model) usageAccessRejected(machine string) bool {
 	return false
 }
 func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow {
-	row := usageRow{profile: profile, text: usageText{fiveHour: "—", sevenDay: "—"}, state: "checking usage"}
+	row := usageRow{profile: profile, state: "checking"}
 	var expired *usageProfile
 	var expiredMachine fleetclient.Machine
 	expiredFailed, unavailable, absent := false, false, false
@@ -265,14 +291,14 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		return row
 	}
 	if expired != nil {
-		row.native, row.machine, row.failed, row.diagnostic = expired, expiredMachine, expiredFailed, true
+		row.native, row.machine, row.failed = expired, expiredMachine, expiredFailed
 		row.text = usagePresentation(*expired, expiredFailed, now)
 		row.state = "" // The known windows render their specific reset diagnosis.
 	}
 	if unavailable {
-		row.state = "native quota unavailable"
+		row.state = "unavailable"
 	} else if expired == nil && absent {
-		row.state = "no reported quota"
+		row.state = ""
 	}
 	return row
 }
@@ -290,8 +316,8 @@ func usageTerminalLess(left, right fleetclient.Session) bool {
 	}
 	return false
 }
-func (m *model) claudeUsage(profile fleetclient.Profile) usageRow {
-	row := usageRow{profile: profile, text: usageText{fiveHour: "—", sevenDay: "—"}, state: "checking usage"}
+func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow {
+	row := usageRow{profile: profile, state: "checking"}
 	conflict, unavailable, absent := false, false, false
 	for _, peer := range m.peers {
 		declared := false
@@ -348,18 +374,20 @@ func (m *model) claudeUsage(profile fleetclient.Profile) usageRow {
 		}
 	}
 	if row.terminal != nil {
+		row.state = ""
+		row.text.stale = max(time.Duration(0), now.Sub(row.receivedAt)) >= usageStaleAfter
 		if value := row.terminal.TerminalUsage.FiveHourUsedPercent; value != nil {
-			row.text.fiveHour = strconv.Itoa(*value) + "%"
+			row.text.fiveHour = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
 		}
 		if value := row.terminal.TerminalUsage.SevenDayUsedPercent; value != nil {
-			row.text.sevenDay = strconv.Itoa(*value) + "%"
+			row.text.sevenDay = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
 		}
 	} else if conflict {
-		row.state = "conflicting terminal displays"
+		row.state = "conflict"
 	} else if unavailable {
-		row.state = "terminal observation unavailable"
+		row.state = "unavailable"
 	} else if absent {
-		row.state = "usage not detected for this profile"
+		row.state = ""
 	}
 	return row
 }
@@ -389,7 +417,7 @@ func (m *model) usageRows(now time.Time) []usageRow {
 		case "Codex":
 			rows[index] = m.nativeUsage(profile, now)
 		case "Claude":
-			rows[index] = m.claudeUsage(profile)
+			rows[index] = m.claudeUsage(profile, now)
 		default:
 			panic("usage declaration has an unknown provider") // justify-defect: both owned transport decoders close the provider union.
 		}
@@ -422,96 +450,59 @@ func (m *model) usageSummary() []string {
 	if len(rows) == 0 {
 		return []string{m.usageDeclarationState()}
 	}
-	codex, claude := []string{}, []string{}
-	for _, row := range rows {
-		if row.profile.Provider == "Codex" {
-			codex = append(codex, row.profile.Key+" "+row.text.sevenDay)
-		} else {
-			claude = append(claude, "used · "+row.profile.Key+": 5h "+row.text.fiveHour+" · 7d "+row.text.sevenDay)
-		}
-	}
 	lines := []string{}
-	if len(codex) > 0 {
-		lines = append(lines, "remaining · codex 7d: "+strings.Join(codex, " · "))
-	}
-	lines = append(lines, claude...)
-	for index, line := range lines {
-		lines[index] = ansi.Truncate(line, m.width-2, "…")
+	for _, row := range rows {
+		text, status := row.windowPresentation(row.text.sevenDay)
+		item := attention.SingleLine(row.profile.Key) + " 7d " + text.remaining
+		if status != "" {
+			item += " " + status
+		}
+		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+3+ansi.StringWidth(item) <= m.width-2 {
+			lines[last] += " · " + item
+		} else {
+			lines = append(lines, item)
+		}
 	}
 	return lines
 }
 func (m *model) usageLines() []string {
-	now, width := time.Now(), m.width-2
-	rows := m.usageRows(now)
+	rows := m.usageRows(time.Now())
 	if len(rows) == 0 {
 		return []string{m.usageDeclarationState()}
 	}
 	lines := []string{}
 	for _, row := range rows {
-		if row.profile.Provider == "Claude" {
-			lines = append(lines, wrapped(fmt.Sprintf("%s  5h used %s  7d used %s", row.profile.Key, row.text.fiveHour, row.text.sevenDay), width)...)
-			if row.terminal == nil {
-				lines = append(lines, row.state)
-			} else {
-				age := max(time.Duration(0), now.Sub(row.receivedAt)).Truncate(time.Second)
-				lines = append(lines, wrapped("source "+attention.SingleLine(row.machine.Label)+" · terminal display · received "+age.String()+" ago", width)...)
-				lines = append(lines, wrapped("terminal "+attention.SingleLine(row.terminal.Name)+" · pane "+row.terminal.ActivePaneID, width)...)
-				lines = append(lines, "provider freshness and resets unknown")
+		for index, window := range []*windowText{row.text.sevenDay, row.text.fiveHour} {
+			profile, label := row.profile.Key, "7d"
+			if index == 1 {
+				if window == nil {
+					continue
+				}
+				profile, label = "", "5h"
 			}
-		} else {
-			heading := fmt.Sprintf("%s  7d remaining %s", row.profile.Key, row.text.sevenDay)
-			if row.native != nil && row.native.profile.Report.FiveHour != nil {
-				heading = fmt.Sprintf("%s  5h remaining %s  7d remaining %s", row.profile.Key, row.text.fiveHour, row.text.sevenDay)
-			}
-			if row.text.stale {
-				heading += " · stale"
-			}
-			lines = append(lines, wrapped(heading, width)...)
-			if row.native == nil {
-				lines = append(lines, row.state)
-			} else {
-				if row.diagnostic && row.state != "" {
-					lines = append(lines, row.state)
-				}
-				prefix := "source "
-				if row.diagnostic {
-					prefix = "last report from "
-				}
-				source := prefix + attention.SingleLine(row.machine.Label) + " · native · " + row.text.age
-				if row.failed || row.native.profile.ReadState == "unavailable" {
-					source += " · unavailable; showing last report"
-				}
-				lines = append(lines, wrapped(source, width)...)
-				resets := []string{}
-				if row.native.profile.Report.FiveHour != nil {
-					resets = append(resets, "5h "+row.text.fiveReset)
-				}
-				if row.native.profile.Report.SevenDay != nil {
-					resets = append(resets, "7d "+row.text.sevenReset)
-				}
-				lines = append(lines, wrapped(strings.Join(resets, " · "), width)...)
-			}
+			text, status := row.windowPresentation(window)
+			lines = append(lines, cell(profile, 11)+"  "+fmt.Sprintf("%-2s %5s %-15s", label, text.remaining, status)+"  "+cell(text.resetsAt, 19)+"  "+text.resetsIn)
 		}
-		lines = append(lines, "")
 	}
 	return lines
 }
 func (m *model) usageBody(height int) []string {
+	headings := []string{bold.Styled("usage"), "", cell("profile", 11) + "  " + cell("window", 24) + "  " + cell("reset (utc)", 19) + "  in (d:hh:mm:ss)"}
+	if height < len(headings) {
+		return headings[:max(0, height)]
+	}
 	lines := m.usageLines()
-	offset := min(m.offset, max(0, len(lines)-(height-2)))
-	return append([]string{bold.Styled("usage · all machines"), ""}, lines[offset:min(len(lines), offset+max(0, height-2))]...)
+	capacity := m.pageCapacity()
+	offset := min(m.offset, max(0, len(lines)-capacity))
+	return append(headings, lines[offset:min(len(lines), offset+capacity)]...)
 }
 func (m *model) usageKey(key string) {
 	switch key {
 	case "q", "esc":
 		m.page = ""
-	case "up", "k":
+	case "up":
 		m.offset = max(0, m.offset-1)
-	case "down", "j":
+	case "down":
 		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity()), m.offset+1)
-	case "pgup":
-		m.offset = max(0, m.offset-m.pageCapacity())
-	case "pgdown":
-		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity()), m.offset+m.pageCapacity())
 	}
 }

@@ -60,8 +60,12 @@ func (m *model) View() tea.View {
 }
 
 // header is the wordmark, then the strip of views in stepping order, then the
-// machine filter at the right edge when one narrows the scope.
+// machine filter at the right edge when one narrows the scope. usage omits the
+// table's scope controls.
 func (m *model) header() string {
+	if m.page == "usage" {
+		return wordmark.Styled(" skid ")
+	}
 	machine, room := "", m.width-2-7
 	if m.machine != "" {
 		machine = ansi.Truncate("machine: "+attention.SingleLine(m.machine), 24, "…")
@@ -221,8 +225,6 @@ func (m *model) footerLines() []string {
 		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
 	case "create":
 		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[0]), width/2, "…")
-	case "usage":
-		legend = "usage · read only"
 	}
 	lines := append(notices, usage...)
 	lines = append(lines, rule(legend, end, width))
@@ -325,7 +327,7 @@ func (m *model) hints() [][]hint {
 		}
 		return [][]hint{keys}
 	case "usage":
-		return [][]hint{{{"↑↓ j/k", "scroll"}, {"pgup pgdn", "page"}, {"ctrl-r", "refresh usage"}, {"q escape", "back"}}}
+		return [][]hint{{{"q escape", "back"}}}
 	}
 	session := []hint{}
 	if row := m.selectedRow(); row != nil && row.available {
@@ -708,6 +710,9 @@ func (m *model) detailLines() []string {
 }
 
 func (m *model) pageCapacity() int {
+	if m.page == "usage" {
+		return max(0, m.height-5-len(m.footerLines()))
+	}
 	return max(1, m.height-4-len(m.footerLines()))
 }
 
