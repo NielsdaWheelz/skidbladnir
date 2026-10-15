@@ -8,12 +8,14 @@ owns observed text and adds only its optional session field to this document's
 api/state limit. preceding source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
 the broader historical gaps retain their recorded scope.
 
-[terminal usage](terminal-usage.md) owns the compact quota summary and read-only
-`u usage` disclosure. both existing inventory/native lanes read all machines
-independently of table filters; one whole latest-received observation supplies
-each profile. `ctrl-r` refreshes both lanes from the table and usage page.
-that capability extends this document's api/state limit only for its accepted
-session field, native profile route and presentation.
+[terminal usage](terminal-usage.md) owns quota acquisition and source selection;
+[desktop usage](desktop-usage.md) owns the compact footer and `u` page, with
+[isolated desktop qualification](desktop-usage.md#qualification). both lanes read
+all machines independently of table filters; one whole latest-received observation
+supplies each profile.
+the revision removes usage-page manual refresh and scope chrome while preserving
+table refresh. it adds no api/state capability beyond the existing session field
+and native profile route.
 
 2026-10-02: [session views](session-views.md) owns the exclusive needs-input view,
 queue membership/order and navigation keys. source implements this cutover;
@@ -250,8 +252,8 @@ unavailable`); the longest ordinary fresh label is 18 cells, while the longest
 queue menu/notice label is 30 cells. the accepted row budget preserves them
 whole; `checking` requires eight cells.
 
-below the table, top to bottom: scoped notices; the consolidated codex remaining
-and claude used summary under [terminal usage](terminal-usage.md); the rule, with the target set into
+below the table, top to bottom: scoped notices; the consolidated remaining
+summary under [desktop usage](desktop-usage.md); the rule, with the target set into
 it and, only when the table scrolls, the faint cursor position (`i of n`) at its
 end; the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
@@ -278,8 +280,9 @@ strip's `‹ ›` chevrons, shown exactly when stepping is possible, and `--help
 ←→. the directory owns the shell-here hint; do not repeat it in this list.
 navigation and session keys are in `--help`.
 
-pages keep row 1 and the rule. the page title is bold, and labels right-align on
-one axis. the rule names the captured target (pending action or details
+pages keep row 1 and the rule; [usage](desktop-usage.md) owns its scope-free header,
+unlabelled rule and fixed column headings. the page title is bold, and labels
+right-align on one axis. the rule names the captured target (pending action or details
 snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal
 only`, `enter interrupt terminal` or `enter interrupt and close terminal`.
