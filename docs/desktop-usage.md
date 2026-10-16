@@ -55,9 +55,9 @@ keep source identity/times for selection even though their prose disappears.
 ## percentage and time rules
 
 - codex: `floor(max(0, 100-usedPercent))`, then `%`; use original precision.
-- claude: `~` + `(100-displayedUsedPercent)` + `%`, including zero and 100.
+- claude: `(100-displayedUsedPercent)` + `%`, including zero and 100.
   the formatter floors used values, so the complement can overstate remaining
-  by less than one percentage point. `~` marks that approximation.
+  by less than one percentage point.
 - one named stale threshold is exactly one hour, inclusive. native age remains
   `observedAt-reportedAt + max(0, now-receivedAt)`; latest host/profile read
   failure also makes a retained eligible native report stale immediately.
@@ -117,7 +117,7 @@ personal     7d   72%                  2026-10-20 14:30:00  05:04:18:09
              5h   93%                  2026-10-15 14:30:00  00:04:18:09
 work         7d   61% stale            2026-10-18 09:00:00  02:22:48:09
 work2        7d     — awaiting update  —                    —
-claude-work  7d  ~57%                  —                    —
+claude-work  7d   57%                  —                    —
 ```
 
 body width is terminal width minus two. columns have two-cell gaps: profile
@@ -199,7 +199,7 @@ these sequential checkpoints:
 | boundary | required evidence |
 | --- | --- |
 | projection and clocks | native fractional/zero/100/over-100 used; claude zero/ordinary/100 approximation; exact one-hour boundary; immediate failed-read stale; claude receipt aging without retention; nil windows, partial replacement, failed/omitted observations; reset equality and minute/hour/day/subsecond carries |
-| shared content | footer/page agree on weekly remaining, approximation and state; 5h-only report leaves weekly unknown; reported expired 5h remains a continuation; valid claude never says checking; expired/no-source failure precedence and no stale dash |
+| shared content | footer/page agree on weekly remaining and state; 5h-only report leaves weekly unknown; reported expired 5h remains a continuation; valid claude never says checking; expired/no-source failure precedence and no stale dash |
 | live desktop | scripted replies over real loopback tls through production `fleetclient` into `sessionui.Run`, actual pty keyboard input and rendered terminal grid; 80×24 and wider, colour and `NO_COLOR`; every required value, heading and state intact |
 | interaction | table → usage → table preserves view/selection/scroll; view chrome absent only on usage; arrows move, removed keys do not; usage `ctrl-r` emits no refresh; table refresh survives; no mutation requests |
 | automatic reads | changed claude fixture appears on inventory tick; changed codex fixture appears after an actual native interval without keypress; opening disclosure reads immediately; no new cadence or lane coupling |
@@ -232,8 +232,8 @@ gateway/provider/fleet acquisition. no retained behavioral suite remains.
 
 ## accepted costs and final state
 
-claude loses sub-percent precision and has unknown provider age/resets; `~` and
-dashes expose the available facts. one hour relaxes the prior two-minute age
+claude loses sub-percent precision and has unknown provider age/resets; missing
+resets render as dashes. one hour relaxes the prior two-minute age
 warning; native read failures immediately mark retained eligible quota stale.
 five-hour continuations cost up to
 four rows; they retain a distinct limit. inferred remaining semantics reduce
