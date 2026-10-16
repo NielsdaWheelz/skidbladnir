@@ -8,17 +8,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// tableLayout measures the whole collection; scrolling never changes columns.
-// Entries describe content, while viewport decides which gaps and headings fit.
+// tableLayout measures names across the whole collection; scrolling never
+// changes their width. viewport decides which gaps and headings fit.
 type tableLayout struct {
-	width, group, name, status, provider, profile, footer int
-	stacked                                               bool
-	entries                                               []tableEntry
-}
-
-type tableEntry struct {
-	height            int
-	heading, metadata bool
+	width, name int
+	headings    []bool
 }
 
 type tablePlacement struct {
@@ -32,38 +26,12 @@ type tableViewport struct {
 }
 
 func (m *model) tableLayout(width int) tableLayout {
-	layout := tableLayout{width: width, stacked: width+2 < 138}
-	if m.view.kind != viewNeedsInput {
-		layout.stacked = width+2 < 120
-	}
+	layout := tableLayout{width: width, headings: make([]bool, len(m.rows))}
 	for index, row := range m.rows {
-		printed, _ := m.tableStatus(row)
-		layout.status = max(layout.status, ansi.StringWidth(attention.SingleLine(printed)))
-		assigned := m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned()
-		if assigned {
-			layout.group = max(layout.group, 1, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
-		}
 		layout.name = max(layout.name, ansi.StringWidth(attention.SingleLine(row.session.Name)))
-		provider, profile, footer := m.rowMetadata(row)
-		layout.provider = max(layout.provider, ansi.StringWidth(attention.SingleLine(provider)))
-		layout.profile = max(layout.profile, ansi.StringWidth(attention.SingleLine(profile)))
-		layout.footer = max(layout.footer, ansi.StringWidth(attention.SingleLine(footer)))
-		entry := tableEntry{
-			height:   2,
-			heading:  m.opensGroup(index),
-			metadata: assigned || provider != "" || profile != "" || footer != "",
-		}
-		if layout.stacked && entry.metadata {
-			entry.height++
-		}
-		layout.entries = append(layout.entries, entry)
-	}
-	if layout.group > 0 {
-		layout.group = 3 + min(layout.group, 16)
+		layout.headings[index] = m.opensGroup(index)
 	}
 	layout.name = min(layout.name, 28)
-	layout.profile = min(layout.profile, 11)
-	layout.footer = min(layout.footer, 30)
 	return layout
 }
 
@@ -71,11 +39,10 @@ func (m *model) tableLayout(width int) tableLayout {
 // omitted; an interior group transition includes its gap, heading and record.
 func (layout tableLayout) viewport(first, height int) tableViewport {
 	viewport := tableViewport{end: first}
-	for index := first; index < len(layout.entries); index++ {
-		entry := layout.entries[index]
-		placement := tablePlacement{index: index, heading: entry.heading}
-		length := entry.height
-		if index > first && (layout.stacked || entry.heading) {
+	for index := first; index < len(layout.headings); index++ {
+		placement := tablePlacement{index: index, heading: layout.headings[index]}
+		length := 1
+		if index > first && placement.heading {
 			placement.gap = true
 			length++
 		}
@@ -107,20 +74,28 @@ func (m *model) rowMetadata(row listedRow) (provider, profile, footer string) {
 	return
 }
 
-func rowDirectory(current fleetclient.ExecutionContext, width int) string {
+func rowDirectory(current fleetclient.ExecutionContext, width int) (string, bool) {
 	machine := ansi.Truncate(attention.SingleLine(current.Label), 16, "…")
 	switch current.Kind {
 	case "local":
 	case "remote":
 		machine += " (remote)"
 	case "remoteUnknown":
-		return "remote context unknown"
+		text := "remote context unknown"
+		if ansi.StringWidth(text) > width {
+			return "", false
+		}
+		return text, true
 	default:
 		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
 	}
 	prefix := machine + " · "
 	if current.CWD == "" {
-		return prefix + "directory unavailable"
+		text := prefix + "directory unavailable"
+		if ansi.StringWidth(text) > width {
+			return "", false
+		}
+		return text, true
 	}
 	path := attention.SingleLine(current.CWD)
 	// Keep two final components without resolving or normalizing the path.
@@ -131,7 +106,11 @@ func rowDirectory(current fleetclient.ExecutionContext, width int) string {
 	if strings.Trim(path[:start], "/") != "" {
 		path = "…/" + path[start:]
 	}
-	return prefix + tail(path, width-ansi.StringWidth(prefix))
+	suffixWidth := width - ansi.StringWidth(prefix)
+	if suffixWidth < 1 || suffixWidth < min(8, ansi.StringWidth(path)) {
+		return "", false
+	}
+	return prefix + tail(path, suffixWidth), true
 }
 
 func (m *model) fitViewports() {
@@ -141,7 +120,7 @@ func (m *model) fitViewports() {
 	layout := m.tableLayout(m.width - 2)
 	m.top = min(max(0, m.top), m.cursor)
 	height := m.height - 2 - len(m.footerLines())
-	if height < layout.entries[m.cursor].height {
+	if height < 1 {
 		m.top = m.cursor
 		return
 	}
@@ -166,7 +145,7 @@ func (m *model) fitViewports() {
 	}
 }
 
-// tableLines renders the admitted plan without making further fitting choices.
+// tableLines packs each admitted row without changing the viewport.
 func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string {
 	lines := []string{}
 	for _, placement := range viewport.entries {
@@ -186,41 +165,49 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 		if index == m.cursor {
 			gutter, nameStyle = here.Styled("▌")+" ", nameStyle.Bold()
 		}
-		name := ansi.Truncate(attention.SingleLine(row.session.Name), layout.name, "…")
+		name := attention.SingleLine(row.session.Name)
+		if ansi.StringWidth(name) > layout.name {
+			prefix := (layout.name - 1) / 2
+			name = ansi.Truncate(name, prefix, "") + tail(name, layout.name-prefix)
+		}
 		printed, statusStyle := m.tableStatus(row)
+		printed = attention.SingleLine(printed)
 		line := gutter + nameStyle.Styled(name) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)))
-		line += "  " + statusStyle.Styled(cell(printed, layout.status))
+		line += "  " + statusStyle.Styled(printed)
+		used := 2 + layout.name + 2 + ansi.StringWidth(printed)
 		provider, profile, footer := m.rowMetadata(row)
 		metadata := []string{}
-		if layout.group > 0 {
-			membership := strings.Repeat(" ", layout.group)
-			if !row.session.Group.IsUnassigned() {
-				membership = "in " + cell(row.session.Group.String(), layout.group-3)
+		if m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned() {
+			metadata = append(metadata, "in "+ansi.Truncate(attention.SingleLine(row.session.Group.String()), 16, "…"))
+		}
+		for _, text := range []string{provider, profile, footer} {
+			if text != "" {
+				metadata = append(metadata, attention.SingleLine(text))
 			}
-			metadata = append(metadata, membership)
 		}
-		if layout.provider > 0 {
-			metadata = append(metadata, cell(provider, layout.provider))
+		completeWidth := used
+		for _, text := range metadata {
+			completeWidth += 2 + ansi.StringWidth(text)
 		}
-		if layout.profile > 0 {
-			metadata = append(metadata, cell(profile, layout.profile))
+		directory, fits := rowDirectory(m.current(&row), layout.width-completeWidth-2)
+		limit := layout.width
+		if !fits {
+			limit -= 3
 		}
-		if layout.footer > 0 {
-			metadata = append(metadata, cell(footer, layout.footer))
-		}
-		text := strings.Join(metadata, "  ")
-		if !layout.stacked && layout.entries[index].metadata {
+		for _, text := range metadata {
+			next := used + 2 + ansi.StringWidth(text)
+			if next > limit {
+				break
+			}
 			line += "  " + faint.Styled(text)
+			used = next
+		}
+		if fits {
+			line += strings.Repeat(" ", layout.width-used-ansi.StringWidth(directory)) + faint.Styled(directory)
+		} else {
+			line += strings.Repeat(" ", layout.width-used-3) + faint.Styled("  …")
 		}
 		lines = append(lines, line)
-		if layout.stacked && layout.entries[index].metadata {
-			lines = append(lines, gutter+"  "+faint.Styled(text))
-		}
-		directoryStyle := plain
-		if !row.available {
-			directoryStyle = faint
-		}
-		lines = append(lines, gutter+"  "+directoryStyle.Styled(rowDirectory(m.current(&row), layout.width-4)))
 	}
 	return lines
 }

@@ -1,8 +1,9 @@
 # desktop browser
 
-2026-10-15: [browser simplification](desktop-browser-simplification.md) owns
-the fleet-wide roster, per-row directories and footer.
-[quick terminal](desktop-quick-terminal.md) owns the machine-only `n` chooser.
+2026-10-16: [single-line rows](desktop-single-line-rows.md) owns row geometry,
+hierarchy and omission. [browser simplification](desktop-browser-simplification.md)
+owns the fleet-wide roster and footer; [quick terminal](desktop-quick-terminal.md)
+owns the machine-only `n` chooser.
 [session rows](desktop-session-rows.md) records the preceding layouts.
 installed usability remains a separate acceptance boundary.
 [displayed footer](terminal-model-effort.md)
@@ -48,8 +49,10 @@ display. [pr 4](groups-and-shells.md) separately investigates terminal embedding
 
 one keyboard-only browser: one table, one cursor, one scope. a view strip on row
 1 lists the views in stepping order, counting any that overflow, and marks the
-current one; the table lists every session in it. each row owns its directory;
-info owns host identity. an unlabelled rule separates the table from its keys. forms, confirmations, details and explicitly requested output
+current one; the table lists every session in it. rows pack sampled context under
+the single-line contract; info owns full available context and host identity. an
+unlabelled rule separates the table from its keys. forms, confirmations, details
+and explicitly requested output
 take the table's place. entering a session still replaces the whole screen.
 detach resumes the same browser state and refreshes.
 
@@ -228,9 +231,10 @@ from 80 columns row 1 fits in width − 1. with nothing hidden, a step between
 groups changes the text of only the two tabs it crosses; entering the groups
 from `all` may reflow the strip once.
 
-the [simplification contract](desktop-browser-simplification.md#row-content-and-geometry)
-owns columns, group placement, directory continuations and fitting. every record
-has two content lines, plus semantically present stacked metadata. it preserves
+the [single-line row contract](desktop-single-line-rows.md) owns geometry,
+hierarchy and fitting. every session occupies one line. names lead; metadata,
+including machine/path, is faint. lower-priority fields yield whole behind a
+right-edge omission marker; info retains their full available values. it preserves
 the following status behavior.
 the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)

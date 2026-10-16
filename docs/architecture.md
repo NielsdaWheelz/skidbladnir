@@ -35,7 +35,9 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [browser simplification](desktop-browser-simplification.md) owns the fleet-wide
-desktop cutover, per-row directories and ordinary creation shortcuts.
+desktop cutover, footer and ordinary creation shortcuts.
+[single-line desktop rows](desktop-single-line-rows.md) owns current source row
+layout and priority-based omission; its isolated runtime is qualified.
 [desktop session rows](desktop-session-rows.md) owns the preceding compact layout
 and readability revision; its source and isolated runtime are qualified.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
@@ -657,16 +659,14 @@ select views; machine filtering and the `f` jump are removed. it owns the exact 
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
-the implemented [browser simplification](desktop-browser-simplification.md)
-puts the current machine and compact sampled directory in every row, with full
-machine/path details in info; the resting
-footer holds notices, quota, pagination and ordinary action hints.
-the preceding [session-row revision](desktop-session-rows.md#qualification) caps
-intrinsic widths and uses uniform two-line entries at narrow sizes. the accepted
-[readability replacement](desktop-session-rows.md) adds structural record/group
-boundaries and consistent cwd suffix display; source and isolated runtime pass.
-[v0.17.2 qualification](desktop-browser-simplification.md#location-refinement-installed-release)
-records installed acceptance of the successor's compact current-location display. the optional
+[single-line desktop rows](desktop-single-line-rows.md) keeps one line per session,
+complete status, faint metadata/location and ordered whole-field omission. full
+machine/path details remain in info; the resting footer holds notices, quota,
+pagination and ordinary action hints under [browser simplification](desktop-browser-simplification.md).
+source and isolated darwin/linux runtime pass; installed owner review remains
+pending. [preceding row qualification](desktop-session-rows.md#qualification) and
+[v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+apply to their recorded renderers. the optional
 [displayed footer](terminal-model-effort.md) comes from the existing terminal
 sample and extends the strict shared session schema; it adds no state owner.
 ordinary commands expose list, info, enter,
@@ -1127,6 +1127,15 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-16 source-qualified: [single-line desktop rows](desktop-single-line-rows.md)
+replaces stacked records with one line, faint location text and the owner's
+ordered field omission. complete status
+remains visible; lower fields may be omitted with a marker and full info remains
+available. this is a presentation-only hard cut; public api, schemas, state,
+observation and controls retain their owners. rendered integration and isolated
+darwin/linux runtime qualification pass; the spec records evidence and limits.
+deployment and installed owner review remain separate and `NOT_RUN`.
 
 2026-10-15 accepted installed-row refinement: [browser simplification](desktop-browser-simplification.md)
 shows current machine plus the final two path components and retains full info.

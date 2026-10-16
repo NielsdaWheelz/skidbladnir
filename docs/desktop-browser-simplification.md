@@ -1,5 +1,11 @@
 # desktop browser simplification
 
+2026-10-16: [single-line desktop rows](desktop-single-line-rows.md) owns the
+current source row geometry, hierarchy and overflow contract. its source/live
+qualification supersedes the preceding layout; prior release evidence remains
+attached to the renderer that ran it. footer, fleet and creation behavior remain
+owned here.
+
 2026-10-15: implemented from `b253c05`, merged and deployed in `v0.17.1`.
 source and installed checks are recorded below. the subsequent compact
 current-location and parsed-footer refinement is [source-qualified](#location-refinement-qualification);
@@ -18,78 +24,30 @@ and its affected creation copy below.
 ## scope and final state
 
 one fleet-wide browser with the existing needs-input/all/named-group/unassigned
-views. every session row owns its current machine and sampled directory; info
-owns full machine/path details. the resting footer owns notices, usage, pagination
-and actions.
+views. every session row derives its current machine and sampled directory;
+the single-line contract governs omission, and info owns full machine/path
+details. the resting footer owns notices, usage, pagination and actions.
 
 | feature / content owner | good content and required result |
 | --- | --- |
-| rows / row designer | name, complete status, relevant metadata, then one readable directory line; local/remote/unknown and absent/stale facts remain truthful without color |
+| rows / row designer | name, complete status, then metadata under the single-line contract; local/remote/unknown and absent/stale facts remain truthful without color |
 | footer and creation / interaction designer | keys name effects; creation defaults and contextual creation have distinct meanings; no selected-session summary or detached action hint |
 | fleet browsing / interaction designer | views describe work collections; every view, group suggestion and failed-host notice sees the full retained fleet |
 
 phone already has no machine collection filter. retain its tabs, restoration,
 machines/pressure/reconnect overflow and explicit forge destination. no android
 production change. host names remain in info, creation forms/outcomes, captured
-confirmations and host-failure notices; rows show the current execution machine.
+confirmations and host-failure notices; a visible row location names the current
+execution machine.
 
 ## row content and geometry
 
-reuse `current(row)`, never raw launch cwd or parsed provider text:
-
-| resolved execution context | final directory line |
-| --- | --- |
-| local with cwd | `<machine> · <compact sampled path>` |
-| local without cwd | `<machine> · directory unavailable` |
-| known remote with cwd | `<machine> (remote) · <compact sampled path>` |
-| known remote without cwd | `<machine> (remote) · directory unavailable` |
-| unknown remote | `remote context unknown` |
-
-stale/checking local rows retain sampled cwd under their existing whole-row
-status. stale/checking connected rows use `current`'s existing unknown-remote
-projection; never retain their remote cwd. info preserves full available sampled
-paths and known destinations; unknown remains unknown.
-remove name `on <host>` qualifiers and the duplicate `remote unknown` metadata
-placeholder, including their width reservations. preserve other metadata rules.
-
-body width `b = terminal width - 2`; names start at body column 2, metadata and
-directory at 4. directory gets `b - 4` cells. sanitize before measuring; cap the
-machine label at 16 display cells with a trailing ellipsis. retain the final two
-nonempty slash-delimited path components, prefixing `…/` when ancestors were
-omitted. preserve roots, short paths, intervening separators and trailing slash.
-the existing `tail` truncates that suffix to the remaining display-cell budget,
-preserving wide/combining characters. absence prose stays whole. no home
-abbreviation, filesystem lookup, path normalization or path/action coupling.
-use plain directory text for an available row, faint when its owning host is
-checking/unavailable. fresh absence/unknown uses the literal text above; path
-absence does not introduce a separate styling or readiness state.
-
-retain summary breakpoints: inline at 120 columns for all/group, 138 for needs
-input. every record has two content lines, plus one for semantically present
-stacked metadata. path length never changes height. retain existing gaps,
-heading admission, column caps and complete status. the selected gutter covers
-every content line; no blank metadata row, partial record or dangling heading.
-
-```text
-research:
-▌ review-api  ready
-▌   Codex  work  gpt-6-astra max
-▌   macbook · …/code/project
-
-  shell       terminal
-    devbox (remote) · /work/other-project
-```
-
-name, session status, provider, profile, model, effort, machine and location
-remain visible when observed. [terminal model and effort](terminal-model-effort.md)
-owns the bounded provider-footer parser; the row never copies the entire codex
-bar or extracts cwd from provider text. cwd acquisition remains independent.
-
-`tableLayout` owns measured content heights. its existing `viewport` alone
-admits records; rendering, fitting/backfill and pagination use that contract
-with the actual footer height. preserve session-lifetime selection across
-refresh and resize. when no complete selected record fits, retain selection
-and render no partial record. keep the existing below-80×24 behavior.
+[single-line desktop rows](desktop-single-line-rows.md) owns the replacement
+geometry, content hierarchy, priorities, location budget and viewport rules.
+reuse `current(row)` for execution context and `rowFooter` for observed model
+text; never derive cwd from provider text. full info retains available sampled
+paths and known destinations. names and shortened paths never become action
+identities. prior qualification below applies only to its recorded source.
 
 ## footer and commands
 
@@ -207,6 +165,8 @@ cross-feature machinery.
 
 ## red, green, refactor and acceptance
 
+this section records the simplification cutover. current row geometry and its
+acceptance belong to [single-line rows](desktop-single-line-rows.md#acceptance-and-evidence).
 follow [testing policy](rules/testing.md). root writes two disposable probes;
 the verifier reviews their sensitivity before any production edit. exercise
 actual decoding, `Update`/`View` and the live composition below, not a replica.
@@ -255,8 +215,7 @@ qualification below closes both records. preserve unrelated outstanding acceptan
 
 ## deliberate costs and exclusions
 
-- one extra directory line per session reduces density; the two removed footer
-  detail lines do not generally offset it. no third packing mode or density setting.
+- current row costs belong to [single-line rows](desktop-single-line-rows.md#deliberate-costs).
 - full machine/path and attachment inspection takes `space`. capped machine
   labels and two-component path suffixes improve scanning but can collide;
   session names and full info resolve those ties. remote framing costs nine cells.
