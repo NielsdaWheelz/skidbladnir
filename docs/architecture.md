@@ -36,12 +36,12 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [browser simplification](desktop-browser-simplification.md) owns the fleet-wide
 desktop cutover, footer and ordinary creation shortcuts.
-[single-line desktop rows](desktop-single-line-rows.md) owns current source row
-layout and priority-based omission; its isolated runtime is qualified.
+[single-line desktop rows](desktop-single-line-rows.md) owns row layout and
+priority-based omission, deployed in v0.17.3; owner readability review is pending.
 [desktop session rows](desktop-session-rows.md) owns the preceding compact layout
 and readability revision; its source and isolated runtime are qualified.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
-footer evidence. [current installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
+footer evidence. [preceding installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
 records the v0.17.2 fleet cutover and owner acceptance of its bounded codex phrase
 and compact current-location display.
 [terminal usage](terminal-usage.md) owns quota acquisition and source selection;
@@ -1128,14 +1128,15 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
-2026-10-16 source-qualified: [single-line desktop rows](desktop-single-line-rows.md)
+2026-10-16 deployed in v0.17.3: [single-line desktop rows](desktop-single-line-rows.md)
 replaces stacked records with one line, faint location text and the owner's
 ordered field omission. complete status
 remains visible; lower fields may be omitted with a marker and full info remains
 available. this is a presentation-only hard cut; public api, schemas, state,
 observation and controls retain their owners. rendered integration and isolated
 darwin/linux runtime qualification pass; the spec records evidence and limits.
-deployment and installed owner review remain separate and `NOT_RUN`.
+[installed qualification](desktop-single-line-rows.md#installed-qualification) records
+three-host/phone deployment and smokes; owner readability review remains `NOT_RUN`.
 
 2026-10-15 accepted installed-row refinement: [browser simplification](desktop-browser-simplification.md)
 shows current machine plus the final two path components and retains full info.

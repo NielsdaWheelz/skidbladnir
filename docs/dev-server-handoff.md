@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.17.2](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.2).
+current published generation: [v0.17.3](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.3).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
@@ -82,6 +82,14 @@ and jarvis remained stopped.
 records the subsequent compact-location/parser release on all three hosts and
 android, exact pin/artifact checks, session/configuration continuity, the limited
 native-process sample and owner readability acceptance. jarvis remains stopped.
+
+2026-10-16: [v0.17.3 installed qualification](desktop-single-line-rows.md#installed-qualification)
+records immutable publication, both merged pins, three-host gateway-only applies,
+fleet verification, narrow/wide desktop smokes and the in-place android update.
+sampled sessions/workers, private configuration, provider entrypoints and helper
+revision are unchanged; jarvis remains disabled and paused. owner readability
+review is pending. existing desktop processes keep their loaded version; launch
+a fresh browser to see the new rows and quick-terminal chooser.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.

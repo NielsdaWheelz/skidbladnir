@@ -6,7 +6,9 @@ creation clauses in [browser simplification](desktop-browser-simplification.md),
 [desktop browser](desktop-browser.md) and [terminal continuity](terminal-continuity.md).
 the [architecture](architecture.md), [rules](rules/index.md) and
 [testing policy](rules/testing.md) govern all other behavior. no product question
-remains open; release and deployment remain separate work.
+remains open. v0.17.3 is deployed; [shared installed qualification](desktop-single-line-rows.md#installed-qualification)
+records the three-host/phone update and read-only chooser/resize/cancel smokes.
+creation/attachment claims retain the isolated source qualification below.
 
 ## behavior and content
 
