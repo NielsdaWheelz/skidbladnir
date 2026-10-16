@@ -1,5 +1,20 @@
 # desktop browser runtime acceptance
 
+## quick terminal — source qualified
+
+2026-10-16: `codex/desktop-quick-terminal`, based on `28660ab3`, implements the
+[machine-only chooser](../desktop-quick-terminal.md). its
+[qualification](../desktop-quick-terminal.md#qualification) records the sensitive
+healthy-inventory red on both platforms and passing darwin/arm64 plus isolated
+linux/arm64 browser/pty → client → real gateway → tmux journeys. both sizes/color
+modes, default/nondefault home/group/naming, exact attachment and return,
+delayed/lost replies, attachment retry and preserved `N`/`T` paths pass.
+content, state/failure contracts and independent review pass. owned processes,
+sessions, inert sockets and temporary probes/artifacts are removed.
+`scripts/check verify host` and local documentation links pass after retirement.
+release/deployment/installed acceptance is `NOT_RUN`; prior feature boundaries
+below retain their own sources and status.
+
 ## browser simplification — deployed and accepted in v0.17.2
 
 2026-10-15: `codex/desktop-browser-simplification` from `b253c05` implements the

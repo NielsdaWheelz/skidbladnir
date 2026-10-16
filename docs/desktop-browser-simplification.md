@@ -12,6 +12,8 @@ selected-footer, remote-row attribution and affected creation-copy clauses in
 and [terminal usage](terminal-usage.md), including affected group/design clauses.
 their other contracts and historical
 evidence remain source-attributed. no open product decision blocks implementation.
+[quick terminal](desktop-quick-terminal.md) supersedes the immediate `n` path
+and its affected creation copy below.
 
 ## scope and final state
 
@@ -112,14 +114,16 @@ this does not remove letters from form input or machine arguments from the cli.
 
 | command | existing request and exact behavior |
 | --- | --- |
-| `n` | `start`, `LaunchTerminal`, configured default machine, cwd `~`, selected named group or unassigned; immediately create and enter |
+| `n` | machine-only chooser, initially configured default; enter submits `start`, `LaunchTerminal`, selected machine, cwd `~`, captured named group or unassigned, then immediately attaches |
 | `N` | existing machine/launch/name/directory/group form, initially default machine, terminal, empty automatic name/home, selected group; explicit create submits existing `start`; agent profiles remain available |
 | `T` | `shell` with captured selected-session `Ref`; gateway samples that exact source's cwd/group on its host, creates independently and enters it; never use displayed/truncated cwd |
 
-`n` never follows the cursor, last form choice or first reachable machine. an
-unavailable default refuses. `N` permits explicit other-host selection. typing
+`n` never follows the cursor, last form choice or first reachable machine.
+left/right cycles all configured machines, including unavailable hosts. only
+an available selection admits enter; cancellation creates nothing. `N` retains
+its full creation options. typing
 `T` on an available remote row refuses without dispatch or fallback; copy:
-`terminal here unavailable for a remote connection; use N to choose a machine`.
+`terminal here unavailable for a remote connection; use n to choose a machine`.
 confirmed creation selects/reveals the returned lifetime, changes view only to
 admit its actual group, then attaches. attachment failure leaves it selected;
 retry attachment only. failed/unknown creation never changes view or replays.
@@ -224,7 +228,7 @@ actual decoding, `Update`/`View` and the live composition below, not a replica.
 | --- | --- |
 | rendered integration | real strict loopback inventory decoding → model/events → view at 80/119/120/137/138/160 columns, height 24, color and `NO_COLOR`; all/group/needs-input/empty; exactly one directory per visible row, no selected-footer facts/duplicate remote text, complete status, bounded cells; long/shared-suffix paths, wide/combining characters, every context/absence/freshness case |
 | viewport | complete 2/3-line records at body capacities 0–9; first/middle/last selection, group transitions, scrolling, breakpoint/height resize, tail backfill and footer pagination agree; path length changes neither height nor summary columns |
-| interactions | table `f`/`m` do nothing and remain literal form input; arrows retain views; all hosts supply groups/rows/notices, including empty filtered views; `n` uses default/home/group despite another selected host, `N` uses chosen fields, `T` exact source/refuses remote; unavailable default never selects a reachable substitute; info retains full available paths and known hosts |
+| interactions | table `f`/`m` do nothing and remain literal form input; arrows retain views; all hosts supply groups/rows/notices, including empty filtered views; `n` initially selects the default despite another cursor host; its chosen host receives home/captured group, `N` uses chosen fields, `T` exact source/refuses remote; unavailable default never selects a reachable substitute; info retains full available paths and known hosts |
 | asynchronous preservation | press `n`/open `N` before first inventory: checking copy, no create dispatch; early usage-auth failure keeps collection checking but target refusal/error notice truthful; discarded inventory cannot settle startup, admitted success/failure does so permanently; delayed inventory across effects cannot revive stale admission; late directory replies cannot enter another machine/draft; pending confirmation/info keep exact targets; `N` during metadata reconciliation preserves editor/form ownership, including other-host creation; busy keys cause no duplicate effect |
 | isolated live | actual browser/event loop/pty → production client → loopback gateways → owned isolated tmux on darwin and linux, at 80×24 and 160×24; two distinct dummy machines/sockets, default different from selection; execute `n`, `N`, `T`, observe created cwd/group/host and exact auto-attachment, detach/first navigation, refresh and source survival; offline default and lost creation reply prove refusal/no replay; terminal-only fixtures suffice |
 | installed usability | after separately authorized release/deployment, verify matching version and have the user review narrow/wide rows, footer, paths and acceptable density; source evidence alone does not pass this row |
@@ -256,8 +260,8 @@ qualification below closes both records. preserve unrelated outstanding acceptan
 - full machine/path and attachment inspection takes `space`. capped machine
   labels and two-component path suffixes improve scanning but can collide;
   session names and full info resolve those ties. remote framing costs nine cells.
-- `n` no longer shows its destination before dispatch; its fixed configured
-  default and help own that meaning. `N` shows the destination before submission.
+- `n` now shows its destination in the machine-only chooser before enter;
+  [quick terminal](desktop-quick-terminal.md#deliberate-tradeoffs) owns that cost.
 - host-only browsing disappears; reaching needs input takes tab navigation.
 - deleted probes provide change-specific evidence without retained regression
   coverage. installed readability remains a separate, explicit acceptance step.

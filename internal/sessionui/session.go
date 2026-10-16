@@ -274,6 +274,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
 			failure := message.result.Error
 			if message.operation == "start" {
+				failureText = m.pending.Machine + ": " + failureText
 				m.invalidateAccess(m.pending.Machine, failure)
 				if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
 					m.focusForm(3)
@@ -457,7 +458,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
-			case "", "details", "usage":
+			case "", "details", "usage", "quick-create":
 				cancel = cancel || key == "q"
 			case "confirm":
 				cancel = cancel || key == "q" || key == "n"
@@ -499,6 +500,9 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		if m.page == "create" {
 			return m, m.editForm(message)
+		}
+		if m.page == "quick-create" {
+			return m, m.editQuickCreate(message)
 		}
 		if m.page == "details" && (key == "r" || key == "g") {
 			operation := "group"
@@ -548,21 +552,10 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			m.step(1)
 			return m, nil
 		case "n":
-			peer := m.creationPeer()
-			if peer == nil {
-				m.inform("target unavailable; refresh before creating")
-				return m, nil
-			}
-			if !peer.OK {
-				if m.targetChecking(peer.Label) {
-					m.inform("checking inventory; refresh before creating")
-				} else {
-					m.inform(peer.Label + " unavailable")
-				}
-				return m, nil
-			}
-			m.inform("opening terminal on " + peer.Label + "…")
-			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.view.label})
+			m.page = "quick-create"
+			m.pending = fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: m.client.DefaultMachine().Label, CWD: "~", Group: m.view.label}
+			m.inform("")
+			return m, nil
 		case "N":
 			peer := m.creationPeer()
 			if peer == nil {
@@ -592,7 +585,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		switch key {
 		case "T":
 			if row.session.Connection != nil {
-				m.inform("terminal here unavailable for a remote connection; use N to choose a machine")
+				m.inform("terminal here unavailable for a remote connection; use n to choose a machine")
 				return m, nil
 			}
 			request.Operation = "shell"

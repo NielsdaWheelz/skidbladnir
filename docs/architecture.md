@@ -487,8 +487,10 @@ there is no quota file, publisher, extra capture, hook extension or new poller.
 The Forge first requires a machine and then offers terminal and that machine's
 declared agent profiles. Terminal remains available with zero profiles.
 phone standalone creation requires an explicit machine; source creation retains
-its exact source host. desktop quick creation and initial options use the
-configured default machine; options permit an explicit other host.
+its exact source host. desktop quick creation opens a machine-only chooser at
+the configured default; enter creates a home terminal on the chosen available
+host. initial full options also use the configured default. [quick terminal](desktop-quick-terminal.md)
+owns the chooser and admission contract.
 directory and group use the same native field mechanics within each client:
 typing supplies choices, acceptance fills the visible draft, and a separate
 create/save action submits it. directory search waits 150 ms; group filtering
@@ -684,9 +686,10 @@ conversation separately from its current native observation; only a later
 explicitly authorized action may choose the separate `observedRef`. terminal
 reassociation or deletion does not retarget captured conversation inspection.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
-the tui's `n` immediately creates and attaches a home terminal on the configured
-default machine; `N` opens explicit new-terminal options. mobile retains
-its machine, directory, and provider chooser. `stop` means `stop current work`;
+the tui's `n` chooses only a machine, initially the configured default; enter
+creates and attaches a home terminal there. `N` opens explicit new-terminal
+options. mobile retains its machine, directory, and provider chooser.
+`stop` means `stop current work`;
 `close` attempts interruption then independently closes the exact terminal. `close --terminal-only` closes the
 exact session without halt. pending provider input may remain; history is retained.
 

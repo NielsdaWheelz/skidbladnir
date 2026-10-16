@@ -3,7 +3,8 @@
 [terminal continuity](terminal-continuity.md) supersedes the launch and desktop
 creation details below: every new session starts a persistent login shell;
 the initial agent runs once in its foreground and exit returns to that shell.
-desktop `n` creates and attaches a home terminal; `N` opens the advanced form.
+desktop `n` opens the [machine-only chooser](desktop-quick-terminal.md); enter
+creates and attaches a home terminal. `N` opens the advanced form.
 new-terminal-here is unavailable during a remote ssh/mosh connection. the older
 red/green evidence here does not qualify those changes.
 
@@ -42,13 +43,13 @@ separate ordinary tmux session, never a window, split, or linked session group.
 
 | surface | target behavior |
 | --- | --- |
-| tui `n` | create and attach a home terminal on the selected or configured default machine. |
+| tui `n` | choose only a machine, initially configured default; enter creates and attaches a home terminal there. |
 | tui `N` | advanced machine, launch, optional name, cwd, and group form; create and attach. |
 | tui `T` (shift+t) | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
 | android forge | terminal in the launch picker; existing name/cwd/group/objective fields and automatic post-create attachment. |
 | android terminal session sheet | `new terminal on <owner>` row, minimum 48dp target, one tap behind the rail; create-here on a local pane, the source-scoped forge on an ssh/mosh pane ([terminal chrome](terminal-chrome.md)). |
 
-the shortcut has no form: allocate the smallest free `skidbladnir-terminal-N`
+the source shortcut `T` has no form: allocate the smallest free `skidbladnir-terminal-N`
 name and an ordinary dwarf identity, then follows the active pane title under
 [automatic naming](automatic-session-names.md). each deliberate invocation creates another
 session. name and group remain editable afterward. closing either session
