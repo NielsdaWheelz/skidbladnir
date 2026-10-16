@@ -1,7 +1,7 @@
 # single-line desktop session rows
 
-2026-10-16: implemented and source/live qualified; deployment and installed
-owner review remain `NOT_RUN`. this spec owns row geometry, hierarchy and overflow
+2026-10-16: implemented, source/live qualified and [deployed in v0.17.3](#installed-qualification).
+installed owner readability review remains `NOT_RUN`. this spec owns row geometry, hierarchy and overflow
 rules in [desktop browser](desktop-browser.md), [browser simplification](desktop-browser-simplification.md),
 [session rows](desktop-session-rows.md) and [design language §19](design-language.md#19-terminal-browser).
 their other behavior and source-attributed qualification remain independent.
@@ -217,7 +217,7 @@ sole production file `internal/sessionui/layout.go`, git blob
 linux terminal retirement is asynchronous: the live probe awaits actual client
 absence within a deadline, separately from browser process exit. no production
 change or relaxed cleanup criterion was needed. deployment and installed owner
-review remain `NOT_RUN`, tracked in the [row issue](issues/desktop-single-line-rows.md).
+review were `NOT_RUN` at source qualification; subsequent installed evidence follows.
 
 2026-10-16 composition: rebased onto `525c62a` (quick-terminal chooser) without
 changing the qualified layout blob. a supplemental disposable tls inventory →
@@ -226,3 +226,37 @@ actual footer height, chooser resize/cancel, full info and refresh identity.
 the previous layout at `525c62a` compiles and fails its 80-column density assertion.
 this is rendered composition evidence; the earlier real-pty runs retain their
 original source attribution. the supplemental probe was removed after review.
+
+## installed qualification
+
+2026-10-16: immutable [v0.17.3](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.3)
+ships `11f89da683502182832d80ad2aa4cf5265963409` ([implementation pr](https://github.com/NielsdaWheelz/skidbladnir/pull/92)).
+exact-source [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/38974005495),
+signed build, independently downloaded five-asset/signature checks and
+`scripts/check published-release` pass. [upstream pin](https://github.com/NielsdaWheelz/skidbladnir/pull/93)
+and [installer pin](https://github.com/NielsdaWheelz/dev-server/pull/175) match the published digests.
+installer `6083362ebbea440756d1772698d5612bb6aef0db` applied through gateway-only
+commands on macbook, arch and devbox; `scripts/fleet verify` passes all three.
+
+before/after samples preserve all 11 macbook and three devbox session references,
+selected panes, locally reported cwd and listed foreground-agent pid/start identities;
+arch has no local sessions. gateway bearer, machine id and desktop config bytes/modes
+are unchanged. native provider entrypoint bytes/versions and helper revision
+`d3c57298131ef6c21232949b0a23a50fb9458cef` are unchanged. this covers sampled
+identities, not every descendant process or provider-history content. jarvis remains
+disabled, inactive, successfully stopped and paused; its managed cli matches the gateway.
+
+newly launched installed browsers on darwin/arm64 and both linux/amd64 hosts pass
+80×24/160×24 read-only real-pty smokes: table, quick chooser, resize in both directions,
+cancel, info, return and clean quit. assertions inspect in-memory terminal grids;
+no terminal bytes are retained. no creation, attachment or production tmux control
+was part of this installed smoke; the earlier isolated journeys own those claims.
+
+android updated in place from `0.17.2` / `17002` to `0.17.3` / `17003` after host
+verification. the installed apk matches the published digest; app id and original
+install timestamp are unchanged. the production activity opens the paired dashboard
+with needs-input/all tabs. no pairing reset or phone terminal operation occurred.
+
+independent release/deployment review passes. disposable probes and snapshots are
+removed after owned browser exit. installed theme/readability acceptance still needs
+the owner's 80×24/160×24 review, tracked in the [row issue](issues/desktop-single-line-rows.md).

@@ -5,22 +5,23 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## single-line desktop rows — source-qualified
+## single-line desktop rows — deployed in v0.17.3
 
 [the spec and plan](desktop-single-line-rows.md) defines one line per session,
 faint machine/path, the owner's field priorities and explicit whole-field
 omission. rendered integration and isolated darwin/linux browser journeys pass.
-[the open row issue](issues/desktop-single-line-rows.md) tracks separate deployment
-and installed owner review, both `NOT_RUN`. prior qualification remains
-source-attributed.
+[installed qualification](desktop-single-line-rows.md#installed-qualification) records
+three-host/phone deployment, fleet and desktop smokes, and sampled continuity.
+[owner readability review](issues/desktop-single-line-rows.md) remains `NOT_RUN`.
 
-## desktop quick terminal — source qualified
+## desktop quick terminal — deployed in v0.17.3
 
 2026-10-16: [quick terminal](desktop-quick-terminal.md) implements a machine-only
 `n` chooser, then enter creates and attaches at home. [qualification](desktop-quick-terminal.md#qualification)
 passes real darwin/linux browser, gateway and isolated tmux journeys, including
-uncertainty and attachment retry. temporary probes are retired. release and
-deployment remain separate.
+uncertainty and attachment retry. temporary probes are retired.
+[shared installed qualification](desktop-single-line-rows.md#installed-qualification)
+records v0.17.3 deployment and read-only chooser/resize/cancel smokes.
 
 ## claude update recognition — qualified and deployed in v0.17.0
 
@@ -376,14 +377,14 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.17.2` from
-`37b87cab5c7d17f064950a1bdc33cacd61efe561`; it does not assert the
+source and artifact digests. it pins immutable `v0.17.3` from
+`11f89da683502182832d80ad2aa4cf5265963409`; it does not assert the
 installed version of any host or phone.
 
-2026-10-15 [current installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
-verifies v0.17.2 on macbook, devbox, arch and android, including fleet health,
-session/configuration continuity, the native-process observation limit and
-owner acceptance of the desktop rows.
+2026-10-16 [current installed qualification](desktop-single-line-rows.md#installed-qualification)
+verifies v0.17.3 on macbook, devbox, arch and android, including fleet health,
+sampled session/configuration continuity and read-only desktop smokes.
+owner readability review remains pending.
 
 2026-10-15 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 independently verifies v0.16.0 on macbook, devbox, arch and the attached android
