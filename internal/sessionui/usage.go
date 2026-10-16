@@ -377,10 +377,10 @@ func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		row.state = ""
 		row.text.stale = max(time.Duration(0), now.Sub(row.receivedAt)) >= usageStaleAfter
 		if value := row.terminal.TerminalUsage.FiveHourUsedPercent; value != nil {
-			row.text.fiveHour = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
+			row.text.fiveHour = &windowText{remaining: strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
 		}
 		if value := row.terminal.TerminalUsage.SevenDayUsedPercent; value != nil {
-			row.text.sevenDay = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
+			row.text.sevenDay = &windowText{remaining: strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
 		}
 	} else if conflict {
 		row.state = "conflict"

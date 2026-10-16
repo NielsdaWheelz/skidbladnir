@@ -478,7 +478,7 @@ percentages; the independent [native route](profile-usage.md) reads codex only.
 both existing lanes read all paired hosts independently of table filters. the
 desktop selects one whole eligible observation per profile by client-local
 receipt, under the owner's same-account-across-hosts guarantee. [desktop usage](desktop-usage.md)
-shows compact remaining values, explicit approximation/unknown/stale states and
+shows compact remaining values, explicit unknown/stale states and
 day-based countdowns. usage never supplies admission/readiness.
 there is no quota file, publisher, extra capture, hook extension or new poller.
 
