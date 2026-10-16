@@ -5,6 +5,15 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## single-line desktop rows — source-qualified
+
+[the spec and plan](desktop-single-line-rows.md) defines one line per session,
+faint machine/path, the owner's field priorities and explicit whole-field
+omission. rendered integration and isolated darwin/linux browser journeys pass.
+[the open row issue](issues/desktop-single-line-rows.md) tracks separate deployment
+and installed owner review, both `NOT_RUN`. prior qualification remains
+source-attributed.
+
 ## desktop quick terminal — source qualified
 
 2026-10-16: [quick terminal](desktop-quick-terminal.md) implements a machine-only
@@ -25,9 +34,10 @@ the spec records exact evidence and limits; the confirmed defect is resolved.
 
 ## desktop browser simplification — deployed and accepted in v0.17.2
 
-2026-10-15: [the current spec](desktop-browser-simplification.md) gives every row
-its directory, removes selected-footer facts and machine collection filtering,
-and gives `n`/`N`/`T` ordinary descriptive hints. needs-input/all/group views and
+2026-10-15: [the deployed revision](desktop-browser-simplification.md) gave every
+row its directory, removed selected-footer facts and machine collection filtering,
+and gave `n`/`N`/`T` ordinary descriptive hints. the single-line spec now owns row
+geometry and omission. needs-input/all/group views and
 explicit creation destinations remain. the spec records source qualification
 and the v0.17.1 deployment on all three hosts and android, preserved baseline
 session identities, fleet verification and the installed desktop smoke.

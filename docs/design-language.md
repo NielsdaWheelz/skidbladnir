@@ -600,13 +600,16 @@ those plans do not override current testing policy or claim human acceptance.
 
 ## 19. terminal browser
 
+[single-line desktop rows](desktop-single-line-rows.md) owns row geometry and
+hierarchy: one line, faint metadata/location and ordered whole-field omission.
+
 the [desktop browser](desktop-browser.md) is this language with every ornament
 deleted (§1.2), drawn in the operator's own terminal. the operator's theme supplies
 the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
-[browser simplification](desktop-browser-simplification.md) owns the current
-row/footer contract and responsive budgets; [session rows](desktop-session-rows.md)
+[browser simplification](desktop-browser-simplification.md) owns fleet/footer
+and creation behavior; [session rows](desktop-session-rows.md)
 records the preceding readability revision. installed usability remains separate. prior source `6974851` is
 [qualified](desktop-session-rows.md#qualification) only for its preceding layout. observed footer
 text uses the existing faint metadata register, with full text and source meaning
@@ -616,8 +619,8 @@ in info. earlier row qualification applies only to its recorded source.
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
 | bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
-| plain | — | everything that must be read: names, status words, key labels, notices, every available row's directory, the exclusive `needs input` view label |
-| faint | 2 | what may recede: group headings/cells, provider/profile, the rule, names/directories of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
+| plain | — | everything that must be read: names, status words, key labels, notices, the exclusive `needs input` view label |
+| faint | 2 | what may recede: group headings/cells, provider/profile/model text, every row's machine/path, omission markers, the rule, names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |
@@ -636,9 +639,10 @@ hints, so requests and shown errors stay the table's only red statuses and are
 found at a glance. colour never carries meaning alone: every status is a word;
 the cursor is a glyph plus bold; the current view is bold, between gold `‹ ›` at
 the table; form chevrons stay faint because the `▌` gutter marks focus. faint
-varies by terminal and disappears under mosh. the accepted row revision requires
-section, record and continuation hierarchy to survive complete style stripping;
-geometry owns those distinctions. one rule separates content from controls. no boxes,
+varies by terminal and disappears under mosh. section/session hierarchy and
+omission must survive complete style stripping; one content line identifies each
+session, with gaps only at group boundaries. one rule separates content from
+controls. no boxes,
 fret, runes, icons or motion.
 
 ## 20. session naming content
