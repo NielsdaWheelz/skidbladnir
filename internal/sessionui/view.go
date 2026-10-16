@@ -205,6 +205,8 @@ func (m *model) footerLines() []string {
 		legend = target(m.pendingName, m.pendingLabel, width)
 	case "details", "group-edit", "name-edit":
 		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
+	case "quick-create":
+		legend = "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width/2, "…")
 	case "create":
 		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[0]), width/2, "…")
 	}
@@ -280,6 +282,8 @@ func (m *model) hints() [][]hint {
 			keys = append(keys, hint{"ctrl-a", "use automatic title"})
 		}
 		return [][]hint{keys}
+	case "quick-create":
+		return [][]hint{{{"←→", "machine"}, {"enter", "open terminal"}, {"ctrl-r", "refresh"}, {"escape", "cancel"}}}
 	case "create":
 		enter := hint{"enter", "next"}
 		next := hint{"tab", "next"}
@@ -458,6 +462,25 @@ func (m *model) bodyLines(height int) []string {
 			if current != nil && current.session.NameMode == "automatic" {
 				lines = append(lines, "follows the active pane's terminal title.")
 			}
+		}
+		return window(lines, focusStart, focusEnd, height)
+	case "quick-create":
+		lines := []string{bold.Styled("quick terminal"), ""}
+		focusStart := len(lines)
+		lines = append(lines, field("machine", m.pending.Machine, true, true, 7, width)...)
+		focusEnd := len(lines)
+		context := "home (~) · unassigned"
+		if !m.pending.Group.IsUnassigned() {
+			context = "home (~) · group: " + m.pending.Group.String()
+		}
+		lines = append(lines, wrapped(context, width)...)
+		if peer := m.quickCreatePeer(); peer == nil || !peer.OK {
+			status := attention.SingleLine(m.pending.Machine) + " unavailable; opening disabled"
+			if m.targetChecking(m.pending.Machine) {
+				status = "checking inventory; opening disabled"
+			}
+			lines = append(lines, "")
+			lines = append(lines, wrapped(status, width)...)
 		}
 		return window(lines, focusStart, focusEnd, height)
 	case "create":

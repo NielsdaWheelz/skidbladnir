@@ -32,6 +32,46 @@ func (m *model) targetChecking(label string) bool {
 	return false
 }
 
+func (m *model) quickCreatePeer() *fleetclient.Peer {
+	for index := range m.peers {
+		if m.peers[index].Label == m.pending.Machine {
+			return &m.peers[index]
+		}
+	}
+	return nil
+}
+
+func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
+	switch key.String() {
+	case "esc", "q":
+		m.page = ""
+		m.pending = fleetclient.Request{}
+	case "left", "right":
+		machines := m.client.Machines()
+		for index, machine := range machines {
+			if machine.Label != m.pending.Machine {
+				continue
+			}
+			delta := 1
+			if key.String() == "left" {
+				delta = -1
+			}
+			m.pending.Machine = machines[(index+len(machines)+delta)%len(machines)].Label
+			break
+		}
+	case "enter":
+		peer := m.quickCreatePeer()
+		if peer == nil || !peer.OK {
+			return nil
+		}
+		request := m.pending
+		m.page = ""
+		m.inform("opening terminal on " + request.Machine + "…")
+		return m.execute(request)
+	}
+	return nil
+}
+
 func (m *model) directoryAvailable() bool {
 	for _, peer := range m.peers {
 		if peer.Label == m.form[0] {

@@ -25,7 +25,7 @@ this document owns the implementation delta to [architecture](architecture.md),
 clauses at cutover; do not maintain contradictory final contracts. retain
 [codebase rules](rules/index.md) and [temporary-test policy](rules/testing.md).
 
-goals: persistent terminals, immediate desktop creation, touch-friendly mobile
+goals: persistent terminals, quick desktop creation, touch-friendly mobile
 creation, current cwd/provider/home and ordinary ssh/mosh context tracking.
 non-goals: new multiplexer/supervisor/database, generic command execution api,
 provider history/model/account inspection, automatic session migration, arbitrary
@@ -41,11 +41,11 @@ redesign. no remote attach/control api, forced remote persistence or recovery cl
   agent is one foreground child. `/exit`, normal agent exit and agent failure
   return to that same shell. shell `exit` and deliberate `exec` retain ordinary
   shell semantics. detach leaves the terminal running.
-- tui `n` creates at home on the configured default machine and immediately
-  attaches; never choose the cursor host or first reachable peer. inherit the
-  selected named group, otherwise unassigned. `N` opens existing options with
-  that default and permits explicit host selection. `T` retains exact-source
-  new-terminal-here. [browser simplification](desktop-browser-simplification.md)
+- tui `n` opens the [machine-only chooser](desktop-quick-terminal.md) at the
+  configured default. enter creates at the selected host's home and immediately
+  attaches; capture the selected named group, otherwise unassigned. `N` opens
+  existing full options at the default. `T` retains exact-source new-terminal-here.
+  [browser simplification](desktop-browser-simplification.md)
   owns labels, remote refusal, per-row cwd and the fleet-wide browser.
 - mobile keeps the forge's machine, launch/account, directory, optional name,
   objective and group controls. creation attaches the confirmed terminal. menu
@@ -301,7 +301,7 @@ retain the copy below; preceding desktop evidence stays source-attributed.
 
 | feature | content contract and designer's quality criterion |
 | --- | --- |
-| desktop creation | `n quick terminal`, `N new terminal options`, `T new terminal here`; `opening terminal on <host>…`; `<host> unavailable`. `n` uses the configured default; `N` shows the chosen destination before acting; `T` captures the exact local source |
+| desktop creation | `n quick terminal`, `N new terminal options`, `T new terminal here`; `opening terminal on <host>…`; `<host> unavailable`. `n` chooses only a machine, initially the configured default; enter opens a home terminal; `N` shows full options before acting; `T` captures the exact local source |
 | mobile creation | preserve forge and `create on <host>`; selected directory/account visible; no required terminal typing; existing 48dp targets and traversal |
 | identity/cwd | configured profile label; `<provider> · profile unknown`; `terminal` means no recognized agent in resolved context. existing desktop/cli details: `agent: not detected`, `directory unavailable`, `started with: <profile>`. abbreviate cwd visually only; no repeated polling announcements |
 | search | [directory and group entry](directory-group-entry.md#phone-interaction) owns inline states and focus. preserve host ranking, full spoken paths, omitted-result notice and literal draft; choosing a result edits only cwd |
@@ -359,7 +359,7 @@ each and block their acceptance; delete resolved records.
 | gateway -> isolated tmux -> real bash/zsh pty | terminal and initial-agent create share shell lifetime; agent exit/failure leaves same shell; cwd/argv survive special characters; ctrl-z/fg, input and resize work; repeated/startup-child sourcing launches once |
 | process -> inventory -> both client projections | personal/work/work2 reflect exact native process; provider swaps clear stale fields; launch profile never wins; absent/empty/unlisted/inaccessible homes stay honest; `HOME` before the read cap with `CODEX_HOME` beyond it stays unknown; background agents do not become foreground; stale actions reject replacement |
 | client -> gateway -> real host zoxide/path admission | ranked results use that host's existing database; literal paths remain literal; selection only edits cwd; no matches, disabled/missing tool, bounds, removed directory and host-switch races behave as specified |
-| real desktop attachment | `n` creates/attaches without form; target/default and offline failure are correct; `N` retains options; `T` samples source cwd/group; pending duplicate submissions are suppressed, uncertain creation is never replayed, deliberate retries may create another terminal |
+| real desktop attachment | `n` chooses only a machine, then enter creates/attaches; target/default and offline admission are correct; `N` retains options; `T` samples source cwd/group; pending duplicate submissions are suppressed, uncertain creation is never replayed, deliberate retries may create another terminal |
 | actual phone -> gateway -> provider | forge remains usable without terminal navigation; agent launch -> `/exit` -> shell -> another provider preserves same dwarf; search, copy, close confirmation and post-create attachment are usable |
 | real ssh/mosh -> remote tty -> both clients | actual command resolution/options preserved; distinct simultaneous connections/nested hops; remote cd/z and provider swaps; ctrl-z/fg/hop exit; gateway restart during a busy agent; `/exit` retains shell; detach/reopen retains original attachment; source loss, no integration and inner tmux show honest limits; no remote action retargeting |
 

@@ -73,8 +73,8 @@ unknown delivery is never replayed; a nonzero exit alone permits no retry
 
 browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
-  n quick terminal: create and enter at home on the configured default machine,
-  in the selected named group; otherwise unassigned
+  n quick terminal: choose machine with left/right; enter creates and opens at home
+  initial choice is configured default; selected named group, otherwise unassigned
   N new terminal options: choose machine, launch, name, directory and group
   enter attaches; space opens info
   u opens usage; up/down scroll; q/escape returns

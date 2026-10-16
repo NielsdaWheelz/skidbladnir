@@ -5,6 +5,14 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## desktop quick terminal — source qualified
+
+2026-10-16: [quick terminal](desktop-quick-terminal.md) implements a machine-only
+`n` chooser, then enter creates and attaches at home. [qualification](desktop-quick-terminal.md#qualification)
+passes real darwin/linux browser, gateway and isolated tmux journeys, including
+uncertainty and attachment retry. temporary probes are retired. release and
+deployment remain separate.
+
 ## claude update recognition — qualified and deployed in v0.17.0
 
 2026-10-15: [the spec and plan](claude-update-recognition.md) replaces comparison

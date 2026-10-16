@@ -1,7 +1,8 @@
 # desktop browser
 
 2026-10-15: [browser simplification](desktop-browser-simplification.md) owns
-the fleet-wide roster, per-row directories, footer and creation shortcuts.
+the fleet-wide roster, per-row directories and footer.
+[quick terminal](desktop-quick-terminal.md) owns the machine-only `n` chooser.
 [session rows](desktop-session-rows.md) records the preceding layouts.
 installed usability remains a separate acceptance boundary.
 [displayed footer](terminal-model-effort.md)
@@ -40,7 +41,7 @@ delivery/evidence; [the design language](design-language.md#19-terminal-browser)
 owns visual values. this spec replaces the desktop table/picker layout and affected
 navigation rules in [groups](groups.md) and [agent-control ux](agent-control-ux.md).
 this document governs desktop behavior. [terminal continuity](terminal-continuity.md) owns
-creation (`n`, `N`, directory search) and the current execution context rows
+creation (`N`, directory search) and the current execution context rows
 display. [pr 4](groups-and-shells.md) separately investigates terminal embedding.
 
 ## 1. outcome and limits
@@ -138,7 +139,7 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 
 | context | keys/behavior |
 | --- | --- |
-| ordinary navigation | left/right view; `n` quick terminal on the configured default; `N` new terminal options; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
+| ordinary navigation | left/right view; `n` quick-terminal machine chooser, initially the configured default; `N` new terminal options; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
 | name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
@@ -174,9 +175,10 @@ validation; automatic reconciliation compares ownership, never a predicted title
 title updates do not rewrite the draft; changed manual naming or ownership
 retains it with a conflict notice and a fresh expectation for deliberate resubmission.
 
-`n` creates a terminal at home on the configured default machine, never the
-cursor host, last form choice or first reachable peer, in the selected named
-group (otherwise unassigned). `N` opens machine/launch/name/cwd/group followed by an explicit
+`n` opens the machine-only chooser at the configured default, never the
+cursor host, last form choice or first reachable peer. enter creates at the
+chosen host's home in the captured named group (otherwise unassigned). `N` opens
+machine/launch/name/cwd/group followed by an explicit
 `create` action, under [directory and group entry](directory-group-entry.md#terminal-interaction). its
 directory field starts empty, visibly defaulting to home: typing ordinary words
 searches that machine's visited directories after a 150 ms pause, without a `z`
