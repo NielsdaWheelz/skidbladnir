@@ -7,14 +7,12 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/macnotifications"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
@@ -24,123 +22,58 @@ import (
 
 var errDimensions = errors.New("terminal size must be 20–1024 columns and 5–512 rows; detached, work continues")
 
+// Result keeps optional notification failures separate from terminal ownership.
+type Result struct {
+	Err             error
+	NotificationErr error
+}
+
 // Run owns one exact terminal visit. Notification failures remain secondary.
-func Run(ctx context.Context, client *fleetclient.Client, session fleetclient.Session, input, output *os.File, changed func(NotificationView, error)) (result error) {
-	var notificationMu sync.Mutex
-	notify := func(view NotificationView, err error) {
-		notificationMu.Lock()
-		defer notificationMu.Unlock()
-		changed(view, err)
-	}
-	request := fleetclient.Request{Operation: "enter", Ref: session.Ref}
-	ref, err := fleetclient.DecodeReference(session.Ref)
+func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, seed *attention.ReadySeed, input, output *os.File) (result Result) {
+	nonce := os.Getenv("SKID_NOTIFICATION_LAUNCH")
+	var visit *entryVisit
+	defer func() {
+		if visit != nil {
+			result.NotificationErr = visit.close()
+		} else {
+			result.NotificationErr = abandonLaunch(context.WithoutCancel(ctx), nonce)
+		}
+	}()
+	ref, err := fleetclient.DecodeReference(encodedRef)
 	if err != nil || ref.Conversation != nil {
-		return errors.New("enter requires an exact terminal reference")
+		return Result{Err: errors.New("enter requires an exact terminal reference")}
 	}
-	key := fleetclient.NotificationKey(ref)
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
-		return errors.New("enter requires stdin and stdout ttys")
+		return Result{Err: errors.New("enter requires stdin and stdout ttys")}
 	}
 	resized := make(chan os.Signal, 1)
 	signal.Notify(resized, syscall.SIGWINCH)
 	defer signal.Stop(resized)
 	columns, rows, err := term.GetSize(int(output.Fd()))
 	if err != nil {
-		return errors.New("cannot measure terminal")
+		return Result{Err: errors.New("cannot measure terminal")}
 	}
 	if _, err := terminal.EncodeResize(columns, rows); err != nil {
-		return errDimensions
+		return Result{Err: errDimensions}
 	}
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
-	// Optional notification work must precede the websocket admission deadline.
-	view, notificationErr := ReadNotifications(ctx, client)
-	if notificationErr != nil {
-		notify(view, notificationErr)
-	}
-	foreground := fleetclient.NotificationForeground(session)
-	token := view.readyToken(key, foreground)
-	var visit *macnotifications.Visit
-	visitEnded := false
-	var store *fleetclient.NotificationStore
-	defer func() {
-		if visitEnded {
-			// The owner has confirmed retirement before this secondary refresh.
-			current, err := ReadNotifications(ctx, client)
-			notify(current, err)
-		}
-	}()
-	if runtime.GOOS == "darwin" {
-		args := macnotifications.RegisterArgs{Key: key, Foreground: foreground, LaunchNonce: os.Getenv("SKID_NOTIFICATION_LAUNCH")}
-		if token.Generation > 0 {
-			args.ReadyToken = &token
-		}
-		visit, err = macnotifications.Register(ctx, args)
-		if err != nil {
-			notify(NotificationView{}, err)
-		} else {
-			visitCtx, cancelVisit := context.WithCancel(ctx)
-			visitDone := make(chan struct{})
-			go func() {
-				defer close(visitDone)
-				for {
-					select {
-					case <-visitCtx.Done():
-						return
-					case <-visit.Disconnected():
-					}
-					notify(NotificationView{}, attention.ErrUnavailable)
-					for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
-						timer := time.NewTimer(delay)
-						select {
-						case <-visitCtx.Done():
-							timer.Stop()
-							return
-						case <-timer.C:
-						}
-						if visit.Reconnect(visitCtx) == nil {
-							break
-						}
-					}
-				}
-			}()
-			defer func() {
-				cancelVisit()
-				<-visitDone
-				endCtx, cancelEnd := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-				endErr := visit.End(endCtx)
-				cancelEnd()
-				if endErr != nil {
-					notify(NotificationView{}, endErr)
-				} else {
-					visitEnded = true
-				}
-				if err := visit.Close(); err != nil {
-					notify(NotificationView{}, err)
-				}
-			}()
-		}
-	} else {
-		store, err = fleetclient.DefaultNotificationStore()
-		if err != nil {
-			notify(NotificationView{}, err)
-		}
-	}
-	connection, failure := client.OpenTerminal(ctx, request)
+	visit = startEntryVisit(ctx, ref, seed, nonce)
+	connection, failure := client.OpenTerminal(ctx, fleetclient.Request{Operation: "enter", Ref: encodedRef})
 	if failure != nil {
-		return errors.New(failure.Code)
+		return Result{Err: errors.New(failure.Code)}
 	}
 	defer connection.CloseNow()
 	columns, rows, err = term.GetSize(int(output.Fd()))
 	if err != nil {
-		return errors.New("cannot measure terminal")
+		return Result{Err: errors.New("cannot measure terminal")}
 	}
 	if _, err := terminal.EncodeResize(columns, rows); err != nil {
-		return errDimensions
+		return Result{Err: errDimensions}
 	}
 	original, err := term.MakeRaw(int(input.Fd()))
 	if err != nil {
-		return errors.New("cannot enter raw terminal mode")
+		return Result{Err: errors.New("cannot enter raw terminal mode")}
 	}
 	defer func() {
 		// The remote program may have enabled presentation modes before transport loss.
@@ -150,30 +83,15 @@ func Run(ctx context.Context, client *fleetclient.Client, session fleetclient.Se
 			ansi.ResetModifyOtherKeys+ansi.ResetModeLeftRightMargin+ansi.SetTopBottomMargins(0, 0)+ansi.ResetModeAltScreenSaveCursor)
 		restoreErr := term.Restore(int(input.Fd()), original)
 		if writeErr != nil || restoreErr != nil {
-			result = errors.Join(result, errors.New("terminal restoration failed"))
+			result.Err = errors.Join(result.Err, errors.New("terminal restoration failed"))
 		}
 	}()
-	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, func() {
-		if runtime.GOOS == "darwin" {
-			if visit == nil {
-				return
-			}
-			if err := visit.Presented(ctx, token); err != nil {
-				notify(NotificationView{}, err)
-			}
-			return
-		}
-		if store == nil || token.Generation == 0 {
-			return
-		}
-		device, err := store.Presented(key, foreground, token)
-		view.Device = device
-		notify(view, err)
-	})
+	result.Err = stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, visit)
+	return result
 }
 
 // stream cancels and joins both readers before returning ownership of stdin.
-func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), presented func()) (result error) {
+func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), visit *entryVisit) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
@@ -194,8 +112,11 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	if err != nil || kind != websocket.MessageText {
 		return errors.New("invalid terminal greeting")
 	}
+	var hello terminal.HelloFrame
 	switch frame := frame.(type) {
 	case terminal.HelloFrame:
+		hello = frame
+		visit.greet(hello)
 	case terminal.ErrorFrame:
 		return errors.New(frame.Message)
 	default:
@@ -267,17 +188,21 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 				return errors.New("terminal connection ended; work may continue")
 			}
 			if event.kind == websocket.MessageBinary {
+				var frozen attention.ReadySeed
+				if len(event.body) > 0 && !presentedOutput {
+					frozen = visit.freeze(hello)
+				}
 				remaining := event.body
 				for len(remaining) > 0 {
 					n, err := output.Write(remaining)
-					if err != nil || n <= 0 {
+					if err != nil || n <= 0 || n > len(remaining) {
 						return errors.New("terminal output unavailable")
 					}
 					remaining = remaining[n:]
 				}
 				if len(event.body) > 0 && !presentedOutput {
 					presentedOutput = true
-					presented()
+					visit.written <- frozen
 				}
 				continue
 			}

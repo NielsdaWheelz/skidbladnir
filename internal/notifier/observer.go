@@ -229,7 +229,14 @@ func (observer *Observer) Run(ctx context.Context) error {
 			defer ticker.Stop()
 			for {
 				request, cancel := context.WithTimeout(ctx, 5*time.Second)
-				peer, err := observer.client.InventoryMachine(request, host.Handle)
+				result := observer.client.InventoryMachine(request, host.Handle)
+				var peer fleetclient.Peer
+				var err error
+				if result.OK {
+					peer = result.Value.(fleetclient.Peer)
+				} else {
+					err = attention.ErrUnavailable
+				}
 				cancel()
 				select {
 				case outcomes <- struct {

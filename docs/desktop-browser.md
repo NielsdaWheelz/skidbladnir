@@ -88,10 +88,12 @@ the table's scroll position, and existing modal/pending-operation state. rows
 derive from those observations. no independent highlighted-session,
 preview-session or open-tab state.
 
-keep five-second refresh, one inventory in flight, post-write read fences,
-stale-row retention, and existing operation timeouts. owning-peer availability
-admits actions; view changes are local. `inventoryReceived` records the first
-admitted outcome for initial empty-state presentation only. refresh cannot rewrite a draft, captured action reference, or read snapshot.
+keep five-second refresh and one inventory flight per machine, with independent
+notification/context lanes under [the latency contract](session-latency.md).
+manual refresh coalesces one trailing read. preserve post-write read fences, stale
+rows and existing operation timeouts. owning-peer availability admits actions;
+view changes are local. initial empty state waits for every peer's first outcome.
+refresh cannot rewrite a draft, captured action reference or read snapshot.
 
 ## 3. selection and navigation
 
@@ -132,8 +134,9 @@ otherwise it uses the previous index clamped to the surviving rows, or none.
 never auto-attach. external membership changes never change the view.
 rows of a host whose read failed retain their last-observed facts, their status
 cell reading `last observed: <label>`, also while that host is re-read; rows of
-any other host being re-read read `checking` (§5). remote actions stay disabled
-on both. once a host fails a read, its notice names the failure and shows
+an unresolved initial or post-write host read `checking` (§5). ordinary background
+reads retain admitted status/actions; failed or post-write-unqualified hosts keep
+remote actions disabled. once a host fails a read, its notice names the failure and shows
 in every view, even with no retained rows; an unobserved host is not announced
 as unavailable. inventory failures never replace an action's outcome notice, so
 an unknown outcome stays visible. reuse existing honest empty copy.

@@ -217,7 +217,11 @@ cli commands remain explicit actions without additional confirmation.
 ## direct terminal and session actions
 
 desktop `enter` uses the existing authenticated websocket terminal route, machine
-and session identity headers, frame types, and bounds. no local shortcut, ssh,
+and session identity headers, frame types, and bounds. captured refs enter directly;
+fresh handles resolve complete scoped inventory once. strict Hello supplies final
+pane/optional stable foreground for attention only. optional notification work
+never blocks terminal input/output; [the latency contract](session-latency.md)
+owns its frozen generation and startup/lifetime budgets. no local shortcut, ssh,
 terminal emulator, replay, or automatic reconnect. require stdin/stdout ttys.
 send measured initial resize before input, then forward terminal bytes and size
 changes. ctrl-] then d detaches; doubled ctrl-] sends a literal ctrl-]; all other

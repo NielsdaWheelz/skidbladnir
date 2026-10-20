@@ -52,7 +52,13 @@ type Attachment struct {
 	closeClientErr  error
 }
 
-func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (*Attachment, error) {
+func (client Client) StartAttachment(lifetimeCtx, startupCtx context.Context, spec AttachmentSpec) (*Attachment, error) {
+	if err := startupCtx.Err(); err != nil {
+		return nil, err
+	}
+	if err := lifetimeCtx.Err(); err != nil {
+		return nil, err
+	}
 	arguments, err := attachmentCommandArguments(spec)
 	if err != nil {
 		return nil, err
@@ -60,7 +66,7 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 	attachment := &Attachment{client: client, spec: spec, processDone: make(chan struct{})}
 	// Tmux renders through the terminal descriptor inherited as stdin. Ordinary
 	// command stdout carries only the closed startup failure marker, not the screen.
-	command := client.commandWithStderr(ctx, &attachment.startupOutput, nil, arguments[0], arguments[1:]...)
+	command := client.commandWithStderr(lifetimeCtx, &attachment.startupOutput, nil, arguments[0], arguments[1:]...)
 	command.Env = attachmentEnvironment(command.Env)
 	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(spec.Columns), Rows: uint16(spec.Rows)})
 	if err != nil {
@@ -72,7 +78,7 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 		_ = command.Wait() // justify-ignore-error: readiness observes the exact client and startup marker; completion only needs the owned child reaped.
 		close(attachment.processDone)
 	}()
-	if err := attachment.awaitAttached(ctx); err != nil {
+	if err := attachment.awaitAttached(startupCtx); err != nil {
 		ptyErr := attachment.ClosePTY()
 		clientErr := attachment.CloseClient()
 		return nil, attachmentStartFailure(err, errors.Join(ptyErr, clientErr))
@@ -118,46 +124,55 @@ func (attachment *Attachment) Resize(columns, rows int) error {
 	return pty.Setsize(attachment.pty, &pty.Winsize{Cols: uint16(columns), Rows: uint16(rows)})
 }
 
-func (attachment *Attachment) AttachedClients(ctx context.Context) (int, error) {
-	count, tty, found, err := attachment.observeClient(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if !found || tty != attachment.clientTTY {
-		return 0, ErrAttachmentIdentityMismatch
-	}
-	return count, nil
+type AttachmentClient struct {
+	AttachedClients int
+	PaneID          string
+	PanePID         int
 }
 
-func (attachment *Attachment) observeClient(ctx context.Context) (int, string, bool, error) {
-	output, err := attachment.client.Output(ctx, "read-terminal-client", "list-clients", "-F",
-		"#{client_pid}|#{client_tty}|#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_attached}")
+func (attachment *Attachment) AttachedClients(ctx context.Context) (int, error) {
+	row, err := attachment.ObserveClient(ctx)
+	return row.AttachedClients, err
+}
+func (attachment *Attachment) ObserveClient(ctx context.Context) (AttachmentClient, error) {
+	row, tty, found, err := attachment.observeClient(ctx)
 	if err != nil {
-		return 0, "", false, err
+		return AttachmentClient{}, err
+	}
+	if !found || tty != attachment.clientTTY {
+		return AttachmentClient{}, ErrAttachmentIdentityMismatch
+	}
+	return row, nil
+}
+func (attachment *Attachment) observeClient(ctx context.Context) (AttachmentClient, string, bool, error) {
+	output, err := attachment.client.Output(ctx, "read-terminal-client", "-N", "list-clients", "-F",
+		"#{client_pid}|#{client_tty}|#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_attached}|#{pane_id}|#{pane_pid}")
+	if err != nil {
+		return AttachmentClient{}, "", false, err
 	}
 	return parseAttachmentClient(output, attachment.command.Process.Pid, attachment.spec)
 }
-
-func parseAttachmentClient(output string, pid int, spec AttachmentSpec) (int, string, bool, error) {
+func parseAttachmentClient(output string, pid int, spec AttachmentSpec) (AttachmentClient, string, bool, error) {
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Split(line, "|")
 		if fields[0] != strconv.Itoa(pid) {
 			continue
 		}
-		if len(fields) != 7 || fields[1] == "" {
-			return 0, "", false, errors.New("tmux terminal client observation is invalid")
+		if len(fields) != 9 || fields[1] == "" {
+			return AttachmentClient{}, "", false, errors.New("tmux terminal client observation is invalid")
 		}
 		server := ServerIdentity{Epoch: fields[2], PID: fields[3], StartTime: fields[4]}
 		if server != spec.Server || fields[5] != spec.SourceID {
-			return 0, "", false, ErrAttachmentIdentityMismatch
+			return AttachmentClient{}, "", false, ErrAttachmentIdentityMismatch
 		}
 		count, err := strconv.Atoi(fields[6])
-		if err != nil || count < 1 {
-			return 0, "", false, errors.New("tmux terminal client count is invalid")
+		panePID, pidErr := strconv.Atoi(fields[8])
+		if err != nil || count < 1 || !paneIDPattern.MatchString(fields[7]) || pidErr != nil || panePID < 0 {
+			return AttachmentClient{}, "", false, errors.New("tmux terminal client anchor is invalid")
 		}
-		return count, fields[1], true, nil
+		return AttachmentClient{AttachedClients: count, PaneID: fields[7], PanePID: panePID}, fields[1], true, nil
 	}
-	return 0, "", false, nil
+	return AttachmentClient{}, "", false, nil
 }
 
 func (attachment *Attachment) awaitAttached(parent context.Context) error {

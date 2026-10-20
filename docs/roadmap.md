@@ -5,6 +5,20 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## inventory and attachment latency — implemented and isolated-qualified
+
+2026-10-20: [the spec and plan](session-latency.md) defines batched native reads,
+cancellable admission, independent desktop/phone publication, strict greeting
+identity and asynchronous notification presentation. it assigns exclusive slices,
+content review and disposable red/green integration/live acceptance. source is
+implemented in an isolated worktree; v4 reset identity is approved. isolated host
+and real-phone behavioral [qualification](session-latency-qualification.md) passes;
+the preexisting canceled-input dependency race is explicitly deferred. coordinated
+deployment remains unperformed. phone
+[entry metadata](issues/phone-entry-metadata-latency.md),
+[interaction redesign](issues/phone-interaction-redesign.md) and
+[visual redesign](issues/visual-redesign.md) are explicitly deferred.
+
 ## single-line desktop rows — deployed in v0.17.3
 
 [the spec and plan](desktop-single-line-rows.md) defines one line per session,
@@ -258,9 +272,9 @@ required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwi
 [live stale and checking cells](issues/terminal-observation-stale-live.md).
 [status detection](issues/terminal-status-detection.md) closes with the coverage
 and smoke records, and [needs input](issues/agent-needs-input.md) with the phone
-run and an attention run through cancellation. [list latency](issues/session-list-latency.md) and
-[hook tmux waits](issues/agenthook-tmux-wait-delay.md) are pre-existing costs found
-during qualification.
+run and an attention run through cancellation. list latency was a preexisting
+cost found during qualification, subsequently [corrected](session-latency-qualification.md).
+[hook tmux waits](issues/agenthook-tmux-wait-delay.md) remain separate.
 
 ## automatic session names — source cutover
 

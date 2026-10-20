@@ -221,6 +221,12 @@ internal data class ProviderSessionFacts private constructor(
     }
 }
 
+internal data class ForegroundObservation(
+    val provider: AgentProvider,
+    val pid: Long,
+    val startIdentity: String,
+)
+
 internal data class AgentRuntime(
     val provider: AgentProvider,
     val pid: Long,

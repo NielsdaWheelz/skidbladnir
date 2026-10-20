@@ -240,8 +240,15 @@ func (m *model) noticeLines(width int) []string {
 	// A peer without an error is unobserved or being checked, not unavailable.
 	for _, peer := range m.peers {
 		if !peer.OK && peer.Error != nil {
-			suffix := " unavailable (" + attention.SingleLine(peer.Error.Code) + "); showing its last observation"
+			suffix := " unavailable (" + attention.SingleLine(peer.Error.Code) + ")"
+			if len(peer.Sessions) > 0 {
+				suffix += "; showing its last observation"
+			}
 			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
+		} else if !peer.OK {
+			suffix := ": checking inventory"
+			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
+			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
 		}
 		text, failure := fleetclient.RecoveryNotice(peer)
 		if text != "" {
@@ -569,7 +576,7 @@ func (m *model) bodyLines(height int) []string {
 			partial = partial || !peer.OK
 		}
 		switch {
-		case !m.inventoryReceived:
+		case !m.initialInventorySettled():
 			return []string{"checking inventory"}
 		case m.view.kind == viewNeedsInput:
 			return []string{"no sessions currently need input in this view"}
@@ -692,7 +699,7 @@ func (m *model) opensGroup(index int) bool {
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a working notification store.
 func (m *model) statusView(row listedRow) fleetclient.StatusView {
-	view := fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	view := fleetclient.ProjectStatus(row.session, row.available, m.notificationQualified && !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail

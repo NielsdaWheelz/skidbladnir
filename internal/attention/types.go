@@ -46,10 +46,11 @@ func (slot Slot) Identifier() string {
 	} // justify-defect: slot string fields always encode.
 	return base64.RawURLEncoding.EncodeToString(data)
 }
-func (key Key) Valid() bool {
-	_, err := machine.Parse(key.Machine)
-	return err == nil && address(key.TmuxID, '$') && address(key.PaneID, '%') && key.IdentityToken != "" && utf8.ValidString(key.IdentityToken)
+func (slot Slot) Valid() bool {
+	_, err := machine.Parse(slot.Machine)
+	return err == nil && address(slot.TmuxID, '$') && slot.IdentityToken != "" && utf8.ValidString(slot.IdentityToken)
 }
+func (key Key) Valid() bool { return key.Slot().Valid() && address(key.PaneID, '%') }
 func address(value string, prefix byte) bool {
 	return len(value) > 1 && value[0] == prefix && strings.Trim(value[1:], "0123456789") == ""
 }
@@ -175,6 +176,38 @@ type ReadyToken struct {
 	Generation int64  `json:"generation"`
 }
 
+// ReadySeed is one immutable capture of admitted device memory.
+type ReadySeed struct {
+	ResetID   string          `json:"resetId"`
+	Candidate *ReadyCandidate `json:"candidate,omitempty"`
+}
+type ReadyCandidate struct {
+	Key        Key         `json:"key"`
+	Foreground *Foreground `json:"foreground"`
+	Token      ReadyToken  `json:"token"`
+}
+
+func (seed ReadySeed) Valid() bool {
+	if !EpochValid(seed.ResetID) {
+		return false
+	}
+	candidate := seed.Candidate
+	return candidate == nil || candidate.Key.Valid() && candidate.Foreground != nil && candidate.Foreground.Valid() && EpochValid(candidate.Token.Epoch) && candidate.Token.Generation > 0 && candidate.Token.Generation < math.MaxInt64
+}
+
+// ReadySeed copies only a pending generation in this exact session lifetime.
+func (snapshot DeviceSnapshot) ReadySeed(slot Slot) ReadySeed {
+	seed := ReadySeed{ResetID: snapshot.ResetID}
+	for _, record := range snapshot.Records {
+		if record.Key.Slot() == slot && record.Foreground != nil && record.ReceivedReadyGeneration > record.AcknowledgedReadyGeneration {
+			foreground := *record.Foreground
+			seed.Candidate = &ReadyCandidate{Key: record.Key, Foreground: &foreground, Token: ReadyToken{Epoch: snapshot.ObserverEpoch, Generation: record.ReceivedReadyGeneration}}
+			break
+		}
+	}
+	return seed
+}
+
 type Presentation string
 
 const (
@@ -191,18 +224,13 @@ type DeviceRecord struct {
 	HandledAttentionEpisode     int64        `json:"handledAttentionEpisode"`
 	Presentation                Presentation `json:"presentation"`
 }
-type DesiredRegistration struct {
-	Generation   int64        `json:"generation"`
-	Subscription Subscription `json:"subscription"`
-}
 type DeviceSnapshot struct {
-	Schema              int                  `json:"schema"`
-	ObserverEpoch       string               `json:"observerEpoch,omitempty"`
-	AdmittedRevision    int64                `json:"admittedRevision"`
-	LocalRevision       int64                `json:"localRevision"`
-	Config              *Config              `json:"config,omitempty"`
-	DesiredRegistration *DesiredRegistration `json:"desiredRegistration,omitempty"`
-	Records             []DeviceRecord       `json:"records"`
+	Schema           int            `json:"schema"`
+	ResetID          string         `json:"resetId"`
+	ObserverEpoch    string         `json:"observerEpoch,omitempty"`
+	AdmittedRevision int64          `json:"admittedRevision"`
+	LocalRevision    int64          `json:"localRevision"`
+	Records          []DeviceRecord `json:"records"`
 }
 
 func (snapshot DeviceSnapshot) Record(key Key) (DeviceRecord, bool) {
@@ -366,13 +394,7 @@ func (hint Hint) Valid() bool {
 	return hint.Schema == 1 && EpochValid(hint.Epoch) && hint.Revision >= 0 && hint.Revision < math.MaxInt64
 }
 func (snapshot DeviceSnapshot) Valid() bool {
-	if snapshot.Schema != 3 || snapshot.Records == nil || snapshot.AdmittedRevision < 0 || snapshot.AdmittedRevision >= math.MaxInt64 || snapshot.LocalRevision < 0 || snapshot.LocalRevision >= math.MaxInt64 || snapshot.ObserverEpoch != "" && !EpochValid(snapshot.ObserverEpoch) || snapshot.ObserverEpoch == "" && (snapshot.AdmittedRevision != 0 || len(snapshot.Records) != 0) {
-		return false
-	}
-	if snapshot.Config != nil && !snapshot.Config.Valid() {
-		return false
-	}
-	if snapshot.DesiredRegistration != nil && (snapshot.Config == nil || snapshot.DesiredRegistration.Generation <= 0 || snapshot.DesiredRegistration.Generation >= math.MaxInt64 || !snapshot.DesiredRegistration.Subscription.Valid(snapshot.Config.NtfyOrigin)) {
+	if snapshot.Schema != 4 || !EpochValid(snapshot.ResetID) || snapshot.Records == nil || snapshot.AdmittedRevision < 0 || snapshot.AdmittedRevision >= math.MaxInt64 || snapshot.LocalRevision < 0 || snapshot.LocalRevision >= math.MaxInt64 || snapshot.ObserverEpoch != "" && !EpochValid(snapshot.ObserverEpoch) || snapshot.ObserverEpoch == "" && (snapshot.AdmittedRevision != 0 || len(snapshot.Records) != 0) {
 		return false
 	}
 	slots := map[Slot]bool{}

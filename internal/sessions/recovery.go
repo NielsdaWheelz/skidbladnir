@@ -252,7 +252,10 @@ type workspaceRecovery struct {
 // to cancel and join recovery before releasing this process's writer lock.
 func (manager *Manager) StartRecovery(parent context.Context, observe func(RecoveryChange)) func() error {
 	ctx, cancel := context.WithCancel(parent)
-	manager.mutations.Lock()
+	if err := manager.acquire(ctx); err != nil {
+		cancel()
+		return func() error { return nil }
+	}
 	if manager.recovery.owner != nil {
 		panic("workspace recovery already started") // justify-defect: gateway composition starts one owner per manager lifetime.
 	}
@@ -275,7 +278,7 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 			manager.reconcileRecovery()
 		}
 	}
-	manager.mutations.Unlock()
+	manager.release()
 
 	done := make(chan struct{})
 	go func() {
@@ -285,9 +288,11 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
-			manager.mutations.RLock()
+			if err := manager.acquire(ctx); err != nil {
+				return
+			}
 			broken := manager.recovery.fact.State == RecoveryBroken
-			manager.mutations.RUnlock()
+			manager.release()
 			if broken {
 				<-ctx.Done()
 				return
@@ -296,19 +301,23 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				manager.mutations.Lock()
+				if err := manager.acquire(ctx); err != nil {
+					return
+				}
 				if ctx.Err() == nil {
 					manager.reconcileRecovery()
 				}
-				manager.mutations.Unlock()
+				manager.release()
 			}
 		}
 	}()
 	return func() error {
 		cancel()
 		<-done
-		manager.mutations.Lock()
-		defer manager.mutations.Unlock()
+		if err := manager.acquire(context.Background()); err != nil {
+			return err
+		}
+		defer manager.release()
 		manager.recovery.lock = nil
 		if lock != nil && lock.Close() != nil {
 			return errors.New("workspace recovery ownership could not be released")
@@ -587,10 +596,11 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, expected tmuxclie
 	if err != nil {
 		return checkpoint{}, recoveryOperationError(ctx, RecoveryPhaseSource, "process_observe", err)
 	}
-	scan, err := manager.scanSessions(ctx)
+	capture, err := manager.tmux.ReadInventory(ctx, server)
 	if err != nil {
 		return checkpoint{}, recoveryOperationError(ctx, RecoveryPhaseCapture, "normalize", err)
 	}
+	scan := manager.scanCapture(capture)
 	visible, err := manager.normalizeCharacters(ctx, scan, server)
 	if err != nil {
 		return checkpoint{}, recoveryOperationError(ctx, RecoveryPhaseCapture, "normalize", err)

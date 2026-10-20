@@ -1,6 +1,9 @@
 package fleetclient
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 )
@@ -48,21 +52,29 @@ func DefaultNotificationStore() (*NotificationStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewNotificationStore(filepath.Join(directory, "notifications-v3.json"))
+	return NewNotificationStore(filepath.Join(directory, "notifications-v4.json"))
 }
-func (store *NotificationStore) Read() (attention.DeviceSnapshot, error) {
-	return store.Update(func(*attention.DeviceSnapshot) (bool, error) { return false, nil })
+func (store *NotificationStore) Read(ctx context.Context) (attention.DeviceSnapshot, error) {
+	return store.Update(ctx, func(*attention.DeviceSnapshot) (bool, error) { return false, nil })
 }
-func (store *NotificationStore) Admit(producer attention.Snapshot) (attention.DeviceSnapshot, error) {
-	return store.Update(func(device *attention.DeviceSnapshot) (bool, error) { return attention.Admit(device, producer) })
+func (store *NotificationStore) Admit(ctx context.Context, producer attention.Snapshot) (attention.DeviceSnapshot, error) {
+	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) { return attention.Admit(device, producer) })
 }
-func (store *NotificationStore) Presented(key attention.Key, foreground *attention.Foreground, token attention.ReadyToken) (attention.DeviceSnapshot, error) {
-	return store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+func (store *NotificationStore) Presented(ctx context.Context, resetID string, key attention.Key, foreground *attention.Foreground, token attention.ReadyToken) (attention.DeviceSnapshot, error) {
+	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) {
+		if resetID != device.ResetID {
+			return false, nil
+		}
 		return attention.Presented(device, key, foreground, token), nil
 	})
 }
-func (store *NotificationStore) Reset() (attention.DeviceSnapshot, error) {
-	return store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+func (store *NotificationStore) Reset(ctx context.Context) (attention.DeviceSnapshot, error) {
+	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) {
+		var identity [16]byte
+		if _, err := rand.Read(identity[:]); err != nil {
+			return false, attention.ErrUnavailable
+		}
+		device.ResetID = hex.EncodeToString(identity[:])
 		device.ObserverEpoch = ""
 		device.AdmittedRevision = 0
 		device.Records = []attention.DeviceRecord{}
@@ -71,7 +83,10 @@ func (store *NotificationStore) Reset() (attention.DeviceSnapshot, error) {
 }
 
 // Update holds the stable sidecar lock across read, merge and atomic replacement.
-func (store *NotificationStore) Update(update func(*attention.DeviceSnapshot) (bool, error)) (snapshot attention.DeviceSnapshot, result error) {
+func (store *NotificationStore) Update(ctx context.Context, update func(*attention.DeviceSnapshot) (bool, error)) (snapshot attention.DeviceSnapshot, result error) {
+	if err := ctx.Err(); err != nil {
+		return attention.DeviceSnapshot{}, err
+	}
 	if os.MkdirAll(filepath.Dir(store.path), 0700) != nil {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}
@@ -84,20 +99,43 @@ func (store *NotificationStore) Update(update func(*attention.DeviceSnapshot) (b
 			result = attention.ErrUnavailable
 		}
 	}()
-	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX) != nil {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
+	for {
+		err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			return attention.DeviceSnapshot{}, attention.ErrUnavailable
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return attention.DeviceSnapshot{}, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	defer func() {
 		if syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) != nil {
 			result = attention.ErrUnavailable
 		}
 	}()
-	snapshot = attention.DeviceSnapshot{Schema: 3, Records: []attention.DeviceRecord{}}
+	if err := ctx.Err(); err != nil {
+		return attention.DeviceSnapshot{}, err
+	}
+	snapshot = attention.DeviceSnapshot{Schema: 4, Records: []attention.DeviceRecord{}}
 	file, err := os.Open(store.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}
-	if err == nil {
+	initializing := errors.Is(err, os.ErrNotExist)
+	if initializing {
+		var identity [16]byte
+		if _, err := rand.Read(identity[:]); err != nil {
+			return attention.DeviceSnapshot{}, attention.ErrUnavailable
+		}
+		snapshot.ResetID = hex.EncodeToString(identity[:])
+	} else {
 		info, statErr := file.Stat()
 		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
 			_ = file.Close()
@@ -109,11 +147,17 @@ func (store *NotificationStore) Update(update func(*attention.DeviceSnapshot) (b
 			return attention.DeviceSnapshot{}, attention.ErrUnavailable
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return attention.DeviceSnapshot{}, err
+	}
 	changed, err := update(&snapshot)
 	if err != nil {
 		return attention.DeviceSnapshot{}, err
 	}
-	if !changed {
+	if err := ctx.Err(); err != nil {
+		return attention.DeviceSnapshot{}, err
+	}
+	if !changed && !initializing {
 		return snapshot, nil
 	}
 	if snapshot.LocalRevision >= math.MaxInt64-1 {
@@ -126,6 +170,9 @@ func (store *NotificationStore) Update(update func(*attention.DeviceSnapshot) (b
 	data, err := json.Marshal(snapshot)
 	if err != nil || len(data) > attention.MaximumSnapshotBytes {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return attention.DeviceSnapshot{}, err
 	}
 	if attention.WriteFile(store.path, data) != nil {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable

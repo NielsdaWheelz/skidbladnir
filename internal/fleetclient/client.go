@@ -300,16 +300,14 @@ func (client *Client) SearchDirectories(ctx context.Context, label string, terms
 }
 
 // InventoryMachine reads one gateway directly, without fleet context enrichment.
-func (client *Client) InventoryMachine(ctx context.Context, handle string) (Peer, error) {
+func (client *Client) InventoryMachine(ctx context.Context, handle string) Result {
 	target, found := client.peerByMachine(handle)
 	if !found {
-		return Peer{}, attention.ErrUnavailable
+		return Failed("machine_unknown", "not_sent")
 	}
-	result := client.call(ctx, target, "list", "/v1/sessions", nil)
-	if !result.OK {
-		return Peer{}, attention.ErrUnavailable
-	}
-	return result.Value.(Peer), nil
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	return client.call(ctx, target, "list", "/v1/sessions", nil)
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {
@@ -325,7 +323,7 @@ func (client *Client) list(ctx context.Context, label string) Result {
 	var pending sync.WaitGroup
 	for index, selected := range peers {
 		pending.Go(func() {
-			result := client.call(ctx, selected, "list", "/v1/sessions", nil)
+			result := client.InventoryMachine(ctx, selected.Machine)
 			row := Peer{Label: selected.Label, Machine: selected.Machine, OK: result.OK, Error: result.Error}
 			if result.OK {
 				row = result.Value.(Peer)
@@ -464,6 +462,21 @@ func (client *Client) inspectConversation(ctx context.Context, selected peer, co
 		return Reference{}, &failure
 	}
 	return Reference{Machine: selected.Machine, Conversation: &runtime}, nil
+}
+
+// ResolveTerminal resolves a handle once; an exact captured reference needs no inventory.
+func (client *Client) ResolveTerminal(ctx context.Context, request Request) (Reference, *Failure) {
+	request.Operation = "enter"
+	if !request.Valid() {
+		return Reference{}, &Failure{Code: "invalid_input", Dispatch: "not_sent"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	ref, _, failure := client.resolve(ctx, request)
+	if failure != nil {
+		return Reference{}, failure.Error
+	}
+	return ref, nil
 }
 
 // OpenTerminal shares the configured transport and identity binding with control calls.

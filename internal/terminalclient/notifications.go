@@ -36,13 +36,13 @@ func ReadNotifications(ctx context.Context, client *fleetclient.Client) (Notific
 	}
 	producer, err := client.NotificationState(ctx)
 	if err != nil {
-		device, readErr := store.Read()
+		device, readErr := store.Read(ctx)
 		if readErr != nil {
 			return NotificationView{}, readErr
 		}
 		return NotificationView{Device: device}, err
 	}
-	device, err := store.Admit(producer)
+	device, err := store.Admit(ctx, producer)
 	if err != nil {
 		return NotificationView{}, err
 	}
@@ -51,12 +51,4 @@ func ReadNotifications(ctx context.Context, client *fleetclient.Client) (Notific
 
 func (view NotificationView) Ready(session fleetclient.Session) bool {
 	return fleetclient.NotificationReady(view.Device, session, view.Producer)
-}
-
-func (view NotificationView) readyToken(key attention.Key, foreground *attention.Foreground) attention.ReadyToken {
-	record, found := view.Device.Record(key)
-	if !found || !attention.SameForeground(record.Foreground, foreground) {
-		return attention.ReadyToken{}
-	}
-	return attention.ReadyToken{Epoch: view.Device.ObserverEpoch, Generation: record.ReceivedReadyGeneration}
 }

@@ -153,7 +153,9 @@ proofs, not device or terminal journeys.
 
 cost found, not a regression: inventory's list spends about 54 ms per session on
 serial tmux commands on darwin (36–57 ms on linux), unchanged from baseline and
-outside the enrichment budget ([issue](issues/session-list-latency.md)).
+outside the enrichment budget. the subsequent
+[latency cutover](session-latency-qualification.md) corrects this cost; it does not
+alter this historical measurement.
 
 each `NOT_RUN` above is an evidence gap recorded as an issue, except the
 installed claude's other linux spellings, since run or waived (below), and

@@ -244,10 +244,12 @@ func (client Client) KillSessionIfIdentity(ctx context.Context, id string, serve
 	}
 }
 
+// A nil expected value means local absence: native -o guards that race even
+// when a global value is inherited. Present values retain the exact raw guard.
 func (client Client) AssignCharacterIfUnchanged(
 	ctx context.Context,
 	id string,
-	expected string,
+	expected *string,
 	character string,
 	server ServerIdentity,
 ) (bool, error) {
@@ -295,14 +297,18 @@ func (client Client) SetSessionGroupIfIdentity(ctx context.Context, id string, l
 	}
 }
 
-func characterAssignmentArguments(id, expected, character string, server ServerIdentity) ([]string, error) {
+func characterAssignmentArguments(id string, expected *string, character string, server ServerIdentity) ([]string, error) {
 	if !sessionIDPattern.MatchString(id) || !tmuxCommandTokenPattern.MatchString(character) || !server.valid() {
 		return nil, errors.New("tmux character assignment identity is invalid")
 	}
-	conditions := append(sessionLifetimeConditions(id, server), "#{==:#{@skid_character},"+formatLiteral(expected)+"}")
+	conditions := sessionLifetimeConditions(id, server)
+	assignment := "set-option -o -t '" + id + "' -- @skid_character " + character
+	if expected != nil {
+		conditions = append(conditions, "#{==:#{@skid_character},"+formatLiteral(*expected)+"}")
+		assignment = "set-option -t '" + id + "' -- @skid_character " + character
+	}
 	return []string{
-		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
-		"set-option -t '" + id + "' -- @skid_character " + character,
+		"if-shell", "-F", "-t", id, andFormatConditions(conditions), assignment,
 		"display-message -p -l '" + identityMismatchMarker + "'",
 	}, nil
 }

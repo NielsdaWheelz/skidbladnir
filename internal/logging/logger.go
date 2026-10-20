@@ -170,7 +170,7 @@ type eventKind string
 const (
 	eventGatewayStarted            eventKind = "Gateway.Started"
 	eventRequestCompleted          eventKind = "Request.Completed"
-	eventSessionsListed            eventKind = "Sessions.Listed"
+	eventSessionsObserved          eventKind = "Sessions.Observed"
 	eventSessionCreated            eventKind = "Session.Created"
 	eventSessionKilled             eventKind = "Session.Killed"
 	eventPressureSampled           eventKind = "Pressure.Sampled"
@@ -187,13 +187,75 @@ type Event struct {
 	status            int
 	duration          time.Duration
 	errorCode         ErrorCode
-	count             uint64
 	tmuxID            string
 	launchProfile     agentruntime.ProfileKey
 	observationReason sessions.StatusReason
 	level             PressureLevel
 	reasons           []PressureReason
 	recovery          *sessions.RecoveryChange
+	observation       *SessionsObservation
+}
+
+type ObservationOutcome string
+
+const (
+	ObservationSuccess  ObservationOutcome = "success"
+	ObservationFailed   ObservationOutcome = "failed"
+	ObservationCanceled ObservationOutcome = "canceled"
+)
+
+type ObservationPhase string
+
+const (
+	ObservationComplete   ObservationPhase = "complete"
+	ObservationAdmission  ObservationPhase = "admission"
+	ObservationCapture    ObservationPhase = "capture"
+	ObservationNormalize  ObservationPhase = "normalize"
+	ObservationForeground ObservationPhase = "foreground"
+	ObservationTerminal   ObservationPhase = "terminal"
+	ObservationProjection ObservationPhase = "projection"
+)
+
+type SessionsObservation struct {
+	Outcome    ObservationOutcome
+	Phase      ObservationPhase
+	Total      time.Duration
+	Admission  *time.Duration
+	Capture    *time.Duration
+	Normalize  *time.Duration
+	Foreground *time.Duration
+	Terminal   *time.Duration
+	Projection *time.Duration
+	Count      uint64
+}
+
+func (observation SessionsObservation) valid() bool {
+	switch observation.Outcome {
+	case ObservationSuccess:
+		if observation.Phase != ObservationComplete {
+			return false
+		}
+	case ObservationFailed, ObservationCanceled:
+		if observation.Phase == ObservationComplete || observation.Count != 0 {
+			return false
+		}
+	default:
+		return false
+	}
+	switch observation.Phase {
+	case ObservationComplete, ObservationAdmission, ObservationCapture, ObservationNormalize, ObservationForeground, ObservationTerminal, ObservationProjection:
+	default:
+		return false
+	}
+	if observation.Total < 0 {
+		return false
+	}
+	for _, duration := range []*time.Duration{observation.Admission, observation.Capture, observation.Normalize, observation.Foreground, observation.Terminal, observation.Projection} {
+		if duration != nil && *duration < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
@@ -215,10 +277,10 @@ func NewRequestCompleted(method Method, route Route, status int, duration time.D
 	return event, nil
 }
 
-func NewSessionsListed(count uint64, duration time.Duration) (Event, error) {
-	event := Event{kind: eventSessionsListed, count: count, duration: duration}
+func NewSessionsObserved(observation SessionsObservation) (Event, error) {
+	event := Event{kind: eventSessionsObserved, observation: &observation}
 	if !event.valid() {
-		return Event{}, errors.New("invalid sessions-listed log event")
+		return Event{}, errors.New("invalid sessions-observed log event")
 	}
 	return event, nil
 }
@@ -272,8 +334,8 @@ func (event Event) valid() bool {
 			return false
 		}
 		return (event.status < 400 && event.errorCode == ErrorNone) || (event.status >= 400 && event.errorCode.valid())
-	case eventSessionsListed:
-		return event.duration >= 0
+	case eventSessionsObserved:
+		return event.observation != nil && event.observation.valid()
 	case eventSessionCreated:
 		_, profileErr := agentruntime.ParseProfileKey(string(event.launchProfile))
 		return validTmuxID(event.tmuxID) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
@@ -332,9 +394,23 @@ func (logger Logger) Write(event Event) error {
 		if event.errorCode != ErrorNone {
 			fields["skidbladnir.error.code"] = event.errorCode
 		}
-	case eventSessionsListed:
-		fields["skidbladnir.count"] = event.count
-		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
+	case eventSessionsObserved:
+		observation := event.observation
+		fields["skidbladnir.observation.outcome"] = observation.Outcome
+		fields["skidbladnir.observation.phase"] = observation.Phase
+		fields["skidbladnir.duration.ms"] = observation.Total.Milliseconds()
+		if observation.Outcome == ObservationSuccess {
+			fields["skidbladnir.count"] = observation.Count
+		}
+		for phase, duration := range map[ObservationPhase]*time.Duration{
+			ObservationAdmission: observation.Admission, ObservationCapture: observation.Capture,
+			ObservationNormalize: observation.Normalize, ObservationForeground: observation.Foreground,
+			ObservationTerminal: observation.Terminal, ObservationProjection: observation.Projection,
+		} {
+			if duration != nil {
+				fields["skidbladnir.duration."+string(phase)+".ms"] = duration.Milliseconds()
+			}
+		}
 	case eventSessionCreated:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
 		if event.launchProfile != "" {

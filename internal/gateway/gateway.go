@@ -420,26 +420,65 @@ func requireEmptyRequest(request *http.Request) bool {
 }
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
-	startedAt := time.Now()
-	inventory, err := gateway.sessions.List(request.Context())
+	response, err := gateway.observeSessions(request.Context())
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	for _, failure := range gateway.agents.Enrich(request.Context(), inventory.Sessions) {
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (gateway *Gateway) observeSessions(parent context.Context) (sessionsResponseDTO, error) {
+	startedAt := time.Now()
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	observation := logging.SessionsObservation{Outcome: logging.ObservationFailed}
+	defer func() {
+		observation.Total = time.Since(startedAt)
+		if errors.Is(parent.Err(), context.Canceled) {
+			observation.Outcome = logging.ObservationCanceled
+			observation.Count = 0
+			if observation.Phase == logging.ObservationComplete {
+				observation.Phase = logging.ObservationProjection
+			}
+		}
+		event, err := logging.NewSessionsObserved(observation)
+		if err != nil {
+			panic("invalid sessions-observed log event") // justify-defect: phases and durations come from the closed local observation pipeline.
+		}
+		gateway.log(event)
+	}()
+	inventory, diagnostics, err := gateway.sessions.List(ctx)
+	observation.Admission, observation.Capture = diagnostics.Admission, diagnostics.Capture
+	observation.Normalize, observation.Foreground = diagnostics.Normalize, diagnostics.Foreground
+	observation.Phase = logging.ObservationPhase(diagnostics.Phase)
+	if err != nil {
+		return sessionsResponseDTO{}, err
+	}
+	observation.Phase = logging.ObservationTerminal
+	terminalStarted := time.Now()
+	for _, failure := range gateway.agents.Enrich(ctx, inventory.Sessions) {
 		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
 	}
+	terminalElapsed := time.Since(terminalStarted)
+	observation.Terminal = &terminalElapsed
+	if err := ctx.Err(); err != nil {
+		return sessionsResponseDTO{}, err
+	}
+	observation.Phase = logging.ObservationProjection
+	projectionStarted := time.Now()
 	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
+	projectionElapsed := time.Since(projectionStarted)
+	observation.Projection = &projectionElapsed
 	if err != nil {
-		writeError(writer, errorInternal)
-		return
+		return sessionsResponseDTO{}, err
 	}
-	event, eventErr := logging.NewSessionsListed(uint64(len(response.Sessions)), time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid sessions-listed log event") // justify-defect: count and duration are locally generated.
+	if err := ctx.Err(); err != nil {
+		return sessionsResponseDTO{}, err
 	}
-	gateway.log(event)
-	writeJSON(writer, http.StatusOK, response)
+	observation.Outcome, observation.Phase = logging.ObservationSuccess, logging.ObservationComplete
+	observation.Count = uint64(len(response.Sessions))
+	return response, nil
 }
 
 func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.Request) {

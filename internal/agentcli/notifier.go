@@ -54,7 +54,7 @@ func runNotifications(ctx context.Context, args []string, stdout, stderr io.Writ
 	}
 	store, err := fleetclient.DefaultNotificationStore()
 	if err == nil {
-		_, err = store.Reset()
+		_, err = store.Reset(ctx)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "notification memory reset failed")

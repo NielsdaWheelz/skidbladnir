@@ -4,7 +4,10 @@ accepted design, 2026-10-02. source is implemented and merged into main
 ([skid #66](https://github.com/NielsdaWheelz/skidbladnir/pull/66),
 [dev-server #163](https://github.com/NielsdaWheelz/dev-server/pull/163)).
 [qualification](native-notifications-qualification.md)
-records current evidence; release and fleet deployment need separate approval.
+records that cutover's evidence. the subsequent
+[latency cutover](session-latency.md) changes entry and go device-memory contracts;
+its [isolated qualification](session-latency-qualification.md) does not install
+those changes or reset the running owner.
 
 this owns background observation, native alerts and the coordinated attention
 cutover. [terminal observation](terminal-observation.md) owns detection;
@@ -93,11 +96,14 @@ snapshot = {schema:1, epoch, revision, receiverTag,
 hint = {schema:1, epoch, revision}
 subscription = {endpoint, keys:{p256dh, auth}}   // standard web-push subscription
 
-deviceFile = {schema:3, observerEpoch?, admittedRevision, localRevision,
-              config?, desiredRegistration?:{generation, subscription},
-              records:[{key, foreground?,
+goDeviceFile = {schema:4, resetId, observerEpoch?, admittedRevision, localRevision,
+               records:deviceRecord[]}
+androidDeviceFile = {schema:3, observerEpoch?, admittedRevision, localRevision,
+                     config?, desiredRegistration?:{generation, subscription},
+                     records:deviceRecord[]}
+deviceRecord = {key, foreground?,
                 receivedReadyGeneration, acknowledgedReadyGeneration,
-                handledAttentionEpisode, presentation:claimed|posted|closed}]}
+                handledAttentionEpisode, presentation:claimed|posted|closed}
 config = {observerMachine, ntfyOrigin}
 ```
 
@@ -129,7 +135,9 @@ episode token. successful complete inventory retires absent lifetimes; failed
 hosts and unproven foreground absence do not.
 
 producer file: `<state>/skidbladnir/notification-observer-v1.json`; device file:
-`<state>/skidbladnir/notifications-v3.json`, or android's equivalent datastore.
+`<state>/skidbladnir/notifications-v4.json` with required persisted `resetId`,
+or android's existing datastore/reset identity. the go cutover has no v3 reader
+or migration. go memory stores no android enrollment/configuration fields.
 reuse the existing state-directory resolution, mode-0600 atomic replacement and
 locking. producer state MUST NOT use devbox's ordinary device cache.
 
@@ -479,8 +487,10 @@ shared with any child state fetch:
 | --- | --- |
 | setup | empty args -> `{}` after the main-thread native setup operation; no producer-read prerequisite |
 | read | empty args -> `{deviceSnapshot,producerAvailable,currentProducerSnapshot?}`; join a fresh/coalesced state read |
-| register | exact slot/key/foreground, captured ready token, already-presented flag, optional helper-issued surface association -> connection-owned visit id |
-| presented | visit id + `{epoch,generation}` ready token -> acknowledge only that captured exact identity |
+| prepare | session slot -> admitted-memory `{resetId,candidate?}`; no fetch, visit or surface wait |
+| register | exact key/foreground, presented flag, optional frozen reset id, launch nonce/surface -> connection-owned visit id; no entry ready token |
+| presented | visit id + frozen reset id and `{epoch,generation}` token -> acknowledge only the captured exact identity/reset domain |
+| abandon | launch nonce -> idempotently retire an unconsumed association; late creator completion cannot recreate it |
 | end | visit id -> retire visit; no ready acknowledgement |
 
 disconnect retires only that connection's visits; reconnect registers an already
@@ -493,9 +503,16 @@ and ready token. callers retain current producer view in memory; device records
 alone cannot qualify ready. owner unavailable means the existing secondary notification failure, never a
 local reducer fallback. terminal work continues.
 
-entry performs optional socket reads/registration before websocket admission.
-first-output acknowledgement is synchronous and bounded to three seconds; the
-live visit closes before its secondary post-detachment refresh.
+entry follows [the latency contract](session-latency.md): captured desktop entry
+opens directly; cached preparation runs alongside dialing. greeting qualifies an
+immutable candidate. immediately before the first nonempty write, freeze only
+the seed already available; successful complete output queues acknowledgement.
+one visit worker owns registration, acknowledgement, reconnect and cleanup; none
+blocks terminal input/output. uncertain acknowledgement is never replayed.
+notification failure stays secondary after tty restoration. browser return starts
+fresh independent reads; phone notification-click/reconnect retain rich inventory
+admission. go device memory is strict v4 with a persisted reset id; the coordinated
+cutover resets prior go acknowledgement memory once, without migration.
 
 reuse a durable signing identity, or one persistent local signing certificate
 for this internal install. ad-hoc signatures cannot establish upgrade permission

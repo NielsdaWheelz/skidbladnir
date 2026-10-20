@@ -15,6 +15,7 @@ type metadataEditor struct {
 	draft        string
 	selection    groupSelection
 	saveFocused  bool
+	readAfter    uint64
 	checking     bool
 	acknowledged bool
 	failure      *fleetclient.Failure

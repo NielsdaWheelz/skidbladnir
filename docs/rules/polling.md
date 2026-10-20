@@ -14,7 +14,9 @@ recurring inventory, status, and pressure observations.
 - polling samples changing external state. it does not create an atomic fleet
   snapshot or authorize replay of mutations and terminal input.
 - keep requests bounded and coalesce overlapping work at the existing owner:
-  per machine/resource on android and one scoped inventory read in the browser.
+  per machine/resource on android and per machine in the browser. inventory,
+  notification and optional display-context reads publish independently under
+  [the latency contract](../session-latency.md).
   provider status enrichment retains its existing batch and time limits.
 - recurring work stops with its owning foreground, browser, or host-process
   lifecycle. late results must not update a replaced scope or generation.

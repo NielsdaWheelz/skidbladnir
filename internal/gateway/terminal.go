@@ -22,6 +22,7 @@ const (
 	terminalLivenessTimeout      = 5 * time.Second
 	terminalObservationTimeout   = 3 * time.Second
 	terminalInitialResizeTimeout = 5 * time.Second
+	terminalStartupTimeout       = 5 * time.Second
 	terminalWriteTimeout         = 5 * time.Second
 	terminalFinalFrameTimeout    = 5 * time.Second
 	terminalShutdownTimeout      = 8 * time.Second
@@ -59,8 +60,11 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 		return
 	}
 	identityToken := identityValues[0]
-	if err := gateway.sessions.ValidateTerminal(request.Context(), id, identityToken); err != nil {
-		writeSessionError(writer, err)
+	validationContext, cancelValidation := context.WithTimeout(request.Context(), 5*time.Second)
+	validationErr := gateway.sessions.ValidateTerminal(validationContext, id, identityToken)
+	cancelValidation()
+	if validationErr != nil {
+		writeSessionError(writer, validationErr)
 		return
 	}
 
@@ -100,26 +104,28 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	attachment, err := gateway.sessions.OpenTerminal(terminalContext, sessions.OpenTerminalInput{
-		TmuxID: id, IdentityToken: identityToken, Columns: initial.Columns, Rows: initial.Rows,
-	})
-	if err != nil {
-		if errors.Is(err, sessions.ErrTerminalCleanupFailed) {
-			completionErr = errors.New("terminal startup cleanup failed")
-		}
-		writeTerminalErrorAndClose(terminalContext, connection, terminalCodeForSessionError(err))
-		return
-	}
 	completionErr = errors.New("terminal cleanup completion was not reported")
-	completionErr = gateway.runTerminal(terminalContext, connection, attachment, request.Header.Get("Authorization"))
+	completionErr = gateway.runTerminal(terminalContext, connection, sessions.OpenTerminalInput{
+		TmuxID: id, IdentityToken: identityToken, Columns: initial.Columns, Rows: initial.Rows,
+	}, request.Header.Get("Authorization"))
 }
 
 func (gateway *Gateway) runTerminal(
 	ctx context.Context,
 	connection *websocket.Conn,
-	attachment *sessions.TerminalAttachment,
+	input sessions.OpenTerminalInput,
 	authorization string,
 ) (cleanupErr error) {
+	startupContext, cancelStartup := context.WithTimeout(ctx, terminalStartupTimeout)
+	defer cancelStartup()
+	attachment, err := gateway.sessions.OpenTerminal(ctx, startupContext, input)
+	if err != nil {
+		writeTerminalErrorAndClose(ctx, connection, terminalCodeForSessionError(err))
+		if errors.Is(err, sessions.ErrTerminalCleanupFailed) {
+			return errors.New("terminal startup cleanup failed")
+		}
+		return nil
+	}
 	runtimeContext, cancel := context.WithCancel(ctx)
 	queue := terminal.NewOutboundQueue()
 	var workers sync.WaitGroup
@@ -133,20 +139,26 @@ func (gateway *Gateway) runTerminal(
 		workers.Wait()
 	}()
 
-	attachedClients, err := observeAttachedClients(runtimeContext, attachment)
+	greeting, err := attachment.Greeting(startupContext)
 	if err != nil {
 		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorReconnectRequired)
 		return
 	}
-	hello, err := terminal.EncodeHello(attachedClients)
+	frame := terminal.HelloFrame{AttachedClients: greeting.AttachedClients, PaneID: greeting.PaneID}
+	if foreground := greeting.Foreground; foreground != nil {
+		frame.Foreground = &terminal.Foreground{
+			Provider: foreground.Provider.String(), PID: int64(foreground.PID), StartIdentity: string(foreground.StartIdentity),
+		}
+	}
+	hello, err := terminal.EncodeHello(frame)
 	if err != nil {
 		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorInternal)
 		return
 	}
-	if err := queue.EnqueueText(hello); err != nil {
-		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorInternal)
+	if err := connection.Write(startupContext, websocket.MessageText, hello); err != nil {
 		return
 	}
+	cancelStartup()
 
 	workerResults := make(chan terminalEnd, 4)
 	writerDone := make(chan error, 1)
@@ -169,7 +181,7 @@ func (gateway *Gateway) runTerminal(
 	}()
 	go func() {
 		defer workers.Done()
-		workerResults <- gateway.monitorTerminal(runtimeContext, authorization, attachment, queue, attachedClients)
+		workerResults <- gateway.monitorTerminal(runtimeContext, authorization, attachment, queue, greeting.AttachedClients)
 	}()
 
 	select {

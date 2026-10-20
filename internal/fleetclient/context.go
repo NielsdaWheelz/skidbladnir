@@ -36,6 +36,9 @@ func (session Session) Current(peer Peer) ExecutionContext {
 	if session.Execution != nil {
 		return *session.Execution
 	}
+	if session.Connection != nil {
+		return ExecutionContext{Kind: "remoteUnknown"}
+	}
 	result := ExecutionContext{Kind: "local", Machine: peer.Machine, Label: peer.Label, CWD: session.CWD}
 	if session.Agent != nil {
 		result.Agent = &ExecutionAgent{
@@ -56,69 +59,95 @@ func profileLabel(profiles []Profile, key string) string {
 	return ""
 }
 
-// resolveContexts enriches display only. source refs and action fields remain untouched.
-func (client *Client) resolveContexts(parent context.Context, peers []Peer) {
+// ContextObservation changes display context only, for the exact source capture.
+type ContextObservation struct {
+	SourceRef    string
+	ConnectionID string
+	Execution    ExecutionContext
+}
+
+// EnrichContexts returns immutable overlays without changing the source inventory.
+func (client *Client) EnrichContexts(parent context.Context, source Peer, catalogues []Peer) []ContextObservation {
+	if !source.OK {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	var cache sync.Map
-	var catalogues sync.Map
+	profiles := make(map[string][]Profile, len(catalogues))
 	unavailable := make(map[string]bool)
-	for _, peer := range peers {
-		if peer.OK {
-			catalogues.Store(peer.Machine, peer.Profiles)
-		} else {
-			unavailable[peer.Machine] = true
+	for _, catalogue := range catalogues {
+		profiles[catalogue.Machine] = catalogue.Profiles
+		unavailable[catalogue.Machine] = catalogue.Error != nil && !catalogue.OK
+	}
+	rows := []Session{}
+	for _, session := range source.Sessions {
+		if session.Connection != nil {
+			rows = append(rows, session)
 		}
 	}
+	observations := make([]ContextObservation, len(rows))
 	var pending sync.WaitGroup
-	for peerIndex := range peers {
-		if !peers[peerIndex].OK {
-			continue
-		}
-		for sessionIndex := range peers[peerIndex].Sessions {
-			session := &peers[peerIndex].Sessions[sessionIndex]
-			if session.Connection == nil {
-				continue
-			}
-			pending.Go(func() {
-				session.Execution = &ExecutionContext{Kind: "remoteUnknown"}
-				seen := make(map[string]bool)
-				id := session.Connection.ID
-				for depth := 0; depth < 8 && id != ""; depth++ {
-					if seen[id] || ctx.Err() != nil {
-						return
-					}
-					seen[id] = true
-					entry, _ := cache.LoadOrStore(id, &contextLookup{})
-					lookup := entry.(*contextLookup)
-					lookup.once.Do(func() { lookup.result = client.lookupContext(ctx, id, unavailable) })
-					match := lookup.result
-					if !match.found {
-						return
-					}
-					if match.context.Connection != nil {
-						id = match.context.Connection.ID
-						continue
-					}
-					entry, present := catalogues.Load(match.peer.Machine)
-					if !present {
-						var profiles []Profile
-						listed := client.call(ctx, match.peer, "list", "/v1/sessions", nil)
-						if listed.OK {
-							profiles = listed.Value.(Peer).Profiles
-						}
-						entry, _ = catalogues.LoadOrStore(match.peer.Machine, profiles)
-					}
-					profiles := entry.([]Profile)
-					execution := &ExecutionContext{Kind: "remote", Machine: match.peer.Machine, Label: match.peer.Label, CWD: match.context.CWD}
-					if match.context.Agent != nil {
-						execution.Agent = &ExecutionAgent{Provider: match.context.Agent.Provider, Profile: match.context.Agent.Profile, Label: profileLabel(profiles, match.context.Agent.Profile)}
-					}
-					session.Execution = execution
+	for index, session := range rows {
+		pending.Go(func() {
+			observation := ContextObservation{SourceRef: session.Ref, ConnectionID: session.Connection.ID, Execution: ExecutionContext{Kind: "remoteUnknown"}}
+			defer func() { observations[index] = observation }()
+			seen := make(map[string]bool)
+			id := session.Connection.ID
+			for depth := 0; depth < 8 && id != ""; depth++ {
+				if seen[id] || ctx.Err() != nil {
 					return
 				}
-			})
-		}
+				seen[id] = true
+				entry, _ := cache.LoadOrStore(id, &contextLookup{})
+				lookup := entry.(*contextLookup)
+				lookup.once.Do(func() { lookup.result = client.lookupContext(ctx, id, unavailable) })
+				match := lookup.result
+				if !match.found {
+					return
+				}
+				if match.context.Connection != nil {
+					id = match.context.Connection.ID
+					continue
+				}
+				observation.Execution = ExecutionContext{Kind: "remote", Machine: match.peer.Machine, Label: match.peer.Label, CWD: match.context.CWD}
+				if agent := match.context.Agent; agent != nil {
+					label := profileLabel(profiles[match.peer.Machine], agent.Profile)
+					if label == "" {
+						label = agent.Profile
+					}
+					observation.Execution.Agent = &ExecutionAgent{Provider: agent.Provider, Profile: agent.Profile, Label: label}
+				}
+				return
+			}
+		})
+	}
+	pending.Wait()
+	return observations
+}
+
+// Complete CLI listings wait for each source's optional display pass.
+func (client *Client) resolveContexts(ctx context.Context, peers []Peer) {
+	var pending sync.WaitGroup
+	limit := make(chan struct{}, 3)
+	for index, source := range peers {
+		pending.Go(func() {
+			select {
+			case limit <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-limit }()
+			for _, observation := range client.EnrichContexts(ctx, source, peers) {
+				for sessionIndex := range peers[index].Sessions {
+					session := &peers[index].Sessions[sessionIndex]
+					if session.Ref == observation.SourceRef && session.Connection != nil && session.Connection.ID == observation.ConnectionID {
+						execution := observation.Execution
+						session.Execution = &execution
+					}
+				}
+			}
+		})
 	}
 	pending.Wait()
 }

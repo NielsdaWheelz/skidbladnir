@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"context"
 	"errors"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -26,16 +25,12 @@ func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 	return &foreground, nil
 }
 
-func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
+func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID, registration string) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
 	foreground, err := paneForeground(panePID)
 	if err != nil || foreground == nil {
 		return nil, nil, err
 	}
-	// Project accepts a registration only for this foreground's exact lifetime.
-	registration := ""
-	if observedRegistration, optionErr := manager.paneOption(ctx, paneID, agentruntime.PaneOption); optionErr == nil {
-		registration = observedRegistration
-	}
+	// Project accepts only the captured registration for this exact foreground.
 	agent, found := agentruntime.Project(manager.profiles, *foreground, registration)
 	if !found {
 		return nil, foreground, nil
