@@ -125,7 +125,9 @@ type owner struct {
 }
 
 func newOwner(ctx context.Context, client *fleetclient.Client, store *fleetclient.NotificationStore, configPath, skidPath string) (*owner, error) {
-	device, err := store.Read()
+	readCtx, cancelRead := context.WithTimeout(ctx, operationTimeout)
+	defer cancelRead()
+	device, err := store.Read(readCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +185,9 @@ func (owner *owner) run() {
 				continue
 			}
 			if result.err == nil && !obsolete {
-				device, err := owner.store.Admit(result.snapshot)
+				admitCtx, cancelAdmit := context.WithTimeout(owner.ctx, operationTimeout)
+				device, err := owner.store.Admit(admitCtx, result.snapshot)
+				cancelAdmit()
 				if err == nil && result.snapshot.Revision >= owner.device.AdmittedRevision {
 					owner.device, owner.producer, owner.available = device, &result.snapshot, true
 					if owner.hintFloor.Epoch != result.snapshot.Epoch {
@@ -305,6 +309,18 @@ func (owner *owner) handle(request ownerRequest) {
 	case "read":
 		owner.waiters = append(owner.waiters, request)
 		owner.startFetch(request.ctx)
+	case "prepare":
+		slot := request.value.(attention.Slot) // justify-assertion: socket admission owns this shape.
+		answer(owner.device.ReadySeed(slot), nil)
+	case "abandon":
+		nonce := request.value.(string) // justify-assertion: socket admission owns this nonce.
+		if launch, found := owner.launches[nonce]; found {
+			delete(owner.launches, nonce)
+			for _, waiter := range launch.waiters {
+				waiter.reply <- ownerReply{nil, ErrUnavailable}
+			}
+		}
+		answer(struct{}{}, nil)
 	case "register":
 		args := request.value.(RegisterArgs) // justify-assertion: socket admission decodes this operation's owning shape.
 		if args.LaunchNonce != "" && args.Surface == nil {
@@ -346,13 +362,11 @@ func (owner *owner) handle(request ownerRequest) {
 		if record, found := owner.device.Record(visit.args.Key); found && attention.SameForeground(record.Foreground, visit.args.Foreground) {
 			visit.readyFence = attention.ReadyToken{Epoch: owner.device.ObserverEpoch, Generation: record.ReceivedReadyGeneration}
 		}
+		visit.args.ResetID = args.ResetID
 		owner.visits[args.VisitID] = visit
-		if visit.args.ReadyToken != nil && args.Token != *visit.args.ReadyToken || visit.args.ReadyToken == nil && args.Token.Generation != 0 {
-			answer(nil, ErrUnavailable)
-			owner.signalEffects()
-			return
-		}
-		device, err := owner.store.Presented(visit.args.Key, visit.args.Foreground, args.Token)
+		storeCtx, cancelStore := context.WithTimeout(request.ctx, operationTimeout)
+		device, err := owner.store.Presented(storeCtx, args.ResetID, visit.args.Key, visit.args.Foreground, args.Token)
+		cancelStore()
 		if err == nil {
 			owner.device = device
 		}
@@ -391,7 +405,7 @@ func (owner *owner) handle(request ownerRequest) {
 		}
 		answer(needed, nil)
 	case "plan":
-		plan, err := owner.plan(request.value.(inspection)) // justify-assertion: only the single native lane submits inspections.
+		plan, err := owner.plan(request.ctx, request.value.(inspection)) // justify-assertion: only the single native lane submits inspections.
 		answer(plan, err)
 	case "health":
 		answer(owner.health, nil)
@@ -438,12 +452,13 @@ func (owner *owner) handle(request ownerRequest) {
 		answer(struct{}{}, nil)
 	case "settle":
 		effect := request.value.(nativeEffect) // justify-assertion: the native lane reports its completed effect.
-		cancel, err := owner.settle(effect)
+		cancel, err := owner.settle(request.ctx, effect)
 		answer(cancel, err)
 	case "reset":
 		// Keep cancellation intent durable until the native lane confirms that
 		// no owned copy or unresolved add remains. Re-admission waits for removal.
-		device, err := owner.store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+		storeCtx, cancelStore := context.WithTimeout(request.ctx, operationTimeout)
+		device, err := owner.store.Update(storeCtx, func(device *attention.DeviceSnapshot) (bool, error) {
 			changed := false
 			for index := range device.Records {
 				if device.Records[index].Presentation != attention.Closed {
@@ -453,6 +468,7 @@ func (owner *owner) handle(request ownerRequest) {
 			}
 			return changed, nil
 		})
+		cancelStore()
 		if err == nil {
 			owner.device, owner.producer, owner.available = device, nil, false
 			owner.resetting = true
@@ -522,7 +538,8 @@ func (owner *owner) handle(request ownerRequest) {
 				return
 			}
 		}
-		device, err := owner.store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+		storeCtx, cancelStore := context.WithTimeout(request.ctx, operationTimeout)
+		device, err := owner.store.Update(storeCtx, func(device *attention.DeviceSnapshot) (bool, error) {
 			for index := range device.Records {
 				record := &device.Records[index]
 				if device.ObserverEpoch == event.Epoch && record.Key.Slot().Identifier() == event.Slot && record.HandledAttentionEpisode == event.Episode && record.Presentation != attention.Closed {
@@ -532,6 +549,7 @@ func (owner *owner) handle(request ownerRequest) {
 			}
 			return false, nil
 		})
+		cancelStore()
 		if err == nil {
 			owner.device = device
 		}
@@ -552,12 +570,14 @@ func randomID() string {
 	return hex.EncodeToString(bytes[:])
 }
 
-func (owner *owner) plan(observation inspection) ([]nativeEffect, error) {
+func (owner *owner) plan(ctx context.Context, observation inspection) ([]nativeEffect, error) {
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
 	if !observation.known {
 		observation.notices = nil
 	}
 	if owner.resetting && observation.known && len(observation.notices) == 0 && len(owner.pendingNotices) == 0 {
-		device, err := owner.store.Reset()
+		device, err := owner.store.Reset(ctx)
 		if err == nil {
 			owner.device, owner.resetting = device, false
 			owner.startStream()
@@ -566,7 +586,7 @@ func (owner *owner) plan(observation inspection) ([]nativeEffect, error) {
 		return nil, err
 	}
 	plan := []nativeEffect{}
-	device, err := owner.store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+	device, err := owner.store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) {
 		changed := false
 		for index := range device.Records {
 			record := &device.Records[index]
@@ -606,7 +626,7 @@ func (owner *owner) plan(observation inspection) ([]nativeEffect, error) {
 				if visit.args.Key.Slot() != record.Key.Slot() {
 					continue
 				}
-				if visit.readyFence.Epoch != device.ObserverEpoch && visit.args.Key == record.Key && attention.SameForeground(visit.args.Foreground, record.Foreground) {
+				if visit.args.ResetID == device.ResetID && visit.readyFence.Epoch != device.ObserverEpoch && visit.args.Key == record.Key && attention.SameForeground(visit.args.Foreground, record.Foreground) {
 					visit.readyFence = attention.ReadyToken{Epoch: device.ObserverEpoch, Generation: record.ReceivedReadyGeneration}
 					owner.visits[id] = visit
 				}
@@ -614,7 +634,7 @@ func (owner *owner) plan(observation inspection) ([]nativeEffect, error) {
 					continue
 				}
 				foreground = true
-				if visit.args.Key == record.Key && attention.SameForeground(visit.args.Foreground, record.Foreground) && record.ReceivedReadyGeneration > visit.readyFence.Generation && device.Pending(row) {
+				if visit.args.ResetID == device.ResetID && visit.args.Key == record.Key && attention.SameForeground(visit.args.Foreground, record.Foreground) && record.ReceivedReadyGeneration > visit.readyFence.Generation && device.Pending(row) {
 					if attention.Presented(device, record.Key, record.Foreground, attention.ReadyToken{Epoch: device.ObserverEpoch, Generation: record.ReceivedReadyGeneration}) {
 						changed = true
 					}
@@ -716,7 +736,7 @@ func (owner *owner) authorize(effect nativeEffect) bool {
 	return found && exists && attention.Current(row) && row.Record.AttentionEpisode == effect.notice.Episode && record.HandledAttentionEpisode == effect.notice.Episode && record.Presentation != attention.Closed && (row.Record.Cause.Kind != "ready" || owner.device.Pending(row))
 }
 
-func (owner *owner) settle(effect nativeEffect) (bool, error) {
+func (owner *owner) settle(ctx context.Context, effect nativeEffect) (bool, error) {
 	if effect.cancel {
 		if pending, found := owner.pendingNotices[effect.notice.Slot]; found && pending.sameIdentity(effect.notice) {
 			delete(owner.pendingNotices, effect.notice.Slot)
@@ -729,8 +749,10 @@ func (owner *owner) settle(effect nativeEffect) (bool, error) {
 	if effect.notice.Epoch != owner.device.ObserverEpoch {
 		return true, nil
 	}
+	storeCtx, cancelStore := context.WithTimeout(ctx, operationTimeout)
+	defer cancelStore()
 	cancel := false
-	device, err := owner.store.Update(func(device *attention.DeviceSnapshot) (bool, error) {
+	device, err := owner.store.Update(storeCtx, func(device *attention.DeviceSnapshot) (bool, error) {
 		for index := range device.Records {
 			record := &device.Records[index]
 			if record.Key != effect.key || record.HandledAttentionEpisode != effect.notice.Episode || record.Presentation == attention.Closed {

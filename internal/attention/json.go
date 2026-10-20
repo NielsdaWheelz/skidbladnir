@@ -150,19 +150,10 @@ func (record *DeviceRecord) UnmarshalJSON(data []byte) error {
 	*record = DeviceRecord(value)
 	return nil
 }
-func (desired *DesiredRegistration) UnmarshalJSON(data []byte) error {
-	type wire DesiredRegistration
-	var value wire
-	if !required(data, "generation", "subscription") || strictjson.Decode(data, &value) != nil {
-		return ErrUnavailable
-	}
-	*desired = DesiredRegistration(value)
-	return nil
-}
 func (snapshot *DeviceSnapshot) UnmarshalJSON(data []byte) error {
 	type wire DeviceSnapshot
 	var value wire
-	if !required(data, "schema", "admittedRevision", "localRevision", "records") || strictjson.Decode(data, &value) != nil {
+	if !required(data, "schema", "resetId", "admittedRevision", "localRevision", "records") || strictjson.Decode(data, &value) != nil {
 		return ErrUnavailable
 	}
 	*snapshot = DeviceSnapshot(value)
@@ -175,4 +166,35 @@ func ReceiverRevision(epoch, tag string) (int64, bool) {
 	}
 	revision, err := strconv.ParseInt(number, 10, 64)
 	return revision, err == nil && revision >= 0 && revision < math.MaxInt64 && strconv.FormatInt(revision, 10) == number
+}
+
+func (slot *Slot) UnmarshalJSON(data []byte) error {
+	type wire Slot
+	var value wire
+	if !required(data, "machine", "tmuxId", "identityToken") || strictjson.Decode(data, &value) != nil {
+		return ErrUnavailable
+	}
+	*slot = Slot(value)
+	return nil
+}
+func (seed *ReadySeed) UnmarshalJSON(data []byte) error {
+	type wire ReadySeed
+	var value wire
+	if !required(data, "resetId") || Decode(data, &value) != nil {
+		return ErrUnavailable
+	}
+	*seed = ReadySeed(value)
+	if !seed.Valid() {
+		return ErrUnavailable
+	}
+	return nil
+}
+func (candidate *ReadyCandidate) UnmarshalJSON(data []byte) error {
+	type wire ReadyCandidate
+	var value wire
+	if !required(data, "key", "foreground", "token") || Decode(data, &value) != nil {
+		return ErrUnavailable
+	}
+	*candidate = ReadyCandidate(value)
+	return nil
 }

@@ -97,16 +97,10 @@ func (manager *Manager) normalizeNames(ctx context.Context, visible []scannedSes
 		guard := tmuxclient.NamingGuard{ID: session.id, Name: session.tmuxName, Marker: session.autoMarker, Server: server}
 		desired, marker := "", session.autoMarker
 		if effectiveNameMode(session.tmuxName, session.autoMarker) == NameAutomatic {
-			pane, err := manager.tmux.Output(ctx, "read-naming-pane", "display-message", "-p", "-t", session.id, "#{pane_id}")
-			if err == nil && paneIDPattern.MatchString(pane) {
-				title, titleErr := manager.tmux.Output(ctx, "read-naming-title", "display-message", "-p", "-t", pane, "#{pane_title}")
-				if titleErr == nil {
-					if base := titleName(title); base != "" {
-						desired = automaticName(base, session.id, session.tmuxName, names)
-						guard.PaneID, guard.Title = pane, title
-						marker = encodeAutoName(desired)
-					}
-				}
+			if base := titleName(session.row.Title); base != "" {
+				desired = automaticName(base, session.id, session.tmuxName, names)
+				guard.PaneID, guard.Title = session.row.PaneID, session.row.Title
+				marker = encodeAutoName(desired)
 			}
 		} else if session.autoMarker != "" {
 			decoded, err := base64.RawURLEncoding.Strict().DecodeString(session.autoMarker)
@@ -132,7 +126,11 @@ func (manager *Manager) normalizeNames(ctx context.Context, visible []scannedSes
 				}
 			}
 		}
-		actual, found, err := manager.scanSession(ctx, session.id)
+		if desired == "" && marker == session.autoMarker || desired == session.tmuxName && marker == session.autoMarker {
+			result = append(result, session)
+			continue
+		}
+		actual, found, err := manager.rereadSession(ctx, session.id, server)
 		if err != nil {
 			return nil, err
 		}
@@ -145,8 +143,10 @@ func (manager *Manager) normalizeNames(ctx context.Context, visible []scannedSes
 	return result, nil
 }
 func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	if err := manager.acquire(ctx); err != nil {
+		return err
+	}
+	defer manager.release()
 	if input.Naming.Mode == NameManual {
 		if err := validateTmuxName(input.Naming.Name); err != nil {
 			return err

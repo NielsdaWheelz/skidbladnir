@@ -906,8 +906,10 @@ supported pressure input is modeled as `UNKNOWN`; only unmodeled defects become
 the content-free `InternalError`. DTOs are a strict hard cut: unknown keys or
 enum values are defects, with no protocol branch or compatibility state.
 
-- WSS: text frames `Hello | Presence | Resize | Detach | Error`; Hello/Presence
-  contain only kind and attached-client count. The first client Resize gates
+- WSS: text frames `Hello | Presence | Resize | Detach | Error`; Presence
+  contains kind and attached-client count. strict Hello also requires the final
+  pane id and may include the exact stable foreground triple;
+  [the latency contract](session-latency.md) owns validation and ordering. The first client Resize gates
   attachment creation. Binary
   frames are pty bytes both ways. one websocket owns one pty/client and closes
   both on connection loss. terminal-only `TerminalConfigurationUnsupported` names
@@ -1129,6 +1131,19 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-20 accepted design: [session inventory and attachment latency](session-latency.md)
+owns batched native inventory, cancellable mutation admission, independent client
+publication, optional context enrichment and direct desktop captured entry. the
+coordinated gateway/desktop/android greeting and notification contracts preserve
+exact lifetime authority while moving optional notification work off terminal
+i/o. uncertain entry acknowledgement preserves ready. phone notification-click
+and reconnect metadata lookups remain deferred with the target-model split;
+interaction and visual redesign are separate issues. source is implemented in
+an isolated worktree; v4 reset identity is approved. isolated host and real-phone
+behavioral [qualification](session-latency-qualification.md) passes; the preexisting
+canceled-input dependency race is explicitly deferred. installation and coordinated
+release remain unperformed. the plan owns the explicit cutover.
 
 2026-10-19: [session name presentation](session-name-presentation.md) implements
 the desktop correction. its specification owns scope and passing isolated

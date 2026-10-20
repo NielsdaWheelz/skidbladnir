@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -44,7 +43,7 @@ type Manager struct {
 	catalogue     catalog.Catalogue
 	profiles      []agentruntime.Profile
 	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
-	mutations     sync.RWMutex
+	mutations     chan struct{}
 	recovery      workspaceRecovery
 }
 
@@ -80,6 +79,7 @@ func New(config Config) (*Manager, error) {
 		catalogue:     characters,
 		profiles:      profiles,
 		profilesByKey: profilesByKey,
+		mutations:     make(chan struct{}, 1),
 		recovery:      workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
 	}, nil
 }
@@ -88,73 +88,116 @@ func (manager *Manager) Profiles() []agentruntime.Profile {
 	return agentruntime.CloneProfiles(manager.profiles)
 }
 
-func (manager *Manager) List(ctx context.Context) (Inventory, error) {
-	manager.mutations.Lock()
+func (manager *Manager) acquire(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case manager.mutations <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		manager.release()
+		return err
+	}
+	return nil
+}
+func (manager *Manager) release() { <-manager.mutations }
+
+func (manager *Manager) List(ctx context.Context) (Inventory, ListDiagnostics, error) {
+	diagnostics := ListDiagnostics{Phase: "admission"}
+	started := time.Now()
+	err := manager.acquire(ctx)
+	if err != nil {
+		elapsed := time.Since(started)
+		diagnostics.Admission = &elapsed
+		return Inventory{}, diagnostics, err
+	}
 	locked := true
 	defer func() {
 		if locked {
-			manager.mutations.Unlock()
+			manager.release()
 		}
 	}()
-
-	ids, err := manager.tmux.ListSessionIDs(ctx)
+	observed, present, err := manager.tmux.InspectServer(ctx)
+	if err == nil && (!present || observed.SessionCount == 0) {
+		elapsed := time.Since(started)
+		diagnostics.Admission = &elapsed
+		diagnostics.Phase = "complete"
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, diagnostics, nil
+	}
+	var server tmuxclient.ServerIdentity
+	if err == nil {
+		server, err = manager.admitRecoveryServer(ctx, observed.Identity)
+	}
+	admissionElapsed := time.Since(started)
+	diagnostics.Admission = &admissionElapsed
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, diagnostics, err
 	}
-	if len(ids) == 0 {
-		// Listing maps absent and empty servers to an empty live inventory.
-		// Recovery distinguishes those states through its own observation;
-		// listing has no lifetime or server to initialize in this branch.
-		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, nil
-	}
-	server, err := manager.ensureServerIdentity(ctx)
+	diagnostics.Phase = "capture"
+	started = time.Now()
+	capture, err := manager.tmux.ReadInventory(ctx, server)
+	captureElapsed := time.Since(started)
+	diagnostics.Capture = &captureElapsed
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, diagnostics, err
 	}
-	scan, err := manager.scanSessions(ctx)
-	if err != nil {
-		return Inventory{}, err
-	}
+	diagnostics.Phase = "normalize"
+	started = time.Now()
+	scan := manager.scanCapture(capture)
 	visible, err := manager.normalizeCharacters(ctx, scan, server)
-	if err != nil {
-		return Inventory{}, err
+	if err == nil {
+		visible, err = manager.normalizeNames(ctx, visible, scan.names, server)
 	}
-	visible, err = manager.normalizeNames(ctx, visible, scan.names, server)
+	if err == nil {
+		err = manager.requireServerIdentity(ctx, server)
+	}
+	normalizeElapsed := time.Since(started)
+	diagnostics.Normalize = &normalizeElapsed
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, diagnostics, err
 	}
 	observations := make([]inspectedSession, 0, len(visible))
-	for _, observed := range visible {
-		sessionObservation, present, err := manager.inspectRequired(ctx, observed, server)
+	for _, row := range visible {
+		token, err := makeIdentityToken(server, row.id)
 		if err != nil {
-			return Inventory{}, err
+			return Inventory{}, diagnostics, err
 		}
-		if present {
-			observations = append(observations, sessionObservation)
-		}
+		session := Session{TmuxID: row.id, TmuxName: row.tmuxName, NameMode: effectiveNameMode(row.tmuxName, row.autoMarker), IdentityToken: token, Character: row.character}
+		observations = append(observations, inspectedSession{session: session, paneID: row.row.PaneID, panePID: processinfo.PID(row.row.PanePID), attachedClients: row.row.AttachedClients, row: row.row})
 	}
-	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return Inventory{}, err
-	}
-	// One clock for the whole projection, minted only once the snapshot and the
-	// server identity that produced it are both validated.
 	observedAt := time.Now().UTC()
 	recovery := manager.recovery.fact
-	manager.mutations.Unlock()
+	manager.release()
 	locked = false
+	diagnostics.Phase = "foreground"
+	started = time.Now()
 	sessions := make([]Session, 0, len(observations))
 	for _, observation := range observations {
+		if err = ctx.Err(); err != nil {
+			break
+		}
 		sessions = append(sessions, manager.enrichSession(ctx, observation))
 	}
-	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return Inventory{}, err
+	if err == nil {
+		err = manager.requireServerIdentity(ctx, server)
 	}
-	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, nil
+	foregroundElapsed := time.Since(started)
+	diagnostics.Foreground = &foregroundElapsed
+	if err != nil {
+		return Inventory{}, diagnostics, err
+	}
+	diagnostics.Phase = "complete"
+	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, diagnostics, nil
 }
 
 func (manager *Manager) Create(ctx context.Context, input CreateInput) (ObservedSession, error) {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	if err := manager.acquire(ctx); err != nil {
+		return ObservedSession{}, err
+	}
+	defer manager.release()
 
 	return manager.create(ctx, input, "", tmuxclient.ServerIdentity{})
 }
@@ -163,8 +206,10 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 var ErrCreateDispatchUnknown = errors.New("session creation completion is unknown")
 
 func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (ObservedSession, error) {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	if err := manager.acquire(ctx); err != nil {
+		return ObservedSession{}, err
+	}
+	defer manager.release()
 
 	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
@@ -359,8 +404,10 @@ func mapWorkingDirectoryError(err error) error {
 // Kill deletes only the captured session lifetime. Pane/process changes and
 // display names do not participate in authority. The tmux queue owns the guard.
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	if err := manager.acquire(ctx); err != nil {
+		return err
+	}
+	defer manager.release()
 
 	identity, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
@@ -432,37 +479,40 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	session := inspected.session
 	session.ActivePaneID = inspected.paneID
 	session.panePID = inspected.panePID
-	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
-	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption); err == nil {
-		session.Group = group.DecodeMetadata(encoded)
+	row := inspected.row
+	if row == nil {
+		// Single-target controls keep their independent native observation path.
+		// justify-ignore-error: these optional reads omit unavailable display facts;
+		// required lifetime and anchor validation remain independent.
+		row = &tmuxclient.InventoryRow{}
+		row.LocalSession.Group, _ = manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption)
+		row.CWD, _ = manager.tmux.Output(ctx, "read-pane-cwd", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_path}")
+		row.Command, _ = manager.tmux.Output(ctx, "read-pane-command", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_command}")
+		row.LocalSession.Profile, _ = manager.sessionOption(ctx, session.TmuxID, "@skid_profile")
+		row.LocalSession.Objective, _ = manager.sessionOption(ctx, session.TmuxID, "@skid_objective_b64")
+		row.LocalSession.Conversation, _ = manager.sessionOption(ctx, session.TmuxID, conversationOption)
+		row.PaneRegistration, _ = manager.paneOption(ctx, inspected.paneID, agentruntime.PaneOption)
 	}
+	session.Group = group.DecodeMetadata(row.LocalSession.Group)
 	session.AttachedClients = inspected.attachedClients
-	// justify-ignore-error: optional pane metadata does not suppress an ordinary terminal.
-	if cwd, readErr := manager.tmux.Output(ctx, "read-pane-cwd", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_path}"); readErr == nil {
-		session.CWD = cwd
+	session.CWD, session.ActiveCommand = row.CWD, row.Command
+	key := agentruntime.ProfileKey(row.LocalSession.Profile)
+	if _, valid := manager.profilesByKey[key]; valid {
+		session.LaunchProfile = key
 	}
-	if activeCommand, readErr := manager.tmux.Output(ctx, "read-pane-command", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_command}"); readErr == nil {
-		session.ActiveCommand = activeCommand
-	}
-	if profile, optionErr := manager.sessionOption(ctx, inspected.session.TmuxID, "@skid_profile"); optionErr == nil {
-		key := agentruntime.ProfileKey(profile)
-		if _, valid := manager.profilesByKey[key]; valid {
-			session.LaunchProfile = key
-		}
-	}
-	if encodedObjective, optionErr := manager.sessionOption(ctx, inspected.session.TmuxID, "@skid_objective_b64"); optionErr == nil && encodedObjective != "" {
-		objective, decodeErr := base64.RawURLEncoding.DecodeString(encodedObjective)
-		if decodeErr == nil && validateObjective(string(objective)) == nil {
+	if encoded := row.LocalSession.Objective; encoded != "" {
+		objective, decodeErr := base64.RawURLEncoding.Strict().DecodeString(encoded)
+		if decodeErr == nil && base64.RawURLEncoding.EncodeToString(objective) == encoded && validateObjective(string(objective)) == nil {
 			session.Objective = string(objective)
 		}
 	}
-	if encoded, err := manager.sessionOption(ctx, session.TmuxID, conversationOption); err == nil && encoded != "" {
+	if encoded := row.LocalSession.Conversation; encoded != "" {
 		if conversation, err := decodeConversation(encoded); err == nil {
 			session.Conversation = &conversation
 		}
 	}
 	var foregroundErr error
-	session.Agent, session.foreground, foregroundErr = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	session.Agent, session.foreground, foregroundErr = manager.observeAgent(inspected.paneID, inspected.panePID, row.PaneRegistration)
 	session.foregroundFailed = foregroundErr != nil
 	manager.projectClaudeConversation(&session)
 	if session.foreground != nil {
@@ -527,6 +577,7 @@ func (manager *Manager) TerminalContext(connectionID string) (TerminalContext, e
 }
 
 type inspectedSession struct {
+	row             *tmuxclient.InventoryRow
 	session         Session
 	paneID          string
 	panePID         processinfo.PID
@@ -558,11 +609,11 @@ func (manager *Manager) classifyRequiredObservationFailure(
 }
 
 type scannedSession struct {
-	id           string
-	tmuxName     string
-	autoMarker   string
-	characterRaw string
-	character    catalog.Character
+	row        *tmuxclient.InventoryRow
+	id         string
+	tmuxName   string
+	autoMarker string
+	character  catalog.Character
 }
 
 type sessionScan struct {
@@ -611,11 +662,11 @@ func (manager *Manager) scanSession(ctx context.Context, id string) (scannedSess
 	if err != nil || !found {
 		return scannedSession{}, found, err
 	}
-	observed.characterRaw, found, err = manager.sessionOptionIfPresent(ctx, id, "@skid_character")
+	raw, found, err := manager.sessionOptionIfPresent(ctx, id, "@skid_character")
 	if err != nil || !found {
 		return scannedSession{}, found, err
 	}
-	observed.character, _ = manager.catalogue.Character(observed.characterRaw)
+	observed.character, _ = manager.catalogue.Character(raw)
 	return observed, true, nil
 }
 
@@ -634,69 +685,102 @@ func (manager *Manager) sessionOptionIfPresent(ctx context.Context, id, option s
 	return "", false, err
 }
 
-func (manager *Manager) normalizeCharacters(
-	ctx context.Context,
-	scan sessionScan,
-	server tmuxclient.ServerIdentity,
-) ([]scannedSession, error) {
-	normalized := append([]scannedSession(nil), scan.visible...)
-	included := make([]bool, len(normalized))
-	pending := make([]int, 0, len(normalized))
-	for index, observed := range normalized {
-		included[index] = true
-		if observed.character.Key == "" {
-			pending = append(pending, index)
+func (manager *Manager) scanCapture(capture tmuxclient.InventoryCapture) sessionScan {
+	scan := sessionScan{names: make(map[string]struct{}, len(capture.Rows)), visible: make([]scannedSession, 0, len(capture.Rows)), characterUse: make(map[string]int)}
+	for _, row := range capture.Rows {
+		observed := manager.scannedRow(row)
+		scan.names[row.Name] = struct{}{}
+		scan.visible = append(scan.visible, observed)
+		if observed.character.Key != "" {
+			scan.characterUse[observed.character.Key]++
 		}
 	}
-	sort.Slice(pending, func(left, right int) bool {
-		return normalized[pending[left]].id < normalized[pending[right]].id
-	})
+	return scan
+}
+func (manager *Manager) scannedRow(row tmuxclient.InventoryRow) scannedSession {
+	character, _ := manager.catalogue.Character(row.LocalSession.Character)
+	return scannedSession{id: row.ID, tmuxName: row.Name, autoMarker: row.LocalSession.AutoName, character: character, row: &row}
+}
+func (manager *Manager) rereadSession(ctx context.Context, id string, server tmuxclient.ServerIdentity) (scannedSession, bool, error) {
+	row, found, err := manager.tmux.ReadInventoryRow(ctx, server, id)
+	if err != nil || !found {
+		return scannedSession{}, found, err
+	}
+	return manager.scannedRow(row), true, nil
+}
+func (manager *Manager) normalizeCharacters(ctx context.Context, scan sessionScan, server tmuxclient.ServerIdentity) ([]scannedSession, error) {
+	normalized := append([]scannedSession(nil), scan.visible...)
+	pending := make([]int, 0)
+	for i, observed := range normalized {
+		if observed.character.Key == "" {
+			pending = append(pending, i)
+		}
+	}
+	sort.Slice(pending, func(i, j int) bool { return normalized[pending[i]].id < normalized[pending[j]].id })
 	characters := manager.catalogue.Characters()
+	removed := make(map[string]bool)
 	for _, index := range pending {
 		observed := normalized[index]
-		selected := selectCharacter(characters, scan.characterUse, server.Epoch+"\x00"+observed.id)
-		committed, err := manager.tmux.AssignCharacterIfUnchanged(
-			ctx, observed.id, observed.characterRaw, selected.Key, server,
-		)
-		if errors.Is(err, tmuxclient.WorkspaceProtocolInvalid) {
-			return nil, err
-		}
-		if err != nil || !committed {
-			reread, found, rereadErr := manager.scanSession(ctx, observed.id)
-			if rereadErr != nil {
-				return nil, rereadErr
+		for attempt := 0; attempt < 2; attempt++ {
+			// Presence is distinct from an empty local value; show-options without -A
+			// reports only the local definition. Its value needs no shell parsing.
+			local, err := manager.tmux.Output(ctx, "read-character-presence", "show-options", "-q", "-t", observed.id, "@skid_character")
+			if err != nil {
+				present, classified := manager.classifyRequiredObservationFailure(ctx, observed.id, err)
+				if classified != nil {
+					return nil, classified
+				}
+				if !present {
+					removed[observed.id] = true
+					break
+				}
+			}
+			raw, found, err := manager.sessionOptionIfPresent(ctx, observed.id, "@skid_character")
+			if err != nil {
+				return nil, err
 			}
 			if !found {
-				included[index] = false
-				continue
+				removed[observed.id] = true
+				break
 			}
-			if reread.character.Key != "" {
-				scan.characterUse[reread.character.Key]++
-				normalized[index] = reread
-				continue
+			var expected *string
+			if local != "" {
+				expected = &raw
 			}
+			var committed bool
+			var writeErr error
+			if _, valid := manager.catalogue.Character(raw); !valid {
+				selected := selectCharacter(characters, scan.characterUse, server.Epoch+"\x00"+observed.id)
+				committed, writeErr = manager.tmux.AssignCharacterIfUnchanged(ctx, observed.id, expected, selected.Key, server)
+			}
+			if errors.Is(writeErr, tmuxclient.WorkspaceProtocolInvalid) {
+				return nil, writeErr
+			}
+			actual, found, err := manager.rereadSession(ctx, observed.id, server)
 			if err != nil {
-				return nil, fmt.Errorf("assign tmux character to %s: %w", observed.id, err)
+				return nil, err
 			}
-			observed = reread
-			selected = selectCharacter(characters, scan.characterUse, server.Epoch+"\x00"+observed.id)
-			committed, err = manager.tmux.AssignCharacterIfUnchanged(
-				ctx, observed.id, observed.characterRaw, selected.Key, server,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("retry tmux character assignment for %s: %w", observed.id, err)
+			if !found {
+				removed[observed.id] = true
+				break
 			}
-			if !committed {
+			if actual.character.Key != "" {
+				scan.characterUse[actual.character.Key]++
+				normalized[index] = actual
+				break
+			}
+			if writeErr != nil {
+				return nil, writeErr
+			}
+			if committed || attempt == 1 {
 				return nil, tmuxclient.WorkspaceTopologyChanged
 			}
+			observed = actual
 		}
-		observed.character = selected
-		scan.characterUse[selected.Key]++
-		normalized[index] = observed
 	}
 	visible := make([]scannedSession, 0, len(normalized))
-	for index, observed := range normalized {
-		if included[index] {
+	for _, observed := range normalized {
+		if !removed[observed.id] {
 			visible = append(visible, observed)
 		}
 	}
@@ -773,27 +857,12 @@ func (manager *Manager) classifyMissingSession(ctx context.Context, id string, c
 	return cause
 }
 
-func (manager *Manager) ensureServerIdentity(ctx context.Context) (tmuxclient.ServerIdentity, error) {
-	observed, present, err := manager.tmux.InspectServer(ctx)
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, err
-	}
-	if !present {
-		return tmuxclient.ServerIdentity{}, errRecoveryUnavailable
-	}
-	proposed, err := newServerEpoch()
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, err
-	}
-	return manager.tmux.EnsureServerIdentity(ctx, observed.Identity, proposed)
-}
-
 func (manager *Manager) requireServerIdentity(ctx context.Context, expected tmuxclient.ServerIdentity) error {
-	observed, err := manager.tmux.ServerIdentity(ctx)
+	observed, present, err := manager.tmux.InspectServer(ctx)
 	if err != nil {
 		return err
 	}
-	if observed != expected {
+	if !present || observed.Identity != expected {
 		return tmuxclient.WorkspaceSourceChanged
 	}
 	return nil

@@ -15,7 +15,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
+import java.util.concurrent.RejectedExecutionException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -352,7 +352,20 @@ private data class PollRuntime(
     val inventoryOperation: InventoryOperationLane,
     var inventoryFuture: ScheduledFuture<*>? = null,
     var pressureFuture: ScheduledFuture<*>? = null,
+    var contextGeneration: Long = 0,
+    var pendingContext: ContextSource? = null,
 )
+
+private data class ContextSource(
+    val credential: MachineCredential,
+    val generation: Long,
+    val sourceGeneration: Long,
+    val inventory: SessionsResponse,
+    val peers: List<MachineCredential>,
+)
+private class ContextFlight(val source: ContextSource, val runtime: PollRuntime) {
+    @Volatile var canceled = false
+}
 
 private data class CreatedTerminalAdmission(
     val attempt: Int,
@@ -444,6 +457,7 @@ internal class SkidbladnirController(
     private var notificationsUnavailable = false
     internal var notificationHealth by mutableStateOf(NotificationHealth.SetupRequired)
         private set
+    private var notificationVisitSeed: NotificationVisitSeed? = null
     private var notificationVisitToken: NotificationVisitToken? = null
     private var pendingNotificationReference: String? = null
     @Volatile private var notificationVisit: NotificationKey? = null
@@ -452,6 +466,7 @@ internal class SkidbladnirController(
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = ConcurrentHashMap<MachineHandle, InventoryOperationLane>()
     private val pendingMetadataFences = mutableMapOf<MachineHandle, Long>()
+    private val contextFlights = mutableMapOf<MachineHandle, ContextFlight>()
 
     /** Main-thread owner of the app-wide inventory-read indicator. */
     private val awaitedInventoryReads = AwaitedInventoryReads()
@@ -599,6 +614,7 @@ internal class SkidbladnirController(
         polling.values.forEach { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
+            retireContext(runtime)
         }
         polling.clear()
         awaitedInventoryReads.clear()
@@ -1427,8 +1443,7 @@ internal class SkidbladnirController(
         val attempt = current.attempt
         val owner = Any()
         terminalOwner = owner
-        notificationVisitToken = notifications.captureVisit(current.target)
-        notifications.beginVisit(checkNotNull(notificationVisitToken))
+        notificationVisitSeed = notifications.captureVisit(current.target)
         val connection = TerminalConnection(
             client,
             credential,
@@ -1436,32 +1451,29 @@ internal class SkidbladnirController(
             viewport,
             page,
             object : TerminalConnectionObserver {
-                override fun onHello(attachedClients: Int) {
-                    main.post {
-                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                        if (terminal.attempt != attempt || terminalOwner !== owner) return@post
+                override fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?) {
+                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                    if (terminal.attempt != attempt || terminalOwner !== owner) return
+                    val seed = notificationVisitSeed ?: return
+                    notificationVisitToken = notifications.qualifyVisit(seed, current.target, paneId, foreground)
+                    notifications.beginVisit(checkNotNull(notificationVisitToken))
+                    state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
+                }
+                override fun onPresence(attachedClients: Int) {
+                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                    if (terminal.attempt == attempt && terminalOwner === owner) {
                         state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
                     }
                 }
-                override fun onPresence(attachedClients: Int) {
-                    main.post {
-                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                        if (terminal.attempt == attempt && terminalOwner === owner) {
-                            state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
-                        }
-                    }
-                }
                 override fun onFailure(code: ApiErrorCode) {
-                    main.post {
-                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                        if (terminal.attempt != attempt || terminalOwner !== owner) return@post
-                        if (terminalAccessLoss(code) != null) {
-                            acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(code))
-                            return@post
-                        }
-                        leaveTerminal()
-                        state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
+                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                    if (terminal.attempt != attempt || terminalOwner !== owner) return
+                    if (terminalAccessLoss(code) != null) {
+                        acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(code))
+                        return
                     }
+                    leaveTerminal()
+                    state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
                 }
             },
         )
@@ -1870,6 +1882,7 @@ internal class SkidbladnirController(
         polling.remove(handle)?.let { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
+            retireContext(runtime)
         }
     }
 
@@ -1936,7 +1949,6 @@ internal class SkidbladnirController(
         try {
             notifications.refresh()
             val result = client.listSessions(credential)
-            val remoteContexts = if (result is GatewayResult.Success) resolveRemoteContexts(result.value) else emptyMap()
             val receivedAt = SystemClock.elapsedRealtime()
             main.post {
                 if (!isCredentialActive(activeGeneration, credential) || polling[credential.machine.handle] !== runtime) {
@@ -1960,6 +1972,7 @@ internal class SkidbladnirController(
                 }
                 val inventory = when (result) {
                     is GatewayResult.Failure -> {
+                        retireContext(runtime)
                         if (!acceptAccessFailure(handle, result.failure) &&
                             pendingMetadataFences[handle]?.let { completedMutationFence >= it } != true
                         ) markInventoryFailed(handle, result.failure)
@@ -1977,7 +1990,7 @@ internal class SkidbladnirController(
                     it.copy(
                         access = MachineAccess.Ready,
                         inventory = InventoryState.Fresh(InventorySnapshot(inventory, receivedAt)),
-                        remoteContexts = remoteContexts,
+                        remoteContexts = emptyMap(),
                     )
                 }
                 pendingMetadataFences[handle]?.let { fence ->
@@ -1988,6 +2001,7 @@ internal class SkidbladnirController(
                 dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
                 advanceCreatedTerminalAdmission(handle, completedMutationFence)
                 finishRead()
+                requestContext(credential, activeGeneration, runtime, inventory)
             }
         } catch (_: InterruptedException) {
             // justify-ignore-error: shutdown interrupts worker reads; preserve cancellation and release the read lane.
@@ -2030,32 +2044,100 @@ internal class SkidbladnirController(
         publishNotifications()
     }
 
-    private fun resolveRemoteContexts(inventory: SessionsResponse): Map<String, ExecutionContext.Remote> {
+    private fun retireContext(runtime: PollRuntime) {
+        runtime.contextGeneration += 1
+        contextFlights.values.singleOrNull { it.runtime === runtime }?.canceled = true
+        runtime.pendingContext = null
+    }
+
+    private fun requestContext(
+        credential: MachineCredential, activeGeneration: Long, runtime: PollRuntime, inventory: SessionsResponse,
+    ) {
+        retireContext(runtime)
+        if (inventory.sessions.none { it.connection != null }) return
+        runtime.pendingContext = ContextSource(credential, activeGeneration, runtime.contextGeneration, inventory, credentials.values.toList())
+        startContextPasses()
+    }
+
+    /** The main owner admits at most three passes, with one current pass per source. */
+    private fun startContextPasses() {
+        if (!foreground) return
+        for (runtime in polling.values) {
+            if (contextFlights.size >= 3) return
+            val source = runtime.pendingContext ?: continue
+            if (source.credential.machine.handle in contextFlights) continue
+            runtime.pendingContext = null
+            val flight = ContextFlight(source, runtime)
+            contextFlights[source.credential.machine.handle] = flight
+            executeNetwork {
+                var contexts = emptyMap<String, ExecutionContext.Remote>()
+                try {
+                    contexts = resolveRemoteContexts(flight)
+                } finally {
+                    val completed = contexts
+                    main.post {
+                        val handle = source.credential.machine.handle
+                        contextFlights.remove(handle)
+                        if (!flight.canceled && isCredentialActive(source.generation, source.credential) &&
+                            polling[handle] === runtime && runtime.contextGeneration == source.sourceGeneration &&
+                            source.peers.all { credentials[it.machine.handle] == it }
+                        ) {
+                            updateMachine(handle) { machine ->
+                                val current = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory
+                                val admitted = completed.filterKeys { identity ->
+                                    val old = source.inventory.sessions.singleOrNull { it.identityToken == identity }
+                                    val now = current?.sessions?.singleOrNull {
+                                        it.identityToken == identity && it.tmuxId == old?.tmuxId
+                                    }
+                                    old != null && now != null && old.connection == now.connection
+                                }
+                                machine.copy(remoteContexts = admitted)
+                            }
+                            publishDashboardIfVisible()
+                        }
+                        startContextPasses()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun resolveRemoteContexts(flight: ContextFlight): Map<String, ExecutionContext.Remote> {
+        val inventory = flight.source.inventory
         val deadline = SystemClock.elapsedRealtime() + 2_000
-        val peers = credentials.values.toList()
+        val peers = flight.source.peers
         val lookups = mutableMapOf<String, Pair<PairedMachine, TerminalContext>?>()
         fun lookup(id: String): Pair<PairedMachine, TerminalContext>? {
+            if (flight.canceled || Thread.currentThread().isInterrupted) return null
             if (id in lookups) return lookups[id]
             val remaining = deadline - SystemClock.elapsedRealtime()
             if (remaining <= 0) return null
-            val calls = peers.map { peer ->
-                CompletableFuture.supplyAsync<Pair<PairedMachine, TerminalContext>?>(
-                    {
-                        when (val result = client.readTerminalContext(peer, id, remaining)) {
-                            is GatewayResult.Success -> peer.machine to result.value
-                            is GatewayResult.Failure -> null
-                        }
-                    }, network,
-                )
-            }
+            val calls = mutableListOf<CompletableFuture<Pair<PairedMachine, TerminalContext>?>>()
             try {
-                CompletableFuture.allOf(*calls.toTypedArray()).get(
-                    (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1), TimeUnit.MILLISECONDS,
-                )
-            } catch (_: TimeoutException) {
-                // Completed peers still count; an offline peer does not erase a live match.
+                for (peer in peers) {
+                    if (flight.canceled || Thread.currentThread().isInterrupted) break
+                    calls += CompletableFuture.supplyAsync(
+                        {
+                            val budget = deadline - SystemClock.elapsedRealtime()
+                            if (flight.canceled || budget <= 0 || Thread.currentThread().isInterrupted) null
+                            else when (val result = client.readTerminalContext(peer, id, budget)) {
+                                is GatewayResult.Success -> if (SystemClock.elapsedRealtime() < deadline) peer.machine to result.value else null
+                                is GatewayResult.Failure -> null
+                            }
+                        }, network,
+                    )
+                }
+            } catch (failure: RejectedExecutionException) {
+                // justify-ignore-error: shutdown may reject the next child; already
+                // submitted children still belong to this pass and are joined below.
+                if (!network.isShutdown) throw failure
+            } finally {
+                // Each real call keeps its original remaining HTTP budget. Joining
+                // every supplier (also after interruption or partial submission) keeps
+                // its source/global slot owned until actual child work has ended.
+                CompletableFuture.allOf(*calls.toTypedArray()).join()
             }
-            val match = calls.mapNotNull { if (it.isDone) it.getNow(null) else null }.singleOrNull()
+            val match = calls.mapNotNull { it.getNow(null) }.singleOrNull()
             lookups[id] = match
             return match
         }
@@ -2188,10 +2270,12 @@ internal class SkidbladnirController(
     }
 
     private fun markInventoryFailed(handle: MachineHandle, failure: GatewayFailure) {
-        updateMachine(handle) { it.inventoryFailed(failure) }
+        polling[handle]?.let(::retireContext)
+        updateMachine(handle) { it.inventoryFailed(failure).copy(remoteContexts = emptyMap()) }
     }
 
     private fun requireInventoryRefresh(handle: MachineHandle, fence: Long) {
+        polling[handle]?.let(::retireContext)
         updateMachine(handle) { machine ->
             when (val inventory = machine.inventory) {
                 is InventoryState.Fresh ->
@@ -2334,6 +2418,7 @@ internal class SkidbladnirController(
         terminalPage = null
         notifications.endVisit(notificationVisitToken)
         notificationVisitToken = null
+        notificationVisitSeed = null
         if (visited != null) updateMachine(checkNotNull(MachineHandle.parse(visited.machine))) { it }
         page?.resetInputState()
         connection?.detach()

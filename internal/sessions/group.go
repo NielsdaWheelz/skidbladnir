@@ -9,8 +9,10 @@ import (
 var ErrGroupDispatchUnknown = errors.New("group assignment completion is unknown")
 
 func (manager *Manager) SetGroup(ctx context.Context, input SetGroupInput) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	if err := manager.acquire(ctx); err != nil {
+		return err
+	}
+	defer manager.release()
 
 	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {

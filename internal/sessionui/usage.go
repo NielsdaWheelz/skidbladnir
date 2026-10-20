@@ -437,7 +437,7 @@ func (m *model) usageDeclarationState() string {
 	for _, peer := range m.usagePeers {
 		completed = completed || peer.profiles != nil || peer.failure != nil
 	}
-	if !completed || m.refreshing && !failed {
+	if !completed || m.inventoryPending() && !failed {
 		return "checking usage"
 	}
 	return "profile declarations unavailable"

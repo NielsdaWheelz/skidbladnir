@@ -21,6 +21,7 @@ import (
 
 type presentedArgs struct {
 	VisitID string               `json:"visitId"`
+	ResetID string               `json:"resetId,omitempty"`
 	Token   attention.ReadyToken `json:"token"`
 }
 
@@ -97,6 +98,16 @@ func (owner *owner) serveConnection(connection *net.UnixConn, id uint64) {
 			case "read":
 				var args struct{}
 				valid = attention.Decode(request.Args, &args) == nil
+			case "prepare":
+				var args attention.Slot
+				valid = attention.Decode(request.Args, &args) == nil && args.Valid()
+				value = args
+			case "abandon":
+				var args struct {
+					LaunchNonce string `json:"launchNonce"`
+				}
+				valid = attention.Decode(request.Args, &args) == nil && attention.EpochValid(args.LaunchNonce)
+				value = args.LaunchNonce
 			case "setup":
 				var args *struct{}
 				valid = attention.Decode(request.Args, &args) == nil && args != nil
@@ -104,29 +115,30 @@ func (owner *owner) serveConnection(connection *net.UnixConn, id uint64) {
 				var wire struct {
 					Key         attention.Key         `json:"key"`
 					Foreground  *attention.Foreground `json:"foreground,omitempty"`
-					ReadyToken  *attention.ReadyToken `json:"readyToken,omitempty"`
+					ResetID     string                `json:"resetId,omitempty"`
 					Presented   *bool                 `json:"presented"`
 					LaunchNonce string                `json:"launchNonce,omitempty"`
 					Surface     *SurfaceAssociation   `json:"surface,omitempty"`
 				}
 				valid = attention.Decode(request.Args, &wire) == nil && wire.Presented != nil
-				args := RegisterArgs{Key: wire.Key, Foreground: wire.Foreground, ReadyToken: wire.ReadyToken, LaunchNonce: wire.LaunchNonce, Surface: wire.Surface}
+				args := RegisterArgs{Key: wire.Key, Foreground: wire.Foreground, ResetID: wire.ResetID, LaunchNonce: wire.LaunchNonce, Surface: wire.Surface}
 				if valid {
 					args.Presented = *wire.Presented
 				}
-				valid = valid && args.Key.Valid() && (args.Foreground == nil || args.Foreground.Valid()) && (args.ReadyToken == nil || validToken(*args.ReadyToken)) && (args.LaunchNonce == "" || attention.EpochValid(args.LaunchNonce)) && (args.Surface == nil || validSurface(*args.Surface)) && (args.Surface == nil || args.LaunchNonce == "" || args.Surface.Nonce == args.LaunchNonce)
+				valid = valid && args.Key.Valid() && (args.Foreground == nil || args.Foreground.Valid()) && (args.ResetID == "" || args.Presented && attention.EpochValid(args.ResetID)) && (args.LaunchNonce == "" || attention.EpochValid(args.LaunchNonce)) && (args.Surface == nil || validSurface(*args.Surface)) && (args.Surface == nil || args.LaunchNonce == "" || args.Surface.Nonce == args.LaunchNonce)
 				value = args
 			case "presented":
 				var wire struct {
 					VisitID string                `json:"visitId"`
+					ResetID string                `json:"resetId,omitempty"`
 					Token   *attention.ReadyToken `json:"token"`
 				}
 				valid = attention.Decode(request.Args, &wire) == nil && wire.Token != nil && attention.EpochValid(wire.VisitID)
-				args := presentedArgs{VisitID: wire.VisitID}
+				args := presentedArgs{VisitID: wire.VisitID, ResetID: wire.ResetID}
 				if valid {
 					args.Token = *wire.Token
 				}
-				valid = valid && validToken(args.Token)
+				valid = valid && validToken(args.Token) && (args.ResetID == "" && args.Token == (attention.ReadyToken{}) || attention.EpochValid(args.ResetID))
 				value = args
 			case "end":
 				var args struct {
@@ -169,5 +181,5 @@ func (owner *owner) serveConnection(connection *net.UnixConn, id uint64) {
 }
 
 func validToken(token attention.ReadyToken) bool {
-	return token.Generation >= 0 && token.Generation < math.MaxInt64 && (attention.EpochValid(token.Epoch) || token.Epoch == "" && token.Generation == 0)
+	return token == (attention.ReadyToken{}) || attention.EpochValid(token.Epoch) && token.Generation > 0 && token.Generation < math.MaxInt64
 }

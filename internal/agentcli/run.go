@@ -434,22 +434,16 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if parsed.request.Operation == "enter" {
 		io.WriteString(stderr, "ctrl-] then d detaches; navigation and terminal size are shared\n")
-		info := parsed.request
-		info.Operation = "info"
-		observed := client.Execute(ctx, info)
-		if !observed.OK {
-			return render(parsed, observed, stdout, stderr)
+		ref, failure := client.ResolveTerminal(ctx, parsed.request)
+		if failure != nil {
+			return render(parsed, fleetclient.Result{Error: failure}, stdout, stderr)
 		}
-		session := observed.Value.(fleetclient.ObservedSession).Session
-		notificationReported := false
-		terminalErr := terminalclient.Run(ctx, client, session, stdin.(*os.File), stdout.(*os.File), func(_ terminalclient.NotificationView, err error) {
-			if err != nil && !notificationReported {
-				notificationReported = true
-				fmt.Fprintln(stderr, "notifications unavailable")
-			}
-		})
-		if terminalErr != nil {
-			fmt.Fprintln(stderr, terminalErr)
+		result := terminalclient.Run(ctx, client, ref.Encode(), nil, stdin.(*os.File), stdout.(*os.File))
+		if result.NotificationErr != nil {
+			fmt.Fprintln(stderr, "notifications unavailable")
+		}
+		if result.Err != nil {
+			fmt.Fprintln(stderr, result.Err)
 			return 1
 		}
 		return 0

@@ -64,8 +64,6 @@ func newSessionError(code ErrorCode, message string) *Error {
 
 // PreflightCreate rejects known request failures before provider launch preparation.
 func (manager *Manager) PreflightCreate(ctx context.Context, input CreateInput) (CreateInput, error) {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
 	cwd, profile, err := manager.validateCreate(input)
 	if err != nil {
 		return CreateInput{}, err

@@ -257,9 +257,12 @@ no hostname/ssh-config parser or gateway-to-gateway calls. follow
 onward markers for nested hops, with a maximum of eight and cycle detection;
 missing, ambiguous or exhausted resolution is `remote context
 unknown`. never present an intermediate transport cwd as the final location.
-use existing refresh work, one two-second total context budget per refresh,
-coalescing identical lookups. late results require the same source session,
-current sampled connection and refresh generation; no persisted client context.
+publish base inventory before optional display context. under
+[the latency contract](session-latency.md), each source has one two-second context
+pass, at most three passes overall, coalescing identical lookups within the pass.
+retire and join obsolete work before its successor; never list sessions solely
+for a profile label. late overlays require the same source session, sampled
+connection, refresh generation and credential/runtime. no persisted client context.
 
 each client derives one execution-context projection keyed by the original session
 reference: `local {machine,cwd?,agent?}`, `remote {machine,cwd?,agent?}` or

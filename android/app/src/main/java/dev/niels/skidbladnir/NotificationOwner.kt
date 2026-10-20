@@ -59,6 +59,9 @@ internal class NotificationVisitToken(
     val key: NotificationKey, val foreground: NotificationForeground?, val epoch: String?, val readyGeneration: Long,
     val resetIdentity: Any?,
 )
+internal class NotificationVisitSeed(
+    val resetIdentity: Any?, val epoch: String?, val candidate: NotificationVisitToken?,
+)
 private data class NotificationVisit(val token: NotificationVisitToken, val presented: Boolean)
 private data class NotificationReadyBoundary(val token: NotificationVisitToken, val receivedGeneration: Long)
 private data class NotificationFocus(val resumed: Boolean, val windowFocused: Boolean)
@@ -416,12 +419,29 @@ internal class NotificationOwner(private val context: Context) {
         focus = NotificationFocus(resumed, windowFocused)
     }
 
-    fun captureVisit(target: SessionTarget): NotificationVisitToken {
+    fun captureVisit(target: SessionTarget): NotificationVisitSeed {
         val view = current.value
-        val key = NotificationKey(target)
-        val record = view.device.records.singleOrNull { it.key == key && it.foreground == target.session.agent?.let(::NotificationForeground) }
-        return NotificationVisitToken(key, target.session.agent?.let(::NotificationForeground), view.device.observerEpoch,
-            record?.receivedReadyGeneration ?: 0, view.resetIdentity)
+        val slot = NotificationKey(target).slot
+        val record = view.device.records.singleOrNull { it.key.slot == slot }
+        val admitted = view.snapshot?.takeIf { it.epoch == view.device.observerEpoch }
+            ?.machines?.flatMap { it.sessions.orEmpty() }?.singleOrNull {
+                it.record.key == record?.key && it.record.foreground == record?.foreground && it.readyQualified
+            }
+        val candidate = record?.takeIf {
+            admitted != null && it.foreground != null && it.receivedReadyGeneration > it.acknowledgedReadyGeneration
+        }?.let {
+            NotificationVisitToken(it.key, it.foreground, view.device.observerEpoch, it.receivedReadyGeneration, view.resetIdentity)
+        }
+        return NotificationVisitSeed(view.resetIdentity, view.device.observerEpoch, candidate)
+    }
+
+    fun qualifyVisit(
+        seed: NotificationVisitSeed, target: SessionTarget, paneId: String, foreground: ForegroundObservation?,
+    ): NotificationVisitToken {
+        val key = NotificationKey(target.machineHandle.encoded, target.session.tmuxId, target.session.identityToken, paneId)
+        val observed = foreground?.let { NotificationForeground(it.provider, it.pid, it.startIdentity) }
+        val candidate = seed.candidate?.takeIf { observed != null && it.key == key && it.foreground == observed }
+        return NotificationVisitToken(key, observed, seed.epoch, candidate?.readyGeneration ?: 0, seed.resetIdentity)
     }
 
     @androidx.annotation.MainThread

@@ -19,7 +19,7 @@ private const val MAXIMUM_TERMINAL_FRAME_BYTES = 64 * 1024
 private const val MAXIMUM_TERMINAL_QUEUE_BYTES = 1024 * 1024L
 
 internal sealed interface TerminalServerEvent {
-    data class Hello(val attachedClients: Int) : TerminalServerEvent
+    data class Hello(val attachedClients: Int, val paneId: String, val foreground: ForegroundObservation?) : TerminalServerEvent
     data class Presence(val attachedClients: Int) : TerminalServerEvent
     data class Error(val code: ApiErrorCode) : TerminalServerEvent
 }
@@ -30,12 +30,34 @@ internal sealed interface TerminalServerEvent {
 
 internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = decodeProtocol {
     val objectValue = strictJsonObject(encoded)
-    when (val kind = objectValue.requiredString("kind")) {
-        "Hello", "Presence" -> {
+    when (objectValue.requiredString("kind")) {
+        "Hello" -> {
+            val required = setOf("kind", "attachedClients", "paneId")
+            objectValue.requireExactKeys(if ("foreground" in objectValue) required + "foreground" else required)
+            val paneId = objectValue.requiredString("paneId")
+            if (!paneId.matches(Regex("%[0-9]+"))) throw SerializationException("invalid terminal pane")
+            val foreground = if ("foreground" in objectValue) {
+                val value = objectValue.requiredObject("foreground")
+                value.requireExactKeys(setOf("provider", "pid", "startIdentity"))
+                val provider = when (value.requiredString("provider")) {
+                    "Codex" -> AgentProvider.Codex
+                    "Claude" -> AgentProvider.Claude
+                    else -> throw SerializationException("invalid terminal foreground provider")
+                }
+                val pidValue = value["pid"]
+                val pid = if (pidValue is JsonPrimitive && !pidValue.isString) pidValue.content.toLongOrNull() else null
+                if (pid == null || pid <= 0) throw SerializationException("invalid terminal foreground pid")
+                val startIdentity = value.requiredString("startIdentity")
+                if (!startIdentity.matches(Regex("[1-9][0-9]*")) || startIdentity.toULongOrNull() == null) {
+                    throw SerializationException("invalid terminal foreground start identity")
+                }
+                ForegroundObservation(provider, pid, startIdentity)
+            } else null
+            TerminalServerEvent.Hello(objectValue.requiredPositiveInt("attachedClients"), paneId, foreground)
+        }
+        "Presence" -> {
             objectValue.requireExactKeys(setOf("kind", "attachedClients"))
-            val attachedClients = objectValue.requiredPositiveInt("attachedClients")
-            if (kind == "Hello") TerminalServerEvent.Hello(attachedClients)
-            else TerminalServerEvent.Presence(attachedClients)
+            TerminalServerEvent.Presence(objectValue.requiredPositiveInt("attachedClients"))
         }
         "Error" -> {
             objectValue.requireExactKeys(setOf("kind", "error"))
@@ -74,7 +96,7 @@ private fun JsonObject.requiredPositiveInt(key: String): Int {
 }
 
 internal interface TerminalConnectionObserver {
-    fun onHello(attachedClients: Int)
+    fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?)
     fun onPresence(attachedClients: Int)
     fun onFailure(code: ApiErrorCode)
 }
@@ -99,6 +121,7 @@ internal class TerminalConnection(
     private var started = false
     private var opened = false
     private var connected = false
+    private var queuedOutputBytes = 0L
     private var pendingResize: PendingResize? = null
     private var resizeDrainScheduled = false
     private val resizeDrain = Runnable(::drainResize)
@@ -144,13 +167,13 @@ internal class TerminalConnection(
                 // justify-defect: the gateway owns the closed terminal event sequence.
                 if (connected) throw ProtocolDecodeException("terminal sent Hello more than once")
                 connected = true
-                observer.onHello(event.attachedClients)
+                main.post { if (!stopped.get()) observer.onHello(event.attachedClients, event.paneId, event.foreground) }
             }
             is TerminalServerEvent.Presence -> synchronized(monitor) {
                 if (stopped.get()) return
                 // justify-defect: the gateway owns the closed terminal event sequence.
                 if (!connected) throw ProtocolDecodeException("terminal sent Presence before Hello")
-                observer.onPresence(event.attachedClients)
+                main.post { if (!stopped.get()) observer.onPresence(event.attachedClients) }
             }
             is TerminalServerEvent.Error -> fail(event.code)
         }
@@ -163,7 +186,17 @@ internal class TerminalConnection(
             if (!connected || bytes.size > MAXIMUM_TERMINAL_FRAME_BYTES) {
                 throw ProtocolDecodeException("terminal binary frame violated ordering or size")
             }
-            page.write(bytes.toByteArray())
+            if (bytes.size == 0) return
+            if (queuedOutputBytes + bytes.size > MAXIMUM_TERMINAL_QUEUE_BYTES) {
+                fail(ApiErrorCode.ReconnectRequired)
+                return
+            }
+            val payload = bytes.toByteArray()
+            queuedOutputBytes += payload.size
+            main.post {
+                synchronized(monitor) { queuedOutputBytes -= payload.size }
+                if (!stopped.get()) page.write(payload)
+            }
         }
     }
 
@@ -254,7 +287,7 @@ internal class TerminalConnection(
             socket?.cancel()
             socket = null
         }
-        observer.onFailure(code)
+        main.post { observer.onFailure(code) }
     }
 
     private fun drainResize() {

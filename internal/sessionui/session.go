@@ -3,7 +3,6 @@ package sessionui
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 	"sync"
@@ -22,10 +21,19 @@ type listedRow struct {
 	available                  bool
 }
 type inventoryMsg struct {
-	value           fleetclient.Inventory
-	failure         *fleetclient.Failure
-	notifications   terminalclient.NotificationView
-	notificationErr error
+	machine    string
+	generation uint64
+	result     fleetclient.Result
+}
+type contextMsg struct {
+	machine    string
+	generation uint64
+	values     []fleetclient.ContextObservation
+}
+type notificationMsg struct {
+	generation uint64
+	view       terminalclient.NotificationView
+	err        error
 }
 type tickMsg struct{}
 type actionMsg struct {
@@ -39,7 +47,6 @@ type searchMsg struct {
 }
 type attachedMsg struct {
 	err             error
-	snapshot        terminalclient.NotificationView
 	notificationErr error
 }
 type model struct {
@@ -49,8 +56,7 @@ type model struct {
 	peers                     []fleetclient.Peer
 	rows                      []listedRow
 	cursor                    int
-	refreshing, busy          bool
-	refreshAfterAction        bool
+	busy                      bool
 	width, height             int
 	notice, page              string
 	noticeFailure             bool
@@ -61,41 +67,51 @@ type model struct {
 	field                     int
 	groupSelection            groupSelection
 	view                      selectedView
-	inventoryReceived         bool
 	metadata                  *metadataEditor
 	top                       int
 	// pageRow is info's captured lifetime as last observed; refresh follows it
 	// without retargeting.
-	pageRow              listedRow
-	searchRevision       int
-	searchCancel         context.CancelFunc
-	searchState          directorySearchState
-	searchProblem        string
-	searchOmitted        bool
-	searchDirectories    []string
-	directorySelection   fieldSelection[string]
-	blurred              bool
-	notificationSnapshot terminalclient.NotificationView
-	notificationFailed   bool
-	usagePeers           []usagePeer
-	usageNext            time.Time
-	usageGeneration      uint64
-	usageCancel          context.CancelFunc
-	usagePending         bool
-	usageAttached        bool
-	usageStopped         bool
-	usageWorkers         sync.WaitGroup
+	pageRow               listedRow
+	searchRevision        int
+	searchCancel          context.CancelFunc
+	searchState           directorySearchState
+	searchProblem         string
+	searchOmitted         bool
+	searchDirectories     []string
+	directorySelection    fieldSelection[string]
+	blurred               bool
+	notificationSnapshot  terminalclient.NotificationView
+	notificationFailed    bool
+	notificationQualified bool
+	inventoryLanes        []inventoryLane
+	contextLanes          []contextLane
+	notificationLane      notificationLane
+	observationWorkers    sync.WaitGroup
+	observationsStopped   bool
+	usagePeers            []usagePeer
+	usageNext             time.Time
+	usageGeneration       uint64
+	usageCancel           context.CancelFunc
+	usagePending          bool
+	usageAttached         bool
+	usageStopped          bool
+	usageWorkers          sync.WaitGroup
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
-	m := newModel(ctx, client, input, output)
-	defer m.clearDirectorySearch()
+	browserContext, cancel := context.WithCancel(ctx)
+	m := newModel(browserContext, client, input, output)
 	defer func() {
+		cancel()
+		m.clearDirectorySearch()
+		m.observationsStopped = true
+		m.cancelObservations()
 		m.usageStopped = true
 		m.cancelUsage()
+		m.observationWorkers.Wait()
 		m.usageWorkers.Wait()
 	}()
-	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
+	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output)).Run()
 	return err
 }
 func newModel(ctx context.Context, client *fleetclient.Client, input, output *os.File) *model {
@@ -105,35 +121,12 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 		usagePeers = append(usagePeers, usagePeer{machine: machine})
 	}
-	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
+	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, inventoryLanes: make([]inventoryLane, len(peers)), contextLanes: make([]contextLane, len(peers))}
 }
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.fetch(), m.refreshUsage(time.Now(), false), tick())
+	return tea.Batch(m.refresh(false), m.refreshUsage(time.Now(), false), tick())
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
-func (m *model) fetch() tea.Cmd {
-	return func() tea.Msg {
-		var notifications terminalclient.NotificationView
-		var notificationErr error
-		var result fleetclient.Result
-		var reads sync.WaitGroup
-		reads.Go(func() { notifications, notificationErr = terminalclient.ReadNotifications(m.ctx, m.client) })
-		reads.Go(func() { result = m.client.Execute(m.ctx, fleetclient.Request{Operation: "list"}) })
-		reads.Wait()
-		message := inventoryMsg{failure: result.Error, notifications: notifications, notificationErr: notificationErr}
-		if result.OK {
-			message.value = result.Value.(fleetclient.Inventory)
-		}
-		return message
-	}
-}
-func (m *model) refresh() tea.Cmd {
-	if m.refreshing {
-		return nil
-	}
-	m.refreshing = true
-	return m.fetch()
-}
 
 // creationPeer is the configured default, never the selected or first reachable host.
 func (m *model) creationPeer() *fleetclient.Peer {
@@ -149,6 +142,12 @@ func (m *model) creationPeer() *fleetclient.Peer {
 func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	m.pending = request
 	m.busy = true
+	if index := m.mutationPeer(request); index >= 0 {
+		m.fenceInventory(index)
+		m.inventoryLanes[index].writing = true
+		m.peers[index].OK, m.peers[index].Error = false, nil
+		m.rebuild()
+	}
 	return func() tea.Msg {
 		message := actionMsg{operation: request.Operation}
 		message.result = m.client.Execute(m.ctx, request)
@@ -188,66 +187,16 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 	case tea.FocusMsg:
 		m.blurred = false
 	case tickMsg:
-		return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), false), tick())
+		return m, tea.Batch(m.refresh(false), m.refreshUsage(time.Now(), false), tick())
 	case usageMsg:
 		m.acceptUsage(message)
 		return m, nil
 	case inventoryMsg:
-		usageChanged := false
-		m.refreshing = false
-		if m.refreshAfterAction {
-			m.refreshAfterAction = false
-			return m, m.refresh()
-		}
-		m.inventoryReceived = true
-		if message.failure != nil {
-			for index := range m.peers {
-				m.peers[index].OK = false
-				m.peers[index].Error = message.failure
-			}
-		} else {
-			for _, received := range message.value.Peers {
-				if received.OK && m.reconcileUsageProfiles(received) {
-					usageChanged = true
-				}
-				found := false
-				for index, previous := range m.peers {
-					if previous.Machine != received.Machine {
-						continue
-					}
-					// A failed host keeps its last sessions with the time that observed them.
-					if !received.OK {
-						received.Profiles, received.Sessions = previous.Profiles, previous.Sessions
-						received.ObservedAt, received.ReceivedAt = previous.ObservedAt, previous.ReceivedAt
-					}
-					m.peers[index] = received
-					found = true
-					break
-				}
-				if !found {
-					m.peers = append(m.peers, received)
-				}
-			}
-		}
-
-		if m.page == "create" && !m.directoryAvailable() {
-			m.clearDirectorySearch()
-		}
-		m.observeNotifications(message)
-		m.rebuild()
-		observed := fleetclient.ObservedGroups(m.peers)
-		m.groupSelection.retain(groupChoices(m.form[4], observed))
-		if m.metadata != nil && m.metadata.request.Operation == "group" {
-			m.metadata.selection.retain(groupChoices(m.metadata.draft, observed))
-		}
-		m.reconcileMetadata()
-		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
-			m.refreshInfo()
-		}
-		if usageChanged {
-			return m, m.refreshUsage(time.Now(), false)
-		}
-		return m, nil
+		return m, m.acceptInventory(message)
+	case contextMsg:
+		return m, m.acceptContext(message)
+	case notificationMsg:
+		return m, m.acceptNotifications(message)
 	case actionMsg:
 		if message.operation == "start" || message.operation == "shell" {
 			if m.ctx.Err() != nil {
@@ -257,12 +206,12 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			// and page identify the only interaction allowed to adopt creation:
 			// n and T from the table, N from its form.
 			if !m.busy || m.pending.Operation != message.operation || m.page != "" && !(message.operation == "start" && m.page == "create") {
-				return m, m.refresh()
+				return m, m.refresh(true)
 			}
 		}
 		m.busy = false
-		if m.refreshing {
-			m.refreshAfterAction = true
+		if index := m.mutationPeer(m.pending); index >= 0 {
+			m.inventoryLanes[index].writing = false
 		}
 		if message.operation == "start" && message.result.OK {
 			created := message.result.Value.(fleetclient.StartResult)
@@ -291,10 +240,10 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 					m.metadata.checking = true
 					m.metadata.acknowledged = false
 					m.invalidatePendingPeer()
-					return m, m.refresh()
+					return m, m.refreshMutation()
 				}
 			}
-			return m, nil
+			return m, m.refreshMutation()
 		}
 		switch message.operation {
 		case "start", "shell":
@@ -331,7 +280,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				}
 			}
 			if !found {
-				m.peers = append(m.peers, fleetclient.Peer{Label: value.Label, Machine: value.Machine, OK: true, Sessions: []fleetclient.Session{value.Session}})
+				panic("creation returned an unconfigured machine") // justify-defect: fleetclient binds every creation result to its configured peer.
 			}
 			m.rebuild()
 			for index, row := range m.rows {
@@ -367,7 +316,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 		}
 
-		return m, m.refresh()
+		return m, m.refreshMutation()
 	case searchMsg:
 		if m.page != "create" || m.form[0] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
 			return m, nil
@@ -411,20 +360,14 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 
 	case attachedMsg:
 		m.usageAttached = false
-		m.notificationFailed = message.notificationErr != nil
-		if message.notificationErr == nil {
-			m.notificationSnapshot = message.snapshot
-		}
+		m.notificationFailed = m.notificationFailed || message.notificationErr != nil
 		m.rebuild()
-		if m.refreshing {
-			m.refreshAfterAction = true
-		}
 		if message.err != nil {
 			m.fail(message.err.Error())
 		} else {
 			m.inform("detached; work continues")
 		}
-		return m, m.refresh()
+		return m, m.refresh(true)
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
 			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking && !m.metadata.saveFocused {
@@ -455,6 +398,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		if key == "ctrl+c" {
 			m.clearDirectorySearch()
+			m.observationsStopped = true
+			m.cancelObservations()
 			m.usageStopped = true
 			m.cancelUsage()
 			return m, tea.Quit
@@ -477,9 +422,9 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		if key == "ctrl+r" {
 			if m.page == "" {
-				return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), true))
+				return m, tea.Batch(m.refresh(true), m.refreshUsage(time.Now(), true))
 			}
-			return m, m.refresh()
+			return m, m.refresh(true)
 		}
 		if m.page == "group-edit" || m.page == "name-edit" {
 			return m, m.editMetadata(message)
@@ -541,6 +486,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		switch key {
 		case "q":
+			m.observationsStopped = true
+			m.cancelObservations()
 			m.usageStopped = true
 			m.cancelUsage()
 			return m, tea.Quit
@@ -639,11 +586,10 @@ func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
 	if failure == nil || failure.Code != "Unauthenticated" && failure.Code != "MachineIdentityMismatch" {
 		return
 	}
-	if m.refreshing {
-		m.refreshAfterAction = true
-	}
 	for index := range m.peers {
 		if m.peers[index].Label == label {
+			m.fenceInventory(index)
+			m.inventoryLanes[index].trailingRead = true
 			m.peers[index].OK, m.peers[index].Error = false, failure
 		}
 	}
@@ -663,23 +609,15 @@ type attachment struct {
 	ctx             context.Context
 	client          *fleetclient.Client
 	request         fleetclient.Request
+	seed            *attention.ReadySeed
 	input, output   *os.File
-	snapshot        terminalclient.NotificationView
 	notificationErr error
 }
 
 func (a *attachment) Run() error {
-	observed := a.client.Execute(a.ctx, fleetclient.Request{Operation: "info", Ref: a.request.Ref})
-	if !observed.OK {
-		return errors.New(fleetclient.ErrorMessage(*observed.Error, a.request, false))
-	}
-	session := observed.Value.(fleetclient.ObservedSession).Session
-	return terminalclient.Run(a.ctx, a.client, session, a.input, a.output, func(snapshot terminalclient.NotificationView, err error) {
-		a.notificationErr = err
-		if err == nil {
-			a.snapshot = snapshot
-		}
-	})
+	result := terminalclient.Run(a.ctx, a.client, a.request.Ref, a.seed, a.input, a.output)
+	a.notificationErr = result.NotificationErr
+	return result.Err
 }
 func (a *attachment) SetStdin(io.Reader)  {}
 func (a *attachment) SetStdout(io.Writer) {}

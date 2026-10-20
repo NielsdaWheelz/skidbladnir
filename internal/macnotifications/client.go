@@ -11,7 +11,6 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -60,7 +59,7 @@ func validSurface(surface SurfaceAssociation) bool {
 type RegisterArgs struct {
 	Key         attention.Key         `json:"key"`
 	Foreground  *attention.Foreground `json:"foreground,omitempty"`
-	ReadyToken  *attention.ReadyToken `json:"readyToken,omitempty"`
+	ResetID     string                `json:"resetId,omitempty"`
 	Presented   bool                  `json:"presented"`
 	LaunchNonce string                `json:"launchNonce,omitempty"`
 	Surface     *SurfaceAssociation   `json:"surface,omitempty"`
@@ -75,7 +74,6 @@ type registration struct {
 // that visit, even when the terminal cannot send an explicit end operation.
 type Visit struct {
 	operation chan struct{}
-	presented atomic.Bool
 	conn      net.Conn
 	id        string
 	args      RegisterArgs
@@ -105,6 +103,40 @@ func Read(ctx context.Context) (View, error) {
 		return View{}, err
 	}
 	return view, nil
+}
+
+// Prepare reads only the app owner's admitted memory, without fetching or visiting.
+func Prepare(ctx context.Context, slot attention.Slot) (attention.ReadySeed, error) {
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	conn, err := dial(ctx)
+	if err != nil {
+		return attention.ReadySeed{}, err
+	}
+	defer conn.Close() // justify-ignore-error: preparation owns no connection-bound visit.
+	var seed attention.ReadySeed
+	if err := call(ctx, conn, bufio.NewReader(conn), "prepare", slot, &seed); err != nil {
+		return attention.ReadySeed{}, err
+	}
+	return seed, nil
+}
+
+// Abandon retires an unconsumed launch association, including before greeting.
+func Abandon(ctx context.Context, nonce string) error {
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	conn, err := dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close() // justify-ignore-error: abandonment owns no visit.
+	var result *struct{}
+	if err := call(ctx, conn, bufio.NewReader(conn), "abandon", struct {
+		LaunchNonce string `json:"launchNonce"`
+	}{nonce}, &result); err != nil || result == nil {
+		return ErrUnavailable
+	}
+	return nil
 }
 
 // Setup opens the already-running mac app's notification setup window.
@@ -137,28 +169,29 @@ func Register(ctx context.Context, args RegisterArgs) (*Visit, error) {
 		return nil, ErrUnavailable
 	}
 	visit := &Visit{args: args, operation: make(chan struct{}, 1)}
-	visit.presented.Store(args.Presented)
 	visit.connected(conn, reader, result)
 	return visit, nil
 }
 
-func (visit *Visit) Presented(ctx context.Context, token attention.ReadyToken) error {
+func (visit *Visit) Presented(ctx context.Context, resetID string, token attention.ReadyToken) error {
 	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
 	defer cancel()
-	// Actual output remains a fact even if the app disconnected before its
-	// acknowledgement or serialization deadline. Reconnect never re-acks it.
-	visit.presented.Store(true)
 	if err := visit.acquire(ctx); err != nil {
 		return err
 	}
 	defer visit.release()
+	// Reconnect preserves actual output and its frozen reset identity, even
+	// when this RPC has an uncertain result. It never repeats the entry ack.
+	visit.args.ResetID = resetID
+	visit.args.Presented = true
 	if visit.closed || visit.conn == nil {
 		return ErrUnavailable
 	}
 	return visit.call(ctx, "presented", struct {
 		VisitID string               `json:"visitId"`
+		ResetID string               `json:"resetId,omitempty"`
 		Token   attention.ReadyToken `json:"token"`
-	}{visit.id, token})
+	}{visit.id, resetID, token})
 }
 
 func (visit *Visit) Disconnected() <-chan struct{} {
@@ -189,14 +222,9 @@ func (visit *Visit) Reconnect(ctx context.Context) error {
 	}
 	reader := bufio.NewReader(conn)
 	args := visit.args
-	args.Presented, args.ReadyToken = visit.presented.Load(), nil
 	var result registration
 	if err := call(ctx, conn, reader, "register", args, &result); err != nil || !attention.EpochValid(result.VisitID) || result.Surface != nil && !validSurface(*result.Surface) {
 		_ = conn.Close() // justify-ignore-error: failed reconstruction retires its connection-owned visit.
-		return ErrUnavailable
-	}
-	if args.Presented != visit.presented.Load() {
-		_ = conn.Close() // justify-ignore-error: output during registration requires a fresh presented reconstruction, never replayed entry ack.
 		return ErrUnavailable
 	}
 	visit.connected(conn, reader, result)
