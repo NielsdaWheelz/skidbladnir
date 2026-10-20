@@ -46,6 +46,14 @@ uncertainty and attachment retry. temporary probes are retired.
 [shared installed qualification](desktop-single-line-rows.md#installed-qualification)
 records v0.17.3 deployment and read-only chooser/resize/cancel smokes.
 
+## standalone installation and fleet generalization
+
+[the decision record](generalization.md) collects the owner's agreed installation,
+fleet, hub, configuration, pairing, terminal and provider boundaries, and their
+costs. the preference audit is complete; concrete engineering design and
+qualification remain. recording the plan does not authorize implementation or
+deployment.
+
 ## claude update recognition — qualified and deployed in v0.17.0
 
 2026-10-15: [the spec and plan](claude-update-recognition.md) replaces comparison
