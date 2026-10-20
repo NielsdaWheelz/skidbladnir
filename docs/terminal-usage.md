@@ -1,5 +1,9 @@
 # terminal usage and consolidated profile disclosure
 
+2026-10-20: [claude usage selection](claude-usage-selection.md) amends same-host
+selection below; its [isolated qualification](claude-usage-selection.md#qualification)
+passes. earlier qualification applies to its recorded source.
+
 2026-10-15: [desktop usage](desktop-usage.md) supersedes this document's
 presentation, stale threshold and usage-page keys; its [qualification](desktop-usage.md#qualification)
 covers the isolated desktop boundary. this document retains acquisition,
@@ -179,10 +183,10 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
    `agent.profile` to match that host's configured claude descriptor. historical
    `launchProfile`, cwd and provider presence are insufficient. unknown-profile
    terminals may transport usage but supply no profile row.
-4. within one host/profile, any disagreement on an overlapping known window
-   excludes that entire host candidate. absence is not disagreement. otherwise
-   choose one actual pane snapshot by most known windows, then numeric session id
-   and pane id. complementary one-window panes remain one window; never union them.
+4. within one host/profile, choose one actual pane snapshot by most known windows,
+   then numeric session id and pane id. disagreement never excludes a candidate;
+   [claude usage selection](claude-usage-selection.md) owns this correction.
+   complementary one-window panes remain one window; never union them.
 5. across hosts, select the whole eligible candidate with latest original client
    receipt; equal receipts break by machine handle. never splice windows. a newer
    partial candidate replaces the entire selected record, including omissions.
