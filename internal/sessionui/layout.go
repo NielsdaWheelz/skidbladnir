@@ -166,10 +166,7 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 			gutter, nameStyle = here.Styled("▌")+" ", nameStyle.Bold()
 		}
 		name := attention.SingleLine(row.session.Name)
-		if ansi.StringWidth(name) > layout.name {
-			prefix := (layout.name - 1) / 2
-			name = ansi.Truncate(name, prefix, "") + tail(name, layout.name-prefix)
-		}
+		name = ansi.Truncate(name, layout.name, "…")
 		printed, statusStyle := m.tableStatus(row)
 		printed = attention.SingleLine(printed)
 		line := gutter + nameStyle.Styled(name) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)))

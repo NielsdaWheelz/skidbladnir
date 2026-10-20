@@ -264,7 +264,7 @@ func (m *model) hints() [][]hint {
 		if m.pending.Operation == "stop" {
 			effect = "send interrupt"
 		}
-		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
+		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"enter", effect}, {"escape", "cancel"}}}
 	case "group-edit", "name-edit":
 		if m.metadata.checking {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
@@ -378,6 +378,22 @@ func target(name, machine string, width int) string {
 	return bold.Styled(ansi.Truncate(attention.SingleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(attention.SingleLine(machine), half, "…")
 }
 
+func (m *model) confirmationContent() (fixed, facts []string) {
+	width := m.width - 2
+	action, effect := "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
+	if m.pending.Operation == "stop" {
+		action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
+	}
+	fixed = []string{danger.Styled(action + "?"), ""}
+	fixed = append(fixed, wrapped(effect, width)...)
+	fixed = append(fixed, "")
+	ref, _ := fleetclient.DecodeReference(m.pending.Ref)
+	facts = append(facts, field("session name", m.pendingName, false, false, 13, width)...)
+	facts = append(facts, field("terminal host", m.pendingLabel, false, false, 13, width)...)
+	facts = append(facts, field("selected pane", ref.PaneID, false, false, 13, width)...)
+	return fixed, facts
+}
+
 func (m *model) bodyLines(height int) []string {
 	if height <= 0 {
 		return nil
@@ -385,17 +401,11 @@ func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
 	case "confirm":
-		action, effect := "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
-		if m.pending.Operation == "stop" {
-			action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
-		}
-		lines := []string{}
-		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {
-			lines = append(lines, danger.Styled(line))
-		}
-		ref, _ := fleetclient.DecodeReference(m.pending.Ref)
-		lines = append(lines, wrapped("selected pane "+ref.PaneID+" · terminal host "+attention.SingleLine(m.pendingLabel), width)...)
-		return window(append(lines, wrapped(effect, width)...), 0, 0, height)
+		fixed, facts := m.confirmationContent()
+		fixed = fixed[:min(len(fixed), height)]
+		capacity := min(m.pageCapacity(), height-len(fixed))
+		offset := min(max(0, m.offset), max(0, len(facts)-capacity))
+		return append(fixed, facts[offset:min(len(facts), offset+capacity)]...)
 	case "group-edit", "name-edit":
 		editor := m.metadata
 		title, label, draft, axis := "group", "group", groupDraftDisplay(editor.draft), 7
@@ -660,6 +670,10 @@ func (m *model) detailLines() []string {
 }
 
 func (m *model) pageCapacity() int {
+	if m.page == "confirm" {
+		fixed, _ := m.confirmationContent()
+		return max(0, m.height-2-len(m.footerLines())-len(fixed))
+	}
 	if m.page == "usage" {
 		return max(0, m.height-5-len(m.footerLines()))
 	}
@@ -733,10 +747,6 @@ func tail(text string, width int) string {
 		cut++
 	}
 	return "…" + ansi.TruncateLeft(text, cut, "")
-}
-
-func capturedHeading(name, machine string, width int) string {
-	return ansi.Truncate(attention.SingleLine(name), (width-4)/2, "…") + " on " + ansi.Truncate(attention.SingleLine(machine), (width-4)/2, "…")
 }
 
 func groupDraftDisplay(draft string) string {

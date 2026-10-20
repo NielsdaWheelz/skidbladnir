@@ -145,6 +145,7 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 | ordinary navigation | left/right view; `n` quick-terminal machine chooser, initially the configured default; `N` new terminal options; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
+| confirmation | full target disclosure and scrolling under [session name presentation](session-name-presentation.md#confirmation-content-and-interaction); existing confirm/cancel aliases remain |
 | name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
 | group editor | [directory and group entry](directory-group-entry.md#terminal-interaction) owns field keys and selection; [group entry](group-entry.md) owns candidates and literal save; escape returns to the same info page |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
@@ -152,7 +153,10 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
 
 stop/close name and pin their target/effect before confirmation. inventory cannot
-substitute a replacement pane or session lifetime. keep the existing single pending-operation lane,
+substitute a replacement pane or session lifetime.
+[session name presentation](session-name-presentation.md) owns the implemented
+correction's body, content, scrolling and isolated qualification.
+keep the existing single pending-operation lane,
 duplicate suppression, completion guards, and unknown-outcome/no-replay behavior.
 info owns a captured session lifetime, independently of table selection and
 group filtering. its name, naming mode and group appear first, with `r`/`g`

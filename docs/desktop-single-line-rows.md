@@ -10,6 +10,11 @@ their other behavior and source-attributed qualification remain independent.
 planning and implementation content/layout/adversarial reviews pass.
 [source qualification](#source-qualification) records the exercised boundaries.
 
+2026-10-19: [session name presentation](session-name-presentation.md) supersedes
+name overflow below. its source and isolated qualification pass; earlier
+evidence remains tied to its original renderer. deployment and installed owner
+review remain separate.
+
 ## target and content contract
 
 one session occupies one physical content line at every supported size
@@ -32,7 +37,7 @@ before implementation and reviews actual output after green and refactor.
 
 | field | exact presentation |
 | --- | --- |
-| name | shared width across the selected collection, capped at 28 display cells; middle elision when necessary, preserving both ends |
+| name | shared width across the selected collection, capped at 28 display cells; end ellipsis under [session name presentation](session-name-presentation.md#list-names) |
 | status | existing `tableStatus`, complete; use this row's actual width, never the collection's maximum |
 | group | needs-input view only: `in ` plus the assigned label, end-elided at 16 cells; unassigned is absent. all/group views already express membership through heading/tab |
 | provider, profile | existing `rowMetadata`, full sanitized strings or omitted whole; unknown profile keeps existing `unknown` |
@@ -55,9 +60,8 @@ byte/rune count as terminal width. no final whole-line truncation or wrapping.
 1. body width `b = terminal width − 2`. retain the two-cell cursor gutter.
    measure names over all current rows, not just the viewport:
    `n = min(28, widest sanitized name)`. pad every name cell to `n`.
-2. an overlong name keeps a prefix of at most `floor((n−1)/2)` cells, `…`,
-   then a suffix of at most `ceil((n−1)/2)` cells. at 28 this is 13 + 1 + 14.
-   do not split a grapheme to fill a budget; padding absorbs unused cells.
+2. apply the [name overflow rule](session-name-presentation.md#list-names)
+   within `n` cells. padding absorbs unused cells.
 3. render gutter, name, two spaces, complete status. append present metadata
    in priority order, with two-cell gaps and no global column padding.
 4. first try all present metadata plus location within `b`, with
@@ -179,8 +183,8 @@ and owner review; previous qualification does not transfer.
 - strict priority can hide the entire machine/path and leave unused cells;
   full inspection then takes `space`. no lower field leapfrogs a hidden higher one.
 - whole model/profile text may disappear where an ellipsized fragment once fit.
-- fixed shared names spend space on short names; middle elision loses title
-  interiors, and shortened names/paths can still collide.
+- fixed shared names spend space on short names; end elision hides title
+  suffixes, and shortened names/paths can still collide.
 - the eight-cell path floor trades partial location visibility for useful suffixes.
 - secondary columns lose alignment; names/status starts and the right edge remain stable.
 - faint is terminal-dependent and may disappear under mosh; plain geometry and

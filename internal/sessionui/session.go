@@ -172,6 +172,10 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if m.page == "usage" && m.width >= 80 && m.height >= 24 {
 			m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity()))
 		}
+		if m.page == "confirm" && m.width >= 80 && m.height >= 24 {
+			_, facts := m.confirmationContent()
+			m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity()))
+		}
 		m.fitViewports()
 	}()
 	switch message := message.(type) {
@@ -482,6 +486,14 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		}
 		if m.page == "confirm" {
 			switch key {
+			case "up", "k":
+				m.offset--
+			case "down", "j":
+				m.offset++
+			case "pgup":
+				m.offset -= m.pageCapacity()
+			case "pgdown":
+				m.offset += m.pageCapacity()
 			case "y", "enter":
 				current := m.rowForReference(m.pending.Ref)
 				if current == nil || !current.available {
@@ -602,7 +614,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if request.Operation == "stop" || request.Operation == "close" {
 			m.pending = request
 			m.pendingName, m.pendingLabel = row.session.Name, row.label
-			m.page = "confirm"
+			m.page, m.offset = "confirm", 0
 		}
 	}
 	return m, nil

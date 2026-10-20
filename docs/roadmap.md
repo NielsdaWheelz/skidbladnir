@@ -14,6 +14,14 @@ omission. rendered integration and isolated darwin/linux browser journeys pass.
 three-host/phone deployment, fleet and desktop smokes, and sampled continuity.
 [owner readability review](issues/desktop-single-line-rows.md) remains `NOT_RUN`.
 
+## session name presentation — implemented and isolated-qualified
+
+[the correction](session-name-presentation.md) implements desktop end ellipsis
+and complete captured-target confirmation with scrolling. disposable red/green
+integration and real browser/gateway/tmux journeys pass on darwin/linux; content
+and independent adversarial review pass. deployment and installed owner
+readability remain separate.
+
 ## desktop quick terminal — deployed in v0.17.3
 
 2026-10-16: [quick terminal](desktop-quick-terminal.md) implements a machine-only
