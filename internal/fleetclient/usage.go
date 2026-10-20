@@ -35,7 +35,7 @@ type ProfileUsageObservation struct {
 func (client *Client) ProfileUsage(parent context.Context, machineScope string) Result {
 	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
-	peers := client.peers
+	peers := client.peerSnapshot()
 	if machineScope != "" {
 		selected, found := client.peerByLabel(machineScope)
 		if !found {

@@ -176,7 +176,7 @@ static NSAppleEventDescriptor *Script(NSString *source) {
         self.health.frame = NSMakeRect(24, 160, 402, 50);
         [content addSubview:self.health];
         NSTextField *instructions = [NSTextField wrappingLabelWithString:
-            @"keep tailscale connected. notification setup uses the paired devbox in skid’s client configuration."];
+            @"keep tailscale connected. notification setup uses the active hub in skid’s fleet configuration."];
         instructions.frame = NSMakeRect(24, 110, 402, 48);
         [content addSubview:instructions];
         NSArray<NSString *> *titles = @[@"allow notifications", @"open notification settings", @"reset notification memory"];
@@ -292,14 +292,27 @@ void skid_native_send(uint64_t request, const char *operation, const char *paylo
                 [center removeDeliveredNotificationsWithIdentifiers:identifiers];
                 Reply(request, YES, @{});
             } else if ([op isEqual:@"focus"]) {
-                if (![NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier isEqual:@"com.mitchellh.ghostty"]) {
-                    Reply(request, YES, @{@"id": @""});
-                } else {
-                    NSAppleEventDescriptor *result = Script(@"with timeout of 2 seconds\n"
+                NSString *bundle = NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier;
+                NSString *source = nil;
+                if ([bundle isEqual:@"com.mitchellh.ghostty"]) {
+                    source = @"with timeout of 2 seconds\n"
                         "tell application id \"com.mitchellh.ghostty\"\n"
                         "if frontmost then return id of focused terminal of selected tab of front window\n"
-                        "return \"\"\nend tell\nend timeout");
-                    Reply(request, result != nil, @{@"id": result.stringValue ?: @""});
+                        "return \"\"\nend tell\nend timeout";
+                } else if ([bundle isEqual:@"com.apple.Terminal"]) {
+                    source = @"with timeout of 2 seconds\n"
+                        "tell application id \"com.apple.Terminal\"\n"
+                        "if frontmost and (count windows) > 0 then\n"
+                        "if not miniaturized of front window then\n"
+                        "return \"apple-terminal:\" & (id of front window as text) & \":\" & (tty of selected tab of front window)\n"
+                        "end if\nend if\nreturn \"\"\nend tell\nend timeout";
+                }
+                if (source == nil) {
+                    Reply(request, YES, @{@"id": @""});
+                } else {
+                    NSAppleEventDescriptor *result = Script(source);
+                    BOOL stillForeground = [NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier isEqual:bundle];
+                    Reply(request, result != nil, @{@"id": stillForeground ? (result.stringValue ?: @"") : @""});
                 }
             } else if ([op isEqual:@"launch"]) {
                 NSAppleEventDescriptor *result = Script(args[@"script"]);

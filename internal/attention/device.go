@@ -24,6 +24,16 @@ func Admit(device *DeviceSnapshot, producer Snapshot) (bool, error) {
 	changed := device.ObserverEpoch != producer.Epoch || device.AdmittedRevision != producer.Revision
 	device.ObserverEpoch = producer.Epoch
 	device.AdmittedRevision = producer.Revision
+	// Known membership removal cancels presentation but retains exact lifetime
+	// acknowledgement. A computer can re-enroll with the same surviving session;
+	// devices that missed removal must admit the same retained counters too.
+	for index := range device.Records {
+		record := &device.Records[index]
+		if !slices.ContainsFunc(producer.Machines, func(host MachineSnapshot) bool { return host.Machine == record.Key.Machine }) && record.Presentation != Closed {
+			record.Presentation = Closed
+			changed = true
+		}
+	}
 	for _, host := range producer.Machines {
 		if host.Availability != "fresh" {
 			continue

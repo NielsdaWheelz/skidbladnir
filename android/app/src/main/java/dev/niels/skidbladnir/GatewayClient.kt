@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import java.io.IOException
+import java.net.Proxy
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -76,27 +77,14 @@ internal fun closeFailureIsDefinitive(failure: GatewayFailure): Boolean = when (
 }
 
 @Serializable private data class ErrorResponse(val code: String, val message: String)
-@Serializable private data class WirePairingMachine(val handle: String, val platform: MachinePlatform)
-@Serializable private data class WirePairingResponse(val machine: WirePairingMachine, val bearer: String)
-
-internal data class PairingResponse(
-    val machine: MachineSummary,
-    val bearer: GatewayBearer,
-)
-
-internal fun decodePairingResponse(encoded: String): PairingResponse = decodeProtocol {
-    val wire = productJson.decodeFromJsonElement<WirePairingResponse>(strictJsonObject(encoded))
-    PairingResponse(
-        machine = MachineSummary(
-            requireNotNull(MachineHandle.parse(wire.machine.handle)),
-            wire.machine.platform,
-        ),
-        bearer = requireNotNull(GatewayBearer.parse(wire.bearer)),
-    )
-}
-
-internal class GatewayClient {
+internal class GatewayClient(private val onRemoval: ((Response) -> Unit)? = null) {
     internal val http = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            if (response.code == 403) onRemoval?.invoke(response)
+            response
+        }
+        .proxy(Proxy.NO_PROXY)
         .retryOnConnectionFailure(false)
         .followRedirects(false)
         .followSslRedirects(false)
@@ -122,14 +110,14 @@ internal class GatewayClient {
         }
     }
 
-    fun listSessions(credential: MachineCredential): GatewayResult<SessionsResponse> = executeJson(
+    fun listSessions(credential: MachineCredential): GatewayResult<SessionsResponse> = if (credential.machine.origin == null) GatewayResult.Failure(GatewayFailure.Transport) else executeJson(
         request = authorizedRequest(credential, listOf("v1", "sessions")).get().build(),
         expectedStatus = 200,
         decode = ::decodeSessionsResponse,
         decodeFailure = ::decodeSessionsHttpFailure,
     )
 
-    fun readPressure(credential: MachineCredential): GatewayResult<PressureResponse> = executeJson(
+    fun readPressure(credential: MachineCredential): GatewayResult<PressureResponse> = if (credential.machine.origin == null) GatewayResult.Failure(GatewayFailure.Transport) else executeJson(
         request = authorizedRequest(credential, listOf("v1", "pressure")).get().build(),
         expectedStatus = 200,
         decode = ::decodePressureResponse,
@@ -141,6 +129,7 @@ internal class GatewayClient {
         directory: HomeDirectory,
         expectedMachine: MachineSummary,
     ): GatewayResult<DirectoryListing> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(expectedMachine.handle == credential.machine.handle)
         return executeJson(
             request = directoryListingRequest(credential, directory),
@@ -150,7 +139,7 @@ internal class GatewayClient {
         )
     }
 
-    fun searchDirectories(credential: MachineCredential, terms: List<String>): GatewayResult<DirectorySearchResult> = executeJson(
+    fun searchDirectories(credential: MachineCredential, terms: List<String>): GatewayResult<DirectorySearchResult> = if (credential.machine.origin == null) GatewayResult.Failure(GatewayFailure.Transport) else executeJson(
         request = authorizedRequest(credential, listOf("v1", "directory-searches"))
             .post(productJson.encodeToString(WireDirectorySearchRequest(terms)).toRequestBody(jsonMediaType))
             .build(),
@@ -164,6 +153,7 @@ internal class GatewayClient {
         connectionId: String,
         timeoutMillis: Long,
     ): GatewayResult<TerminalContext> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(connectionId.matches(Regex("[0-9a-f]{32}")))
         require(timeoutMillis > 0)
         return executeJson(
@@ -182,28 +172,8 @@ internal class GatewayClient {
         .post(encodeDirectoryListingRequest(directory).toRequestBody(jsonMediaType))
         .build()
 
-    fun redeemPairing(machine: FleetInviteMachine): GatewayResult<PairingResponse> = executeJson(
-        request = pairingRequest(machine),
-        expectedStatus = 200,
-        decode = ::decodePairingResponse,
-        decodeFailure = ::decodePairingHttpFailure,
-    )
-
-    internal fun pairingRequest(machine: FleetInviteMachine): Request {
-        val url = machine.machine.origin.encoded.toHttpUrl().newBuilder()
-            .addPathSegment("v1")
-            .addPathSegment("pairings")
-            .build()
-        return Request.Builder()
-            .url(url)
-            .header("Authorization", "Skidbladnir-Invite ${machine.pairingInviteToken.encoded}")
-            .header("Accept", "application/json")
-            .header("Skidbladnir-Machine", machine.machine.handle.encoded)
-            .post(ByteArray(0).toRequestBody())
-            .build()
-    }
-
     fun createSession(credential: MachineCredential, draft: ForgeDraft): GatewayResult<TmuxSession> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(draft.machineHandle == credential.machine.handle)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions"))
@@ -216,6 +186,7 @@ internal class GatewayClient {
     }
 
     fun createShell(credential: MachineCredential, source: SessionTarget): GatewayResult<TmuxSession> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(source.machineHandle == credential.machine.handle)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions", source.session.tmuxId, "shell"))
@@ -228,6 +199,7 @@ internal class GatewayClient {
     }
 
     fun stopTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalWriteResult> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(target.machineHandle == credential.machine.handle)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal", "stop"))
@@ -238,6 +210,7 @@ internal class GatewayClient {
     }
 
     fun interruptAndCloseTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalCloseResult> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(target.machineHandle == credential.machine.handle)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal", "close"))
@@ -248,6 +221,7 @@ internal class GatewayClient {
     }
 
     fun closeTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalClosure> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(target.machineHandle == credential.machine.handle)
         return when (val result = executeBodyless(closeTerminalRequest(credential, target), ::decodeTerminalControlHttpFailure)) {
             is GatewayResult.Success -> GatewayResult.Success(TerminalClosure.Closed)
@@ -268,6 +242,7 @@ internal class GatewayClient {
         expectedNaming: SessionNaming,
         naming: SessionNaming,
     ): GatewayResult<Unit> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         require(target.machineHandle == credential.machine.handle)
         return executeBodyless(
             request = renameRequest(credential, target, expectedNaming, naming),
@@ -292,6 +267,7 @@ internal class GatewayClient {
         target: SessionTarget,
         label: GroupLabel?,
     ): GatewayResult<Unit> {
+        if (credential.machine.origin == null) return GatewayResult.Failure(GatewayFailure.Transport)
         val request = groupRequest(credential, target, label)
         return try {
             executeBodyless(request, ::decodeGroupHttpFailure)
@@ -326,7 +302,7 @@ internal class GatewayClient {
      * `409 MachineIdentityMismatch` before it discloses anything.
      */
     internal fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder {
-        val url = credential.machine.origin.encoded.toHttpUrl().newBuilder()
+        val url = checkNotNull(credential.machine.origin).encoded.toHttpUrl().newBuilder()
             .apply { segments.forEach(::addPathSegment) }
             .build()
         return Request.Builder()
@@ -373,7 +349,7 @@ internal fun <Value> decodeGatewayResponse(
     decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
     maximumBodyBytes: Int = MAXIMUM_HTTP_BODY_BYTES,
 ): GatewayResult<Value> {
-    if (response.code in setOf(502, 503, 504)) return GatewayResult.Failure(GatewayFailure.Transport)
+    if (response.code in setOf(403, 502, 503, 504)) return GatewayResult.Failure(GatewayFailure.Transport)
     val bodylessSuccess = response.code == expectedStatus && expectedStatus == 204
     val body = response.body
     if (!bodylessSuccess) {
@@ -505,19 +481,6 @@ internal fun decodeCloseTerminalHttpFailure(status: Int, encoded: String): Gatew
         "close",
     )
 
-internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFailure {
-    return decodeClosedHttpFailure(
-        status,
-        encoded,
-        setOf(
-            ApiErrorCode.PairingInviteRejected,
-            ApiErrorCode.InvalidRequest,
-            ApiErrorCode.InternalError,
-        ),
-        "pairing",
-    )
-}
-
 internal fun decodeRenameHttpFailure(status: Int, encoded: String): GatewayFailure {
     return decodeClosedHttpFailure(
         status,
@@ -573,7 +536,6 @@ internal fun decodeTerminalContextHttpFailure(status: Int, encoded: String): Gat
 
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.Unauthenticated -> 401
-    ApiErrorCode.PairingInviteRejected -> 401
     ApiErrorCode.InvalidRequest -> 400
     ApiErrorCode.RequestTooLarge -> 413
     ApiErrorCode.WorkingDirectoryInvalid,

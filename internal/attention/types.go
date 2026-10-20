@@ -133,11 +133,10 @@ func (snapshot MachineSnapshot) MarshalJSON() ([]byte, error) {
 }
 
 type Snapshot struct {
-	Schema      int               `json:"schema"`
-	Epoch       string            `json:"epoch"`
-	Revision    int64             `json:"revision"`
-	ReceiverTag string            `json:"receiverTag"`
-	Machines    []MachineSnapshot `json:"machines"`
+	Schema   int               `json:"schema"`
+	Epoch    string            `json:"epoch"`
+	Revision int64             `json:"revision"`
+	Machines []MachineSnapshot `json:"machines"`
 }
 
 func (snapshot Snapshot) Session(key Key) (SessionSnapshot, bool) {
@@ -159,17 +158,8 @@ type Hint struct {
 	Epoch    string `json:"epoch"`
 	Revision int64  `json:"revision"`
 }
-type SubscriptionKeys struct {
-	P256DH string `json:"p256dh"`
-	Auth   string `json:"auth"`
-}
-type Subscription struct {
-	Endpoint string           `json:"endpoint"`
-	Keys     SubscriptionKeys `json:"keys"`
-}
 type Config struct {
 	ObserverMachine string `json:"observerMachine"`
-	NtfyOrigin      string `json:"ntfyOrigin"`
 }
 type ReadyToken struct {
 	Epoch      string `json:"epoch"`
@@ -345,10 +335,6 @@ func ValidRecord(record Record, revision int64) bool {
 }
 func (snapshot Snapshot) Valid() bool {
 	if snapshot.Schema != 1 || !EpochValid(snapshot.Epoch) || snapshot.Revision < 0 || snapshot.Revision >= math.MaxInt64 || snapshot.Machines == nil {
-		return false
-	}
-	receiverRevision, valid := ReceiverRevision(snapshot.Epoch, snapshot.ReceiverTag)
-	if !valid || receiverRevision > snapshot.Revision {
 		return false
 	}
 	machines := map[string]bool{}

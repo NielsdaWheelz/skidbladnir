@@ -63,6 +63,7 @@ gradle.taskGraph.whenReady {
     }
 }
 
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -75,7 +76,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.niels.skidbladnir"
-        minSdk = 36
+        minSdk = 33
         targetSdk = 36
         versionCode = resolvedVersionCode
         versionName = configuredVersionName ?: "0.1.0"
@@ -134,7 +135,7 @@ dependencies {
     implementation("androidx.datastore:datastore:1.2.1")
     implementation("androidx.core:core:1.17.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
-    implementation("org.unifiedpush.android:connector:3.3.5")
+    implementation("com.google.firebase:firebase-messaging:26.0.0")
     implementation("androidx.webkit:webkit:1.17.0")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

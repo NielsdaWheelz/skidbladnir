@@ -1,44 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"mime"
-	"net/http"
-	"os"
-	"os/exec"
-	"os/signal"
-	"path/filepath"
-	"strings"
-	"syscall"
-	"time"
-
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcli"
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agenthook"
-	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
-	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
-	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
-	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
-	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
-	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
-	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
+	"io"
+	"os"
 )
 
 const (
-	exitFailure          = 1
-	exitUsage            = 64
-	pairingInviteOrigin  = "http://127.0.0.1:7341"
-	pairingInviteTimeout = 5 * time.Second
+	exitFailure = 1
+	exitUsage   = 64
 )
 
 var (
@@ -46,81 +21,65 @@ var (
 	releaseSHA     = "unknown"
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
-
+func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
-	if len(arguments) != 0 && arguments[0] == "terminal-context" {
-		if err := terminalContext(arguments[1:]); err != nil {
-			_, _ = io.WriteString(stderr, "terminal context unavailable\n") // justify-ignore-error: a broken terminal cannot be repaired.
-			return exitFailure
-		}
-		return 0
-	}
-	if len(arguments) != 0 && arguments[0] == "agent-exec" {
-		if err := agentExec(arguments[1:]); err != nil {
-			_, _ = io.WriteString(stderr, "agent startup failed\n") // justify-ignore-error: a broken pane output cannot be recovered.
-			return exitFailure
-		}
-		return 0
-	}
-	if len(arguments) != 0 && arguments[0] == "terminal-exec" {
-		if err := terminalExec(arguments[1:]); err != nil {
-			_, _ = io.WriteString(stderr, "terminal startup failed\n") // justify-ignore-error: a broken terminal output cannot be recovered.
-			return exitFailure
-		}
-		return 0
-	}
 	if len(arguments) == 0 {
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
-	if arguments[0] == "validate-host-config" {
-		path, found := "", false
-		if len(arguments) == 2 {
-			path, found = strings.CutPrefix(arguments[1], "--host-config=")
-		}
-		if !found || !filepath.IsAbs(path) {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir validate-host-config --host-config=ABSOLUTE_PATH\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitUsage
-		}
-		if _, err := hostconfig.Load(path, platform.Current().Kind); err != nil {
-			_, _ = io.WriteString(stderr, "host config invalid\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		if _, err := io.WriteString(stdout, "host config valid\n"); err != nil {
-			_, _ = io.WriteString(stderr, "write validation: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
+	switch arguments[0] {
+	case "terminal-context":
+		if err := terminalContext(arguments[1:]); err != nil {
+			fmt.Fprintln(stderr, "terminal context unavailable")
 			return exitFailure
 		}
 		return 0
-	}
-	switch arguments[0] {
-	case "version", "gateway", "machine", "bearer", "pairing-invite", "agent-hook":
-	default:
-		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
-	}
-	if arguments[0] == "version" {
+	case "agent-exec":
+		if err := agentExec(arguments[1:]); err != nil {
+			fmt.Fprintln(stderr, "agent startup failed")
+			return exitFailure
+		}
+		return 0
+	case "terminal-exec":
+		if err := terminalExec(arguments[1:]); err != nil {
+			fmt.Fprintln(stderr, "terminal startup failed")
+			return exitFailure
+		}
+		return 0
+	case "version":
 		if len(arguments) != 1 {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir version\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
 		if _, err := fmt.Fprintf(stdout, "%s %s\n", releaseVersion, releaseSHA); err != nil {
-			_, _ = io.WriteString(stderr, "write version: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
 			return exitFailure
 		}
 		return 0
+	case "serve":
+		if len(arguments) != 1 {
+			return exitUsage
+		}
+		if err := serveStandalone(stdout); err != nil {
+			fmt.Fprintf(stderr, "skid service: %v\n", err)
+			return exitFailure
+		}
+		return 0
+	case "connect", "join", "remove", "recover", "status", "apply":
+		return fleetCommand(arguments, stdin, stdout, stderr)
+	case "install", "update", "uninstall":
+		return installationCommand(arguments, stdout, stderr)
+	case "agent-hook":
+	default:
+		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
 	if arguments[0] == "agent-hook" {
 		// One budget covers argument admission, bounded SessionStart input,
-		// host-config admission, and publication. Closing stdin is the
+		// accepted-settings admission, and publication. Closing stdin is the
 		// cancellation boundary when a provider never reaches EOF.
 		ctx, cancel := context.WithTimeout(context.Background(), agenthook.PublicationDeadline)
 		defer cancel()
 		flags := flag.NewFlagSet("agent-hook", flag.ContinueOnError)
 		flags.SetOutput(stderr)
-		hostConfigPath := flags.String("host-config", "", "required host config")
-		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || *hostConfigPath == "" || flags.Arg(0) != "Claude" || flags.Arg(1) != "SessionStart" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH Claude SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || flags.Arg(0) != "Claude" || flags.Arg(1) != "SessionStart" {
+			_, _ = io.WriteString(stderr, "usage: skid agent-hook Claude SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
 		if os.Getenv("SKIDBLADNIR_AGENT") != "1" {
@@ -145,9 +104,9 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		if os.Getenv("TMUX_PANE") == "" {
 			return 0
 		}
-		config, configErr := loadRuntimeHostConfig(ctx, *hostConfigPath, platform.Current().Kind)
+		config, configErr := loadRuntimeHostConfig(ctx)
 		if configErr != nil {
-			// A host-configuration defect is the deployment's to fix, not the
+			// A host-settings defect is the operator's to fix, not the
 			// provider's to pay for. This command stays out of the provider's way.
 			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return 0
@@ -165,111 +124,7 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "resolve service home: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-		return exitFailure
-	}
-	switch arguments[0] {
-	case "pairing-invite":
-		if len(arguments) < 2 || arguments[1] != "create" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir pairing-invite create [--bearer-file=PATH] [--machine-handle-file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitUsage
-		}
-		flags := flag.NewFlagSet("pairing-invite create", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		bearerPath := flags.String("bearer-file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
-		machineHandlePath := flags.String("machine-handle-file", filepath.Join(home, ".config", "skidbladnir", "machine-handle"), "machine handle file")
-		if err := flags.Parse(arguments[2:]); err != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
-		handle, err := machine.Load(*machineHandlePath)
-		if err != nil {
-			_, _ = io.WriteString(stderr, "pairing-invite create failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		credential, err := (auth.FileVerifier{Path: *bearerPath}).Read()
-		if err != nil {
-			_, _ = io.WriteString(stderr, "pairing-invite create failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		client := &http.Client{Timeout: pairingInviteTimeout}
-		invite, err := requestPairingInvitation(context.Background(), client, pairingInviteOrigin, handle, platform.Current().Kind, credential)
-		if err != nil {
-			_, _ = io.WriteString(stderr, "pairing-invite create failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		if err := json.NewEncoder(stdout).Encode(invite); err != nil {
-			_, _ = io.WriteString(stderr, "write pairing invitation: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
-			return exitFailure
-		}
-		return 0
-	case "machine":
-		if len(arguments) == 1 || arguments[1] != "init" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir machine init [--file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitUsage
-		}
-		flags := flag.NewFlagSet("machine init", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		path := flags.String("file", filepath.Join(home, ".config", "skidbladnir", "machine-handle"), "machine handle file")
-		if err := flags.Parse(arguments[2:]); err != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
-		handle, err := machine.Init(*path)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "initialize machine: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		if _, err := fmt.Fprintln(stdout, handle.String()); err != nil {
-			_, _ = io.WriteString(stderr, "write machine handle: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
-			return exitFailure
-		}
-		return 0
-	case "bearer":
-		if len(arguments) == 1 || arguments[1] != "mint" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir bearer mint [--file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitUsage
-		}
-		flags := flag.NewFlagSet("bearer mint", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		path := flags.String("file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
-		if err := flags.Parse(arguments[2:]); err != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
-		bearer, err := auth.Mint(auth.MintOptions{Path: *path})
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "mint bearer: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		if _, err := fmt.Fprintln(stdout, bearer); err != nil {
-			_, _ = io.WriteString(stderr, "write minted bearer: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
-			return exitFailure
-		}
-		return 0
-	case "gateway":
-		flags := flag.NewFlagSet("gateway", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		listen := flags.String("listen", "127.0.0.1:7341", "numeric loopback listen address")
-		bearerPath := flags.String("bearer-file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
-		machineHandlePath := flags.String("machine-handle-file", "", "required machine handle file")
-		hostConfigPath := flags.String("host-config", "", "required host config")
-		cataloguePath := flags.String("catalogue-path", filepath.Join(home, ".local", "share", "skidbladnir", "characters.json"), "Dvergatal catalogue")
-		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
-		if *machineHandlePath == "" || *hostConfigPath == "" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir gateway --machine-handle-file=PATH --host-config=PATH [options]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitUsage
-		}
-		if err := serveGateway(*listen, *bearerPath, *machineHandlePath, *hostConfigPath, *cataloguePath, home, stdout); err != nil {
-			_, _ = fmt.Fprintf(stderr, "gateway: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		return 0
-	default:
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook Claude SessionStart}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-		return exitUsage
-	}
+	return exitUsage
 }
 
 type agentHookInputResult struct {
@@ -321,144 +176,4 @@ func awaitAgentHookInput(
 		}
 		return prepared.prepared, errors.Join(causes...)
 	}
-}
-
-func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, cataloguePath, home string, logOutput io.Writer) error {
-	for _, name := range []string{"TMUX", "TMUX_PANE", "TMUX_TMPDIR"} {
-		if err := os.Unsetenv(name); err != nil {
-			return fmt.Errorf("clear inherited tmux environment: %w", err)
-		}
-	}
-	for _, entry := range os.Environ() {
-		name, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || name == "SKIDBLADNIR_CONNECTION" || name == "SKIDBLADNIR_TERMINAL_CONTEXT" || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
-			if err := os.Unsetenv(name); err != nil {
-				return errors.New("clear inherited product environment")
-			}
-		}
-	}
-	handle, err := machine.Load(machineHandlePath)
-	if err != nil {
-		return fmt.Errorf("load machine handle: %w", err)
-	}
-	descriptor := platform.Current()
-	host, err := loadRuntimeHostConfig(context.Background(), hostConfigPath, descriptor.Kind)
-	if err != nil {
-		return fmt.Errorf("validate host configuration: %w", err)
-	}
-	workingDirectories, err := workdir.New(home, host.ZoxidePath)
-	if err != nil {
-		return fmt.Errorf("initialize working directories: %w", err)
-	}
-	manager, err := sessions.New(sessions.Config{
-		Machine:        handle,
-		CheckpointPath: filepath.Join(home, ".local", "state", "skidbladnir", "workspace.json"),
-		TmuxPath:       host.TmuxPath,
-		Workdir:        workingDirectories,
-		CataloguePath:  cataloguePath,
-		Profiles:       host.Profiles,
-	})
-	if err != nil {
-		return fmt.Errorf("initialize tmux sessions: %w", err)
-	}
-	agents, err := agentcontrol.New(manager, host.NativeControlPath)
-	if err != nil {
-		return fmt.Errorf("initialize agent control: %w", err)
-	}
-	monitor := pressure.NewMonitor()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	go monitor.Run(ctx)
-	handler := gateway.New(gateway.Config{
-		Agents:   agents,
-		Sessions: manager,
-		Workdir:  workingDirectories,
-		Pressure: monitor,
-		Bearer:   auth.FileVerifier{Path: bearerPath},
-		Pairing:  pairing.NewSlot(),
-		Logger:   logging.New(logOutput),
-		Machine:  handle,
-		Platform: descriptor,
-	})
-	return gateway.ListenAndServe(ctx, listen, handler)
-}
-
-func loadRuntimeHostConfig(ctx context.Context, path string, runtime platform.Kind) (hostconfig.Config, error) {
-	config, err := hostconfig.Load(path, runtime)
-	if err != nil {
-		return hostconfig.Config{}, err
-	}
-	tmuxVersion, err := observedTmuxVersion(ctx, config.TmuxPath)
-	if err != nil {
-		return hostconfig.Config{}, err
-	}
-	if err := hostconfig.ValidateTmuxVersion(tmuxVersion); err != nil {
-		return hostconfig.Config{}, err
-	}
-	return config, nil
-}
-
-func observedTmuxVersion(ctx context.Context, path string) (string, error) {
-	output, err := exec.CommandContext(ctx, path, "-V").Output()
-	if err != nil || len(output) < 2 || output[len(output)-1] != '\n' || bytes.ContainsRune(output[:len(output)-1], '\n') {
-		return "", errors.New("read configured tmux version")
-	}
-	return string(output[:len(output)-1]), nil
-}
-
-type pairingInvitation struct {
-	PairingInviteToken string             `json:"pairingInviteToken"`
-	ExpiresAt          string             `json:"expiresAt"`
-	Machine            pairingMachineWire `json:"machine"`
-}
-
-type pairingMachineWire struct {
-	Handle   string        `json:"handle"`
-	Platform platform.Kind `json:"platform"`
-}
-
-func requestPairingInvitation(ctx context.Context, client *http.Client, origin string, handle machine.Handle, expectedPlatform platform.Kind, credential auth.Credential) (pairingInvitation, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, origin+"/v1/pairing-invites", http.NoBody)
-	if err != nil {
-		return pairingInvitation{}, errors.New("create pairing invitation request")
-	}
-	request.Header.Set("Authorization", "Bearer "+credential.CanonicalBearer())
-	request.Header.Set("Skidbladnir-Machine", handle.String())
-	response, err := client.Do(request)
-	if err != nil {
-		return pairingInvitation{}, errors.New("request pairing invitation")
-	}
-	mediaType, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if response.StatusCode != http.StatusCreated || mediaErr != nil || mediaType != "application/json" {
-		_ = response.Body.Close() // The rejection is primary; cleanup cannot make the response usable.
-		return pairingInvitation{}, errors.New("pairing invitation was rejected")
-	}
-	encoded, err := io.ReadAll(io.LimitReader(response.Body, gateway.MaximumBodyBytes+1))
-	if err != nil || int64(len(encoded)) > gateway.MaximumBodyBytes {
-		_ = response.Body.Close() // The read failure is primary; cleanup cannot recover the response.
-		return pairingInvitation{}, errors.New("read pairing invitation")
-	}
-	if err := response.Body.Close(); err != nil {
-		return pairingInvitation{}, errors.New("close pairing invitation response")
-	}
-	var invite pairingInvitation
-	if err := strictjson.Decode(encoded, &invite); err != nil {
-		return pairingInvitation{}, errors.New("decode pairing invitation")
-	}
-	parsedHandle, err := machine.Parse(invite.Machine.Handle)
-	if err != nil || parsedHandle != handle {
-		return pairingInvitation{}, errors.New("pairing invitation machine mismatch")
-	}
-	if invite.Machine.Platform != expectedPlatform {
-		return pairingInvitation{}, errors.New("pairing invitation platform mismatch")
-	}
-	if _, err := pairing.ParseToken(invite.PairingInviteToken); err != nil {
-		return pairingInvitation{}, errors.New("pairing invitation token is invalid")
-	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, invite.ExpiresAt)
-	now := time.Now().UTC()
-	if err != nil || !expiresAt.After(now) || expiresAt.After(now.Add(5*time.Minute)) {
-		return pairingInvitation{}, errors.New("pairing invitation expiry is invalid")
-	}
-	return invite, nil
 }

@@ -29,7 +29,9 @@ const (
 	terminalPTYReadBufferBytes   = 32 * 1024
 )
 
-type liveTerminal struct {
+// liveConnection owns revocation and cleanup for a terminal or notification stream.
+type liveConnection struct {
+	deviceID      string
 	sessionID     string
 	identityToken string
 	cancel        context.CancelFunc
@@ -88,7 +90,7 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
 		return
 	}
-	registration, registered := gateway.registerLiveTerminal(id, identityToken, cancel)
+	registration, registered := gateway.registerLiveConnection(request.Context().Value(deviceContextKey{}).(string), id, identityToken, cancel)
 	<-gateway.terminalLifecycle
 	if !registered {
 		cancel()
@@ -97,7 +99,7 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	}
 	defer cancel()
 	completionErr := error(nil)
-	defer func() { gateway.unregisterLiveTerminal(registration, completionErr) }()
+	defer func() { gateway.unregisterLiveConnection(registration, completionErr) }()
 
 	initial, opened := readInitialTerminalResize(terminalContext, connection)
 	if !opened {
@@ -324,9 +326,8 @@ func (gateway *Gateway) monitorTerminal(
 	queue *terminal.OutboundQueue,
 	initialAttachedClients int,
 ) terminalEnd {
-	// justify-polling: tmux and the bearer file expose neither client-topology
-	// nor rotation notifications; two seconds bounds handoff and revocation lag
-	// without coupling terminal bytes to inventory polling.
+	// justify-polling: tmux exposes no client-topology stream; the existing
+	// presence tick also confirms current device admission.
 	ticker := time.NewTicker(terminalPresenceInterval)
 	defer ticker.Stop()
 	previous := initialAttachedClients
@@ -336,11 +337,9 @@ func (gateway *Gateway) monitorTerminal(
 			return terminalPeerClosed
 		case <-ticker.C:
 		}
-		valid, err := gateway.bearer.Verify(authorization)
+		request := &http.Request{Header: http.Header{"Authorization": []string{authorization}}}
+		_, _, err := gateway.fleet.Authenticate(request)
 		if err != nil {
-			return terminalInternalFailure
-		}
-		if !valid {
 			return terminalReconnect
 		}
 		observed, err := observeAttachedClients(ctx, attachment)
@@ -518,39 +517,39 @@ func waitForTerminalWriter(ctx context.Context, writerDone <-chan error) {
 	}
 }
 
-func (gateway *Gateway) registerLiveTerminal(sessionID, identityToken string, cancel context.CancelFunc) (uint64, bool) {
+func (gateway *Gateway) registerLiveConnection(deviceID, sessionID, identityToken string, cancel context.CancelFunc) (uint64, bool) {
 	gateway.liveMutex.Lock()
 	defer gateway.liveMutex.Unlock()
-	if gateway.closing {
+	if gateway.closing || gateway.closedDevices[deviceID] {
 		return 0, false
 	}
-	gateway.nextLiveTerminal++
-	if gateway.nextLiveTerminal == 0 {
+	gateway.nextLiveConnection++
+	if gateway.nextLiveConnection == 0 {
 		panic("terminal registration sequence exhausted") // justify-defect: uint64 exhaustion is unreachable for one-user process lifetime.
 	}
-	key := gateway.nextLiveTerminal
-	gateway.liveTerminals[key] = &liveTerminal{sessionID: sessionID, identityToken: identityToken, cancel: cancel, done: make(chan error, 1)}
+	key := gateway.nextLiveConnection
+	gateway.liveConnections[key] = &liveConnection{deviceID: deviceID, sessionID: sessionID, identityToken: identityToken, cancel: cancel, done: make(chan error, 1)}
 	return key, true
 }
 
-func (gateway *Gateway) unregisterLiveTerminal(key uint64, cleanupErr error) {
+func (gateway *Gateway) unregisterLiveConnection(key uint64, cleanupErr error) {
 	gateway.liveMutex.Lock()
-	terminalSession, found := gateway.liveTerminals[key]
+	terminalSession, found := gateway.liveConnections[key]
 	if found {
-		delete(gateway.liveTerminals, key)
+		delete(gateway.liveConnections, key)
 		terminalSession.done <- cleanupErr
 		close(terminalSession.done)
 	}
 	gateway.liveMutex.Unlock()
 }
 
-func (gateway *Gateway) closeLiveTerminals(ctx context.Context, sessionID, identityToken string) error {
+func (gateway *Gateway) closeLiveConnections(ctx context.Context, sessionID, identityToken string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	gateway.liveMutex.Lock()
-	selected := make([]*liveTerminal, 0)
-	for _, terminalSession := range gateway.liveTerminals {
+	selected := make([]*liveConnection, 0)
+	for _, terminalSession := range gateway.liveConnections {
 		if terminalSession.sessionID == sessionID && terminalSession.identityToken == identityToken {
 			selected = append(selected, terminalSession)
 		}
@@ -562,28 +561,28 @@ func (gateway *Gateway) closeLiveTerminals(ctx context.Context, sessionID, ident
 		}
 		terminalSession.cancel()
 	}
-	return waitForLiveTerminals(ctx, selected)
+	return waitForLiveConnections(ctx, selected)
 }
 
-func (gateway *Gateway) CloseLiveTerminals(ctx context.Context) error {
+func (gateway *Gateway) CloseLiveConnections(ctx context.Context) error {
 	if err := gateway.lockTerminalLifecycle(ctx); err != nil {
 		return err
 	}
 	defer func() { <-gateway.terminalLifecycle }()
 	gateway.liveMutex.Lock()
 	gateway.closing = true
-	selected := make([]*liveTerminal, 0, len(gateway.liveTerminals))
-	for _, terminalSession := range gateway.liveTerminals {
+	selected := make([]*liveConnection, 0, len(gateway.liveConnections))
+	for _, terminalSession := range gateway.liveConnections {
 		selected = append(selected, terminalSession)
 	}
 	gateway.liveMutex.Unlock()
 	for _, terminalSession := range selected {
 		terminalSession.cancel()
 	}
-	return waitForLiveTerminals(ctx, selected)
+	return waitForLiveConnections(ctx, selected)
 }
 
-func waitForLiveTerminals(ctx context.Context, terminals []*liveTerminal) error {
+func waitForLiveConnections(ctx context.Context, terminals []*liveConnection) error {
 	waitContext, cancel := context.WithTimeout(ctx, terminalShutdownTimeout)
 	defer cancel()
 	var cleanupErrors []error
@@ -591,11 +590,23 @@ func waitForLiveTerminals(ctx context.Context, terminals []*liveTerminal) error 
 		select {
 		case cleanupErr := <-terminalSession.done:
 			if cleanupErr != nil {
-				cleanupErrors = append(cleanupErrors, errors.New("terminal resource cleanup failed"))
+				cleanupErrors = append(cleanupErrors, errors.New("live connection cleanup failed"))
 			}
 		case <-waitContext.Done():
-			return errors.New("terminal cleanup did not finish")
+			return errors.New("live connection cleanup did not finish")
 		}
 	}
 	return errors.Join(cleanupErrors...)
+}
+
+// CloseDevice fences admission before cancelling the removed device's attachments.
+func (gateway *Gateway) CloseDevice(deviceID string) {
+	gateway.liveMutex.Lock()
+	defer gateway.liveMutex.Unlock()
+	gateway.closedDevices[deviceID] = true
+	for _, attachment := range gateway.liveConnections {
+		if attachment.deviceID == deviceID {
+			attachment.cancel()
+		}
+	}
 }

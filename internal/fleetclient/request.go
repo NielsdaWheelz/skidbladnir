@@ -32,8 +32,6 @@ type Request struct {
 	Ref            string
 	Kind           LaunchKind
 	Profile        string
-	Model          string
-	Effort         string
 	CWD            string
 	Text           string
 	Keys           []string
@@ -124,7 +122,7 @@ func (request Request) Valid() bool {
 	if request.Operation != "send" && request.Operation != "text" && request.Operation != "start" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
 		return false
 	}
-	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" && request.ConversationID == "" || request.CWD != "" || request.Model != "" || request.Effort != "") {
+	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" && request.ConversationID == "" || request.CWD != "") {
 		return false
 	}
 	switch request.Operation {
@@ -132,8 +130,8 @@ func (request Request) Valid() bool {
 		return request.Name == "" && request.Handle == "" && request.Ref == "" && request.ConversationID == ""
 	case "start":
 		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
-			(request.Kind == LaunchAgent && request.Profile != "" && agentruntime.ValidateLaunchOptions(request.Model, request.Effort) == nil && (request.Text == "" || validInputText(request.Text)) ||
-				request.Kind == LaunchTerminal && request.Profile == "" && request.Model == "" && request.Effort == "" && request.Text == "")
+			(request.Kind == LaunchAgent && request.Profile != "" && (request.Text == "" || validInputText(request.Text)) ||
+				request.Kind == LaunchTerminal && request.Profile == "" && request.Text == "")
 	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "rename", "shell", "inspect":
 	default:
 		return false

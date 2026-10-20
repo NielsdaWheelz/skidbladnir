@@ -95,7 +95,7 @@ func (s Session) MarshalJSON() ([]byte, error) {
 type Profile struct {
 	Key          string `json:"key"`
 	Label        string `json:"label"`
-	Provider     string `json:"provider"`
+	Provider     string `json:"provider,omitempty"`
 	HistoryScope string `json:"historyScope,omitempty"`
 }
 
@@ -367,7 +367,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		for _, p := range value.Profiles {
-			if p.Key == "" || p.Label == "" || !slices.Contains([]string{"Codex", "Claude"}, p.Provider) || p.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(p.Provider), ProfileKey: agentruntime.ProfileKey(p.Key), HistoryScope: p.HistoryScope, ConversationID: "validation"}).Valid() {
+			if p.Key == "" || p.Label == "" || !slices.Contains([]string{"", "Codex", "Claude"}, p.Provider) || p.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(p.Provider), ProfileKey: agentruntime.ProfileKey(p.Key), HistoryScope: p.HistoryScope, ConversationID: "validation"}).Valid() {
 				return nil, false
 			}
 		}
@@ -525,7 +525,7 @@ func validSession(s hostSession) bool {
 		return false
 	}
 	a := s.Agent
-	if s.TerminalUsage != nil && (a == nil || a.Provider != "Claude" || s.Connection != nil || !s.TerminalUsage.ValidFor(s.TerminalStatus)) {
+	if s.TerminalUsage != nil && (a == nil || !slices.Contains([]string{"Codex", "Claude"}, a.Provider) || s.Connection != nil || !s.TerminalUsage.ValidFor(s.TerminalStatus)) {
 		return false
 	}
 	if s.TerminalFooter != nil && (a == nil || s.Connection != nil || !s.TerminalFooter.ValidFor(s.TerminalStatus)) {

@@ -33,21 +33,6 @@ func (code AdmissionCode) Response() (status int, message string) {
 	}
 }
 
-// Authenticate admits exactly one canonical authorization header.
-func Authenticate(verifier FileVerifier, request *http.Request) (Credential, AdmissionCode) {
-	values := request.Header.Values("Authorization")
-	if len(values) > 1 || len(values) == 1 && strings.ContainsRune(values[0], ',') {
-		return Credential{}, AdmissionInvalid
-	}
-	credential, err := verifier.Read()
-	if err != nil {
-		return Credential{}, AdmissionUnavailable
-	}
-	if len(values) != 1 || !credential.Verify(values[0]) {
-		return Credential{}, AdmissionUnauthenticated
-	}
-	return credential, ""
-}
 func BindMachine(request *http.Request, handle string) AdmissionCode {
 	values := request.Header.Values("Skidbladnir-Machine")
 	if len(values) > 1 || len(values) == 1 && strings.ContainsRune(values[0], ',') {

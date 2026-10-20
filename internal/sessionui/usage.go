@@ -234,7 +234,7 @@ func usageLater(receivedAt time.Time, machine string, previous time.Time, previo
 func (m *model) usageAccessRejected(machine string) bool {
 	for _, peer := range m.peers {
 		if peer.Machine == machine && peer.Error != nil {
-			return peer.Error.Code == "Unauthenticated" || peer.Error.Code == "MachineIdentityMismatch"
+			return peer.Error.Code == "Unauthenticated" || peer.Error.Code == "MachineIdentityMismatch" || peer.Error.Code == "DeviceRemoved"
 		}
 	}
 	return false
@@ -280,7 +280,9 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 				}
 				continue
 			}
-			if row.native == nil || usageLater(value.receivedAt, peer.machine.Handle, row.native.receivedAt, row.machine.Handle) {
+			fresh := !usagePresentation(*value, peer.failure != nil, now).stale
+			previousFresh := row.native != nil && !usagePresentation(*row.native, row.failed, now).stale
+			if row.native == nil || fresh && !previousFresh || fresh == previousFresh && usageLater(value.receivedAt, peer.machine.Handle, row.native.receivedAt, row.machine.Handle) {
 				row.native, row.machine, row.failed = value, peer.machine, peer.failure != nil
 			}
 		}
@@ -316,7 +318,7 @@ func usageTerminalLess(left, right fleetclient.Session) bool {
 	}
 	return false
 }
-func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow {
+func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
 	unavailable, absent := false, false
 	for _, peer := range m.peers {
@@ -341,7 +343,7 @@ func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow
 				unavailable = unavailable || session.TerminalStatus.Source == sessions.SourceUnavailable
 				continue
 			}
-			if session.Agent.Provider != "Claude" || session.Agent.Profile != profile.Key || session.Connection != nil {
+			if session.Agent.Provider != profile.Provider || session.Agent.Profile != profile.Key || session.Connection != nil {
 				continue
 			}
 			unavailable = unavailable || session.TerminalStatus.Source == sessions.SourceUnavailable
@@ -384,7 +386,7 @@ func (m *model) usageRows(now time.Time) []usageRow {
 	profiles := []fleetclient.Profile{}
 	add := func(profile fleetclient.Profile) {
 		for _, present := range profiles {
-			if present.Key == profile.Key && present.Provider == profile.Provider {
+			if present.Key == profile.Key {
 				return
 			}
 		}
@@ -404,11 +406,23 @@ func (m *model) usageRows(now time.Time) []usageRow {
 	for index, profile := range profiles {
 		switch profile.Provider {
 		case "Codex":
-			rows[index] = m.nativeUsage(profile, now)
+			native := m.nativeUsage(profile, now)
+			terminal := m.terminalUsage(profile, now)
+			if native.native != nil && !native.text.stale {
+				rows[index] = native
+			} else if terminal.terminal != nil && !terminal.text.stale {
+				rows[index] = terminal
+			} else if native.native != nil {
+				rows[index] = native
+			} else if terminal.terminal != nil {
+				rows[index] = terminal
+			} else {
+				rows[index] = native
+			}
 		case "Claude":
-			rows[index] = m.claudeUsage(profile, now)
+			rows[index] = m.terminalUsage(profile, now)
 		default:
-			panic("usage declaration has an unknown provider") // justify-defect: both owned transport decoders close the provider union.
+			rows[index] = usageRow{profile: profile}
 		}
 	}
 	return rows

@@ -28,7 +28,7 @@ pin="$(cat "$source_dir/macos/app-signing-cert.sha256")"
 }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cd "$source_dir"
-GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+MACOSX_DEPLOYMENT_TARGET=26.0 GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
   go build -buildvcs=false -mod=readonly -trimpath \
     -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
     -o "$app/Contents/MacOS/skid-notifications" ./cmd/skid-notifications

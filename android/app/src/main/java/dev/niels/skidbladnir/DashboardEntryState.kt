@@ -80,10 +80,6 @@ internal class DashboardEntryState {
     val gridState: LazyGridState get() = ownedGridState
     val restorationPending: Boolean get() = pendingSnapshot != null
 
-    fun acceptFleet(handles: Set<MachineHandle>) {
-        if (handles.isEmpty()) resetAll()
-    }
-
     fun selectView(view: DashboardViewSelection) {
         if (view.key == currentView.key) return
         currentView = view

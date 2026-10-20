@@ -48,73 +48,53 @@ render_notes() {
   checksums_digest="$("${digest_command[@]}" <"$manifest" | awk 'NF == 2 { print $1 }')" || return 1
   [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
 
-  # shellcheck disable=SC2016 # Literal Markdown code spans must not invoke shell expansion.
-  printf '%s\n' "# Skíðblaðnir $tag" "" \
-    "- Source: \`$sha\`" \
-    "- Verify run: \`$run_id\`" \
-    "- Android signer SHA-256: \`$signer\`" \
-    "- mac app signer SHA-256: \`$mac_signer\`" "" \
-    "## Install" "" \
-    'for a new installation, complete client provisioning in **first setup only** step 1 before step 2 verification.' "" \
-    '1. In a separate post-publication pin-control checkout, confirm its' \
-    '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
-    '   Pin the same tag, source, and two host-bundle' \
-    '   digests in `dev-server`. run `./workstation gateway apply skidbladnir` on' \
-    '   macbook and arch, and `./devbox gateway apply skidbladnir` from dev-server.' \
-    '   the darwin bundle includes the signed `Skid.app`; dev-server owns its login launch.' \
-    '2. with the existing fleet client configuration, run from the pin-control checkout' \
-    '   on macbook:' \
-    '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
-    '3. On the phone, download `skidbladnir-android.apk` from this release and' \
-    '   approve installation from the browser when Android asks. Or, with USB debugging' \
-    '   already authorized, run `scripts/install-android /path/to/skidbladnir-android.apk`.' \
-    '   The script installs in place without prompts and preserves app data and existing pairings.' "" \
-    '## first setup only' "" \
-    'for a new installation, configure the fleet and enroll notifications once.' \
-    '1. on macbook, run `scripts/fleet provision-clients` from the pin-control checkout' \
-    '   to configure the desktop client on all three hosts. from dev-server, run' \
-    '   `./devbox gateway apply skidbladnir` to activate the observer after provisioning.' \
-    '2. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
-    '   Tailscale connected.' \
-    '3. for first enrollment, open skid and tap **Connect**.' \
-    '   On a computer configured for `skid`, run `scripts/fleet invite`,' \
-    '   then scan the fresh qr within five minutes. it works once.' \
-    '4. configure the qualified ntfy android distributor with the private devbox `:8444`' \
-    '   origin and its read-only phone account. keep ntfy and tailscale running in' \
-    '   the background. allow skid notifications; run `skid notifications setup` for mac setup.' \
-    '   retrieve phone credentials locally from the private dev-server configuration;' \
-    '   never share the publisher token.' "" \
-    '## Update order' "" \
-    'Apply and verify all three hosts first; update the phone second. Mixed' \
-    'versions and ordinary APK downgrade are not supported. Same-version reinstall' \
-    'is supported. in-place updates preserve installed credentials, pairings, client and notification' \
-    'configuration, and attention state. devbox owns readiness.' \
-    'respect platform focus/do-not-disturb; all alert reasons use default sound.' "" \
-    '## rollback' "" \
-    "before updating the phone, follow dev-server's rollback procedure for the selected" \
-    'previous release: repin that release and return all three hosts to its admitted' \
-    'runtime/unit pair; leave hosts already on that release unchanged.' \
-    'preserve unchanged credentials, client configuration, notification ingress and' \
-    'workspace recovery state. gateway rollback alone does not qualify a compatible fleet.' \
-    'after the phone advances, recover with a forward release; ordinary apk downgrade' \
-    'is unsupported. notification activation follows gateway activation, so a failure' \
-    'can leave the new gateway active. repair by managed reapply, or use the selected' \
-    'rollback procedure before the phone advances.' "" \
-    '## Assets' "" \
-    '| Asset | SHA-256 |' \
-    '|---|---|' \
+  # shellcheck disable=SC2016 # Markdown code spans are literal.
+  printf '%s\n' "# skíðblaðnir $tag" "" \
+    "- source: \`$sha\`" \
+    "- verify run: \`$run_id\`" \
+    "- android signer sha256: \`$signer\`" \
+    "- mac app signer sha256: \`$mac_signer\`" "" \
+    '## install' "" \
+    "download \`install\` from this release, inspect it, then run \`bash install $tag\`." \
+    'the installer verifies the signed host archive before executing it, installs' \
+    'missing tmux/tailscale dependencies, and registers skid services.' \
+    'mac requires macos 26+ arm64 and homebrew; linux supports ubuntu 24.04+' \
+    'and arch amd64 with systemd. package tools may request administrator permission.' "" \
+    'edit `~/.config/skidbladnir/config.yaml` to add your own commands.' \
+    'empty profiles support ordinary terminal sessions. provider tools, accounts' \
+    'and daemon lifetimes remain yours. run `skid` to open the desktop browser.' "" \
+    '## connect' "" \
+    'for remote access, sign into tailscale on both devices and enable tailnet https.' \
+    'install the matching android apk, then run `skid connect`' \
+    'on a computer and scan its five-minute qr. google play services support qr scanning.' \
+    'android background notifications are optional. configure your own firebase project' \
+    'and private sending credential on the hub; no custom apk or additional server.' \
+    'allow notifications on the phone. desktop notifications work independently.' \
+    'for another computer, install skid there and paste the invitation into' \
+    '`skid join --name NAME`. enrolled machines appear automatically.' "" \
+    '## update and removal' "" \
+    'run `skid update` and install the matching phone apk. mixed versions and' \
+    'ordinary downgrade are unsupported. `skid uninstall` removes recorded skid' \
+    'runtime resources and retains settings, private state, provider data, tmux' \
+    'sessions and shared packages. see the generalization cutover instructions' \
+    'before upgrading an installation from the preceding private fleet release.' "" \
+    '## assets' "" \
+    '| asset | sha256 |' \
+    '| --- | --- |' \
     "| \`skidbladnir-android.apk\` | \`$apk_digest\` |" \
     "| \`skidbladnir-linux-amd64.tar.gz\` | \`$linux_digest\` |" \
     "| \`skidbladnir-darwin-arm64.tar.gz\` | \`$darwin_digest\` |" \
     "| \`android-signing-cert.sha256\` | \`$signer_asset_digest\` |" \
     "| \`SHA256SUMS\` | \`$checksums_digest\` |" "" \
-    '## Known limits' "" \
-    'Android 16/API 36, Linux amd64, and Darwin arm64 only. Phone enrollment is' \
-    'fixed to three owner-managed hosts in one tailnet and two trusted phones.' \
-    'The CLI supports explicit configurable peers.' \
-    'There is no app store, automatic update, downgrade, mixed-version compatibility,' \
-    'public ingress, fleet discovery, or embedded Tailscale login. GitHub is used' \
-    'for installation and updates, never at runtime.'
+    'host archives also carry detached ed25519 signatures. the reviewed bootstrap' \
+    'contains the public trust key; it never trusts a key fetched beside an archive.' "" \
+    '## limits' "" \
+    'android 13+ with google play services; macos 26+ arm64; ubuntu 24.04+ and arch amd64.' \
+    'remote access requires tailscale. the configured hub owns edits and notification' \
+    'observation; its absence leaves cached direct terminal access available.' \
+    'optional google push is a content-free wake-up; devices fetch and admit current state.' \
+    'provider accounts/history and terminal traffic never pass through google push.'
+
 }
 
 if [[ "$#" -ne 4 ]]; then

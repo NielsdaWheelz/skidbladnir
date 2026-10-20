@@ -14,8 +14,10 @@ import okhttp3.Response
 internal enum class NotificationEnrollmentResult { Installed, Conflict, Unavailable }
 
 /** One pinned bearer transport. Its total deadline includes TLS, body and decoding. */
-internal class NotificationClient {
-    private val gateway = GatewayClient()
+internal class NotificationClient(private val context: android.content.Context) {
+    private val gateway = GatewayClient { response ->
+        FleetClient(MachineStore(context)).acceptRemoval(response)
+    }
 
     fun state(credential: MachineCredential): GatewayResult<ObserverSnapshot> = try {
         val request = gateway.authorizedRequest(credential, listOf("v1", "notifications", "state")).get().build()
@@ -27,26 +29,40 @@ internal class NotificationClient {
         GatewayResult.Failure(GatewayFailure.Transport)
     }
 
-    fun enroll(
-        credential: MachineCredential, subscription: NotificationSubscription, receiverTag: String,
-    ): NotificationEnrollmentResult = try {
-        val encoded = productJson.encodeToString(subscription)
-        require(encoded.encodeToByteArray().size <= 4_096)
-        val request = gateway.authorizedRequest(credential, listOf("v1", "notifications", "receivers", "android"))
-            .header("If-Match", "\"$receiverTag\"")
-            .put(encoded.toRequestBody("application/json".toMediaType())).build()
-        val call = gateway.http.newCall(request).apply { timeout().timeout(3, TimeUnit.SECONDS) }
-        call.execute().use { response ->
-            when (response.code) {
-                204 -> if (response.body?.byteStream()?.read() == -1) NotificationEnrollmentResult.Installed
-                    else NotificationEnrollmentResult.Unavailable
-                412 -> NotificationEnrollmentResult.Conflict
-                else -> NotificationEnrollmentResult.Unavailable
-            }
-        }
-    } catch (_: IOException) {
-        NotificationEnrollmentResult.Unavailable
+    fun receiver(credential: MachineCredential): ReceiverStatus? = try {
+        val request = gateway.authorizedRequest(credential, listOf("v1", "notifications", "receivers", "me")).get().build()
+        gateway.http.newCall(request).apply { timeout().timeout(3, TimeUnit.SECONDS) }.execute().use(::receiverStatus)
+    } catch (_: IOException) { null }
+
+    private fun receiverStatus(response: Response): ReceiverStatus? {
+        if (response.code != 200) return null
+        val body = checkNotNull(response.body)
+        require(body.contentType()?.let { it.type == "application" && it.subtype == "json" } == true)
+        val bytes = body.byteStream().readNBytes(4_097)
+        require(bytes.size <= 4_096)
+        return productJson.decodeFromJsonElement<ReceiverStatus>(notificationJson(bytes.decodeToString(throwOnInvalidSequence = true)))
     }
+
+    fun enroll(credential: MachineCredential, registration: PushRegistration): ReceiverStatus? = try {
+        val proof = registration.challenge
+        val path = listOf("v1", "notifications", "receivers", "me") + if (proof == null) emptyList() else listOf("confirm")
+        val fields = if (proof == null) mapOf("configuration" to JsonPrimitive(registration.configuration), "generation" to JsonPrimitive(registration.generation),
+            "fid" to JsonPrimitive(registration.fid), "clientNonce" to JsonPrimitive(registration.clientNonce))
+            else mapOf("configuration" to JsonPrimitive(registration.configuration), "generation" to JsonPrimitive(registration.generation), "challenge" to JsonPrimitive(proof))
+        val body = kotlinx.serialization.json.JsonObject(fields).toString().toRequestBody("application/json".toMediaType())
+        val builder = gateway.authorizedRequest(credential, path)
+        val request = (if (proof == null) builder.put(body) else builder.post(body)).build()
+        gateway.http.newCall(request).apply { timeout().timeout(5, TimeUnit.SECONDS) }.execute().use { response ->
+            if (response.code == 409) {
+                if (context.firebasePush().target() == PushTarget(registration.configuration, registration.fleetId, registration.deviceId)) {
+                    if (proof != null) PushStore(context).rejectChallenge(registration) else PushStore(context).renew(registration)
+                }
+                return null
+            }
+            receiverStatus(response)
+        }
+    } catch (_: IOException) { null }
+
 }
 
 /** Observer unavailability has a closed body; ordinary gateway failures keep their existing contract. */

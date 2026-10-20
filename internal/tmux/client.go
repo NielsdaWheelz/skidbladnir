@@ -51,6 +51,7 @@ type ServerIdentity struct {
 type Client struct {
 	path       string
 	socketName string
+	shellPath  string
 }
 
 func New(path, socketName string) (Client, error) {
@@ -61,6 +62,12 @@ func New(path, socketName string) (Client, error) {
 		return Client{}, errors.New("tmux socket name is invalid")
 	}
 	return Client{path: path, socketName: socketName}, nil
+}
+
+// WithShell pins the resolved destination shell for new and reconstructed panes.
+func (client Client) WithShell(path string) Client {
+	client.shellPath = path
+	return client
 }
 
 func (client Client) Output(ctx context.Context, operation, commandName string, args ...string) (string, error) {
@@ -82,7 +89,7 @@ func (client Client) TerminalCommand(directory, launch string) ([]string, error)
 	}
 	return []string{"--", executable, "terminal-exec",
 		base64.RawURLEncoding.EncodeToString([]byte(directory)),
-		base64.RawURLEncoding.EncodeToString([]byte(client.path)), client.socketName, launch}, nil
+		launch, base64.RawURLEncoding.EncodeToString([]byte(client.shellPath))}, nil
 }
 
 // CreateSession preserves the agent argv path. Terminal launches supply the

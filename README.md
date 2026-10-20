@@ -1,121 +1,117 @@
 # skíðblaðnir
 
 use codex, claude code, and ordinary shell sessions from your desktop or android
-phone. skíðblaðnir (`skid`) brings your machines' tmux sessions into one view and
-lets you open the same live terminal on either device. detach and the work keeps
-running.
+phone. skid brings enrolled machines' tmux sessions into one view. detach and the
+work keeps running; either device can return to the same live terminal.
 
-this is a personal project built for one user on one tailscale network. the
-current phone app requires the author's three-host fleet: arch, devbox, and
-macbook. using it with a different fleet requires adaptation.
+standalone generalization is being qualified. the currently published private
+fleet release predates the installer described here; see
+[qualification](docs/generalization-qualification.md) before cutover.
 
-## a typical workflow
+## install
 
-with the fleet installed and paired:
+[releases](https://github.com/NielsdaWheelz/skidbladnir/releases) contain the
+bootstrap `install`, signed host archives, and matching android apk. download and
+inspect `install`, then run:
 
-1. run `skid` on your desktop to open the session browser. select a session and
-   press enter, or press `N` to choose a machine, directory, and agent profile
-   for a new session. lowercase `n` opens a plain shell.
-2. work in the agent's normal terminal interface. press `ctrl-]`, then `d`, to
-   detach back to the browser.
-3. open skíðblaðnir on your phone and tap the same session. continue typing,
-   pasting, or dictating through gboard; scroll and copy terminal text as needed.
-4. detach on the phone and return to the session from your desktop.
+```sh
+bash install
+```
 
-both devices share the process, screen, input draft, and window/pane navigation.
-terminal sizing follows the latest active client, so attaching from the phone
-can resize the desktop view.
+the installer owns skid's services, shell integration and updates. it installs
+missing tmux/tailscale dependencies through native package tools; privilege and
+network login can require your action. mac requires macos 26+ arm64 and homebrew.
+linux supports ubuntu 24.04+ and arch amd64 with systemd. android requires 13+ and
+google play services. use host and phone artifacts from the same release.
 
-the desktop browser and phone dashboard can filter by machine, group, and whether
-a session needs input. they show which agent is present and infer its activity
-and requests for input from the terminal. a `ready` indication is a cue to look,
-not proof that a task succeeded.
+run `skid` for the desktop browser. empty profiles support ordinary shells;
+provider tools and accounts are optional. the terminal needs at least 80 × 24 cells.
 
-the cli also supports terminal reads, input, waits, interrupts, and closure, with
-structured output for automation:
+## configure
+
+edit `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/config.yaml` on your hub:
+
+```yaml
+version: 1
+profiles:
+  - name: codex
+    command: codex
+    provider: codex
+  - name: work
+    command: claude-work
+    provider: claude
+# hub: always-on-computer
+# terminal: ghostty
+```
+
+commands run exactly once in the configured bash/zsh after its normal startup.
+aliases, functions, environment and provider settings remain effective. skid adds
+no provider flags and starts no provider daemon. optional `provider` and `home`
+metadata enable attributable account observation; commands without them still run.
+see the [configuration contract](docs/generalization-plan.md#2-configuration-and-durable-state)
+for sparse machine overrides. opening skid on any enrolled computer asks the hub
+to apply pending edits; `skid apply` does so without opening the browser. invalid
+edits retain the accepted settings.
+
+## connect devices
+
+1. for remote/mobile access, connect tailscale on both devices and enable tailnet https.
+2. install the matching skid apk.
+3. run `skid connect` on an installed computer; scan its single-use five-minute qr.
+
+session management needs no firebase setup. android background notifications are
+an [optional integration](docs/android-push-setup.md): you own its firebase project
+and private sending credentials; your hub sends directly to google. mac
+notifications work independently. skid operates no notification backend.
+
+another computer
+joins by installing skid and pasting the invitation into `skid join --name NAME`.
+new enrolled machines appear automatically. `skid status` reports membership and
+configuration application; `skid remove DEVICE_ID` revokes a device.
+
+one machine is the hub for configuration, membership and notification observation.
+set `hub` to an enrolled machine name to request a planned move. cached direct
+terminal access survives hub loss; edits and notifications wait for a hub.
+`skid recover` explicitly creates a new fleet and requires fresh enrollment.
+
+skid manages tmux only where skid is installed. manual ssh/mosh from an ordinary
+local terminal remains available for other machines.
+
+## use
+
+press enter to attach; `N` creates an agent and `n` creates a shell. `ctrl-]`, then
+`d`, detaches to the browser. the phone opens the same sessions and supports its
+usual typing, pasting, dictation, scrolling and copy controls. the latest active
+client determines terminal size.
 
 ```sh
 skid list
 skid list --json
 skid --help
+skid update
+skid uninstall
 ```
 
-## getting started
+ordinary controls use tmux and exact terminal identities. explicit native reads
+and controls remain separate capabilities; unavailable native access never
+selects terminal writes. quota prefers an already-running native daemon, then
+attributable terminal observations. [agent control](docs/agent-control.md) describes
+the boundaries. readiness is a cue to inspect, not proof of successful work.
 
-[releases](https://github.com/NielsdaWheelz/skidbladnir/releases) contain a signed
-android apk and host bundles for linux amd64 and macos arm64. the phone requires
-android 16 or later and google play services for qr pairing. use host and phone
-artifacts from the same release; mixed versions are unsupported.
+uninstall removes only recorded skid runtime resources. settings, private state,
+provider history, tmux sessions and shared dependencies remain.
 
-host installation belongs to
-[dev-server](https://github.com/NielsdaWheelz/dev-server). it installs the gateway,
-tmux and provider dependencies, services, shell integration, and tailscale serve
-configuration. provider accounts must already be configured. this repository's
-[deployment contract](docs/dev-server-handoff.md#owned-installation-and-runtime)
-describes that setup; there is no standalone installer or verified fresh-install
-walkthrough here yet.
+## development
 
-on an installed fleet, `skid` reads the private client configuration at
-`~/.config/skidbladnir/client.json`. the terminal browser needs an interactive
-terminal of at least 80 × 24 cells. to connect the phone:
-
-1. install the matching release apk and connect tailscale to the same network.
-2. from this checkout on a configured desktop, run `scripts/fleet invite`.
-   it requires `curl`, `jq`, and `qrencode`, and access to all three gateways.
-3. use the app's connect action to scan the qr code. the invitation is single-use
-   and expires after five minutes.
-
-## how it works
-
-each host runs a small go gateway in front of its local tmux server. desktop and
-phone clients contact those gateways directly over tailscale. each gateway has
-its own identity and bearer credential; there is no central coordinator.
-
-tmux owns terminal sessions and processes. codex and claude own their execution
-and conversation history. skid lists and attaches to those terminals, so losing
-a client connection leaves the host session running. provider credentials and
-history stay on their host.
-
-ordinary controls use the terminal. native conversation reads and controls are
-a separate capability with provider-specific limits; see
-[agent control](docs/agent-control.md). stopping sends an interrupt and does not
-prove that background or remote work has ended. the configured agent profiles
-run with provider permission prompts bypassed and are trusted as the host user.
-
-## build the cli
-
-requires linux or macos and the go toolchain family declared in [go.mod](go.mod)
-(currently 1.26.x). macos also requires a native c toolchain.
+build with the go toolchain family in [go.mod](go.mod); mac also needs a native c
+toolchain. android uses jdk 17, platform 36 and build-tools 36.1.0.
 
 ```sh
-git clone https://github.com/NielsdaWheelz/skidbladnir.git
-cd skidbladnir
 go build -o ./skid ./cmd/skidbladnir
-./skid --help
+scripts/check verify
 ```
 
-this builds the cli and prints its command reference. running it against hosts
-still requires the configured gateways and private client file described above.
-
-`scripts/build` builds the go packages and android debug app. the android build
-also requires jdk 17, android sdk platform 36, and build-tools 36.0.0; set
-`ANDROID_HOME` to your sdk and `JAVA_HOME` to your jdk. debug builds use a
-different signing identity from the published app.
-
-## documentation and status
-
-| question | document |
-| --- | --- |
-| what owns each part, and what are the constraints? | [architecture](docs/architecture.md) |
-| what do terminal and native agent controls mean? | [agent control](docs/agent-control.md) |
-| how are hosts configured and installed? | [deployment contract](docs/dev-server-handoff.md#owned-installation-and-runtime) |
-| where is the implementation, and how should it change? | [codebase map](docs/codebase-map.md), [codebase rules](docs/rules/index.md) |
-| what remains unfinished? | [roadmap](docs/roadmap.md), [open issues](docs/issues) |
-| what checks exist, and what do they establish? | [testing policy](docs/rules/testing.md) |
-
-runtime and usability acceptance remain incomplete. `scripts/check verify` runs
-engineering checks and builds; the retained detector replay test runs separately.
-release publication, installation, and live verification are separate facts.
-
-the repository currently has no project license file. bundled dependencies carry
-their own licenses.
+[architecture](docs/architecture.md), [codebase map](docs/codebase-map.md),
+[rules](docs/rules/index.md), [roadmap](docs/roadmap.md), and
+[open issues](docs/issues) describe ownership and remaining work. engineering
+checks and builds do not establish live behavior or release/deployment acceptance.

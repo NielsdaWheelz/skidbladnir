@@ -36,7 +36,7 @@ func (m *model) refresh(manual bool) tea.Cmd {
 	if !m.observationsVisible() {
 		return nil
 	}
-	commands := []tea.Cmd{m.refreshNotifications(manual)}
+	commands := []tea.Cmd{m.refreshNotifications(manual), m.refreshFleet()}
 	for index := range m.peers {
 		commands = append(commands, m.refreshInventory(index, manual))
 	}
@@ -271,4 +271,63 @@ func (m *model) refreshMutation() tea.Cmd {
 		editor.readAfter = m.inventoryLanes[index].generation
 	}
 	return m.refreshInventory(index, true)
+}
+
+// Fleet reconciliation runs on the existing inventory cadence, independently of attachment.
+func (m *model) refreshFleet() tea.Cmd {
+	if m.fleetPending {
+		return nil
+	}
+	m.fleetPending = true
+	completed := make(chan fleetMsg, 1)
+	m.observationWorkers.Add(1)
+	go func() {
+		defer m.observationWorkers.Done()
+		_ = m.client.Refresh() // justify-ignore-error: retain the last verified roster; direct inventories own visible availability.
+		completed <- fleetMsg{}
+	}()
+	return func() tea.Msg { return <-completed }
+}
+
+func (m *model) reconcileFleet() {
+	machines := m.client.Machines()
+	same := len(machines) == len(m.peers)
+	for index, machine := range machines {
+		if index >= len(m.peers) || m.peers[index].Machine != machine.Handle || m.peers[index].Label != machine.Label {
+			same = false
+			break
+		}
+	}
+	if same {
+		return
+	}
+	peers := make([]fleetclient.Peer, len(machines))
+	inventories := make([]inventoryLane, len(machines))
+	contexts := make([]contextLane, len(machines))
+	usages := make([]usagePeer, len(machines))
+	retained := map[string]bool{}
+	for index, machine := range machines {
+		peers[index] = fleetclient.Peer{Label: machine.Label, Machine: machine.Handle}
+		usages[index] = usagePeer{machine: machine}
+		for old, peer := range m.peers {
+			if peer.Machine != machine.Handle {
+				continue
+			}
+			peers[index], inventories[index], contexts[index] = peer, m.inventoryLanes[old], m.contextLanes[old]
+			peers[index].Label = machine.Label
+			usages[index] = m.usagePeers[old]
+			usages[index].machine = machine
+			retained[machine.Handle] = true
+			break
+		}
+	}
+	for index, peer := range m.peers {
+		if !retained[peer.Machine] {
+			m.fenceInventory(index)
+		}
+	}
+	m.peers, m.inventoryLanes, m.contextLanes, m.usagePeers = peers, inventories, contexts, usages
+	m.cancelUsage()
+	m.usageNext = time.Time{}
+	m.rebuild()
 }

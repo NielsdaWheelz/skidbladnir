@@ -36,7 +36,7 @@ case "$goos/$goarch" in
 esac
 
 cd "$source_dir"
-GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" \
+MACOSX_DEPLOYMENT_TARGET=26.0 GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" \
   go build -buildvcs=false -mod=readonly -trimpath \
     -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
     -o "$output" ./cmd/skidbladnir

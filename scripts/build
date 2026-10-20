@@ -7,24 +7,24 @@ android_dir="$repo_dir/android"
 
 case "$(uname -s)" in
   Darwin)
-    android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties'
+    android_signing_config="${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-signing.properties"
     digest_command=(shasum -a 256)
     ;;
   Linux)
-    android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties'
+    android_signing_config="${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-signing.properties"
     digest_command=(sha256sum)
     ;;
 esac
 
 case "$(uname -s)" in
   Darwin)
-    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    android_sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
     if [[ -z "${JAVA_HOME:-}" ]]; then
       export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
     fi
     ;;
   Linux)
-    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    android_sdk="${ANDROID_HOME:-$HOME/Android/Sdk}"
     ;;
   *)
     printf '{"gate":"%s","status":"NOT_RUN","reason":"Only Linux and Darwin hosts are supported"}\n' "$target"
@@ -115,6 +115,7 @@ case "$target" in
         skidbladnir-darwin-arm64.tar.gz \
         skidbladnir-linux-amd64.tar.gz > SHA256SUMS
     )
+    "$repo_dir/scripts/sign-release" "$output_dir"
     "$repo_dir/scripts/check-release" "$output_dir" "$tag" "$sha"
     ;;
   all)

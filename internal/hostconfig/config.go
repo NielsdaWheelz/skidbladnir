@@ -1,238 +1,498 @@
 package hostconfig
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"unicode"
 	"unicode/utf8"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"go.yaml.in/yaml/v3"
 )
 
-const maximumConfigBytes = 64 * 1024
+const MaximumBytes = 64 * 1024
+const DefaultYAML = `version: 1
+profiles: []
+# shell: /bin/zsh
+# terminal: apple-terminal
+# default_machine: laptop
+# replace profiles: [] with:
+#   - name: work
+#     label: "codex · work"
+#     command: codex-work
+#     provider: codex
+#     home: ~/.codex-work
+`
 
-var expectedProfiles = [...]struct {
-	key      string
-	provider agentruntime.Provider
-}{
-	{key: "personal", provider: agentruntime.ProviderCodex},
-	{key: "work", provider: agentruntime.ProviderCodex},
-	{key: "work2", provider: agentruntime.ProviderCodex},
-	{key: "claude-work", provider: agentruntime.ProviderClaude},
+type Profile struct {
+	Name     string `yaml:"name" json:"name"`
+	Label    string `yaml:"label,omitempty" json:"label"`
+	Command  string `yaml:"command" json:"command"`
+	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Home     string `yaml:"home,omitempty" json:"home,omitempty"`
+}
+type ProfileOverride struct {
+	Command *string `yaml:"command,omitempty" json:"command,omitempty"`
+	Home    *string `yaml:"home,omitempty" json:"home,omitempty"`
+}
+type Override struct {
+	Shell          string                     `yaml:"shell,omitempty" json:"shell,omitempty"`
+	Terminal       string                     `yaml:"terminal,omitempty" json:"terminal,omitempty"`
+	DefaultMachine string                     `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
+	Profiles       map[string]ProfileOverride `yaml:"profiles,omitempty" json:"profiles,omitempty"`
 }
 
-type Config struct {
-	NativeControlPath string
-	TmuxPath          string
-	ZoxidePath        string
-	Profiles          []agentruntime.Profile
+// AndroidPush contains public Firebase client options, never sender credentials.
+type AndroidPush struct {
+	ProjectID     string `yaml:"project_id" json:"project_id"`
+	ApplicationID string `yaml:"application_id" json:"application_id"`
+	SenderID      string `yaml:"sender_id" json:"sender_id"`
+	APIKey        string `yaml:"api_key" json:"api_key"`
 }
 
-func Load(path string, runtime platform.Kind) (config Config, resultErr error) {
-	if path == "" {
-		return Config{}, errors.New("host config path is empty")
-	}
-	// Host configuration is a deployment-owned local regular file. Nonblocking,
-	// no-follow admission rejects FIFOs, devices, and symlinks before a hook can
-	// wait on an unbounded filesystem producer; the capped read prevents a large
-	// file from being normalized into memory before its size is rejected.
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return Config{}, fmt.Errorf("read host config: %w", err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			config = Config{}
-			resultErr = errors.Join(resultErr, fmt.Errorf("close host config: %w", closeErr))
+func (p AndroidPush) ID() string {
+	sum := sha256.Sum256([]byte("skidbladnir.android-push.v1\n" + p.ProjectID + "\n" + p.ApplicationID + "\n" + p.SenderID + "\n" + p.APIKey))
+	return hex.EncodeToString(sum[:])
+}
+func (p AndroidPush) Validate() error {
+	for _, field := range []struct{ name, value string }{
+		{"project_id", p.ProjectID}, {"application_id", p.ApplicationID}, {"sender_id", p.SenderID}, {"api_key", p.APIKey},
+	} {
+		valid := len(field.value) > 0 && len(field.value) <= 256
+		for _, c := range []byte(field.value) {
+			valid = valid && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == ':' || c == '_' || c == '.' || c == '-')
 		}
-	}()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return Config{}, errors.New("host config is not a regular file")
-	}
-	encoded, err := io.ReadAll(io.LimitReader(file, maximumConfigBytes+1))
-	if err != nil {
-		return Config{}, fmt.Errorf("read host config: %w", err)
-	}
-	if len(encoded) > maximumConfigBytes {
-		return Config{}, errors.New("host config is too large")
-	}
-	var wire *configDTO
-	if err := strictjson.Decode(encoded, &wire); err != nil || wire == nil {
-		return Config{}, errors.New("host config is not canonical JSON")
-	}
-	return wire.admit(runtime)
-}
-
-func ValidateTmuxVersion(version string) error {
-	if len(version) > 64 || !strings.HasPrefix(version, "tmux ") {
-		return errors.New("tmux version is invalid")
-	}
-	for _, character := range []byte(version) {
-		if character < 0x20 || character > 0x7e {
-			return errors.New("tmux version is invalid")
+		if !valid {
+			return fmt.Errorf("android_push.%s: required 1–256 ascii identifier characters", field.name)
 		}
-	}
-	release := strings.TrimPrefix(version, "tmux ")
-	if release == "" || strings.TrimSpace(release) != release {
-		return errors.New("tmux version is invalid")
 	}
 	return nil
 }
 
-type configDTO struct {
-	NativeControlPath stringField       `json:"nativeControlPath"`
-	Platform          stringField       `json:"platform"`
-	Tmux              *tmuxDTO          `json:"tmux"`
-	ZoxidePath        nullablePathField `json:"zoxidePath"`
-	Profiles          *[]profileDTO     `json:"profiles"`
+type Config struct {
+	AndroidPush    *AndroidPush        `yaml:"android_push,omitempty" json:"android_push,omitempty"`
+	Version        int                 `yaml:"version" json:"version"`
+	Hub            string              `yaml:"hub,omitempty" json:"hub,omitempty"`
+	Profiles       []Profile           `yaml:"profiles" json:"profiles"`
+	Shell          string              `yaml:"shell,omitempty" json:"shell,omitempty"`
+	Terminal       string              `yaml:"terminal,omitempty" json:"terminal,omitempty"`
+	DefaultMachine string              `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
+	Machines       map[string]Override `yaml:"machines,omitempty" json:"machines,omitempty"`
+	// Installation facts are composed locally; they are never human yaml fields.
+	NativeControlPath string `yaml:"-" json:"-"`
+	TmuxPath          string `yaml:"-" json:"-"`
+	ZoxidePath        string `yaml:"-" json:"-"`
+}
+type Settings struct {
+	Shell          string    `json:"shell"`
+	Terminal       string    `json:"terminal"`
+	DefaultMachine string    `json:"defaultMachine"`
+	Profiles       []Profile `json:"profiles"`
 }
 
-type tmuxDTO struct {
-	Path          stringField `json:"path"`
-	TestedVersion stringField `json:"testedVersion"`
+func Load(path string, _ platform.Kind) (Config, error) {
+	f, e := os.Open(path)
+	if e != nil {
+		return Config{}, fmt.Errorf("read config: %w", e)
+	}
+	data, e := io.ReadAll(io.LimitReader(f, MaximumBytes+1))
+	e = errors.Join(e, f.Close())
+	if e != nil {
+		return Config{}, fmt.Errorf("read config: %w", e)
+	}
+	return Parse(data)
 }
-
-type profileDTO struct {
-	Key                  stringField               `json:"key"`
-	Label                stringField               `json:"label"`
-	Provider             stringField               `json:"provider"`
-	Command              stringField               `json:"command"`
-	Environment          *[]environmentVariableDTO `json:"environment"`
-	ForegroundSignatures *[]foregroundSignatureDTO `json:"foregroundSignatures"`
-	Arguments            *[]stringField            `json:"arguments"`
+func Parse(data []byte) (Config, error) {
+	if len(data) > MaximumBytes {
+		return Config{}, errors.New("config: exceeds 64 kib")
+	}
+	var document yaml.Node
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	if e := decoder.Decode(&document); e != nil {
+		return Config{}, errors.New("config: invalid yaml")
+	}
+	var extra yaml.Node
+	if e := decoder.Decode(&extra); !errors.Is(e, io.EOF) {
+		return Config{}, errors.New("config: expected one yaml document")
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return Config{}, errors.New("config: expected a mapping")
+	}
+	if e := validateShape(document.Content[0], "config"); e != nil {
+		return Config{}, e
+	}
+	if e := validateNode(document.Content[0], ""); e != nil {
+		return Config{}, e
+	}
+	var config Config
+	typed := yaml.NewDecoder(bytes.NewReader(data))
+	typed.KnownFields(true)
+	if e := typed.Decode(&config); e != nil {
+		return Config{}, errors.New("config: unknown field or invalid field type")
+	}
+	if e := validate(&config); e != nil {
+		return Config{}, e
+	}
+	return config, nil
 }
-
-type environmentVariableDTO struct {
-	Name  stringField `json:"name"`
-	Value stringField `json:"value"`
-}
-
-type foregroundSignatureDTO struct {
-	ExecutableBase      stringField `json:"executableBase"`
-	ExecutableDirectory stringField `json:"executableDirectory"`
-}
-
-func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
-	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.ZoxidePath.present || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
-		return Config{}, errors.New("host config omits a required member")
+func validateNode(node *yaml.Node, path string) error {
+	if node.Kind == yaml.AliasNode || node.Tag == "!!merge" {
+		return fmt.Errorf("%s: yaml aliases and merge keys are unsupported", fieldPath(path, "config"))
 	}
-	zoxidePath := ""
-	if wire.ZoxidePath.value != nil {
-		zoxidePath = *wire.ZoxidePath.value
-		if !validAbsolutePath(zoxidePath) {
-			return Config{}, errors.New("host config zoxide path is invalid")
-		}
+	if node.Tag == "!!null" {
+		return fmt.Errorf("%s: null is unsupported", fieldPath(path, "config"))
 	}
-	kind := platform.Kind(wire.Platform.value)
-	if kind != platform.KindLinux && kind != platform.KindDarwin {
-		return Config{}, errors.New("host config platform is unsupported")
-	}
-	if kind != runtime {
-		return Config{}, fmt.Errorf("host config platform %q does not match runtime %q", kind, runtime)
-	}
-	if !wire.Tmux.Path.present || !wire.Tmux.TestedVersion.present || !validAbsolutePath(wire.Tmux.Path.value) || ValidateTmuxVersion(wire.Tmux.TestedVersion.value) != nil {
-		return Config{}, errors.New("host config tmux entry is invalid")
-	}
-	profiles, err := admitProfiles(*wire.Profiles)
-	if err != nil {
-		return Config{}, err
-	}
-	return Config{
-		NativeControlPath: wire.NativeControlPath.value,
-		TmuxPath:          wire.Tmux.Path.value,
-		ZoxidePath:        zoxidePath,
-		Profiles:          profiles,
-	}, nil
-}
-
-func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
-	if len(wire) != 0 && len(wire) != len(expectedProfiles) {
-		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfiles))
-	}
-	profiles := make([]agentruntime.Profile, len(wire))
-	for index, candidate := range wire {
-		expected := expectedProfiles[index]
-		if !candidate.Key.present || !candidate.Label.present || !candidate.Provider.present || !candidate.Command.present || candidate.Environment == nil || candidate.ForegroundSignatures == nil || candidate.Arguments == nil {
-			return nil, errors.New("host config profile omits a required member")
-		}
-		if candidate.Key.value != expected.key {
-			return nil, fmt.Errorf("host config profile %d must be %q", index, expected.key)
-		}
-		provider, err := agentruntime.ParseProvider(candidate.Provider.value)
-		if err != nil {
-			return nil, fmt.Errorf("host config profile %s provider is invalid", candidate.Key.value)
-		}
-		if provider != expected.provider {
-			return nil, fmt.Errorf("host config profile %s must use provider %s", candidate.Key.value, expected.provider)
-		}
-		environment, err := mapEnvironment(*candidate.Environment)
-		if err != nil {
-			return nil, err
-		}
-		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
-		for signatureIndex, signature := range *candidate.ForegroundSignatures {
-			directory := ""
-			if signature.ExecutableDirectory.present {
-				if !validAbsolutePath(signature.ExecutableDirectory.value) {
-					return nil, fmt.Errorf("host config profile %s foreground executable directory is invalid", candidate.Key.value)
-				}
-				canonical, err := filepath.EvalSymlinks(signature.ExecutableDirectory.value)
-				if err != nil {
-					return nil, fmt.Errorf("host config profile %s foreground executable directory cannot be resolved", candidate.Key.value)
-				}
-				info, err := os.Stat(canonical)
-				if err != nil || !info.IsDir() {
-					return nil, fmt.Errorf("host config profile %s foreground executable directory is not a directory", candidate.Key.value)
-				}
-				directory = canonical
+	if node.Kind == yaml.MappingNode {
+		seen := map[string]bool{}
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Value == "<<" {
+				return fmt.Errorf("%s: invalid mapping key", fieldPath(path, "config"))
 			}
-			signatures[signatureIndex] = agentruntime.ForegroundSignature{
-				ExecutableBase:      signature.ExecutableBase.value,
-				ExecutableDirectory: directory,
+			child := fieldPath(path, key.Value)
+			if seen[key.Value] {
+				return fmt.Errorf("%s: duplicate field", child)
+			}
+			seen[key.Value] = true
+			if e := validateNode(node.Content[i+1], child); e != nil {
+				return e
 			}
 		}
-		arguments := make([]string, len(*candidate.Arguments))
-		for argumentIndex, argument := range *candidate.Arguments {
-			if !argument.present {
-				return nil, errors.New("host config profile argument is null")
+	} else {
+		for i, child := range node.Content {
+			if e := validateNode(child, fmt.Sprintf("%s[%d]", path, i)); e != nil {
+				return e
 			}
-			arguments[argumentIndex] = argument.value
-		}
-		profiles[index] = agentruntime.Profile{
-			Key:                  agentruntime.ProfileKey(candidate.Key.value),
-			Label:                candidate.Label.value,
-			Provider:             provider,
-			Command:              candidate.Command.value,
-			Environment:          environment,
-			ForegroundSignatures: signatures,
-			Arguments:            arguments,
 		}
 	}
-	validated, err := agentruntime.ValidateProfiles(profiles)
-	if err != nil {
-		return nil, fmt.Errorf("validate host profiles: %w", err)
+	return nil
+}
+func fieldPath(path, key string) string {
+	if path == "" {
+		return key
 	}
-	return validated, nil
+	return path + "." + key
+}
+func validate(c *Config) error {
+	if c.AndroidPush != nil {
+		if e := c.AndroidPush.Validate(); e != nil {
+			return e
+		}
+	}
+	if c.Version != 1 {
+		return errors.New("version: required integer 1")
+	}
+	if c.Profiles == nil {
+		return errors.New("profiles: required ordered list")
+	}
+	if e := validateOptions(c.Shell, c.Terminal, "config"); e != nil {
+		return e
+	}
+	keys := map[string]bool{}
+	for i := range c.Profiles {
+		p := &c.Profiles[i]
+		prefix := fmt.Sprintf("profiles[%d]", i)
+		if !validKey(p.Name) {
+			return fmt.Errorf("%s.name: use 1–32 lowercase letters, digits, underscores or hyphens; start with a letter", prefix)
+		}
+		if keys[p.Name] {
+			return fmt.Errorf("%s.name: duplicate profile", prefix)
+		}
+		keys[p.Name] = true
+		if p.Label == "" {
+			p.Label = p.Name
+		}
+		if !validLabel(p.Label) {
+			return fmt.Errorf("%s.label: use 1–64 visible characters", prefix)
+		}
+		if e := validateCommand(p.Command, prefix+".command"); e != nil {
+			return e
+		}
+		if p.Provider != "" && p.Provider != "codex" && p.Provider != "claude" {
+			return fmt.Errorf("%s.provider: expected codex or claude", prefix)
+		}
+		if p.Home != "" && p.Provider == "" {
+			return fmt.Errorf("%s.home: requires provider", prefix)
+		}
+		if p.Home != "" && !validHome(p.Home) {
+			return fmt.Errorf("%s.home: expected absolute path or ~/…", prefix)
+		}
+	}
+	for name, o := range c.Machines {
+		prefix := "machines." + name
+		if e := validateOptions(o.Shell, o.Terminal, prefix); e != nil {
+			return e
+		}
+		for key, p := range o.Profiles {
+			if !keys[key] {
+				return fmt.Errorf("%s.profiles.%s: unknown profile", prefix, key)
+			}
+			if p.Command != nil {
+				if e := validateCommand(*p.Command, prefix+".profiles."+key+".command"); e != nil {
+					return e
+				}
+			}
+			if p.Home != nil {
+				provider := ""
+				for _, profile := range c.Profiles {
+					if profile.Name == key {
+						provider = profile.Provider
+					}
+				}
+				if provider == "" || !validHome(*p.Home) {
+					return fmt.Errorf("%s.profiles.%s.home: requires provider and absolute path or ~/…", prefix, key)
+				}
+			}
+		}
+	}
+	return nil
+}
+func validateOptions(shell, terminal, path string) error {
+	if shell != "" && (!filepath.IsAbs(shell) || (filepath.Base(shell) != "bash" && filepath.Base(shell) != "zsh") || strings.ContainsRune(shell, 0)) {
+		return fmt.Errorf("%s.shell: expected absolute bash or zsh path", path)
+	}
+	if terminal != "" && terminal != "apple-terminal" && terminal != "ghostty" {
+		return fmt.Errorf("%s.terminal: expected apple-terminal or ghostty", path)
+	}
+	return nil
+}
+func validateCommand(command, path string) error {
+	if strings.TrimSpace(command) == "" || !utf8.ValidString(command) || strings.ContainsRune(command, 0) {
+		return fmt.Errorf("%s: required command without nul bytes", path)
+	}
+	return nil
+}
+func validKey(v string) bool {
+	if len(v) == 0 || len(v) > 32 {
+		return false
+	}
+	for i, c := range []byte(v) {
+		if c >= 'a' && c <= 'z' {
+			continue
+		}
+		if i > 0 && (c >= '0' && c <= '9' || c == '_' || c == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+func validLabel(v string) bool {
+	return utf8.ValidString(v) && utf8.RuneCountInString(v) <= 64 && strings.TrimSpace(v) != "" && strings.IndexFunc(v, unicode.IsControl) < 0
+}
+func validHome(v string) bool {
+	return (filepath.IsAbs(v) || strings.HasPrefix(v, "~/")) && utf8.ValidString(v) && !strings.ContainsRune(v, 0)
 }
 
-func mapEnvironment(wire []environmentVariableDTO) ([]agentruntime.EnvironmentVariable, error) {
-	environment := make([]agentruntime.EnvironmentVariable, len(wire))
-	for index, candidate := range wire {
-		if !candidate.Name.present || !candidate.Value.present {
-			return nil, errors.New("host config environment entry omits a required member")
-		}
-		environment[index] = agentruntime.EnvironmentVariable{Name: candidate.Name.value, Value: candidate.Value.value}
+// ValidateMachines admits sparse overrides against active and retired membership.
+func (c Config) ValidateMachines(active, retired []string) error {
+	known := map[string]bool{}
+	for _, n := range append(append([]string{}, active...), retired...) {
+		known[strings.ToLower(n)] = true
 	}
-	return environment, nil
+	seen := map[string]bool{}
+	for n, o := range c.Machines {
+		if seen[strings.ToLower(n)] {
+			return fmt.Errorf("machines.%s: duplicate machine override", n)
+		}
+		seen[strings.ToLower(n)] = true
+		if !known[strings.ToLower(n)] {
+			return fmt.Errorf("machines.%s: unknown machine", n)
+		}
+		if o.DefaultMachine != "" && !known[strings.ToLower(o.DefaultMachine)] {
+			return fmt.Errorf("machines.%s.default_machine: unknown machine", n)
+		}
+	}
+	if c.Hub != "" && !known[strings.ToLower(c.Hub)] {
+		return errors.New("hub: unknown machine")
+	}
+	if c.DefaultMachine != "" && !known[strings.ToLower(c.DefaultMachine)] {
+		return errors.New("default_machine: unknown machine")
+	}
+	return nil
+}
+func Resolve(c Config, name, home, loginShell string) (Settings, error) {
+	s := Settings{Shell: c.Shell, Terminal: c.Terminal, DefaultMachine: c.DefaultMachine, Profiles: append([]Profile{}, c.Profiles...)}
+	var override Override
+	hasOverride := false
+	for key, value := range c.Machines {
+		if strings.EqualFold(key, name) {
+			override = value
+			hasOverride = true
+		}
+	}
+	if o, ok := override, hasOverride; ok {
+		if o.Shell != "" {
+			s.Shell = o.Shell
+		}
+		if o.Terminal != "" {
+			s.Terminal = o.Terminal
+		}
+		if o.DefaultMachine != "" {
+			s.DefaultMachine = o.DefaultMachine
+		}
+		for i := range s.Profiles {
+			p := &s.Profiles[i]
+			if override, ok := o.Profiles[p.Name]; ok {
+				if override.Command != nil {
+					p.Command = *override.Command
+				}
+				if override.Home != nil {
+					p.Home = *override.Home
+				}
+			}
+		}
+	}
+	if s.Shell == "" {
+		s.Shell = loginShell
+	}
+	if s.Terminal == "" {
+		s.Terminal = "apple-terminal"
+	}
+	if s.DefaultMachine == "" {
+		s.DefaultMachine = name
+	}
+	if e := validateOptions(s.Shell, s.Terminal, "local"); e != nil {
+		return Settings{}, e
+	}
+	if s.Shell == "" {
+		return Settings{}, errors.New("local.shell: login shell unavailable; configure an absolute bash or zsh path")
+	}
+	info, e := os.Stat(s.Shell)
+	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+		return Settings{}, errors.New("local.shell: executable unavailable; fix shell on this host")
+	}
+	for i := range s.Profiles {
+		p := &s.Profiles[i]
+		if p.Provider == "" {
+			continue
+		}
+		if p.Home == "" {
+			if p.Provider == "codex" {
+				p.Home = filepath.Join(home, ".codex")
+			} else {
+				p.Home = filepath.Join(home, ".claude")
+			}
+		} else if strings.HasPrefix(p.Home, "~/") {
+			p.Home = filepath.Join(home, p.Home[2:])
+		}
+		if !filepath.IsAbs(p.Home) {
+			return Settings{}, fmt.Errorf("profiles[%d].home: destination home unavailable", i)
+		}
+	}
+	return s, nil
+}
+func ValidateTmuxVersion(version string) error {
+	if len(version) > 64 || !strings.HasPrefix(version, "tmux ") || strings.TrimSpace(strings.TrimPrefix(version, "tmux ")) == "" {
+		return errors.New("tmux version is invalid")
+	}
+	for _, c := range []byte(version) {
+		if c < 0x20 || c > 0x7e {
+			return errors.New("tmux version is invalid")
+		}
+	}
+	return nil
 }
 
-func validAbsolutePath(value string) bool {
-	return filepath.IsAbs(value) && filepath.Clean(value) == value && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
+// validateShape forbids yaml's implicit scalar conversions before typed decode.
+func validateShape(n *yaml.Node, path string) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: expected mapping", path)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		k, v := n.Content[i].Value, n.Content[i+1]
+		p := path + "." + k
+		shape := "string"
+		switch path {
+		case "config":
+			switch k {
+			case "version":
+				shape = "integer"
+			case "profiles":
+				shape = "profiles"
+			case "machines":
+				shape = "machines"
+			case "android_push":
+				shape = "android_push"
+			case "hub", "shell", "terminal", "default_machine":
+			default:
+				return fmt.Errorf("%s: unknown field", p)
+			}
+		case "android_push":
+			switch k {
+			case "project_id", "application_id", "sender_id", "api_key":
+			default:
+				return fmt.Errorf("%s: unknown field", p)
+			}
+		case "profile":
+			switch k {
+			case "name", "label", "command", "provider", "home":
+			default:
+				return fmt.Errorf("%s: unknown field", p)
+			}
+		case "override":
+			switch k {
+			case "shell", "terminal", "default_machine":
+			case "profiles":
+				shape = "overrides"
+			default:
+				return fmt.Errorf("%s: unknown field", p)
+			}
+		case "profile override":
+			if k != "command" && k != "home" {
+				return fmt.Errorf("%s: unknown field", p)
+			}
+		}
+		switch shape {
+		case "android_push":
+			if e := validateShape(v, "android_push"); e != nil {
+				return e
+			}
+		case "string":
+			if v.Kind != yaml.ScalarNode || v.Tag != "!!str" {
+				return fmt.Errorf("%s: expected string", p)
+			}
+			if v.Value == "" {
+				return fmt.Errorf("%s: expected nonempty string", p)
+			}
+
+		case "integer":
+			if v.Kind != yaml.ScalarNode || v.Tag != "!!int" {
+				return fmt.Errorf("%s: expected integer", p)
+			}
+		case "profiles":
+			if v.Kind != yaml.SequenceNode {
+				return fmt.Errorf("%s: expected ordered list", p)
+			}
+			for j, c := range v.Content {
+				if e := validateShape(c, "profile"); e != nil {
+					return fmt.Errorf("profiles[%d]: %w", j, e)
+				}
+			}
+		case "machines", "overrides":
+			if v.Kind != yaml.MappingNode {
+				return fmt.Errorf("%s: expected mapping", p)
+			}
+			for j := 0; j < len(v.Content); j += 2 {
+				if v.Content[j].Tag != "!!str" {
+					return fmt.Errorf("%s: expected string key", p)
+				}
+				next := "override"
+				if shape == "overrides" {
+					next = "profile override"
+				}
+				if e := validateShape(v.Content[j+1], next); e != nil {
+					return fmt.Errorf("%s.%s: %w", p, v.Content[j].Value, e)
+				}
+			}
+		}
+	}
+	return nil
 }

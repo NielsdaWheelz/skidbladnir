@@ -1,5 +1,4 @@
 #!/bin/bash
 set -euo pipefail
 
-exec "$HOME/.local/bin/skidbladnir" agent-hook \
-  "--host-config=$HOME/.local/share/skidbladnir/current/host-config.json" Claude SessionStart
+exec "$HOME/.local/bin/skid" agent-hook Claude SessionStart

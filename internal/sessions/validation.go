@@ -98,15 +98,12 @@ func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirect
 	switch input.Kind {
 	case LaunchAgent:
 		var found bool
-		profile, found = manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
+		profile, found = manager.Profile(agentruntime.ProfileKey(input.Profile))
 		if !found {
 			return workdir.WorkingDirectory{}, agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 		}
-		if err := agentruntime.ValidateLaunchOptions(input.Model, input.Effort); err != nil {
-			return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
-		}
 	case LaunchTerminal:
-		if input.Profile != "" || input.Model != "" || input.Effort != "" {
+		if input.Profile != "" {
 			panic("terminal launch carries agent options") // justify-defect: creation ingress forbids terminal agent options.
 		}
 	default:

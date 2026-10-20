@@ -7,7 +7,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
-// TerminalUsage is literal displayed Claude usage, not a native account report.
+// TerminalUsage is literal displayed provider usage, not a native account report.
 type TerminalUsage struct {
 	FiveHourUsedPercent *int `json:"fiveHourUsedPercent,omitempty"`
 	SevenDayUsedPercent *int `json:"sevenDayUsedPercent,omitempty"`

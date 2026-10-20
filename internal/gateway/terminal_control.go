@@ -238,7 +238,7 @@ func (gateway *Gateway) closeSessionTerminal(ctx context.Context, id, identityTo
 		cleanupDeadline = cap
 	}
 	cleanupContext, cancelCleanup := context.WithDeadline(ctx, cleanupDeadline)
-	cleanupErr := gateway.closeLiveTerminals(cleanupContext, id, identityToken)
+	cleanupErr := gateway.closeLiveConnections(cleanupContext, id, identityToken)
 	cancelCleanup()
 	if cleanupErr != nil {
 		gateway.log(logging.NewTerminalCleanupFailed())

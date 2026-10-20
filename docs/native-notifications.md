@@ -1,5 +1,12 @@
 # native needs-input notifications
 
+2026-10-20 supersession: [standalone generalization §6](generalization-plan.md#6-optional-direct-android-push)
+replaces this document's fixed observer deployment, ntfy/unifiedpush transport and
+singleton enrollment with optional user-owned direct fcm and runtime public
+configuration. admission, presentation and device-local acknowledgement remain.
+the older transport/deployment clauses below are historical; they authorize no
+legacy runtime path.
+
 accepted design, 2026-10-02. source is implemented and merged into main
 ([skid #66](https://github.com/NielsdaWheelz/skidbladnir/pull/66),
 [dev-server #163](https://github.com/NielsdaWheelz/dev-server/pull/163)).

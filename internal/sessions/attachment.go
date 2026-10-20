@@ -58,7 +58,7 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 		}
 		return nil, classified
 	}
-	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime, profiles: manager.profiles}, nil
+	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime, profiles: manager.Profiles()}, nil
 }
 
 type TerminalGreeting struct {

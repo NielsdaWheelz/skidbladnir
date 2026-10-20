@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 )
 
@@ -494,16 +495,30 @@ func (owner *owner) handle(request ownerRequest) {
 			return
 		}
 		nonce := randomID()
-		script, err := ghosttyScript(owner.skidPath, owner.configPath, ref, nonce)
+		settings, _, settingsErr := fleet.LoadResolved(owner.configPath)
+		if settingsErr != nil {
+			answer(nil, ErrUnavailable)
+			return
+		}
+		var script string
+		switch settings.Terminal {
+		case "ghostty":
+			script, err = ghosttyScript(owner.skidPath, owner.configPath, ref, nonce)
+		case "apple-terminal":
+			script, err = appleTerminalScript(owner.skidPath, owner.configPath, ref, nonce)
+		default:
+			err = ErrUnavailable
+		}
 		if err != nil {
 			answer(nil, err)
 			return
 		}
 		owner.launches[nonce] = launchState{slot: attention.Slot{Machine: decoded.Machine, TmuxID: decoded.TmuxID, IdentityToken: decoded.IdentityToken}}
 		answer(struct {
-			Nonce  string
-			Script string
-		}{nonce, script}, nil)
+			Nonce    string
+			Script   string
+			Terminal string
+		}{nonce, script, settings.Terminal}, nil)
 	case "launched":
 		result := request.value.(launchResult) // justify-assertion: only launch completion submits this result.
 		launch, found := owner.launches[result.nonce]

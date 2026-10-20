@@ -31,17 +31,17 @@ func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID, reg
 		return nil, nil, err
 	}
 	// Project accepts only the captured registration for this exact foreground.
-	agent, found := agentruntime.Project(manager.profiles, *foreground, registration)
+	agent, found := agentruntime.Project(manager.Profiles(), *foreground, registration)
 	if !found {
 		return nil, foreground, nil
 	}
-	if agent.Provider == agentruntime.ProviderCodex {
+	{
 		environment, readErr := processinfo.ObserveForegroundEnvironment(panePID, *foreground)
 		if errors.Is(readErr, processinfo.ErrForegroundMismatch) {
 			return nil, nil, readErr
 		}
 		if readErr == nil {
-			agent.Profile = codexProfile(manager.profiles, environment)
+			agent.Profile = observedProfile(manager.Profiles(), agent.Provider, environment)
 		}
 	}
 	agent.PaneID = paneID
@@ -53,14 +53,14 @@ func observeRemoteAgent(foreground processinfo.Observation, environment map[stri
 	if !found {
 		return nil
 	}
-	if agent.Provider == agentruntime.ProviderCodex {
-		agent.Profile = codexProfile(profiles, environment)
+	{
+		agent.Profile = observedProfile(profiles, agent.Provider, environment)
 	}
 	return &agent
 }
 
-func codexProfile(profiles []agentruntime.Profile, environment map[string]string) agentruntime.ProfileKey {
-	profile, _ := agentruntime.MatchProfileEnvironment(profiles, agentruntime.ProviderCodex, func(name string) (string, bool) {
+func observedProfile(profiles []agentruntime.Profile, provider agentruntime.Provider, environment map[string]string) agentruntime.ProfileKey {
+	profile, _ := agentruntime.MatchProfileEnvironment(profiles, provider, func(name string) (string, bool) {
 		value, present := environment[name]
 		return value, present
 	})

@@ -3,7 +3,7 @@
 [[ $- == *i* ]] && : 2>/dev/null </dev/tty || return 0
 [[ "${SKIDBLADNIR_SHELL:-}" == 1 || "${SKIDBLADNIR_TERMINAL_CONTEXT:-}" == 1 || -n "${SKIDBLADNIR_CONNECTION:-}" ]] || return 0
 
-_skid_context_helper="$HOME/.local/share/skidbladnir/current/skidbladnir"
+_skid_context_helper="${XDG_DATA_HOME:-$HOME/.local/share}/skidbladnir/current/skidbladnir"
 if [[ -n "${SKIDBLADNIR_CONNECTION:-}" ]]; then
   _skid_inbound_connection="$SKIDBLADNIR_CONNECTION"
   unset SKIDBLADNIR_CONNECTION
@@ -12,17 +12,14 @@ if [[ -n "${SKIDBLADNIR_CONNECTION:-}" ]]; then
   unset _skid_inbound_connection
 fi
 
-# deployment renders these as shell-quoted absolute native command paths.
-_skid_ssh_command=@SSH_SHELL@
-_skid_mosh_command=@MOSH_SHELL@
 if ! typeset -f ssh >/dev/null 2>&1 && ! alias ssh >/dev/null 2>&1; then
   function ssh {
     local _skid_id
     _skid_id=$("$_skid_context_helper" terminal-context new 2>/dev/null) || _skid_id=
     if [[ -n "$_skid_id" ]]; then
-      SKIDBLADNIR_CONNECTION="$_skid_id" "$_skid_ssh_command" "$@"
+      SKIDBLADNIR_CONNECTION="$_skid_id" command ssh "$@"
     else
-      "$_skid_ssh_command" "$@"
+      command ssh "$@"
     fi
   }
 fi
@@ -31,9 +28,9 @@ if ! typeset -f mosh >/dev/null 2>&1 && ! alias mosh >/dev/null 2>&1; then
     local _skid_id
     _skid_id=$("$_skid_context_helper" terminal-context new 2>/dev/null) || _skid_id=
     if [[ -n "$_skid_id" ]]; then
-      SKIDBLADNIR_CONNECTION="$_skid_id" "$_skid_mosh_command" "$@"
+      SKIDBLADNIR_CONNECTION="$_skid_id" command mosh "$@"
     else
-      "$_skid_mosh_command" "$@"
+      command mosh "$@"
     fi
   }
 fi

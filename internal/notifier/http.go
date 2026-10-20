@@ -2,16 +2,15 @@ package notifier
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
-	"math"
 	"mime"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 )
 
 func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -19,11 +18,11 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		writeError(writer, "InvalidRequest")
 		return
 	}
-	if _, code := auth.Authenticate(observer.bearer, request); code != "" {
-		if code == auth.AdmissionUnauthenticated {
-			writer.Header().Set("WWW-Authenticate", "Bearer")
-		}
-		writeError(writer, string(code))
+	// Authentication precedes writer admission. Drain may run while the fleet
+	// mutation lock is held; no admitted writer can wait for that lock.
+	member, _, err := observer.fleet.Authenticate(request)
+	if err != nil {
+		writeFleetError(writer, err)
 		return
 	}
 	if code := auth.BindMachine(request, observer.machine.String()); code != "" {
@@ -43,9 +42,27 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 			writeError(writer, "InvalidRequest")
 			return
 		}
-		observer.events(writer, request)
-	case request.Method == http.MethodPut && request.URL.Path == "/v1/notifications/receivers/android":
-		observer.register(writer, request)
+		observer.events(writer, request, member.DeviceID)
+	case (request.Method == http.MethodGet || request.Method == http.MethodPut) && request.URL.Path == "/v1/notifications/receivers/me":
+		if member.Kind != "phone" {
+			writeError(writer, "Forbidden")
+			return
+		}
+		if request.Method == http.MethodGet {
+			if request.ContentLength != 0 || len(request.TransferEncoding) != 0 {
+				writeError(writer, "InvalidRequest")
+				return
+			}
+			observer.receiverState(writer, member.DeviceID)
+		} else {
+			observer.register(writer, request, member.DeviceID)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/notifications/receivers/me/confirm":
+		if member.Kind != "phone" {
+			writeError(writer, "Forbidden")
+			return
+		}
+		observer.confirm(writer, request, member.DeviceID)
 	default:
 		writeError(writer, "InvalidRequest")
 	}
@@ -53,7 +70,7 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 func (observer *Observer) state(writer http.ResponseWriter) {
 	observer.mutex.Lock()
 	data, err := json.Marshal(observer.snapshot)
-	unavailable := observer.unavailable
+	unavailable := observer.unavailable || observer.drained
 	observer.mutex.Unlock()
 	if unavailable || err != nil || len(data) > attention.MaximumSnapshotBytes {
 		writeError(writer, "NotificationsUnavailable")
@@ -63,28 +80,37 @@ func (observer *Observer) state(writer http.ResponseWriter) {
 	writer.Header().Set("Cache-Control", "no-store")
 	_, _ = writer.Write(data) // justify-ignore-error: disconnected read has no recoverable effect.
 }
-func (observer *Observer) events(writer http.ResponseWriter, request *http.Request) {
+func (observer *Observer) events(writer http.ResponseWriter, request *http.Request, device string) {
 	if _, ok := writer.(http.Flusher); !ok {
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
 	subscriber := make(chan struct{}, 1)
 	observer.mutex.Lock()
-	if observer.unavailable {
+	if observer.unavailable || observer.drained {
 		observer.mutex.Unlock()
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
+	observer.streams.Add(1)
 	observer.subscribers[subscriber] = struct{}{}
 	observer.mutex.Unlock()
-	defer func() { observer.mutex.Lock(); delete(observer.subscribers, subscriber); observer.mutex.Unlock() }()
+	defer func() {
+		observer.mutex.Lock()
+		delete(observer.subscribers, subscriber)
+		observer.mutex.Unlock()
+		observer.streams.Done()
+	}()
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-store")
 	controller := http.NewResponseController(writer)
 	for {
 		observer.mutex.Lock()
 		hint := attention.Hint{Schema: 1, Epoch: observer.file.Epoch, Revision: observer.file.Revision}
-		unavailable := observer.unavailable
+		unavailable := observer.unavailable || observer.drained
+		if index := observer.receiverIndex(device); index >= 0 && observer.file.Receivers[index].Removed {
+			unavailable = true
+		}
 		observer.mutex.Unlock()
 		if unavailable {
 			return
@@ -109,76 +135,6 @@ func (observer *Observer) events(writer http.ResponseWriter, request *http.Reque
 		}
 	}
 }
-func (observer *Observer) register(writer http.ResponseWriter, request *http.Request) {
-	preconditions := request.Header.Values("If-Match")
-	if len(preconditions) == 0 {
-		writeError(writer, "PreconditionRequired")
-		return
-	}
-	if len(preconditions) != 1 || len(preconditions[0]) < 2 || preconditions[0][0] != '"' || preconditions[0][len(preconditions[0])-1] != '"' {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	tag := preconditions[0][1 : len(preconditions[0])-1]
-	epoch, _, found := strings.Cut(tag, ":")
-	if _, valid := attention.ReceiverRevision(epoch, tag); !found || !attention.EpochValid(epoch) || !valid {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	media, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	if request.ContentLength > attention.MaximumRegistrationBytes {
-		writeError(writer, "RequestTooLarge")
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(request.Body, attention.MaximumRegistrationBytes+1))
-	if err != nil || len(data) > attention.MaximumRegistrationBytes {
-		writeError(writer, "RequestTooLarge")
-		return
-	}
-	var subscription attention.Subscription
-	if attention.Decode(data, &subscription) != nil || !subscription.Valid(observer.origin) {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	if installed := observer.file.AndroidSubscription; installed != nil && *installed == subscription {
-		writer.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if tag != observer.snapshot.ReceiverTag {
-		writeError(writer, "PreconditionFailed")
-		return
-	}
-	if observer.file.Revision >= math.MaxInt64-1 || observer.file.ReceiverRevision >= math.MaxInt64-1 {
-		observer.unavailable = true
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	file := observer.file
-	file.Revision++
-	file.ReceiverRevision++
-	file.AndroidSubscription = &subscription
-	encoded, err := json.Marshal(file)
-	if err != nil || len(encoded) > attention.MaximumSnapshotBytes || attention.WriteFile(observer.path, encoded) != nil {
-		observer.unavailable = true
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	observer.file = file
-	observer.snapshot.Revision = file.Revision
-	observer.snapshot.ReceiverTag = file.Epoch + ":" + strconv.FormatInt(file.ReceiverRevision, 10)
-	observer.signal()
-	writer.WriteHeader(http.StatusNoContent)
-}
 func writeError(writer http.ResponseWriter, code string) {
 	var status int
 	var message string
@@ -187,10 +143,10 @@ func writeError(writer http.ResponseWriter, code string) {
 		status, message = auth.AdmissionCode(code).Response()
 	case "NotificationsUnavailable":
 		status, message = http.StatusServiceUnavailable, "notifications unavailable"
-	case "PreconditionRequired":
-		status, message = http.StatusPreconditionRequired, "receiver precondition required"
-	case "PreconditionFailed":
-		status, message = http.StatusPreconditionFailed, "receiver precondition changed"
+	case "Forbidden":
+		status, message = http.StatusForbidden, "phone membership required"
+	case "ReceiverConflict":
+		status, message = http.StatusConflict, "receiver generation changed"
 	default:
 		panic("unhandled notification error") // justify-defect: routes supply their closed error set.
 	}
@@ -205,4 +161,50 @@ func writeError(writer http.ResponseWriter, code string) {
 		panic("encode notification error")
 	} // justify-defect: string fields always encode.
 	_, _ = writer.Write(data) // justify-ignore-error: client disconnect after headers cannot be repaired.
+}
+
+func writeJSON(writer http.ResponseWriter, value any) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(writer).Encode(value) // justify-ignore-error: a disconnected response cannot be repaired.
+}
+func writeFleetError(writer http.ResponseWriter, err error) {
+	var value *fleet.Error
+	if !errors.As(err, &value) {
+		writeError(writer, "NotificationsUnavailable")
+		return
+	}
+	if value.Status == http.StatusUnauthorized {
+		writer.Header().Set("WWW-Authenticate", "Bearer")
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(value.Status)
+	_ = json.NewEncoder(writer).Encode(struct {
+		Code    string          `json:"code"`
+		Message string          `json:"message"`
+		Routing *fleet.Envelope `json:"routing,omitempty"`
+		Removal *fleet.Envelope `json:"removal,omitempty"`
+	}{value.Code, value.Message, value.Routing, value.Removal}) // justify-ignore-error: a disconnected response cannot be repaired.
+}
+func readRegistration(writer http.ResponseWriter, request *http.Request, value any) bool {
+	media, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" {
+		writeError(writer, "InvalidRequest")
+		return false
+	}
+	if request.ContentLength > attention.MaximumRegistrationBytes {
+		writeError(writer, "RequestTooLarge")
+		return false
+	}
+	data, err := io.ReadAll(io.LimitReader(request.Body, attention.MaximumRegistrationBytes+1))
+	if err != nil || len(data) > attention.MaximumRegistrationBytes {
+		writeError(writer, "RequestTooLarge")
+		return false
+	}
+	if attention.Decode(data, value) != nil {
+		writeError(writer, "InvalidRequest")
+		return false
+	}
+	return true
 }

@@ -57,7 +57,6 @@ var (
 	errorGroupInvalid                = apiError{Code: "GroupInvalid", Message: group.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorGroupInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
 	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
-	errorPairingInviteRejected       = apiError{Code: "PairingInviteRejected", Message: "This fleet invite is invalid, expired, or already used.", Status: http.StatusUnauthorized, logCode: logging.ErrorPairingInviteRejected}
 	errorMachineIdentityMismatch     = admissionError(auth.AdmissionMachineMismatch, logging.ErrorMachineIdentityMismatch)
 	errorInternal                    = admissionError(auth.AdmissionUnavailable, logging.ErrorInternal)
 )
@@ -71,7 +70,7 @@ type profileDTO struct {
 	HistoryScope string `json:"historyScope,omitempty"`
 	Key          string `json:"key"`
 	Label        string `json:"label"`
-	Provider     string `json:"provider"`
+	Provider     string `json:"provider,omitempty"`
 }
 
 type characterDTO struct {
@@ -149,17 +148,6 @@ type createSessionResponseDTO struct {
 	Session    sessionDTO `json:"session"`
 }
 
-type pairingInviteResponseDTO struct {
-	PairingInviteToken string     `json:"pairingInviteToken"`
-	ExpiresAt          string     `json:"expiresAt"`
-	Machine            machineDTO `json:"machine"`
-}
-
-type pairingResponseDTO struct {
-	Machine machineDTO `json:"machine"`
-	Bearer  string     `json:"bearer"`
-}
-
 type directoryListingRequest struct {
 	Directory stringField `json:"directory"`
 }
@@ -214,8 +202,6 @@ type createSessionRequest struct {
 	Kind             sessions.LaunchKind `json:"kind"`
 	CWD              stringField         `json:"cwd"`
 	Profile          stringField         `json:"profile"`
-	Model            stringField         `json:"model"`
-	Effort           stringField         `json:"effort"`
 	OptionalTmuxName stringField         `json:"optionalTmuxName"`
 	Objective        stringField         `json:"objective"`
 	Group            stringField         `json:"group"`
@@ -396,7 +382,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}
-	if card.TerminalUsage != nil && (!card.TerminalUsage.ValidFor(card.TerminalStatus) || agent == nil || agent.Provider != agentruntime.ProviderClaude.String() || connection != nil) {
+	if card.TerminalUsage != nil && (!card.TerminalUsage.ValidFor(card.TerminalStatus) || agent == nil || agent.Provider != agentruntime.ProviderClaude.String() && agent.Provider != agentruntime.ProviderCodex.String() || connection != nil) {
 		return sessionDTO{}, errors.New("invalid terminal usage attachment")
 	}
 	if card.TerminalFooter != nil && (!card.TerminalFooter.ValidFor(card.TerminalStatus) || agent == nil || connection != nil) {

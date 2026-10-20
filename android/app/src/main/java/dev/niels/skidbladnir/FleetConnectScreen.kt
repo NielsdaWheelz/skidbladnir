@@ -55,9 +55,9 @@ internal fun fleetConnectContent(state: SkidbladnirUiState.FleetConnect): FleetC
                 "Saved fleet credentials cannot be repaired in this app. Reset the app’s data, then connect again."
             null -> when (state.mode) {
                 FleetConnectMode.Install ->
-                    "Sign in to Tailscale, then scan a fresh fleet invite from your MacBook."
+                    "Sign in to Tailscale, then scan a fresh fleet invite from a connected computer."
                 FleetConnectMode.Reconnect ->
-                    "Scan a fresh fleet invite from your MacBook to reconnect the exact installed machines."
+                    "Scan a fresh invite from a computer in the same fleet to reconnect this phone."
             }
         },
         primaryAction = if (state.phase == FleetConnectPhase.ResetRequired) null else when (state.mode) {
@@ -68,12 +68,12 @@ internal fun fleetConnectContent(state: SkidbladnirUiState.FleetConnect): FleetC
             "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
         progress = when (state.phase) {
             FleetConnectPhase.Scanning -> "Scanning a fresh fleet invite…"
-            FleetConnectPhase.Connecting -> "Connecting to 3 machines…"
+            FleetConnectPhase.Connecting -> "Connecting to your fleet…"
             FleetConnectPhase.Ready, FleetConnectPhase.Failed, FleetConnectPhase.ResetRequired -> null
         },
         failure = when (state.phase) {
             FleetConnectPhase.Failed ->
-                "Couldn’t connect the whole fleet. Nothing was saved. Create and scan a new fleet invite."
+                "Couldn’t connect this phone. Scan a fresh fleet invite to retry."
             FleetConnectPhase.Ready, FleetConnectPhase.Scanning, FleetConnectPhase.Connecting,
             FleetConnectPhase.ResetRequired,
             -> null

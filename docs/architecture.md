@@ -2,8 +2,12 @@
 
 tmux owns terminal sessions and pane processes. providers own execution and history.
 each gateway controls one host; clients compose gateways directly. there is no
-application database or execution coordinator. a notification-only observer
-on devbox reads the three independent gateways; it owns no execution authority.
+application database or execution coordinator. the configured hub owns fleet configuration, membership and a notification-only
+observer. terminals remain direct host capabilities; the hub is never an
+execution proxy. [standalone generalization](generalization-plan.md) owns the
+configuration, signed fleet, handoff, installer and optional direct-fcm contracts;
+[qualification](generalization-qualification.md) distinguishes source proof from
+the deferred installed cutover.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
 screen regions and their limits, classification, guarded-send admission and the
@@ -11,7 +15,7 @@ terminal wait states; [terminal control](terminal-agent-control.md) owns termina
 targets, capture mechanics, rendered reads, exact terminal effects and wait's
 polling loop. [terminal attention](reply-notifications.md) owns the existing
 transition predicates. [native notifications](native-notifications.md) supersedes
-its device-local reducer and visit clauses: devbox owns readiness, each device
+its device-local reducer and visit clauses: the active hub owns readiness, each device
 owns acknowledgement and native presentation. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
@@ -105,12 +109,12 @@ target operations.
   a skid store, and no helper
   owns the provider's lifetime. identity hooks never publish status or content.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
-  capability over one local tmux server. Android composes paired gateways; an
+  capability over one local tmux server. android composes enrolled gateways; an
   attachment still means one process, one screen, and one draft shared with
   that machine's laptop.
 
-from the android phone, the user can see every tmux session on the paired
-devbox, macbook, and arch host in one collection, with machine identity,
+from the android phone, the user can see every tmux session on enrolled
+computers in one collection, with machine identity,
 optional exact foreground-agent identity, inferred terminal status and recorded native identity;
 create on an explicit machine and directory using terminal or that host's
 allowlisted agent profiles; create an independent terminal from a session's
@@ -125,74 +129,40 @@ machine does not block or authorize action against another.
 
 | Concern | Decision |
 | --- | --- |
-| Product | Skíðblaðnir; ASCII namespace `skidbladnir`; public source/release, one user on one tailnet, three hosts |
-| Phone | Android 16/API 36; historical device evidence uses Galaxy S22+ `SM-S906W` |
-| Hosts | Devbox and Arch: Linux/systemd user service. MacBook: Darwin/LaunchAgent. Exact tmux and command paths come from deployment-owned strict host config |
-| Topology | clients and the notification-only devbox observer read independent gateways directly; no execution coordinator or gateway-to-gateway link |
-| Network | pinned Tailscale Serve TLS `:8443` per machine; devbox adds `/v1/notifications` and private ntfy `:8444`; Funnel/public ingress forbidden |
+| product | skíðblaðnir; ascii namespace `skidbladnir`; one trusted user, one or more installed hosts, multiple independently enrolled phones |
+| phone | android 13+; compile/target api36; google play services for qr/fcm; dedicated older-device verification waived |
+| hosts | macos26+ arm64 launch agents; ubuntu24.04+ and arch amd64 systemd user service; one standalone install per host |
+| topology | direct host clients; signed membership/configuration relays; active hub owns notification observation; no execution proxy |
+| network | local loopback works offline; remote endpoints require tailscale serve https8443; optional hub→fcm uses outbound https; no skid public ingress |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
-| Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
-| Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
+| auth | independent256-bit bearer per device; hosts store sha256 verifiers; signed routing and one-use five-minute signed invitation; exact machine header remains required |
+| profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; sparse machine overrides; terminal remains a separate launch choice |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude quota is ephemeral evidence in current inventory; native codex reports remain desktop-local observations. devbox persists content-free transition summaries and one private push subscription; device owners persist local notification acknowledgement/handling. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| state | tmux owns live terminals; providers own history/execution; fleet owns private identity/authority and replaceable signed caches; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
-| Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, compatibility fallback, or smaller-fleet branch |
+| cutover | matching signed host/phone releases; approved temporary converters preserve existing notification memory; final product has no old reader, auth path, ntfy or mixed-version mode |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
 
-Nonempty profile mapping is one ordered, closed, host-local gateway-config table:
+profiles are named opaque shell commands in the hub's yaml. hosts resolve their
+own bash/zsh and optional observation homes. one startup envelope passes command
+text as data; the initialized shell evaluates it exactly once in the requested
+cwd. ordinary failure returns to that shell; explicit `exec`/`exit` retain their
+normal meaning. aliases, functions, environment and provider settings remain the
+user's. skid adds no provider flags, account variables, plugin or daemon startup.
+only its private inherited launch markers are removed.
 
-| Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
-| --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex` |
-| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | same | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | same | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | immediate executable child of configured canonical `executableDirectory` |
-
-2026-09-17 accepted launch policy: new agent sessions use the explicit provider
-permission bypasses above on all three hosts. deployment owns these arguments;
-callers supply no permission setting. acceptance requires every declared profile
-to retain its policy through validation and launch, with claude's identity
-plugin preserved; skid never supplies a provider conversation name. codex applies its configured `--yolo` policy when its remote terminal starts the
-new conversation; stock owns that conversation and its name.
-existing sessions retain their launch policy;
-remaining provider trust/setup dialogs and project instructions still apply.
-
-the app renders the closed profile table declared by each gateway. changing
-that table changes the contract; callers cannot invent a profile. the gateway
-starts the configured login shell in the new pane. one private startup envelope
-launches the selected native provider as its foreground child with the selected
-home/flags in the requested cwd. provider exit returns to that shell without
-closing the tmux session. inherited provider homes and skid launch context are
-cleared at the launch boundary. existing tmux server/session environments remain untouched. the
-codex creation starts only the stock account daemon, then launches a normal new
-remote terminal conversation. skid does not pre-create, name or resume it. new
-codex terminals remain unassociated; manual linking is unavailable. existing exact native
-controls remain independent. a daemon-start failure ends creation before terminal
-launch. later terminal naming never writes to either provider. the agent
-retains its ordinary provider configuration and terminal. deployment
-owns one explicitly loaded Claude hook plugin; skid installs no codex hook and
-leaves existing provider hook files untouched. absent/unloaded hooks omit
-registered identity without blocking launch. new skid shell terminals use
-existing personal accounts; skid-owned bash/zsh startup functions select
-those accounts for bare commands and existing homes for account commands,
-only in marked skid terminals. ordinary shells retain their
-existing commands and account state; no global provider rerouting is installed.
-manual claude-personal leaves `CLAUDE_CONFIG_DIR` unset to preserve native
-defaults, including `~/.claude.json`; it has no forge row. these functions call
-native providers through one closed product launcher, load the identity plugin
-for claude, and never infer from cwd or read hook payloads. shared account
-wrappers are not used. direct raw-provider
-launches bypass that plugin and remain honestly unregistered. A row also owns exact
-foreground-process signatures for honest presence detection; the
-[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
-native-image matching; [wrapper discovery](issues/provider-wrapper-recognition.md)
-remains deferred. the shared observer resolves the pane
-tty's foreground process group using Linux `/proc` or native Darwin process facts.
+provider detection and exact native targets remain separate from launch labels.
+readable live process/account evidence must match one configured provider/home;
+missing or ambiguous evidence is unknown. explicit configured claude identity
+registration remains content-free and optional. native reads use the installed
+pinned helper and already-running daemons; native failure never selects terminal
+writes. quota alone has the approved native-first, attributable-terminal source
+selection. the same logical profile denotes one account across machines.
 
 ### Product language
 
@@ -218,8 +188,8 @@ portrait manifest.
 - detach and close are visibly different actions; close always confirms.
 - Validate cwd; launch only the configured terminal shell or the target host's
   declared closed agent profile set.
-- Codex credentials stay on their host; the app holds one encrypted bearer per
-  paired gateway and never shares it across machines.
+- Codex credentials stay on their host; the phone holds its own encrypted fleet bearer; each gateway admits it through
+  signed membership. provider credentials never enter clients or push messages.
 - App or gateway restart re-lists tmux; it never replays input or guesses.
 
 ### Non-goals
@@ -234,14 +204,12 @@ acceptance matrices, project enrollment, quota enforcement,
 scheduling, autonomous orchestration services, and multi-user anything. See §8 for what would
 ever bring the retired machinery back.
 
-Automatic discovery, a machine registry or coordinator, gateway proxying,
-cross-machine move/broadcast/scheduling/failover/wake, durable inventory,
-public ingress, fleet-wide pressure, arbitrary host setup, Tailscale policy
-automation, and independent phone revocation are also out of scope. The app
-has no add, rename, or remove machine capability. It installs or reconnects
-only the exact three-machine fleet from one transient QR; quarantine and
-machine-identity replacement still require explicit app-data reset outside the
-app. the cli uses explicitly configured peers, each reached directly.
+automatic authority election, execution proxying, cross-machine move/broadcast/
+scheduling/failover/wake, durable inventory, arbitrary host setup and tailscale
+policy automation remain excluded. membership changes use `join`/`remove`; new
+hosts appear automatically from signed routing. disconnected access has no cache
+expiry; revocation reaches offline hosts when they reconnect. permanent hub loss
+requires explicit new-fleet recovery and fresh enrollment.
 
 ## 3. Platform evidence carried forward
 
@@ -513,8 +481,8 @@ cwd/agent-profile choice, retains a terminal choice, and preserves tmux
 name/objective and the group draft. submission
 names the target and sends
 `POST /v1/sessions` with required `kind:"agent"` and `profile`, or
-`kind:"terminal"` and no profile; agent creation also accepts optional literal
-`model`/`effort` overrides, with native defaults on omission. both carry
+`kind:"terminal"` and no profile. creation rejects `model`/`effort` arguments;
+the exact configured command and provider settings own those choices. both carry
 `{cwd, optionalTmuxName?, objective?, group?}` to only that machine:
 
 1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
@@ -530,8 +498,8 @@ names the target and sends
    display-safety rules in [groups](groups.md#3-labels-equality-and-ordering).
    invalid input mutates nothing. interactive named-group creation prefills a
    visible editable label; a group supplies no other launch context.
-4. codex preparation starts/reuses only the stock account daemon. one tmux queue
-   creates the session; its new remote tui owns conversation creation. no native
+4. one tmux queue creates the session; configured commands and providers own
+   conversation creation. skid performs no provider preparation. no native
    id or conversation binding is reserved. unknown terminal creation remains
    unknown and never triggers replay or compensating cleanup.
    the queue creates the session (named
@@ -547,7 +515,7 @@ names the target and sends
    current-binary entrypoint carries the launch envelope without shell quoting.
    omitted names create automatic ownership in that queue. an explicitly
    supplied name is manual skid intent only. neither provider receives a name; configured
-   Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
+   configured command flags belong to the user. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
    an unproven cleanup kill. gateway creation sends no prompt; cli `start --stdin`
    composes bounded readiness and one guarded initial input under the original
@@ -675,12 +643,13 @@ ordinary commands expose list, info, enter,
 read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
 use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
-default private peer configuration
-is `~/.config/skidbladnir/client.json`. typed terminal/conversation handles select
+clients read the installed private identity and signed cache from
+`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config` selects another state directory. typed terminal/conversation handles select
 once across complete scoped inventory; `--machine` narrows that scope and `--ref`
 preserves exact captured identity for saved automation. names are creation input
 only. cli and tui consume one fleetclient projection. jarvis consumes the current
-cli using its own private peer configuration and existing write policy. ordinary
+cli with its existing exact-target/write policy. its cross-user installed-state
+access is a separately [deferred integration](issues/jarvis-installed-state-access.md). ordinary
 output uses short handles and readable machine labels; full `--json` retains
 captured refs and transport facts. skid does not provision jarvis credentials.
 `inspect c-HANDLE --machine HOST` captures a native target; `inspect --ref` projects the captured
@@ -733,7 +702,8 @@ history item is `current`.
       local tmux          local tmux           local tmux
 ```
 
-- Gateways never know each other. Each binds numeric loopback, exposes only
+- gateways exchange signed control state; execution remains strictly local. each
+  binds numeric loopback, exposes only
   `/v1` through its exact Tailscale Serve `:8443` mapping, keeps `/healthz`
   loopback-only, and observes and mutates only the local default tmux server.
   Gateway restart never kills tmux or changes the stock agent runtime. Every
@@ -752,33 +722,18 @@ history item is `current`.
   retry on the existing tick; source/admission contradictions and possible
   reconstruction effects remain blocked. transition-only diagnostics carry no
   authority. manual repair remains outside skid.
-- `internal/platform` is only the closed `Linux | Darwin` native adapter.
-  Deployment supplies one strict JSON host config containing expected platform,
-  an exact tmux path, an advisory `testedVersion`, an absolute
-  `nativeControlPath`, and either no profiles or the four closed profile rows. Every row has exactly one `Codex | Claude` provider and
-  exactly one absolute provider-home environment value: `CODEX_HOME` for Codex
-  or `CLAUDE_CONFIG_DIR` for Claude. Provider-home values are unique within a
-  provider. Identical foreground-signature rows cannot be shared across
-  providers; a concrete process matching more than one provider is
-  unclassified.
-  Unknown/null members, relative paths, duplicate keys,
-  runtime platform mismatch, or a missing/broken/noncanonical tmux executable
-  fail startup. a foreground signature's `executableDirectory` must be absolute
-  and clean and resolve to an existing directory; admission stores its canonical
-  path. recognition is independent of the launch alias's current target.
-  `skidbladnir validate-host-config
-  --host-config=ABSOLUTE_PATH` checks strict config/platform admission without
-  invoking tmux or providers; other executable availability and live behavior
-  remain separate checks.
-  a canonical installed version that differs from `testedVersion`
-  remains runnable; `scripts/fleet verify` reports functional fleet health
-  without turning advisory tmux-version drift into failure.
+- `internal/platform` is the closed `Linux | Darwin` native adapter.
+  `internal/hostconfig` strictly decodes the one human yaml; `internal/fleet`
+  owns accepted settings, per-host application, identity, membership and planned
+  authority transfer. an invalid local shell/path retains previous launch
+  settings without blocking newer membership or revocation. no json host config,
+  injected provider command policy or daemon lifecycle remains.
   `internal/process` owns native foreground and ancestry observation for
   runtime identity, command revalidation and the content-free SessionStart hook
   adapter. it establishes process identity, not work state.
   `internal/agentruntime` owns provider/profile validation,
   foreground classification, registration encoding/acceptance, and
-  provider-specific argv rules. Linux process and
+  opaque command envelopes and optional observation metadata. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
@@ -787,59 +742,25 @@ history item is `current`.
   sessions never imports agentcontrol. the gateway composes both. short-lived
   native helpers inspect/read/control using the selected profile environment;
   neither helper nor client owns the provider runtime.
-- Public `dev-server` is the sole machine-local install owner. It pins one immutable
-  GitHub release, source SHA, and two host-bundle digests, while this repository
-  owns the complete five-asset release pin. It renders the exact Devbox/MacBook/Arch host
-  configs and the local Claude identity plugin; the
-  product-local Claude shell commands load that plugin without editing user settings.
-  skid apply owns shell startup integration; shared provider maintenance has
-  no skid-specific shell prerequisite. existing provider homes, settings,
-  instructions and hook files are not provisioned or replaced by skid. it
-  owns user systemd services with lingering on Linux and one RunAtLoad
-  LaunchAgent on macOS, and applies only its dedicated
-  Tailscale Serve `:8443/v1` mapping. It removes only the retired owned root
-  handler and never resets unrelated Serve state. Reinstall preserves credentials and tmux
-  lifetimes after the first restoration handback, which requires fresh skid
-  identities and excludes old herdr-backed rollback generations. sleep, logout,
-  Tailscale loss, or service absence is ordinary
-  machine-local unreachability; Skíðblaðnir does not wake a host.
-  codex and claude use shared upstream native installations at their canonical
-  commands; gateway apply validates those existing commands. host-tool apply
-  and provider self-updaters own their installation and updates. tmux follows
-  each platform's native stable package channel. new skid agent sessions use
-  the deployment-owned permission bypasses in §2.
-- accepted 2026-09-17 operator scope: `scripts/fleet` owns only `verify`, `invite`,
-  and `provision-clients`. apply acceptance, lifetime digests, reboot checkpoints,
-  and outage/recovery commands are retired. `dev-server` owns installation,
-  idempotence, credential/session preservation, service lifecycle, and autostart;
-  behavioral verification follows the current [testing policy](rules/testing.md).
-  historical results remain attributed to their original source.
-  `scripts/fleet invite` is independent of deployment and verification: on linux or
-  macos it reads the existing private `~/.config/skidbladnir/client.json`, selects
-  arch/devbox/macbook, requests fresh invitations directly over their authenticated
-  https endpoints, and prints one qr only after all three succeed. no ssh, local
-  gateway binary, dev-server checkout, release comparison, pressure check, or
-  operator lock is required. a new invite replaces the previous one; rerun after
-  failure. pairing does not alter installed phone data until the user scans it.
-  invitation stream-bounds every response before aggregation.
-  `provision-clients` collects each host's existing handle, private Serve origin,
-  and bearer, validates the complete unique fleet before distribution, and
-  installs mode-0600 user client files on macbook, devbox, and arch. jarvis is
-  outside this distribution; no privileged deployment ssh target is used. each user
-  file is replaced atomically; distribution is sequential and may partially
-  complete. repair the transport and rerun. it requires no release pin, checkout,
-  runtime-generation or pressure check. verification and provisioning run from
-  the macbook and reach devbox through the installer-owned
-  `~/.ssh/config.d/dev-server` with explicit `ssh -F`.
-  only `verify` requires an absolute `SKIDBLADNIR_DEV_SERVER_CHECKOUT`, whose
-  release pin must be tracked and byte-exact at `HEAD`. it retains release,
-  runtime, service, private Serve, and authenticated pressure checks.
-- Host apply atomically initializes and then preserves
-  `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The
-  handle is 128 random bits encoded as `mh-` plus 32 lowercase hexadecimal
-  digits. Gateway startup fails closed on missing, insecure, or malformed
-  content and never mints, repairs, or substitutes identity. Intentional
-  deletion creates a new machine and requires explicit fleet reset on Android.
+- `internal/install` owns the signed bootstrap, immutable releases, dependencies,
+  services, exact shell blocks and tailscale route receipts. install/update stage
+  and validate before switching `current`; restart skid services only. uninstall
+  retains private/user/provider/tmux state and shared packages. public dev-server
+  is an optional personal consumer of that ordinary installer and hub yaml.
+- one host service composes gateway/fleet and, only with active signing authority,
+  the notification observer. mac retains its separate notification app lifetime.
+  optional android push uses the hub's local user-owned firebase credential and
+  outbound fcm https. public runtime options travel in signed fleet state; private
+  credentials never leave the hub. no firebase setup is required for sessions or
+  mac notifications. receiver registration/revocation and connection
+  fencing have distinct contracts. uncertain writes stop the responsible writer;
+  ordinary handoff preserves direct terminal admission.
+- startup initializes and preserves the private `mh-` machine handle. identity,
+  label, network origin and device credentials remain separate. a deleted handle
+  cannot silently adopt existing fleet identity. `skid connect`, `join`, `remove`,
+  `apply`, `status` and explicit new-fleet `recover` own setup/control operations.
+  the [generalization contract](generalization-plan.md#3-application-enrollment-and-access)
+  defines strict routes, errors, signed invitations and caches.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
   `@skid_objective_b64`, `@skid_space_b64`, `@skid_character`, `@skid_agent_runtime`, the
   server-scoped `@skid_server_epoch`). Poller state is in-memory and rebuilt on start.
@@ -854,13 +775,11 @@ history item is `current`.
 
 | Method/path | Contract |
 | --- | --- |
-| `POST /v1/pairing-invites` | Normal bearer + machine auth, empty body; replaces the in-memory slot and returns one five-minute `pairingInviteToken`, expiry, and machine |
-| `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; profiles have `key,label,provider,historyScope?`; session includes terminal identity/facts, optional foreground `agent`, separate identity-only `conversation`, and optional `connection`. connection suppresses local cwd/agent, never retargets recorded conversation |
+| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; profiles have `key,label,provider?,historyScope?`; session includes terminal identity/facts, optional foreground `agent`, separate identity-only `conversation`, and optional `connection`. connection suppresses local cwd/agent, never retargets recorded conversation |
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
 | `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
-| `POST /v1/sessions` | required `kind:"agent"` with `profile` and optional `model,effort`, or `kind:"terminal"` without agent options; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the strict session DTO; errors carry `code,message,dispatch` plus optional `target:{tmuxId,identityToken,paneId}` only after complete validated capture |
+| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without agent options; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the strict session DTO; errors carry `code,message,dispatch` plus optional `target:{tmuxId,identityToken,paneId}` only after complete validated capture |
 | `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/group and session-lifetime gate; no agent predicate |
 | `PUT /v1/sessions/{tmuxId}/group` | exact `{identityToken,group}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
 | `PATCH /v1/sessions/{tmuxId}` | `{identityToken,expectedNaming,naming}`; closed automatic/manual unions under the [naming contract](automatic-session-names.md), bodyless `204`, then inventory confirmation |
@@ -930,7 +849,7 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 6. Android surface
 
-- Compile/target/min SDK 36; one manually installed package distributed as the
+- compile/target sdk36, minimum sdk33; one manually installed package distributed as the
   public GitHub Release asset `skidbladnir-android.apk`.
 - accepted 2026-09-17 installation contract: `scripts/install-android <apk>`
   validates the package and pinned public signer, requires exactly one connected
@@ -954,44 +873,29 @@ enum values are defects, with no protocol branch or compatibility state.
   trust bypass. A release tag also carries Linux-amd64 and Darwin-arm64 host
   bundles, `SHA256SUMS`, and the public signing-certificate digest; signing
   remains local and release publication remains a reviewed draft action.
-- `MachineStore` persists the exact three-machine collection in app-private
-  preferences; handles, case-insensitive labels, origins, and bearer bytes are
-  each unique, enforced at the store read boundary. an incomplete, invalid,
-  or colliding collection quarantines the whole fleet. every bearer is
-  AES-256-GCM encrypted by Android
-  Keystore with a fresh nonce and AAD bound to handle and origin. Origins are
-  pinned HTTPS `:8443` endpoints with hostname and no user-info, path, query,
-  or fragment. Labels, origins, and handles are immutable in the app; bearer
-  repair re-authenticates the same handle. quarantine admits no credentials
-  and opens the fleet-reset screen before any dashboard or machine requests.
-  that screen distinguishes an unreadable collection index from unreadable
-  pairings. neither trusts partial plaintext metadata, permits bearer repair,
-  or offers in-app destructive recovery. reset app data outside the app, then
-  connect again. there is no old store reader or migration.
-- An empty valid store opens `Connect your fleet`. `Connect` uses Google Code
-  Scanner without camera permission and strictly parses one exact
-  `skidbladnir.fleet-invite.v1` QR containing ordered Arch, Devbox, and MacBook
-  labels, canonical HTTPS origins, immutable handles, and unique invitation
-  tokens. Tailscale installation/login stays an explicit external action; the
-  app neither embeds nor claims to control the VPN.
-- The app redeems all three one-use tokens concurrently, awaits every result,
-  and writes only after every returned handle and platform match and all
-  bearer values are distinct. It seals all bearers
-  before one synchronous preference commit and exact readback. Failure,
-  cancellation, process death, partial success, pre-existing data, or
-  quarantine leaves no new readable collection and requires a new QR. There is
-  no automatic retry. If a target commit is confirmed but its rollback cannot
-  be confirmed, the app synchronously deletes and verifies absence of the
-  fleet-only Keystore key before process quarantine, so restart cannot
-  resurrect either encrypted snapshot.
-- `Reconnect fleet` replaces manual bearer entry. It may rotate bearers in one
-  commit only when labels, origins, and handles exactly equal the complete
-  readable installed fleet. Quarantine or identity replacement cannot be
-  repaired in-app. an invite naming different machines leaves the installed
-  fleet unchanged; the reset screen explains that back keeps it, while replacing
-  it requires an external app-data reset. ordinary upgrades preserve the
-  collection; app-data loss returns to Connect. there is no old store reader,
-  ADB provisioning path, or smaller-fleet branch.
+- `MachineStore` atomically encrypts one phone identity, pending enrollment and
+  verified public routing under android keystore. cache counters cannot regress;
+  conflicting same-revision state fails. machine names/order come from signed
+  membership, without a fixed roster. unavailable origins remain visible.
+- an empty store opens connect. scan `skid connect`'s signed five-minute qr,
+  persist a pending credential before joining, and recover lost replies using
+  that same credential. saved bearers go only to signed known routing or a
+  verified signed invitation. same-fleet discovery repair retains identity and
+  acknowledgement. a signed removal proof clears access; rejoining creates a new
+  device identity. tailscale login remains external.
+- optional fcm carries only configuration/generation-fenced challenges and current-state hints.
+  one standard apk initializes the default firebase app from durable verified
+  public fleet options before cold service startup. options changes fence old
+  push immediately and require one app restart; the changed project is explicitly
+  unregistered then registered before proving delivery. omitted configuration is
+  healthy disabled operation. [setup](android-push-setup.md) owns credential setup,
+  local storage and hub-migration prerequisites.
+  background jobs refresh signed fleet routing, fetch authenticated snapshots and
+  use the existing device admission/effect owner. failed reads receive bounded
+  retries; snapshots alone cannot clear independent push-transport failure.
+  android stores its own acknowledgement, never a fleet-wide read receipt.
+  approved temporary conversion preserves old memory; final source has no
+  schema3/ntfy/pairing reader.
 - dashboard fleet collection, exclusive views, one machines/details disclosure,
   forge and terminal follow §4. one dashboard entry lives above the destination
   switch and owns selected view, one live lazy grid and pending restoration.
@@ -1076,8 +980,9 @@ enum values are defects, with no protocol branch or compatibility state.
   At most one active phone terminal exists, and its connection owns one exact
   `SessionTarget`;
   reconnect re-reads that machine before opening WSS.
-  Identity change closes the active terminal and disables that pairing until
-  explicit fleet reset.
+  a mismatched machine identity closes the active terminal and refuses that
+  endpoint. signed membership updates own routing; signed device removal clears
+  the association and requires a fresh connect scan with a new device identity.
   Rotation, IME resize, Activity/process recreation, and app backgrounding
   cleanly recreate or release the attachment; nothing replays. Recreation from
   Terminal returns to the saved Dashboard entry and never restores or
@@ -1095,18 +1000,14 @@ enum values are defects, with no protocol branch or compatibility state.
 
 - Tailnet-only ingress; TLS via Tailscale Serve; no Funnel, cookies,
   redirects, or CORS.
-- Each gateway owns an independently minted 256-bit bearer. Every `/v1`
-  request supplies exactly one Authorization header and uses constant-time
-  comparison; re-minting one host revokes only that token and closes that
-  host's live streams on its trusted clients. Tailnet admission belongs to loopback binding plus
-  Tailscale Serve, not a caller-supplied identity header.
-- Each gateway has at most one in-memory five-minute pairing invitation.
-  Creating another replaces it; restart or bearer rotation invalidates it;
-  redemption consumes it atomically. Only a domain-separated SHA-256 verifier
-  is retained. Invalid, expired, used, wrong-machine, or replaced redemption
-  is one non-oracular `PairingInviteRejected`. The fleet QR is transient,
-  generated once per phone, passed to `qrencode` over stdin, and never stored or
-  logged.
+- each enrolled device owns an independent256-bit bearer; hosts retain its
+  sha256 verifier. private host state is computer-only; phones get public routing.
+  local access uses a distinct installed local credential, never loopback-address
+  authority. removals close connections and retain signed revocation proofs.
+- hub invitations are five-minute single-use capabilities. exact signed claims
+  bind the destination, fleet, token and expiry. a copied public fingerprint
+  alone cannot redirect an existing credential. qr output is transient and
+  contains no permanent bearer.
 - After authentication, `Skidbladnir-Machine` binds the pinned pairing to the
   reached installation. It is not a credential and never substitutes for the
   bearer. A mismatch discloses no actual handle and cannot reach tmux.
@@ -1131,6 +1032,14 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-20: [standalone generalization](generalization-plan.md) explicitly accepts
+arbitrary enrolled hosts/profiles, standalone installation, signed per-device
+fleet access and planned hub moves, and optional user-configured direct hub→fcm
+delivery with one runtime-configured apk. skid has no project-operated notification
+backend. it supersedes the older fixed-fleet, daemon-launch, ntfy and
+creation model/effort clauses below. dated entries retain their historical
+qualification; they do not reauthorize retired runtime paths.
 
 2026-10-20 accepted design: [session inventory and attachment latency](session-latency.md)
 owns batched native inventory, cancellable mutation admission, independent client
@@ -1334,7 +1243,7 @@ desktop tty and physical-phone evidence is recorded there. it preserves the
 file schema, writer, budgets and sole owner. mixed versions are unsupported;
 coordinated release/activation and actual reboots remain separate.
 
-push, cross-device unread sync, provenance, copied provider history, durable
+cross-device unread sync, provenance, copied provider history, durable
 receipts and replay remain excluded. any new capability requires an explicit
 scope and acceptance-criterion change; removing old code does not authorize it.
 

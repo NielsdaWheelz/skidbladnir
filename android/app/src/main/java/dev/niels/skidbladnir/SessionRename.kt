@@ -174,7 +174,6 @@ internal fun completeRenameHttp(
             ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked,
             ApiErrorCode.ProfileUnknown,
             ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
-            ApiErrorCode.PairingInviteRejected,
             ApiErrorCode.ReconnectRequired,
             ApiErrorCode.TerminalConfigurationUnsupported,
             ApiErrorCode.AgentTargetStale,

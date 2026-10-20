@@ -1,10 +1,9 @@
 # standalone skid and fleet generalization
 
-status: design discussion, updated 2026-10-20. the owner has authorized recording
-decisions, not implementation. this document collects the agreed direction,
-material costs, and remaining questions. the existing
-[architecture](architecture.md) describes the current product until an explicit
-implementation cutover updates it.
+status: implementation authorized, direction updated 2026-10-20. this is the
+owner's decision record. [the implementation contract](generalization-plan.md)
+owns schemas, boundaries and acceptance. unrelated completed implementation is
+retained. installed fleet cutover remains deferred.
 
 skid should be one installable product for one person and their machines. each
 machine owns its local tmux sessions. desktop and phone clients manage enrolled
@@ -21,6 +20,10 @@ unrelated interaction, notification, api, or release redesign is outside scope.
 product changes that are not required for generalization belong in separate prs,
 even if discussed or approved earlier. this scope does not absorb them for
 convenience.
+2026-10-20 final clarification: the owner's upgraded skid must look, feel and act
+the same as today, except for the necessary generalization changes explicitly
+listed here. preserve existing names/order, defaults, effective commands/accounts,
+shell and terminal selection; parity is release acceptance, not an aspiration.
 licensing is explicitly outside this scope and does not block generalization.
 the existing [license issue](issues/project-license.md) belongs to a separate pr;
 no license choice is made here.
@@ -77,7 +80,7 @@ later dev-server run, so lasting personal changes belong in dev-server's source.
 | --- | --- |
 | install skid, tmux, and required runtime dependencies; install or reuse tailscale for remote/mobile access | reuse compatible existing installations. package-manager and privilege requirements must be explicit. tailscale login and network permissions remain user actions; exact dependency versions and update ownership are engineering details. |
 | provider installation and login remain external prerequisites for those profiles | plain terminals work without codex or claude. a missing provider must not prevent the whole product from running. |
-| macos arm64 and linux amd64 initially | intel macs and linux arm64 are deferred. minimum macos and ubuntu versions remain open. |
+| macos arm64 and linux amd64 initially | intel macs and linux arm64 are deferred. the implementation plan records the current mac artifact floor and requires a qualified ubuntu floor before publication. |
 | ubuntu and arch with systemd are sufficient linux targets | other distributions and service managers are outside launch support. |
 | android 13 and newer | the owner explicitly waived dedicated older-android verification: patch discovered problems. this does not waive ordinary build/static checks or establish device qualification. |
 
@@ -261,7 +264,7 @@ do not silently accept and ignore them.
 
 agreed shell support: bash and zsh are the supported initial shells for launch.
 fish and other shell startup integrations are outside the first release. the
-exact yaml schema remains open.
+exact yaml schema is defined in the [implementation contract](generalization-plan.md#2-configuration-and-durable-state).
 
 ## creation flow and shell selection
 
@@ -344,7 +347,7 @@ would also require new handling; the current input path forwards them without
 using them as notification evidence.
 
 one-machine mac use must work with that mac as hub, without a phone, another
-host, an android push sender, or tailscale connectivity. this requires removing
+host, firebase configuration, or tailscale connectivity. this requires removing
 the observer's current [three-machine and ntfy startup coupling](../internal/agentcli/notifier.go)
 and supporting local access to the observer. this is a necessary generalization
 adaptation; the notification behavior remains the existing contract.
@@ -354,16 +357,47 @@ terminal work and direct access continue. an always-on hub also cannot observe
 a source machine that is asleep or unreachable. mac delivery reconciles current
 state after wake under the existing rules.
 
-after satisfying the networking prerequisite, the intended flow is: install the
-skid apk, run `skid connect` on a machine, scan the qr, and grant the ordinary
-android notification permission. users should not install or configure ntfy,
-a push distributor, or firebase infrastructure.
+after satisfying the networking prerequisite, install the standard skid apk,
+run `skid connect` and scan the qr. pairing and desktop/mobile session management
+require NO firebase setup. android background notifications are optional.
 
-the working push design is embedded fcm support plus a skid-operated push sender.
-its privileged credentials stay on that sender, never in a distributed host
-binary or apk. this exchanges user setup for a service operated by the project
-and a google-services dependency on the phone. tailscale remains the path for
-session access; push delivery does not grant terminal authority.
+2026-10-20 direction change: there is NO project-operated notification relay.
+users who opt into android push own their firebase project, sending credentials
+and their maintenance. the existing hub sends content-free fcm messages directly
+over outbound https. no additional server, public endpoint, custom domain, dns,
+caddy or notification app is required. the proposed
+`skid.nielseriknandal.com` deployment and its pending dns/security-classification
+requests are cancelled. previously created cloud resources are inventoried for
+separate owner-approved cleanup, never deleted as an incidental source edit.
+
+one distributed apk initializes firebase at runtime using public configuration
+received automatically through signed fleet state after pairing. no project
+identity or private sending credential is compiled into it. four public firebase
+fields live in optional hub yaml; the private service-account export is a local
+`0600` hub file, outside shared yaml, fleet snapshots and phone payloads.
+[the setup guide](android-push-setup.md) owns the opt-in procedure.
+
+omitting android push configuration is healthy disabled operation: no firebase
+initialization/registration, repeating setup error or blocked session management.
+mac notifications and foreground hub reads remain independent of firebase.
+configured push with missing credentials, denied permission or transport failure
+reports its own actionable status; it cannot fail terminal APIs or mac delivery.
+
+material sdk limitation, accepted by the owner: firebase options stay immutable
+within an android process. a project/options change immediately fences old push,
+persists the new desired configuration, and requires one normal app restart.
+initial pairing can initialize an absent firebase app; same-options re-pairing
+reuses it with a new fleet/device registration. no hot delete/reinitialize,
+automatic process killing, separate push process or custom apk. ordinary process
+death must restore runtime options before a cold messaging service handles work.
+android force-stop requires reopening the app; pre-first-unlock delivery is not
+promised. both differ from ordinary process death.
+
+before broad production rewrites, prove runtime initialization and actual fcm
+registration/background delivery using one unchanged apk, including two actual
+projects, process death, re-pairing and stale-registration fencing. a build or
+fcm validate-only response does not pass that gate. surface a failed boundary;
+never restore a relay or require project-specific apks.
 
 agreed content: names and reason, without terminal excerpts. under the owner's
 preserve-existing-behavior clarification, this retains the current
@@ -379,6 +413,16 @@ multiple phones require separate registrations, not a new shared acknowledgement
 policy. keep the current android adapter and platform/channel settings; no new
 lock-screen privacy setting is part of this work.
 
+2026-10-20 cutover decision: one fresh `skid connect` qr scan per phone is accepted
+to replace today's shared gateway credentials with independent device credentials.
+preserve tmux/provider data, observer epoch/attention and valid device-local
+acknowledgements; no app-data reset or automatic old-credential conversion.
+this upgrade cost is separate from exceptional discovery repair after a hub move.
+the owner also approved a temporary conversion build using the same android
+signing identity to preserve notification memory before the final apk replaces
+it. temporary host tooling does the equivalent for observer state. this adds one
+staged phone update during cutover; the final product retains no legacy reader.
+
 adapt fcm at the existing boundary: a content-free revision hint prompts an
 authenticated current-state fetch, then the existing device owner decides
 presentation. session names and reasons arrive over the private connection.
@@ -386,15 +430,25 @@ the proposed encrypted summary displayed directly from a push is withdrawn:
 it was not agreed and would require changing current snapshot-admission
 semantics. do not add content-encryption key machinery merely for that proposal.
 
-required transport work includes fcm registration/token refresh/removal for each
-phone, admission at the skid-operated sender, and dynamic fleet/hub routing.
-the sender and fcm still observe delivery metadata. android background execution
-must support the existing snapshot fetch without weakening currentness: the
-official [delivery guidance](https://firebase.google.com/docs/cloud-messaging/android-message-priority)
-requires appropriate scheduling for additional work beyond the short callback.
-this is implementation work, not proof of delivery. preserve the existing
-locked-phone and outage qualification requirements; an always-on hub alone
-does not establish them.
+retain per-phone registration rotation, possession proof, revocation, signed
+fleet routing, notification admission and device-local acknowledgement. bind
+registration, challenge and hints to the accepted public firebase configuration
+and receiver generation. changing/clearing configuration invalidates old
+registrations without resetting attention or acknowledgement memory. google
+observes delivery metadata; notification details come only from authenticated
+hub reads over tailscale. no terminal or notification content goes through fcm.
+
+planned hub transfer carries observer/receiver state but NEVER firebase private
+credentials. for configured push, the destination must already have its own
+matching private credential file before source fencing; otherwise placement stays
+pending while the old hub remains active. disable push explicitly to move without
+that prerequisite. credential rotation/reload uses existing startup/apply triggers,
+not another configuration service.
+
+android callbacks schedule bounded authenticated fetches under the existing
+admission owner. retain locked-phone/outage qualification. the official
+[delivery guidance](https://firebase.google.com/docs/cloud-messaging/android-message-priority)
+does not guarantee delivery under force-stop or unreachable tailscale.
 
 ## native reads and quota with terminal control
 
@@ -411,6 +465,9 @@ product pr. ordinary prompt submission and interruption stay on tmux; there is
 no automatic native write or transport fallback after dispatch. use
 already-running daemons only. ordinary shell-command semantics remain agreed;
 do not rewrite commands to attach them to a daemon.
+2026-10-20 reconfirmation: retain these two deliberate quota sources under the
+hard-cut instruction. "no fallbacks" removes legacy compatibility paths; it does
+not remove this agreed acquisition policy.
 
 skid already supports terminal list/create, attach, rename/group, rendered reads,
 guarded send, deliberate text/keys, interruption, wait, and exact closure. retain
@@ -480,8 +537,9 @@ neither source should invent unsupported windows or reset times.
 codex currently maps foreground account-home environment to configured profiles;
 claude uses its identity hook. if launch-time hook injection is removed, replace
 claude attribution through ordinary process observation using the agreed profile
-metadata above. its schema, matching details, and default-home rules remain
-undecided. the original launch label cannot prove the account after manual
+metadata above. its schema, matching details, and default-home rules are
+specified in the [implementation contract](generalization-plan.md#5-launch-observation-and-quota).
+the original launch label cannot prove the account after manual
 process replacement.
 
 `start --stdin` checks observed profile and readiness before one terminal
@@ -536,7 +594,7 @@ the remaining work:
 | profile commands and attribution | ordinary shell semantics already determine missing-command behavior; existing terminal controls already work for unsupported programs. implementation must remove injected launch policy and replace account-attribution dependencies where necessary. do not add command parsing/preflight that rejects valid aliases, functions, or compositions. |
 | standalone installation and configuration | implement one installer, the shared yaml and its generated snapshots, and dev-server consumption. retain startup, provider/session preservation, and matching-version updates. choose schema, paths, dependency handling, and compatible os minima as engineering details; surface an unavoidable new limitation. |
 | enrollment and hub changes | implement the agreed membership, cached-access/revocation, joining, planned transfer, and lost-hub recovery rules. invitation encoding and pending-status presentation are engineering details. no automatic election, automatic config merging, or built-in backup product is required. |
-| notification transport | replace user-managed ntfy with the agreed embedded fcm/sender setup, extend the single receiver to multiple independently paired phones, and generalize observer routing. preserve existing content, currentness, acknowledgement, and presentation. sender admission and background scheduling need a concrete design and boundary verification. |
+| notification transport | replace ntfy with optional user-configured direct hub→fcm delivery, one runtime-configured apk and independent phones. preserve content, currentness, acknowledgement and presentation. runtime firebase proof precedes production changes. |
 | migration, removal, and documentation | translate the existing installed layout into the new ownership/configuration without deleting provider data or active tmux work; document one local install, fleet enrollment, phone pairing, and recovery path. preserve existing verification policy. these are delivery requirements, not new preference questions. |
 
 ### resolved clarifications from the 2026-10-20 audit
@@ -553,11 +611,12 @@ resolved; preserve the existing behavior elsewhere.
 other findings are engineering obligations under existing decisions: preserve
 notification identity during handoff, update generated membership/routing while
 clients run, remove fixed-roster admission, remove provider installation as an
-installer prerequisite, and complete push registration after pairing. successful
+installer prerequisite, and complete optional push registration after pairing only when configured. successful
 pairing or snapshot access does not prove background delivery. no further owner
-preference question is currently identified. concrete engineering design and
-qualification remain; surface a question if they expose a necessary behavior
-change or an unresolved conflict. this record does not authorize implementation.
+preference question is currently identified. the [implementation contract](generalization-plan.md)
+records the concrete design; implementation and qualification remain. surface a
+question if they expose a necessary behavior
+change or an unresolved conflict. current implementation authorization remains in force.
 
 this document remains the decision record. actual defects and deferred
 implementation follow-ups belong in individual `docs/issues/` records; the
@@ -573,6 +632,6 @@ enrollment, hub transfer/recovery, and phone delivery across sleep/outage.
 size the checks to the failure's consequences and keep source/build evidence
 separate from installed-host and physical-device behavior.
 
-no implementation, provider invocation, tmux experiment, live-host operation, or
-phone qualification is authorized by recording this plan. those boundaries remain
-unrun for this design. the android 13 compatibility waiver above remains explicit.
+the [qualification record](generalization-qualification.md) separates completed
+source/probes from this direction's new runtime proof and deferred installation.
+the android13 compatibility waiver and two-phone deferral remain explicit.

@@ -81,10 +81,12 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
 internal fun notificationHealthMessage(health: NotificationHealth): String = when (health) {
+    NotificationHealth.Disabled -> "background notifications are disabled on the hub."
+    NotificationHealth.RestartRequired -> "stop and reopen skid to activate changed notification settings."
+    NotificationHealth.Unconfigured -> "configure android push credentials on the hub."
     NotificationHealth.Ready -> "allow notifications for needs input."
     NotificationHealth.SetupRequired, NotificationHealth.ResetRequired -> "notification setup required."
     NotificationHealth.PermissionBlocked -> "notifications are blocked in system settings."
-    NotificationHealth.DistributorMissing -> "install ntfy to receive notifications."
     NotificationHealth.DeliveryUnavailable -> "notification delivery unavailable."
 }
 
@@ -173,7 +175,7 @@ internal fun DashboardMain(
                     MachineStrip(machine)
                 }
             }
-            if (controller.notificationHealth != NotificationHealth.Ready) NoticePanel(
+            if (controller.notificationHealth !in setOf(NotificationHealth.Ready, NotificationHealth.Disabled)) NoticePanel(
                 tone = NoticeTone.Degraded, body = notificationHealthMessage(controller.notificationHealth),
                 actions = {
                     TextButton(onClick = onNotificationSetup) { Text("set up notifications") }

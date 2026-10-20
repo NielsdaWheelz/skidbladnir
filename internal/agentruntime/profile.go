@@ -4,15 +4,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"golang.org/x/text/unicode/norm"
 )
-
-var environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const maxProfileKeyTextLength = 32
 
@@ -24,15 +23,13 @@ const (
 )
 
 func ParseProvider(value string) (Provider, error) {
-	provider := Provider(value)
-	switch provider {
+	switch provider := Provider(value); provider {
 	case ProviderCodex, ProviderClaude:
 		return provider, nil
 	default:
 		return "", errors.New("provider is invalid")
 	}
 }
-
 func (provider Provider) String() string { return string(provider) }
 
 type ProfileKey string
@@ -42,11 +39,8 @@ func ParseProfileKey(value string) (ProfileKey, error) {
 		return "", errors.New("profile key is invalid")
 	}
 	for index := range len(value) {
-		character := value[index]
-		if character >= 'a' && character <= 'z' {
-			continue
-		}
-		if index > 0 && (character >= '0' && character <= '9' || character == '_' || character == '-') {
+		c := value[index]
+		if c >= 'a' && c <= 'z' || index > 0 && (c >= '0' && c <= '9' || c == '_' || c == '-') {
 			continue
 		}
 		return "", errors.New("profile key is invalid")
@@ -54,176 +48,106 @@ func ParseProfileKey(value string) (ProfileKey, error) {
 	return ProfileKey(value), nil
 }
 
-// ForegroundSignature fields are conjunctive; a profile's signatures are
-// alternatives. ExecutableDirectory is canonicalized at config admission and
-// matches only immediate executable children.
-type ForegroundSignature struct {
-	ExecutableBase      string
-	ExecutableDirectory string
-}
-
-type EnvironmentVariable struct {
-	Name  string
-	Value string
-}
-
 type Profile struct {
-	Key                  ProfileKey
-	Label                string
-	Provider             Provider
-	Command              string
-	Environment          []EnvironmentVariable
-	ForegroundSignatures []ForegroundSignature
-	Arguments            []string
+	Key      ProfileKey
+	Label    string
+	Command  string
+	Provider Provider
+	Home     string
 }
 
 func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 	validated := make([]Profile, 0, len(profiles))
-	keys := make(map[ProfileKey]struct{}, len(profiles))
-	labels := make(map[string]struct{}, len(profiles))
-	homes := map[Provider]map[string]struct{}{
-		ProviderCodex:  {},
-		ProviderClaude: {},
-	}
-	type providerSignature struct {
-		provider  Provider
-		signature ForegroundSignature
-	}
-	allSignatures := make([]providerSignature, 0, len(profiles))
-
+	keys := make(map[ProfileKey]bool, len(profiles))
 	for _, profile := range profiles {
 		if _, err := ParseProfileKey(string(profile.Key)); err != nil {
-			return nil, errors.New("profile key is invalid")
+			return nil, err
 		}
-		if _, found := keys[profile.Key]; found {
+		if keys[profile.Key] {
 			return nil, errors.New("profile key is duplicated")
+		}
+		keys[profile.Key] = true
+		if profile.Label == "" {
+			profile.Label = string(profile.Key)
 		}
 		if !safeProfileLabel(profile.Label) {
 			return nil, fmt.Errorf("profile %s label is invalid", profile.Key)
 		}
-		if _, found := labels[profile.Label]; found {
-			return nil, errors.New("profile label is duplicated")
+		if !validCommand(profile.Command) {
+			return nil, fmt.Errorf("profile %s command is invalid", profile.Key)
 		}
-		if _, err := ParseProvider(profile.Provider.String()); err != nil {
-			return nil, fmt.Errorf("profile %s provider is invalid", profile.Key)
-		}
-		if !filepath.IsAbs(profile.Command) {
-			return nil, fmt.Errorf("profile %s command must be absolute", profile.Key)
-		}
-		homeName := providerHomeEnvironment(profile.Provider)
-		home := ""
-		environmentNames := make(map[string]struct{}, len(profile.Environment))
-		for _, variable := range profile.Environment {
-			if !environmentPattern.MatchString(variable.Name) || !utf8.ValidString(variable.Value) || strings.ContainsRune(variable.Value, 0) {
-				return nil, fmt.Errorf("profile %s environment is invalid", profile.Key)
+		if profile.Provider == "" {
+			if profile.Home != "" {
+				return nil, fmt.Errorf("profile %s home requires provider", profile.Key)
 			}
-			if variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" || variable.Name == "SKIDBLADNIR_AGENT" || variable.Name == "SKIDBLADNIR_CONNECTION" || variable.Name == "SKIDBLADNIR_TERMINAL_CONTEXT" || variable.Name == "SKIDBLADNIR_STARTUP_PID" || variable.Name == "SKIDBLADNIR_STARTUP_CWD" || variable.Name == "SKIDBLADNIR_STARTUP_HELPER" || variable.Name == "SKIDBLADNIR_STARTUP_AGENT" {
-				return nil, fmt.Errorf("profile %s environment belongs to another launch context", profile.Key)
+		} else {
+			if _, err := ParseProvider(profile.Provider.String()); err != nil {
+				return nil, err
 			}
-			if _, found := environmentNames[variable.Name]; found {
-				return nil, fmt.Errorf("profile %s environment name is duplicated", profile.Key)
-			}
-			environmentNames[variable.Name] = struct{}{}
-			if variable.Name == "CODEX_HOME" || variable.Name == "CLAUDE_CONFIG_DIR" {
-				if variable.Name != homeName {
-					return nil, fmt.Errorf("profile %s declares another provider's home", profile.Key)
+			if profile.Home == "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
 				}
-				home = variable.Value
+				profile.Home = filepath.Join(home, providerDefaultDirectory(profile.Provider))
 			}
-		}
-		if home == "" || !filepath.IsAbs(home) {
-			return nil, fmt.Errorf("profile %s provider home must be absolute", profile.Key)
-		}
-		if _, found := homes[profile.Provider][home]; found {
-			return nil, fmt.Errorf("provider %s home is duplicated", profile.Provider)
+			if !filepath.IsAbs(profile.Home) || !utf8.ValidString(profile.Home) || strings.ContainsRune(profile.Home, 0) {
+				return nil, fmt.Errorf("profile %s provider home must be absolute", profile.Key)
+			}
+			profile.Home = canonicalHome(profile.Home)
 		}
 
-		if len(profile.ForegroundSignatures) == 0 {
-			return nil, fmt.Errorf("profile %s has no foreground signature", profile.Key)
-		}
-		for _, signature := range profile.ForegroundSignatures {
-			if signature.ExecutableBase == "" && signature.ExecutableDirectory == "" {
-				return nil, fmt.Errorf("profile %s has no foreground process identity", profile.Key)
-			}
-			if signature.ExecutableBase != "" && (!utf8.ValidString(signature.ExecutableBase) || filepath.Base(signature.ExecutableBase) != signature.ExecutableBase || hasTerminalControl(signature.ExecutableBase)) {
-				return nil, fmt.Errorf("profile %s has an invalid foreground executable", profile.Key)
-			}
-			if signature.ExecutableDirectory != "" && (!filepath.IsAbs(signature.ExecutableDirectory) || filepath.Clean(signature.ExecutableDirectory) != signature.ExecutableDirectory || !utf8.ValidString(signature.ExecutableDirectory) || strings.ContainsRune(signature.ExecutableDirectory, 0)) {
-				return nil, fmt.Errorf("profile %s has an invalid foreground executable directory", profile.Key)
-			}
-			allSignatures = append(allSignatures, providerSignature{provider: profile.Provider, signature: signature})
-		}
-
-		for index, argument := range profile.Arguments {
-			if !utf8.ValidString(argument) || strings.ContainsRune(argument, 0) {
-				return nil, fmt.Errorf("profile %s has an invalid argument", profile.Key)
-			}
-			if profileLaunchOverride(profile, index) {
-				return nil, fmt.Errorf("profile %s arguments must not set model or effort", profile.Key)
-			}
-			if profile.Provider == ProviderClaude && claudeNameArgument(argument) {
-				return nil, fmt.Errorf("profile %s arguments must not set Claude session names", profile.Key)
-			}
-		}
-
-		validated = append(validated, cloneProfile(profile))
-		keys[profile.Key] = struct{}{}
-		labels[profile.Label] = struct{}{}
-		homes[profile.Provider][home] = struct{}{}
-	}
-
-	for leftIndex, left := range allSignatures {
-		for _, right := range allSignatures[leftIndex+1:] {
-			if left.provider != right.provider && left.signature == right.signature {
-				return nil, errors.New("foreground signatures overlap across providers")
-			}
-		}
+		validated = append(validated, profile)
 	}
 	return validated, nil
 }
-
 func CloneProfiles(profiles []Profile) []Profile {
 	cloned := make([]Profile, len(profiles))
-	for index, profile := range profiles {
-		cloned[index] = cloneProfile(profile)
-	}
+	copy(cloned, profiles)
+
 	return cloned
 }
-
 func MatchProfileEnvironment(profiles []Profile, provider Provider, lookup func(string) (string, bool)) (ProfileKey, bool) {
 	homeName := providerHomeEnvironment(provider)
 	if homeName == "" {
 		return "", false
 	}
 	home, found := lookup(homeName)
-	if !found && provider == ProviderCodex {
-		if userHome, present := lookup("HOME"); present && filepath.IsAbs(userHome) {
-			home, found = filepath.Join(userHome, ".codex"), true
+	if !found {
+		userHome, present := lookup("HOME")
+		if !present || !filepath.IsAbs(userHome) {
+			return "", false
 		}
+		home = filepath.Join(userHome, providerDefaultDirectory(provider))
 	}
-	if !found || !filepath.IsAbs(home) {
+	if !filepath.IsAbs(home) {
 		return "", false
 	}
+	home = canonicalHome(home)
+	var key ProfileKey
 	for _, profile := range profiles {
-		if profile.Provider != provider {
-			continue
-		}
-		for _, variable := range profile.Environment {
-			if variable.Name == homeName && variable.Value == home {
-				return profile.Key, true
+		if profile.Provider == provider && profile.Home == home {
+			if key != "" {
+				return "", false
 			}
+			key = profile.Key
 		}
 	}
-	return "", false
+	return key, key != ""
 }
-
-func cloneProfile(profile Profile) Profile {
-	profile.Environment = append([]EnvironmentVariable(nil), profile.Environment...)
-	profile.ForegroundSignatures = append([]ForegroundSignature(nil), profile.ForegroundSignatures...)
-	profile.Arguments = append([]string(nil), profile.Arguments...)
-	return profile
+func canonicalHome(home string) string {
+	canonical, err := filepath.EvalSymlinks(home)
+	if err == nil {
+		return canonical
+	}
+	return filepath.Clean(home)
 }
-
+func providerDefaultDirectory(provider Provider) string {
+	if provider == ProviderCodex {
+		return ".codex"
+	}
+	return ".claude"
+}
 func providerHomeEnvironment(provider Provider) string {
 	switch provider {
 	case ProviderCodex:
@@ -234,88 +158,54 @@ func providerHomeEnvironment(provider Provider) string {
 		return ""
 	}
 }
-
 func safeProfileLabel(label string) bool {
 	if strings.TrimSpace(label) == "" || !utf8.ValidString(label) || utf8.RuneCountInString(label) > 64 || !norm.NFC.IsNormalString(label) {
 		return false
 	}
-	for _, value := range label {
-		if forbiddenIdentityTextRune(value) {
+	for _, r := range label {
+		if forbiddenIdentityTextRune(r) {
 			return false
 		}
 	}
 	return true
 }
-
-func claudeNameArgument(argument string) bool {
-	return argument == "-n" || argument == "--name" || strings.HasPrefix(argument, "--name=")
-}
-
-func profileLaunchOverride(profile Profile, index int) bool {
-	argument := profile.Arguments[index]
-	if argument == "--model" || strings.HasPrefix(argument, "--model=") || strings.HasPrefix(argument, "-m") ||
-		argument == "--effort" || strings.HasPrefix(argument, "--effort=") {
-		return true
-	}
-	if profile.Provider != ProviderCodex {
-		return false
-	}
-	var assignment string
-	switch {
-	case argument == "--config" || argument == "-c":
-		if index+1 == len(profile.Arguments) {
-			return false
-		}
-		assignment = profile.Arguments[index+1]
-	case strings.HasPrefix(argument, "--config="):
-		assignment = strings.TrimPrefix(argument, "--config=")
-	case strings.HasPrefix(argument, "-c"):
-		assignment = strings.TrimPrefix(strings.TrimPrefix(argument, "-c"), "=")
-	default:
-		return false
-	}
-	key, _, found := strings.Cut(assignment, "=")
-	key = strings.TrimSpace(key)
-	if len(key) >= 2 && (key[0] == '"' && key[len(key)-1] == '"' || key[0] == '\'' && key[len(key)-1] == '\'') {
-		key = key[1 : len(key)-1]
-	}
-	return found && (key == "model" || key == "model_reasoning_effort")
-}
-
-func hasTerminalControl(value string) bool {
-	for _, character := range value {
-		if isC0OrC1(character) {
-			return true
-		}
-	}
-	return false
-}
-
-func isC0OrC1(value rune) bool {
-	return value >= 0 && value <= 0x1f || value >= 0x7f && value <= 0x9f
-}
-
-// CodexEndpoint is the provider-owned rendezvous for this account.
 func CodexEndpoint(profile Profile) string {
-	for _, variable := range profile.Environment {
-		if variable.Name == "CODEX_HOME" {
-			return filepath.Join(variable.Value, "app-server-control", "app-server-control.sock")
-		}
+	return filepath.Join(profile.Home, "app-server-control", "app-server-control.sock")
+}
+func HistoryScope(profile Profile) (string, error) {
+	if profile.Provider == "" || profile.Home == "" {
+		return "", errors.New("profile omits native history home")
 	}
-	panic("codex profile omits its validated home") // justify-defect: profile validation requires its provider home.
+	home, err := filepath.EvalSymlinks(profile.Home)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(string(profile.Provider)+"\x00"+home))), nil
 }
 
-// HistoryScope identifies the provider's existing canonical account home.
-func HistoryScope(profile Profile) (string, error) {
-	for _, entry := range profile.Environment {
-		if entry.Name != providerHomeEnvironment(profile.Provider) {
-			continue
+// ResolveProfiles translates accepted configuration into observation metadata.
+// Command text remains opaque and never supplies a native executable path.
+func ResolveProfiles(configured []hostconfig.Profile) ([]Profile, error) {
+	profiles := make([]Profile, 0, len(configured))
+	for _, item := range configured {
+		profile := Profile{Key: ProfileKey(item.Name), Label: item.Label, Command: item.Command, Home: item.Home}
+		switch item.Provider {
+		case "":
+		case "codex":
+			profile.Provider = ProviderCodex
+		case "claude":
+			profile.Provider = ProviderClaude
+		default:
+			return nil, errors.New("profile provider is invalid")
 		}
-		home, err := filepath.EvalSymlinks(entry.Value)
-		if err != nil {
-			return "", err
+		if strings.HasPrefix(profile.Home, "~/") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, err
+			}
+			profile.Home = filepath.Join(home, strings.TrimPrefix(profile.Home, "~/"))
 		}
-		return fmt.Sprintf("%x", sha256.Sum256([]byte(string(profile.Provider)+"\x00"+home))), nil
+		profiles = append(profiles, profile)
 	}
-	return "", errors.New("profile omits native history home")
+	return ValidateProfiles(profiles)
 }

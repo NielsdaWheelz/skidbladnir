@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# bootstrap trust is this pinned key, distributed with the reviewed installer.
+# fetching a key beside an archive would not authenticate that archive.
+release_public_key='-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAQPo1EnENUATq/vDEyv4YW31yW6CauuzQ249BT/TBLAU=
+-----END PUBLIC KEY-----'
+[[ $# -le 1 ]] || { printf 'usage: %s [vMAJOR.MINOR.PATCH]\n' "$0" >&2; exit 64; }
+case "$(uname -s)/$(uname -m)" in
+  Darwin/arm64)
+    platform=darwin-arm64
+    os_version="$(sw_vers -productVersion)"
+    [[ "${os_version%%.*}" -ge 26 ]] || { printf 'macos 26 or later is required\n' >&2; exit 1; }
+    ;;
+  Linux/x86_64) platform=linux-amd64 ;;
+  *) printf 'supported hosts: macos 26+ arm64, ubuntu 24.04+ amd64, arch amd64 with systemd\n' >&2; exit 1 ;;
+esac
+command -v curl >/dev/null || { printf 'curl is required; install it with the native package manager\n' >&2; exit 1; }
+openssl_bin="$(command -v openssl || true)"
+help="$("${openssl_bin:-openssl}" pkeyutl -help 2>&1 || true)"
+if [[ "$help" != *'-rawin'* ]]; then
+  if [[ "$platform" == darwin-arm64 ]] && command -v brew >/dev/null; then
+    printf 'bootstrap signature verification requires homebrew openssl\n' >&2
+    brew install openssl@3
+    openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+  else
+    printf 'openssl with ed25519 pkeyutl -rawin support is required; install openssl 3 or later\n' >&2
+    exit 1
+  fi
+fi
+version="${1:-}"
+if [[ -z "$version" ]]; then
+  metadata="$(curl --connect-timeout 15 --max-time 30 --fail --silent --show-error --proto '=https' --tlsv1.2 'https://api.github.com/repos/NielsdaWheelz/skidbladnir/releases/latest')"
+  version="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$metadata")"
+fi
+[[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { printf 'release version must be vMAJOR.MINOR.PATCH\n' >&2; exit 1; }
+umask 077
+stage="$(mktemp -d "${TMPDIR:-/tmp}/skid-install.XXXXXX")"
+trap 'rm -R -- "$stage"' EXIT HUP INT TERM
+name="skidbladnir-$platform.tar.gz"
+base="https://github.com/NielsdaWheelz/skidbladnir/releases/download/$version"
+curl --connect-timeout 15 --max-time 300 --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 "$base/$name" -o "$stage/archive.tar.gz"
+curl --connect-timeout 15 --max-time 300 --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 "$base/$name.sig" -o "$stage/archive.sig"
+printf '%s\n' "$release_public_key" > "$stage/key.pem"
+"$openssl_bin" dgst -sha256 -binary "$stage/archive.tar.gz" > "$stage/digest"
+"$openssl_bin" pkeyutl -verify -rawin -pubin -inkey "$stage/key.pem" -in "$stage/digest" -sigfile "$stage/archive.sig" >/dev/null || { printf 'release signature invalid; nothing installed\n' >&2; exit 1; }
+tar -xzf "$stage/archive.tar.gz" -C "$stage" skidbladnir
+"$stage/skidbladnir" install --version "$version" --archive "$stage/archive.tar.gz" --signature "$stage/archive.sig"

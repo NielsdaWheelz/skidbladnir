@@ -1,9 +1,10 @@
-// Package notifier owns the single background readiness observer.
+// Package notifier owns the active hub's background readiness observer.
 package notifier
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,31 +12,38 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
-	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fcmpush"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 )
 
 type Config struct {
+	FleetID   string
 	Client    *fleetclient.Client
 	Machine   machine.Handle
-	Bearer    auth.FileVerifier
 	StatePath string
-	Publisher *Publisher
+	Fleet     *fleet.Service
+	Sender    *fcmpush.Client
+	Push      *hostconfig.AndroidPush
+	Members   []fleet.Member
 }
 type observerFile struct {
-	Schema              int                     `json:"schema"`
-	Epoch               string                  `json:"epoch"`
-	Revision            int64                   `json:"revision"`
-	ReceiverRevision    int64                   `json:"receiverRevision"`
-	Records             []attention.Record      `json:"records"`
-	AndroidSubscription *attention.Subscription `json:"androidSubscription,omitempty"`
+	Configuration string             `json:"configuration,omitempty"`
+	FleetID       string             `json:"fleetId"`
+	ImportDigest  string             `json:"importDigest,omitempty"`
+	Schema        int                `json:"schema"`
+	Epoch         string             `json:"epoch"`
+	Revision      int64              `json:"revision"`
+	Records       []attention.Record `json:"records"`
+	Receivers     []receiver         `json:"receivers"`
 }
 
 func (file *observerFile) UnmarshalJSON(data []byte) error {
@@ -43,7 +51,7 @@ func (file *observerFile) UnmarshalJSON(data []byte) error {
 	if attention.Decode(data, &fields) != nil {
 		return attention.ErrUnavailable
 	}
-	for _, name := range []string{"schema", "epoch", "revision", "receiverRevision", "records"} {
+	for _, name := range []string{"schema", "fleetId", "epoch", "revision", "records", "receivers"} {
 		if fields[name] == nil {
 			return attention.ErrUnavailable
 		}
@@ -56,29 +64,55 @@ func (file *observerFile) UnmarshalJSON(data []byte) error {
 	*file = observerFile(value)
 	return nil
 }
-
-type Observer struct {
-	mutex       sync.Mutex
-	client      *fleetclient.Client
-	machine     machine.Handle
-	bearer      auth.FileVerifier
-	origin      string
-	path        string
-	lock        *os.File
-	file        observerFile
-	snapshot    attention.Snapshot
-	unavailable bool
-	changed     chan struct{}
-	subscribers map[chan struct{}]struct{}
-	publisher   *Publisher
+func decodeFile(data []byte) (observerFile, error) {
+	var stored observerFile
+	if len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &stored) != nil || stored.Schema != 3 || stored.Configuration != "" && !digestValid(stored.Configuration) || !digestValid(stored.FleetID) || stored.ImportDigest != "" && !digestValid(stored.ImportDigest) || !attention.EpochValid(stored.Epoch) || stored.Revision < 0 || stored.Revision >= math.MaxInt64-1 || stored.Records == nil || stored.Receivers == nil {
+		return stored, attention.ErrUnavailable
+	}
+	slots := map[attention.Slot]bool{}
+	for _, record := range stored.Records {
+		if !attention.ValidRecord(record, stored.Revision) || slots[record.Key.Slot()] {
+			return stored, attention.ErrUnavailable
+		}
+		slots[record.Key.Slot()] = true
+	}
+	devices := map[string]bool{}
+	for _, receiver := range stored.Receivers {
+		if !receiver.valid() || devices[receiver.DeviceID] || receiver.Configuration != stored.Configuration {
+			return stored, attention.ErrUnavailable
+		}
+		devices[receiver.DeviceID] = true
+	}
+	return stored, nil
 }
 
+type Observer struct {
+	mutex            sync.Mutex
+	client           *fleetclient.Client
+	machine          machine.Handle
+	fleet            *fleet.Service
+	sender           *fcmpush.Client
+	push             *hostconfig.AndroidPush
+	sendCancel       context.CancelFunc
+	path             string
+	lock             *os.File
+	file             observerFile
+	snapshot         attention.Snapshot
+	unavailable      bool
+	drained          bool
+	closed           bool
+	cancel           context.CancelFunc
+	done             chan struct{}
+	changed          chan struct{}
+	attentionPending bool
+	streams          sync.WaitGroup
+	subscribers      map[chan struct{}]struct{}
+}
+
+// New never calls fleet methods. Activation callbacks hold the fleet owner lock.
+// Push setup is explicit and local; no sender credential enters durable state.
 func New(config Config) (*Observer, error) {
-	notifications, configured := config.Client.NotificationConfig()
-	if !configured || notifications.ObserverMachine != config.Machine.String() || !filepath.IsAbs(config.StatePath) {
-		return nil, attention.ErrUnavailable
-	}
-	if _, err := config.Bearer.Read(); err != nil {
+	if !digestValid(config.FleetID) || config.Client == nil || config.Fleet == nil || !filepath.IsAbs(config.StatePath) || config.Machine.String() == "" {
 		return nil, attention.ErrUnavailable
 	}
 	if err := os.MkdirAll(filepath.Dir(config.StatePath), 0700); err != nil {
@@ -88,68 +122,184 @@ func New(config Config) (*Observer, error) {
 	if err != nil {
 		return nil, attention.ErrUnavailable
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = lock.Close()
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = lock.Close() // justify-ignore-error: lock admission failure is primary.
 		return nil, attention.ErrUnavailable
-	} // justify-ignore-error: lock admission failure is primary.
-	observer := &Observer{client: config.Client, machine: config.Machine, bearer: config.Bearer, origin: notifications.NtfyOrigin, path: config.StatePath, lock: lock, changed: make(chan struct{}, 1), subscribers: map[chan struct{}]struct{}{}, publisher: config.Publisher}
-	stored := observerFile{Schema: 1, Records: []attention.Record{}}
+	}
+	observer := &Observer{client: config.Client, machine: config.Machine, fleet: config.Fleet, sender: config.Sender, path: config.StatePath, lock: lock, changed: make(chan struct{}, 1), subscribers: map[chan struct{}]struct{}{}}
+	stored := observerFile{Schema: 3, FleetID: config.FleetID, Records: []attention.Record{}, Receivers: []receiver{}}
 	data, err := readPrivate(config.StatePath, attention.MaximumSnapshotBytes)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, observer.closeFailure()
 	}
 	if err == nil {
-		if len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &stored) != nil || stored.Schema != 1 || !attention.EpochValid(stored.Epoch) || stored.Revision < 0 || stored.ReceiverRevision < 0 || stored.ReceiverRevision > stored.Revision || stored.Records == nil || stored.AndroidSubscription != nil && !stored.AndroidSubscription.Valid(observer.origin) {
+		stored, err = decodeFile(data)
+		if err != nil || stored.FleetID != config.FleetID {
 			return nil, observer.closeFailure()
-		}
-		// Reuse snapshot admission to validate the same retained record constraints.
-		slots := map[attention.Slot]bool{}
-		for _, record := range stored.Records {
-			if !attention.ValidRecord(record, stored.Revision) || slots[record.Key.Slot()] {
-				return nil, observer.closeFailure()
-			}
-			slots[record.Key.Slot()] = true
 		}
 	} else {
 		random := [16]byte{}
-		if _, err := rand.Read(random[:]); err != nil {
+		if _, err = rand.Read(random[:]); err != nil {
 			return nil, observer.closeFailure()
 		}
 		stored.Epoch = hex.EncodeToString(random[:])
 	}
-	if stored.Revision >= math.MaxInt64-1 {
+	// Membership is captured by composition outside fleet callbacks.
+	stored, _, err = retireAbsent(stored, config.Members)
+	if err != nil {
 		return nil, observer.closeFailure()
 	}
 	stored.Revision++
 	observer.file = stored
-	observer.snapshot = attention.Snapshot{Schema: 1, Epoch: stored.Epoch, Revision: stored.Revision, ReceiverTag: stored.Epoch + ":" + strconv.FormatInt(stored.ReceiverRevision, 10), Machines: []attention.MachineSnapshot{}}
+	observer.snapshot = attention.Snapshot{Schema: 1, Epoch: stored.Epoch, Revision: stored.Revision, Machines: []attention.MachineSnapshot{}}
 	for _, host := range config.Client.Machines() {
 		observer.snapshot.Machines = append(observer.snapshot.Machines, attention.MachineSnapshot{Machine: host.Handle, Availability: "gap"})
 	}
-	encoded, err := json.Marshal(stored)
-	if err != nil || attention.WriteFile(config.StatePath, encoded) != nil {
+	if observer.save(stored) != nil {
+		return nil, observer.closeFailure()
+	}
+	if err := observer.ConfigurePush(config.Push, config.Sender); err != nil {
 		return nil, observer.closeFailure()
 	}
 	return observer, nil
 }
 func (observer *Observer) closeFailure() error {
-	if observer.lock.Close() != nil {
-		return attention.ErrUnavailable
-	}
+	_ = observer.lock.Close() // justify-ignore-error: state admission failure is primary.
 	return attention.ErrUnavailable
 }
-func (observer *Observer) Close() error { return observer.lock.Close() }
+func (observer *Observer) save(file observerFile) error {
+	encoded, err := json.Marshal(file)
+	if err != nil || len(encoded) > attention.MaximumSnapshotBytes || attention.WriteFile(observer.path, encoded) != nil {
+		observer.unavailable = true
+		return attention.ErrUnavailable
+	}
+	observer.file = file
+	return nil
+}
+
+// Drain closes writer admission before cancelling and joining every owned lane.
+// It performs no fleet call and is safe under the fleet mutation lock.
+func (observer *Observer) Drain() (map[string]json.RawMessage, error) {
+	observer.mutex.Lock()
+	observer.drained = true
+	if observer.sendCancel != nil {
+		observer.sendCancel()
+	}
+	if observer.cancel != nil {
+		observer.cancel()
+	}
+	done := observer.done
+	observer.signal(false)
+	observer.mutex.Unlock()
+	if done != nil {
+		<-done
+	}
+	observer.streams.Wait()
+	return observer.Export()
+}
+func (observer *Observer) Export() (map[string]json.RawMessage, error) {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if !observer.drained || observer.unavailable {
+		return nil, attention.ErrUnavailable
+	}
+	data, err := json.Marshal(observer.file)
+	if err != nil {
+		return nil, attention.ErrUnavailable
+	}
+	return map[string]json.RawMessage{"notifications": data}, nil
+}
+
+// Restore installs transferred evidence, never freshness. New advances revision
+// and starts every machine at gap. The caller must first close the prior owner.
+func digestValid(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32 && hex.EncodeToString(decoded) == value
+}
+func Restore(path string, owned map[string]json.RawMessage) error {
+	data, found := owned["notifications"]
+	if !found || !filepath.IsAbs(path) {
+		return attention.ErrUnavailable
+	}
+	imported, err := decodeFile(data)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	current, err := readPrivate(path, attention.MaximumSnapshotBytes)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return attention.ErrUnavailable
+	}
+	if err == nil {
+		existing, decodeErr := decodeFile(current)
+		if decodeErr != nil {
+			return decodeErr
+		}
+		// A retried activation must not reset writes made after its first import.
+		if existing.ImportDigest == digest && existing.FleetID == imported.FleetID {
+			// An earlier import may have renamed successfully but failed its
+			// directory fsync. Confirm durability without overwriting later writes.
+			directory, err := os.Open(filepath.Dir(path))
+			if err != nil {
+				return attention.ErrUnavailable
+			}
+			if err = errors.Join(directory.Sync(), directory.Close()); err != nil {
+				return attention.ErrUnavailable
+			}
+			return nil
+		}
+		if existing.FleetID == imported.FleetID && (existing.Epoch != imported.Epoch || existing.Revision >= imported.Revision) {
+			return attention.ErrUnavailable
+		}
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return attention.ErrUnavailable
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return attention.ErrUnavailable
+	}
+	defer lock.Close() // justify-ignore-error: release follows completed import or its primary failure.
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return attention.ErrUnavailable
+	}
+	imported.ImportDigest = digest
+	encoded, err := json.Marshal(imported)
+	if err != nil {
+		return attention.ErrUnavailable
+	}
+	return attention.WriteFile(path, encoded)
+}
+func (observer *Observer) Close() error {
+	_, drainErr := observer.Drain()
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.closed {
+		return drainErr
+	}
+	observer.closed = true
+	return errors.Join(drainErr, observer.lock.Close())
+}
 
 func (observer *Observer) commit(host string, peer fleetclient.Peer, err error) error {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
+	if observer.drained {
+		return nil
+	}
 	if observer.unavailable || observer.file.Revision >= math.MaxInt64-1 {
 		observer.unavailable = true
 		return attention.ErrUnavailable
 	}
+	index := slices.IndexFunc(observer.snapshot.Machines, func(current attention.MachineSnapshot) bool { return current.Machine == host })
+	if index < 0 {
+		return nil
+	}
 	file := observer.file
 	file.Revision++
 	after := attention.MachineSnapshot{Machine: host, Availability: "gap"}
+	attentionAllocated := false
 	if err == nil {
 		after.Availability = "fresh"
 		after.ObservedAt = peer.ObservedAt
@@ -175,32 +325,25 @@ func (observer *Observer) commit(host string, peer fleetclient.Peer, err error) 
 				}
 			}
 			row := observe(previous, present, session, file.Revision)
+			attentionAllocated = attentionAllocated || row.Record.AttentionEpisode == file.Revision && row.Record.Cause != nil
 			records = append(records, row.Record)
 			after.Sessions = append(after.Sessions, row)
 		}
 		file.Records = records
 	}
-	data, encodeErr := json.Marshal(file)
-	if encodeErr != nil || len(data) > attention.MaximumSnapshotBytes || attention.WriteFile(observer.path, data) != nil {
-		observer.unavailable = true
+	if observer.save(file) != nil {
 		return attention.ErrUnavailable
 	}
-	before := attention.MachineSnapshot{}
-	for i, current := range observer.snapshot.Machines {
-		if current.Machine == host {
-			before = current
-			observer.snapshot.Machines[i] = after
-			break
-		}
-	}
-	observer.file = file
+	before := observer.snapshot.Machines[index]
+	observer.snapshot.Machines[index] = after
 	observer.snapshot.Revision = file.Revision
 	if meaningful(before, after) {
-		observer.signal()
+		observer.signal(attentionAllocated)
 	}
 	return nil
 }
-func (observer *Observer) signal() {
+func (observer *Observer) signal(attentionUrgency bool) {
+	observer.attentionPending = observer.attentionPending || attentionUrgency
 	select {
 	case observer.changed <- struct{}{}:
 	default:
@@ -212,92 +355,141 @@ func (observer *Observer) signal() {
 		}
 	}
 }
+func (observer *Observer) membership(hosts []fleetclient.Machine) error {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.drained {
+		return nil
+	}
+	machines := make([]attention.MachineSnapshot, 0, len(hosts))
+	for _, host := range hosts {
+		current := attention.MachineSnapshot{Machine: host.Handle, Availability: "gap"}
+		for _, old := range observer.snapshot.Machines {
+			if old.Machine == host.Handle {
+				current = old
+				break
+			}
+		}
+		machines = append(machines, current)
+	}
+	if slices.EqualFunc(observer.snapshot.Machines, machines, func(a, b attention.MachineSnapshot) bool { return a.Machine == b.Machine }) {
+		return nil
+	}
+	if observer.file.Revision >= math.MaxInt64-1 {
+		return attention.ErrUnavailable
+	}
+	file := observer.file
+	file.Revision++
+	// Removed hosts leave the public roster. Retain exact lifetime counters:
+	// a device may miss removal and the same computer can re-enroll unchanged.
+	if observer.save(file) != nil {
+		return attention.ErrUnavailable
+	}
+	observer.snapshot.Machines = machines
+	observer.snapshot.Revision = file.Revision
+	observer.signal(false)
+	return nil
+}
 
-// Run owns independent five-second lanes and one coalesced current-hint publisher.
-func (observer *Observer) Run(ctx context.Context) error {
-	ctx, stop := context.WithCancel(ctx)
-	// justify-polling: closed-client background attention needs bounded five-second inventories; cancellation owns every lane.
-	outcomes := make(chan struct {
+// Run owns independent inventory lanes; the existing five-second cadence also
+// reconciles signed membership so additions and removals need no process restart.
+func (observer *Observer) Run(parent context.Context) error {
+	observer.mutex.Lock()
+	if observer.drained || observer.done != nil {
+		observer.mutex.Unlock()
+		return attention.ErrUnavailable
+	}
+	ctx, stop := context.WithCancel(parent)
+	observer.cancel = stop
+	observer.done = make(chan struct{})
+	done := observer.done
+	observer.mutex.Unlock()
+	type outcome struct {
 		host string
+		lane uint64
 		peer fleetclient.Peer
 		err  error
-	}, len(observer.snapshot.Machines))
-	var lanes sync.WaitGroup
-	for _, host := range observer.client.Machines() {
-		lanes.Go(func() {
-			ticker := time.NewTicker(5 * time.Second)
-			defer ticker.Stop()
-			for {
-				request, cancel := context.WithTimeout(ctx, 5*time.Second)
-				result := observer.client.InventoryMachine(request, host.Handle)
-				var peer fleetclient.Peer
-				var err error
-				if result.OK {
-					peer = result.Value.(fleetclient.Peer)
-				} else {
-					err = attention.ErrUnavailable
-				}
-				cancel()
-				select {
-				case outcomes <- struct {
-					host string
-					peer fleetclient.Peer
-					err  error
-				}{host.Handle, peer, err}:
-				case <-ctx.Done():
-					return
-				}
-				select {
-				case <-ticker.C:
-				case <-ctx.Done():
-					return
-				}
-			}
-		})
 	}
-	publisherDone := make(chan struct{})
-	go func() { defer close(publisherDone); observer.publish(ctx) }()
-	defer func() { stop(); lanes.Wait(); <-publisherDone }()
+	outcomes := make(chan outcome)
+	type lane struct {
+		id     uint64
+		cancel context.CancelFunc
+	}
+	lanes := map[string]lane{}
+	var workers sync.WaitGroup
+	workers.Go(func() { observer.publish(ctx) })
+	defer func() { stop(); workers.Wait(); close(done) }()
+	var next uint64
+	reconcile := func() error {
+		if observer.client.Refresh() != nil {
+			return nil
+		} // Preserve admitted membership while its durable replacement is unavailable.
+		hosts := observer.client.Machines()
+		if err := observer.membership(hosts); err != nil {
+			return err
+		}
+		for host, current := range lanes {
+			if !slices.ContainsFunc(hosts, func(candidate fleetclient.Machine) bool { return candidate.Handle == host }) {
+				current.cancel()
+				delete(lanes, host)
+			}
+		}
+		for _, host := range hosts {
+			if _, found := lanes[host.Handle]; found {
+				continue
+			}
+			next++
+			current := next
+			laneCtx, cancel := context.WithCancel(ctx)
+			lanes[host.Handle] = lane{current, cancel}
+			workers.Go(func() {
+				// justify-polling: closed-client attention retains bounded five-second per-host inventories, cancelled on membership removal or drain.
+				ticker := time.NewTicker(5 * time.Second)
+				defer ticker.Stop()
+				for {
+					request, cancel := context.WithTimeout(laneCtx, 5*time.Second)
+					result := observer.client.InventoryMachine(request, host.Handle)
+					cancel()
+					value := outcome{host: host.Handle, lane: current, err: attention.ErrUnavailable}
+					if result.OK {
+						value.peer = result.Value.(fleetclient.Peer)
+						value.err = nil
+					} // justify-assertion: inventory result owns the admitted peer type.
+					select {
+					case outcomes <- value:
+					case <-laneCtx.Done():
+						return
+					}
+					select {
+					case <-ticker.C:
+					case <-laneCtx.Done():
+						return
+					}
+				}
+			})
+		}
+		return nil
+	}
+	if err := reconcile(); err != nil {
+		return err
+	}
+	membership := time.NewTicker(5 * time.Second)
+	defer membership.Stop()
 	for {
 		select {
-		case outcome := <-outcomes:
-			if err := observer.commit(outcome.host, outcome.peer, outcome.err); err != nil {
+		case result := <-outcomes:
+			if current, found := lanes[result.host]; found && current.id == result.lane {
+				if err := observer.commit(result.host, result.peer, result.err); err != nil {
+					return err
+				}
+			}
+		case <-membership.C:
+			if err := reconcile(); err != nil {
 				return err
 			}
 		case <-ctx.Done():
 			return nil
 		}
-	}
-}
-func (observer *Observer) publish(ctx context.Context) {
-	pulse := time.NewTicker(time.Minute)
-	defer pulse.Stop()
-	for {
-		select {
-		case <-observer.changed:
-		case <-pulse.C:
-			observer.mutex.Lock()
-			for subscriber := range observer.subscribers {
-				select {
-				case subscriber <- struct{}{}:
-				default:
-				}
-			}
-			observer.mutex.Unlock()
-		case <-ctx.Done():
-			return
-		}
-		observer.mutex.Lock()
-		hint := attention.Hint{Schema: 1, Epoch: observer.file.Epoch, Revision: observer.file.Revision}
-		subscription := observer.file.AndroidSubscription
-		unavailable := observer.unavailable
-		observer.mutex.Unlock()
-		if unavailable || subscription == nil || observer.publisher == nil {
-			continue
-		}
-		request, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_ = observer.publisher.Publish(request, *subscription, hint) // justify-ignore-error: one hint has no history/retry; next minute retries current state and retains enrollment.
-		cancel()
 	}
 }
 

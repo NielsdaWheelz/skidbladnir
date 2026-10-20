@@ -13,12 +13,15 @@ import (
 )
 
 func (client *Client) NotificationConfig() (attention.Config, bool) {
-	if client.notifications == nil {
+	client.mu.RLock()
+	defer client.mu.RUnlock()
+	if client.hub == "" {
 		return attention.Config{}, false
 	}
-	return *client.notifications, true
+	return attention.Config{ObserverMachine: client.hub}, true
 }
 func (client *Client) notificationRequest(ctx context.Context, path string) (*http.Request, error) {
+	_ = client.Refresh() // justify-ignore-error: preserve the admitted cache while its durable replacement is unavailable.
 	config, configured := client.NotificationConfig()
 	if !configured {
 		return nil, attention.ErrUnavailable
@@ -57,7 +60,7 @@ func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
 	config, _ := client.NotificationConfig()
-	if len(snapshot.Machines) != len(client.peers) {
+	if len(snapshot.Machines) != len(client.Machines()) {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
 	for _, host := range snapshot.Machines {

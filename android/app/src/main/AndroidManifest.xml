@@ -1,10 +1,9 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.tailscale.ipn" />
-        <package android:name="io.heckel.ntfy" />
     </queries>
 
     <application
@@ -16,6 +15,9 @@
         android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:theme="@style/Theme.Skidbladnir">
+        <provider android:name="com.google.firebase.provider.FirebaseInitProvider" tools:node="remove" />
+        <meta-data android:name="firebase_messaging_installation_id_enabled" android:value="true" />
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
@@ -31,7 +33,7 @@
         </activity>
         <service android:name=".NotificationPushService" android:exported="false">
             <intent-filter>
-                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
         <receiver android:name=".NotificationDismissReceiver" android:exported="false" />

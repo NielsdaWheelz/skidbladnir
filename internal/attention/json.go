@@ -2,9 +2,6 @@ package attention
 
 import (
 	"encoding/json"
-	"math"
-	"strconv"
-	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
@@ -95,7 +92,7 @@ func (snapshot *MachineSnapshot) UnmarshalJSON(data []byte) error {
 func (snapshot *Snapshot) UnmarshalJSON(data []byte) error {
 	type wire Snapshot
 	var value wire
-	if !required(data, "schema", "epoch", "revision", "receiverTag", "machines") || strictjson.Decode(data, &value) != nil {
+	if !required(data, "schema", "epoch", "revision", "machines") || strictjson.Decode(data, &value) != nil {
 		return ErrUnavailable
 	}
 	*snapshot = Snapshot(value)
@@ -113,23 +110,10 @@ func (hint *Hint) UnmarshalJSON(data []byte) error {
 func (config *Config) UnmarshalJSON(data []byte) error {
 	type wire Config
 	var value wire
-	if !required(data, "observerMachine", "ntfyOrigin") || strictjson.Decode(data, &value) != nil {
+	if !required(data, "observerMachine") || strictjson.Decode(data, &value) != nil {
 		return ErrUnavailable
 	}
 	*config = Config(value)
-	return nil
-}
-func (subscription *Subscription) UnmarshalJSON(data []byte) error {
-	type wire Subscription
-	var value wire
-	if !required(data, "endpoint", "keys") || strictjson.Decode(data, &value) != nil {
-		return ErrUnavailable
-	}
-	var members map[string]json.RawMessage
-	if strictjson.Decode(data, &members) != nil || !required(members["keys"], "p256dh", "auth") {
-		return ErrUnavailable
-	}
-	*subscription = Subscription(value)
 	return nil
 }
 func (token *ReadyToken) UnmarshalJSON(data []byte) error {
@@ -159,15 +143,6 @@ func (snapshot *DeviceSnapshot) UnmarshalJSON(data []byte) error {
 	*snapshot = DeviceSnapshot(value)
 	return nil
 }
-func ReceiverRevision(epoch, tag string) (int64, bool) {
-	prefix, number, found := strings.Cut(tag, ":")
-	if !found || prefix != epoch {
-		return 0, false
-	}
-	revision, err := strconv.ParseInt(number, 10, 64)
-	return revision, err == nil && revision >= 0 && revision < math.MaxInt64 && strconv.FormatInt(revision, 10) == number
-}
-
 func (slot *Slot) UnmarshalJSON(data []byte) error {
 	type wire Slot
 	var value wire

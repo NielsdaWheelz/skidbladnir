@@ -47,8 +47,9 @@ const (
 	RouteSessionShell      Route = "/v1/sessions/{tmuxId}/shell"
 	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
 	RoutePressure          Route = "/v1/pressure"
-	RoutePairingInvites    Route = "/v1/pairing-invites"
-	RoutePairings          Route = "/v1/pairings"
+	RouteFleet             Route = "/v1/fleet/{operation}"
+	RouteLocal             Route = "/v1/local/{operation}"
+	RouteNotifications     Route = "/v1/notifications/{operation}"
 	RouteDirectoryListings Route = "/v1/directory-listings"
 	RouteDirectorySearches Route = "/v1/directory-searches"
 	RouteTerminalContexts  Route = "/v1/terminal-contexts/{connectionId}"
@@ -57,7 +58,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
+	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -93,7 +94,8 @@ const (
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
-	ErrorPairingInviteRejected       ErrorCode = "PairingInviteRejected"
+	ErrorFleet                       ErrorCode = "FleetError"
+	ErrorNotifications               ErrorCode = "NotificationsUnavailable"
 	ErrorMachineIdentityMismatch     ErrorCode = "MachineIdentityMismatch"
 	ErrorInternal                    ErrorCode = "InternalError"
 )
@@ -118,7 +120,7 @@ func (code ErrorCode) valid() bool {
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,
-		ErrorPairingInviteRejected,
+		ErrorFleet, ErrorNotifications,
 		ErrorMachineIdentityMismatch,
 		ErrorInternal:
 		return true
@@ -168,6 +170,7 @@ func (reason PressureReason) valid() bool {
 type eventKind string
 
 const (
+	eventNotificationsUnavailable  eventKind = "Notifications.Unavailable"
 	eventGatewayStarted            eventKind = "Gateway.Started"
 	eventRequestCompleted          eventKind = "Request.Completed"
 	eventSessionsObserved          eventKind = "Sessions.Observed"
@@ -258,6 +261,8 @@ func (observation SessionsObservation) valid() bool {
 	return true
 }
 
+func NewNotificationsUnavailable() Event { return Event{kind: eventNotificationsUnavailable} }
+
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
 
 func NewTerminalCleanupFailed() Event { return Event{kind: eventTerminalCleanupFailed} }
@@ -327,7 +332,7 @@ func NewAuthenticationRejected(route Route) (Event, error) {
 
 func (event Event) valid() bool {
 	switch event.kind {
-	case eventGatewayStarted, eventTerminalCleanupFailed:
+	case eventGatewayStarted, eventTerminalCleanupFailed, eventNotificationsUnavailable:
 		return true
 	case eventRequestCompleted:
 		if !event.method.valid() || !event.route.valid() || event.status < 100 || event.status > 599 || event.duration < 0 {
@@ -385,7 +390,7 @@ func (logger Logger) Write(event Event) error {
 	}
 	fields := map[string]any{"event.name": event.kind}
 	switch event.kind {
-	case eventGatewayStarted, eventTerminalCleanupFailed:
+	case eventGatewayStarted, eventTerminalCleanupFailed, eventNotificationsUnavailable:
 	case eventRequestCompleted:
 		fields["http.request.method"] = event.method
 		fields["http.route"] = event.route

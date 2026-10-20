@@ -584,6 +584,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	var read reading
 	if !side && !editor && !disconnected && screen.rows[footerFirst].presence == rowParsed {
 		read.footer = codexReadTerminalFooter(screen.rows[footerFirst], screen.width)
+		read.usage = codexReadUsage(screen.rows[footerFirst], screen.width)
 	}
 	// Composer (4), first match wins.
 	switch {

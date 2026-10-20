@@ -25,26 +25,30 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.decodeFromJsonElement
-import org.unifiedpush.android.connector.UnifiedPush
-import org.unifiedpush.android.connector.keys.DefaultKeyManager
 
 class SkidNotificationApplication : Application() {
+    internal lateinit var firebasePush: FirebasePush
     internal val notifications by lazy { NotificationOwner(this) }
+    override fun onCreate() {
+        super.onCreate()
+        firebasePush = FirebasePush(this)
+        firebasePush.status()
+    }
 }
+internal fun Context.firebasePush(): FirebasePush = (applicationContext as SkidNotificationApplication).firebasePush
 internal fun Context.notificationOwner(): NotificationOwner =
     (applicationContext as SkidNotificationApplication).notifications
 
-internal enum class NotificationHealth { Ready, SetupRequired, PermissionBlocked, DistributorMissing, DeliveryUnavailable, ResetRequired }
+internal enum class NotificationHealth { Ready, Disabled, SetupRequired, Unconfigured, PermissionBlocked, DeliveryUnavailable, ResetRequired, RestartRequired }
 internal data class NotificationView(
     val device: DeviceNotifications = DeviceNotifications(), val snapshot: ObserverSnapshot? = null,
     val health: NotificationHealth = NotificationHealth.SetupRequired,
-    val resetIdentity: Any?,
+    val resetIdentity: Any?, val observerUnavailable: Boolean = false,
 ) {
     fun presentsReady(key: NotificationKey, session: TmuxSession): Boolean {
-        if (health == NotificationHealth.DeliveryUnavailable || health == NotificationHealth.ResetRequired) return false
+        if (observerUnavailable || health == NotificationHealth.ResetRequired) return false
         val machine = snapshot?.machines?.singleOrNull { it.machine == key.machine } ?: return false
         val row = machine.sessions?.singleOrNull { it.record.key == key } ?: return false
         val local = device.records.singleOrNull { it.key == key } ?: return false
@@ -67,11 +71,8 @@ private data class NotificationReadyBoundary(val token: NotificationVisitToken, 
 private data class NotificationFocus(val resumed: Boolean, val windowFocused: Boolean)
 private data class NotificationRead(val snapshot: ObserverSnapshot, val alienHint: NotificationHint?)
 private data class NotificationFetch(
-    val fence: Long, val config: NotificationConfig, val credential: MachineCredential,
+    val fence: Long, val credential: MachineCredential,
     val minimumRevision: Long, val alienHint: NotificationHint?,
-)
-private class NotificationEndpointOffer(
-    val subscription: NotificationSubscription, val receipt: CompletableDeferred<NotificationEndpointOffer>?,
 )
 private data class NotificationPost(val row: NotificationRow, val silent: Boolean, val epoch: String, val rename: NativeNotice? = null) {
     val episode: Long get() = rename?.episode ?: row.record.attentionEpisode
@@ -83,18 +84,14 @@ private data class NotificationPost(val row: NotificationRow, val silent: Boolea
 internal class NotificationOwner(private val context: Context) {
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val store = NotificationStore(context)
-    private val client = NotificationClient()
+    private val client = NotificationClient(context)
+    private val fleetClient = FleetClient(MachineStore(context))
     private val native = NativeNotifications(context)
     private val mutex = Mutex()
     private val initialized = CompletableDeferred<Unit>()
     private val effects = Channel<Unit>(Channel.CONFLATED)
     private val visitOutputs = Channel<NotificationVisitToken>(Channel.UNLIMITED)
-    private val endpoints = Channel<NotificationEndpointOffer>(Channel.CONFLATED)
-    private val endpointIntake = Any()
-    private var registrationReceipt: CompletableDeferred<NotificationEndpointOffer>? = null
-    @Volatile private var pendingEndpoint: NotificationEndpointOffer? = null
-    private var consumedEndpoint: NotificationEndpointOffer? = null
-    private var confirmedRegistration: NotificationRegistration? = null
+    private val pushStore = PushStore(context)
     // Stable across ordinary visits and configuration; null while memory is being reset.
     private var resetIdentity: Any? = Any()
     private val current = MutableStateFlow(NotificationView(resetIdentity = resetIdentity))
@@ -105,7 +102,6 @@ internal class NotificationOwner(private val context: Context) {
     private var storageAvailable = false
     private var epochMismatch = false
     private var resetting = false
-    private var setupIncomplete = false
     private var fence = 0L
     private var fetchTask: Deferred<NotificationRead?>? = null
     private var hintFloor = 0L
@@ -116,25 +112,6 @@ internal class NotificationOwner(private val context: Context) {
     private var readyBoundary: NotificationReadyBoundary? = null
 
     init {
-        scope.launch {
-            initialized.await()
-            for (offer in endpoints) mutex.withLock {
-                val config = device.config ?: return@withLock
-                if (offer !== pendingEndpoint || !storageAvailable || !offer.subscription.validFor(config) ||
-                    offer.subscription.keys != registrationKeys()) return@withLock
-                val desired = if (device.desiredRegistration?.subscription == offer.subscription) device.desiredRegistration
-                else {
-                    if (device.localRevision >= Long.MAX_VALUE - 1) { unavailable = true; publish(); return@withLock }
-                    NotificationRegistration(device.localRevision + 1, offer.subscription)
-                }
-                // Identical callbacks also pass through the durable writer before waking their worker.
-                if (!commit(device.copy(desiredRegistration = desired))) return@withLock
-                if (confirmedRegistration != desired) confirmedRegistration = null
-                consumedEndpoint = offer
-                publish()
-                offer.receipt?.complete(offer)
-            }
-        }
         scope.launch {
             initialized.await()
             for (token in visitOutputs) mutex.withLock {
@@ -161,9 +138,7 @@ internal class NotificationOwner(private val context: Context) {
                 publish()
                 initialized.complete(Unit)
             }
-            if (device.config != null && UnifiedPush.getSavedDistributor(context) == "io.heckel.ntfy") {
-                NotificationEnrollment.schedule(context, ExistingWorkPolicy.KEEP)
-            }
+            if (context.firebasePush().status() == FirebasePushStatus.Ready) NotificationEnrollment.schedule(context, ExistingWorkPolicy.KEEP)
             for (signal in effects) {
                 val through = mutex.withLock { device.localRevision }
                 present()
@@ -176,50 +151,56 @@ internal class NotificationOwner(private val context: Context) {
         scope.launch { refreshAndPresent() }
     }
 
-    private suspend fun refreshAndPresent() {
-        fetchSnapshot()
+    suspend fun refreshAndPresent(): Boolean {
+        val admitted = fetchSnapshot() != null
         val through = mutex.withLock { device.localRevision }
         effects.trySend(Unit)
         effectsCompleted.first { it >= through }
+        return admitted
     }
 
     private suspend fun fetchSnapshot(): NotificationRead? {
         initialized.await()
         val task = mutex.withLock {
-            if (!storageAvailable || epochMismatch || resetting || device.config == null) return null
+            if (!storageAvailable || epochMismatch || resetting) return null
             fetchTask?.let { return@withLock it }
             scope.async<NotificationRead?> {
                 val ownedTask = checkNotNull(currentCoroutineContext()[Job])
                 try {
                     var read: NotificationRead? = null
                     while (true) {
+                        fleetClient.refresh(4_000)
+                        context.firebasePush().status()
                         val request = mutex.withLock {
                             if (!storageAvailable || epochMismatch || resetting) {
                                 if (fetchTask === ownedTask) fetchTask = null
                                 return@async null
                             }
-                            val config = device.config ?: run {
-                                if (fetchTask === ownedTask) fetchTask = null
-                                return@async null
-                            }
-                            val credential = config.credential(MachineStore(context).read().credentials) ?: run {
+                            val credential = MachineStore(context).association()?.hubCredential() ?: run {
                                 snapshot = null
                                 unavailable = true
                                 publish()
                                 if (fetchTask === ownedTask) fetchTask = null
                                 return@async null
                             }
-                            NotificationFetch(fence, config, credential, maxOf(device.admittedRevision, hintFloor), alienHint)
+                            NotificationFetch(fence, credential, maxOf(device.admittedRevision, hintFloor), alienHint)
                         }
+                        val registration = pushRegistration()
+                        val receiver = registration?.let { client.receiver(request.credential) }
                         val result = client.state(request.credential)
                         val retry = mutex.withLock {
-                            if (request.fence != fence || device.config != request.config ||
-                                request.config.credential(MachineStore(context).read().credentials) != request.credential ||
+                            if (request.fence != fence ||
+                                MachineStore(context).association()?.hubCredential() != request.credential ||
                                 request.alienHint !== alienHint) return@withLock true
                             if (!storageAvailable || epochMismatch || resetting) {
                                 if (fetchTask === ownedTask) fetchTask = null
                                 return@withLock false
                             }
+                            val fleet = MachineStore(context).association()
+                            if (registration != null && receiver != null && context.firebasePush().target()?.configuration == registration.configuration &&
+                                fleet?.deviceId == registration.deviceId &&
+                                fleet.fleetId == registration.fleetId && receiver.desiredGeneration == registration.generation &&
+                                receiver.activeGeneration >= registration.activeGeneration) pushStore.status(registration, receiver)
                             val minimum = maxOf(device.admittedRevision, hintFloor)
                             when (result) {
                                 is GatewayResult.Success -> {
@@ -263,16 +244,16 @@ internal class NotificationOwner(private val context: Context) {
 
     fun settingsIntent(): android.content.Intent = native.settingsIntent()
 
-    suspend fun receiveHint(bytes: ByteArray) {
-        if (bytes.size !in 1..256) return
+    suspend fun receiveHint(bytes: ByteArray): Boolean {
+        if (bytes.size !in 1..256) return true
         val hint = try {
             productJson.decodeFromJsonElement<NotificationHint>(notificationJson(bytes.decodeToString(throwOnInvalidSequence = true)))
-        } catch (_: kotlinx.serialization.SerializationException) { return }
-          catch (_: IllegalArgumentException) { return }
+        } catch (_: kotlinx.serialization.SerializationException) { return true }
+          catch (_: IllegalArgumentException) { return true }
         initialized.await()
         mutex.withLock {
             if (device.observerEpoch == hint.epoch) {
-                if (hint.revision < maxOf(device.admittedRevision, hintFloor)) return
+                if (hint.revision < maxOf(device.admittedRevision, hintFloor)) return true
                 hintFloor = maxOf(hintFloor, hint.revision)
                 if (snapshot?.revision?.let { it < hintFloor } == true) {
                     snapshot = null
@@ -280,7 +261,7 @@ internal class NotificationOwner(private val context: Context) {
                 }
             } else {
                 val previous = alienHint
-                if (previous?.epoch == hint.epoch && hint.revision < previous.revision) return
+                if (previous?.epoch == hint.epoch && hint.revision < previous.revision) return true
                 if (previous != hint) {
                     alienHint = hint
                     snapshot = null
@@ -288,132 +269,44 @@ internal class NotificationOwner(private val context: Context) {
                 }
             }
         }
-        refreshAndPresent()
-    }
-
-    suspend fun configure(config: NotificationConfig) {
-        initialized.await()
-        mutex.withLock {
-            if (!storageAvailable || config.credential(MachineStore(context).read().credentials) == null) return
-            ++fence
-            confirmedRegistration = null
-            snapshot = null
-            val desired = device.desiredRegistration?.takeIf { it.subscription.validFor(config) }
-            setupIncomplete = true
-            if (!commit(device.copy(config = config, desiredRegistration = desired))) return
-            setupIncomplete = false
-            unavailable = false
-            publish()
-        }
-        refresh()
-        if (UnifiedPush.getSavedDistributor(context) == "io.heckel.ntfy") {
-            NotificationEnrollment.schedule(context, ExistingWorkPolicy.REPLACE)
-        }
+        return refreshAndPresent()
     }
 
     fun fleetChanged() {
+        val push = context.firebasePush().status()
         scope.launch {
             initialized.await()
-            val configured = mutex.withLock { ++fence; confirmedRegistration = null; snapshot = null; publish(); device.config != null }
-            if (configured && UnifiedPush.getSavedDistributor(context) == "io.heckel.ntfy") {
-                NotificationEnrollment.schedule(context, ExistingWorkPolicy.REPLACE)
-            }
+            mutex.withLock { ++fence; snapshot = null; publish() }
+            if (push == FirebasePushStatus.Ready) NotificationEnrollment.schedule(context, ExistingWorkPolicy.REPLACE)
             refresh()
         }
     }
 
-    fun endpoint(subscription: NotificationSubscription) {
-        synchronized(endpointIntake) {
-            val offer = NotificationEndpointOffer(subscription, registrationReceipt)
-            pendingEndpoint = offer
-            endpoints.trySend(offer)
-        }
-    }
-
-    /** Called only by the already-durable worker. Missing callbacks leave its retry obligation intact. */
     suspend fun enroll(): NotificationEnrollmentResult {
         initialized.await()
-        val receipt = CompletableDeferred<NotificationEndpointOffer>()
-        try {
-            val (requestFence, config, credential) = mutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (!storageAvailable) return NotificationEnrollmentResult.Unavailable
-                if (epochMismatch || resetting) return NotificationEnrollmentResult.Conflict
-                val config = device.config ?: return NotificationEnrollmentResult.Unavailable
-                val credential = config.credential(MachineStore(context).read().credentials)
-                    ?: return NotificationEnrollmentResult.Unavailable
-                if (UnifiedPush.getSavedDistributor(context) != "io.heckel.ntfy") return NotificationEnrollmentResult.Unavailable
-                confirmedRegistration = null
-                synchronized(endpointIntake) { registrationReceipt = receipt }
-                val registered = try {
-                    // Registration happens before observer access, so an observer outage cannot lose the endpoint.
-                    UnifiedPush.register(context, instance = NOTIFICATION_INSTANCE, messageForDistributor = "skid needs input")
-                    true
-                } catch (_: GeneralSecurityException) { false }
-                  catch (_: IOException) { false }
-                  catch (_: SQLiteException) { false }
-                if (!registered) { unavailable = true; publish(); return NotificationEnrollmentResult.Unavailable }
-                publish()
-                Triple(fence, config, credential)
-            }
-            if (withTimeoutOrNull(4_000) { receipt.await() } == null) return NotificationEnrollmentResult.Unavailable
-            val remote = fetchSnapshot() ?: return mutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (requestFence != fence || device.config != config || epochMismatch ||
-                    synchronized(endpointIntake) { registrationReceipt !== receipt } ||
-                    config.credential(MachineStore(context).read().credentials) != credential) NotificationEnrollmentResult.Conflict
-                else NotificationEnrollmentResult.Unavailable
-            }
-            val (desired, offer) = mutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (!storageAvailable || requestFence != fence || device.config != config || epochMismatch ||
-                    device.observerEpoch != remote.snapshot.epoch || remote.alienHint !== alienHint ||
-                    synchronized(endpointIntake) { registrationReceipt !== receipt } ||
-                    config.credential(MachineStore(context).read().credentials) != credential) return NotificationEnrollmentResult.Conflict
-                val offer = consumedEndpoint ?: return NotificationEnrollmentResult.Conflict
-                val desired = device.desiredRegistration ?: return NotificationEnrollmentResult.Conflict
-                if (offer !== pendingEndpoint || offer.receipt !== receipt || offer.subscription != desired.subscription ||
-                    desired.subscription.keys != registrationKeys()) return NotificationEnrollmentResult.Conflict
-                Pair(desired, offer)
-            }
-            mutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (!storageAvailable || requestFence != fence || device.config != config || epochMismatch ||
-                    device.observerEpoch != remote.snapshot.epoch || remote.alienHint !== alienHint ||
-                    synchronized(endpointIntake) { registrationReceipt !== receipt } ||
-                    device.desiredRegistration != desired || consumedEndpoint !== offer || pendingEndpoint !== offer ||
-                    config.credential(MachineStore(context).read().credentials) != credential || desired.subscription.keys != registrationKeys()) {
-                    return NotificationEnrollmentResult.Conflict
-                }
-            }
-            // A later entered callback invalidates completion even before its durable writer runs.
-            val result = client.enroll(credential, desired.subscription, remote.snapshot.receiverTag)
-            mutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (!storageAvailable || requestFence != fence || device.config != config || epochMismatch ||
-                    device.observerEpoch != remote.snapshot.epoch || remote.alienHint !== alienHint ||
-                    synchronized(endpointIntake) { registrationReceipt !== receipt } ||
-                    device.desiredRegistration != desired || consumedEndpoint !== offer || pendingEndpoint !== offer ||
-                    config.credential(MachineStore(context).read().credentials) != credential || desired.subscription.keys != registrationKeys()) {
-                    return NotificationEnrollmentResult.Conflict
-                }
-                if (result == NotificationEnrollmentResult.Installed) confirmedRegistration = desired
-                else unavailable = true
-                publish()
-            }
-            if (result == NotificationEnrollmentResult.Installed || result == NotificationEnrollmentResult.Conflict) refresh()
-            return result
-        } finally {
-            synchronized(endpointIntake) { if (registrationReceipt === receipt) registrationReceipt = null }
+        if (context.firebasePush().status() != FirebasePushStatus.Ready) return NotificationEnrollmentResult.Installed
+        fleetClient.refresh(4_000)
+        val credential = MachineStore(context).association()?.hubCredential() ?: return NotificationEnrollmentResult.Unavailable
+        if (!mutex.withLock { storageAvailable && !epochMismatch && !resetting }) return NotificationEnrollmentResult.Conflict
+        if (context.firebasePush().status() != FirebasePushStatus.Ready || !native.allowed()) return NotificationEnrollmentResult.Installed
+        val desired = context.firebasePush().register() ?: run {
+            deliveryUnavailable()
+            return NotificationEnrollmentResult.Unavailable
         }
+        val fleet = MachineStore(context).association() ?: return NotificationEnrollmentResult.Conflict
+        if (context.firebasePush().target() != PushTarget(desired.configuration, desired.fleetId, desired.deviceId) ||
+            desired.fleetId != fleet.fleetId || desired.deviceId != fleet.deviceId) return NotificationEnrollmentResult.Conflict
+        val result = client.enroll(credential, desired)
+        mutex.withLock {
+            if (MachineStore(context).association()?.hubCredential() != credential ||
+                context.firebasePush().target() != PushTarget(desired.configuration, desired.fleetId, desired.deviceId)) return NotificationEnrollmentResult.Conflict
+            if (result == null) { pushStore.registrationUnavailable(desired); publish(); return NotificationEnrollmentResult.Unavailable }
+            if (!pushStore.status(desired, result, confirmed = desired.challenge != null)) return NotificationEnrollmentResult.Conflict
+            publish()
+        }
+        refresh()
+        return if (result?.status == "active") NotificationEnrollmentResult.Installed else NotificationEnrollmentResult.Unavailable
     }
-
-    private fun registrationKeys(): NotificationSubscriptionKeys? = try {
-        DefaultKeyManager(context).getPublicKeySet(NOTIFICATION_INSTANCE)?.let { NotificationSubscriptionKeys(it.pubKey, it.auth) }
-    } catch (_: GeneralSecurityException) { null }
-      catch (_: IOException) { null }
-      catch (_: SQLiteException) { null }
-      catch (_: IllegalArgumentException) { null }
 
     fun activityFocus(resumed: Boolean, windowFocused: Boolean) {
         focus = NotificationFocus(resumed, windowFocused)
@@ -472,7 +365,8 @@ internal class NotificationOwner(private val context: Context) {
     }
 
     fun deliveryUnavailable() {
-        scope.launch { initialized.await(); mutex.withLock { unavailable = true; publish() } }
+        context.firebasePush().unavailable()
+        scope.launch { initialized.await(); mutex.withLock { publish() } }
     }
 
     suspend fun reset() {
@@ -482,7 +376,6 @@ internal class NotificationOwner(private val context: Context) {
             // Keep exact cancellation intent and acknowledgement until owned native absence is known.
             if (!commit(device.copy(records = device.records.map { it.copy(presentation = NotificationDelivery.Closed) }))) return
             ++fence
-            confirmedRegistration = null
             snapshot = null
             resetting = true
             resetIdentity = null
@@ -496,15 +389,15 @@ internal class NotificationOwner(private val context: Context) {
 
     private suspend fun admit(value: ObserverSnapshot): Boolean {
         if (resetting) return false
-        val fleet = MachineStore(context).read().credentials
-        if (value.machines.map { it.machine }.toSet() != fleet.map { it.machine.handle.encoded }.toSet()) {
+        val association = MachineStore(context).association() ?: return false
+        val fleet = association.envelope?.let { verifyPublicFleet(it, association.publicKey).machines } ?: return false
+        if (value.machines.map { it.machine }.toSet() != fleet.map { it.machine }.toSet()) {
             unavailable = true
             snapshot = null
             publish()
             return false
         }
         if (device.observerEpoch != null && device.observerEpoch != value.epoch) {
-            confirmedRegistration = null
             epochMismatch = true
             unavailable = false
             snapshot = null
@@ -512,7 +405,9 @@ internal class NotificationOwner(private val context: Context) {
             return false
         }
         if (value.revision < device.admittedRevision) return false
-        val records = device.records.associateBy { it.key.slot }.toMutableMap()
+        val presentMachines = fleet.map { it.machine }.toSet()
+        val records = device.records.map { if (it.key.machine !in presentMachines) it.copy(presentation = NotificationDelivery.Closed) else it }
+            .associateBy { it.key.slot }.toMutableMap()
         for (machine in value.machines) {
             if (machine.availability == NotificationAvailability.Gap) continue
             val rows = checkNotNull(machine.sessions)
@@ -614,8 +509,8 @@ internal class NotificationOwner(private val context: Context) {
                 true
             }
             if (completed) {
-                val configured = mutex.withLock { device.config != null }
-                if (configured && UnifiedPush.getSavedDistributor(context) == "io.heckel.ntfy") {
+                val configured = MachineStore(context).read().credentials.isNotEmpty()
+                if (configured) {
                     NotificationEnrollment.schedule(context, ExistingWorkPolicy.REPLACE)
                 }
                 refresh()
@@ -800,18 +695,28 @@ internal class NotificationOwner(private val context: Context) {
         }
     }
 
+    private fun pushRegistration(): PushRegistration? = try { pushStore.read() }
+        catch (_: IOException) { null }
+        catch (_: IllegalArgumentException) { null }
+        catch (_: kotlinx.serialization.SerializationException) { null }
+
     private fun publish() {
+        val push = context.firebasePush().status()
+        val registration = pushRegistration()
         val health = when {
-            setupIncomplete -> NotificationHealth.SetupRequired
             !storageAvailable || unavailable -> NotificationHealth.DeliveryUnavailable
             epochMismatch || resetting -> NotificationHealth.ResetRequired
-            device.config == null || device.desiredRegistration == null -> NotificationHealth.SetupRequired
-            !native.allowed() -> NotificationHealth.PermissionBlocked
-            !org.unifiedpush.android.connector.UnifiedPush.getDistributors(context).contains("io.heckel.ntfy") -> NotificationHealth.DistributorMissing
-            org.unifiedpush.android.connector.UnifiedPush.getAckDistributor(context) != "io.heckel.ntfy" -> NotificationHealth.SetupRequired
-            confirmedRegistration != device.desiredRegistration -> NotificationHealth.SetupRequired
+            push == FirebasePushStatus.Disabled -> NotificationHealth.Disabled
+            push == FirebasePushStatus.RestartRequired -> NotificationHealth.RestartRequired
+            push == FirebasePushStatus.Unavailable -> NotificationHealth.DeliveryUnavailable
+            !native.allowed() || com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                .isGooglePlayServicesAvailable(context) != com.google.android.gms.common.ConnectionResult.SUCCESS -> NotificationHealth.PermissionBlocked
+            registration?.status == "unconfigured" -> NotificationHealth.Unconfigured
+            registration == null -> NotificationHealth.SetupRequired
+            registration.transportUnavailable || registration.status == "unavailable" -> NotificationHealth.DeliveryUnavailable
+            registration.status != "active" -> NotificationHealth.SetupRequired
             else -> NotificationHealth.Ready
         }
-        current.value = NotificationView(device, snapshot, health, resetIdentity)
+        current.value = NotificationView(device, snapshot, health, resetIdentity, !storageAvailable || unavailable)
     }
 }

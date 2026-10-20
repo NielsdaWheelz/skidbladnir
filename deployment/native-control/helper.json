@@ -1,5 +1,0 @@
-{
-  "repository": "https://github.com/NielsdaWheelz/llm-calling.git",
-  "entryPoint": "provider-runtime-control",
-  "installedCommand": "skidbladnir-provider-runtime-control"
-}

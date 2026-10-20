@@ -83,6 +83,9 @@ gh release create "$tag" \
   "$release_dir/skidbladnir-android.apk" \
   "$release_dir/skidbladnir-linux-amd64.tar.gz" \
   "$release_dir/skidbladnir-darwin-arm64.tar.gz" \
+  "$release_dir/skidbladnir-linux-amd64.tar.gz.sig" \
+  "$release_dir/skidbladnir-darwin-arm64.tar.gz.sig" \
+  "$release_dir/install" \
   "$release_dir/SHA256SUMS" \
   "$release_dir/android-signing-cert.sha256" \
   --repo "$repo_name" \

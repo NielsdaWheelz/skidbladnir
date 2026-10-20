@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
@@ -24,9 +24,16 @@ import (
 	"golang.org/x/term"
 )
 
-const usage = `usage: skid [--config PATH] COMMAND [options]
+const usage = `usage: skid [--config STATE_DIRECTORY] COMMAND [options]
 
 skid                                      open the session browser
+skid install|update|uninstall              own the local installation
+skid connect                              print a signed five-minute invitation
+skid join [--name NAME]                    read an invitation from stdin
+skid remove DEVICE_ID                     revoke an enrolled device
+skid apply                                apply the hub config file
+skid status                               fleet and configuration application
+skid recover                              explicitly create a new fleet
 skid list [--machine HOST] [--group LABEL | --unassigned]
 skid info HANDLE [--explain]              terminal metadata and status
 skid inspect c-HANDLE [--machine HOST]    native capture and current observation
@@ -38,11 +45,10 @@ skid keys HANDLE KEY...                   explicit logical terminal keys
 skid wait HANDLE [--state STATE] [--timeout DURATION]
 skid stop HANDLE                          interrupt terminal; c- is native stop
 skid close HANDLE [--terminal-only]        interrupt and close; separate outcomes
-skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
+skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--stdin]
 skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 skid shell HANDLE                         new terminal here
 skid group HANDLE (--set LABEL | --clear)
-skid notifications observer --config FILE  devbox background observation
 skid notifications setup                  open macos notification setup
 skid notifications reset                  reset linux notification memory
 
@@ -64,7 +70,7 @@ wait defaults to idle/60s; maximum one hour; idle proves neither completion nor 
 info --explain samples the terminal once more and prints that sample's status evidence
 start --stdin sends one literal initial prompt after bounded idle/composer checks
 start reports creation and prompt delivery separately; written never proves provider acceptance
-omit --model/--effort to retain native account defaults; terminal start rejects agent options
+the configured shell command owns provider options and account settings
 start without --stdin makes no input-readiness promise
 trust/setup dialogs require deliberate inspection and text/keys; start never answers them
 closure may leave shared or remote work running
@@ -115,7 +121,7 @@ native send retains native acceptance; unknown delivery and partial close exit n
 --json preserves structured results and errors. native read/control remains explicit.
 inspect preserves its captured target on native failure; observedRef requires a new authorized action.
 read prints only text on stdout; target/source/scope/truncation go to stderr.
-config defaults to ~/.config/skidbladnir/client.json
+state defaults to ${XDG_STATE_HOME:-~/.local/state}/skidbladnir
 `
 
 type command struct {
@@ -164,7 +170,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--model", "--effort", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
+			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -202,10 +208,6 @@ func parse(args []string) (command, error) {
 					result.request.Profile = argument
 				case "--cwd":
 					result.request.CWD = argument
-				case "--model":
-					result.request.Model = argument
-				case "--effort":
-					result.request.Effort = argument
 				case "--max-bytes":
 					n, err := strconv.Atoi(argument)
 					if err != nil || n < 1 || n > 32768 {
@@ -288,9 +290,6 @@ func parse(args []string) (command, error) {
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
-	if (seen["--model"] || seen["--effort"]) && operation != "start" {
-		return result, errors.New("model and effort options are start-only")
-	}
 	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
 	}
@@ -306,8 +305,8 @@ func parse(args []string) (command, error) {
 		result.request.Kind = fleetclient.LaunchAgent
 		if seen["--terminal"] {
 			result.request.Kind = fleetclient.LaunchTerminal
-			if seen["--model"] || seen["--effort"] || result.stdin {
-				return result, errors.New("terminal start rejects model, effort and initial prompt")
+			if result.stdin {
+				return result, errors.New("terminal start rejects initial prompt")
 			}
 		}
 	}
@@ -414,11 +413,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 	}
 	if parsed.config == "" {
-		home, err := os.UserHomeDir()
+		parsed.config, err = attention.StateDirectory()
 		if err != nil {
 			return render(parsed, fleetclient.Failed("configuration_invalid", "not_sent"), stdout, stderr)
 		}
-		parsed.config = filepath.Join(home, ".config", "skidbladnir", "client.json")
 	}
 	client, err := fleetclient.Open(parsed.config)
 	if err != nil {
@@ -426,6 +424,13 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	parsed.machines = client.Machines()
 	if parsed.request.Operation == "" {
+		applyCtx, cancelApply := context.WithTimeout(ctx, 10*time.Second)
+		applied := make(chan struct{})
+		go func() {
+			defer close(applied)
+			_ = client.Apply(applyCtx) // justify-ignore-error: cached direct access stays available; skid status reports pending configuration.
+		}()
+		defer func() { cancelApply(); <-applied }()
 		if sessionui.Run(ctx, client, stdin.(*os.File), stdout.(*os.File)) != nil {
 			io.WriteString(stderr, "session browser ended with an error\n")
 			return 1
@@ -818,7 +823,7 @@ func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetc
 	case "inventory_incomplete":
 		fmt.Fprintln(writer, "a peer is unavailable; use --machine HOST to limit discovery")
 	case "configuration_invalid":
-		fmt.Fprintln(writer, "install the private client configuration or use --config PATH")
+		fmt.Fprintln(writer, "run skid install; use --config PATH only to select another private state directory")
 	}
 	if failure.Dispatch == "unknown" {
 		fmt.Fprintln(writer, "inspect before any further write; never replay an uncertain write")

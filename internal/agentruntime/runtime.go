@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"encoding/base64"
 	"errors"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -93,22 +94,21 @@ func ValidateAgentRuntime(profiles []Profile, agent AgentRuntime) error {
 	return nil
 }
 
-func ClassifyForeground(profiles []Profile, observation processinfo.Observation) (Foreground, bool) {
+func ClassifyForeground(_ []Profile, observation processinfo.Observation) (Foreground, bool) {
 	if observation.PID <= 0 || !validStartIdentity(observation.StartIdentity) {
 		return Foreground{}, false
 	}
 	var provider Provider
-	for _, profile := range profiles {
-		for _, signature := range profile.ForegroundSignatures {
-			if !matchesSignature(observation, signature) {
-				continue
-			}
-			if provider != "" && provider != profile.Provider {
-				return Foreground{}, false
-			}
-			provider = profile.Provider
-		}
+	switch observation.ExecutableBase() {
+	case "codex":
+		provider = ProviderCodex
+	case "claude":
+		provider = ProviderClaude
 	}
+	if home, err := os.UserHomeDir(); err == nil && !strings.HasSuffix(observation.Executable, " (deleted)") && filepath.Dir(observation.Executable) == canonicalHome(filepath.Join(home, ".local/share/claude/versions")) {
+		provider = ProviderClaude
+	}
+
 	if provider == "" {
 		return Foreground{}, false
 	}
@@ -176,7 +176,6 @@ func Project(profiles []Profile, observation processinfo.Observation, encodedReg
 	providerSessionID, providerSessionName := "", ""
 	if foreground.Provider == ProviderClaude {
 		if registration, valid := acceptRegistration(profiles, foreground, encodedRegistration); valid {
-			agent.Profile = registration.profile
 			providerSessionID = registration.providerSessionID
 		}
 		providerSessionName = claudeName(observation.Argv)
@@ -295,16 +294,6 @@ func paneTerminalAncestry(ancestry []processinfo.Observation, paneTerminal proce
 		}
 	}
 	return nil, false
-}
-
-func matchesSignature(observation processinfo.Observation, signature ForegroundSignature) bool {
-	if signature.ExecutableBase != "" && observation.ExecutableBase() != signature.ExecutableBase {
-		return false
-	}
-	if signature.ExecutableDirectory == "" {
-		return true
-	}
-	return !strings.HasSuffix(observation.Executable, " (deleted)") && filepath.Dir(observation.Executable) == signature.ExecutableDirectory
 }
 
 func claudeName(argv []string) string {

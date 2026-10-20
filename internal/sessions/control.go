@@ -232,7 +232,7 @@ func terminalError(err error) error {
 }
 
 func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profile, bool) {
-	profile, found := manager.profilesByKey[key]
+	profile, found := manager.settings.Load().byKey[key]
 	return profile, found
 }
 

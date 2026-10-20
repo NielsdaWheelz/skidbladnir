@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
@@ -52,7 +52,13 @@ type Client struct {
 	peers          []peer
 	defaultMachine string
 	http           *http.Client
-	notifications  *attention.Config
+	mu             sync.RWMutex
+	refreshMutex   sync.Mutex
+	directory      string
+	identity       fleet.Identity
+	public         fleet.Public
+	envelope       fleet.Envelope
+	hub            string
 }
 
 // InspectReference retains the locally admitted target even when native inspection
@@ -311,7 +317,7 @@ func (client *Client) InventoryMachine(ctx context.Context, handle string) Resul
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {
-	peers := client.peers
+	peers := client.peerSnapshot()
 	if label != "" {
 		selected, ok := client.peerByLabel(label)
 		if !ok {
@@ -517,7 +523,7 @@ func (client *Client) OpenTerminal(ctx context.Context, request Request) (*webso
 }
 
 func (client *Client) peerByLabel(label string) (peer, bool) {
-	for _, p := range client.peers {
+	for _, p := range client.peerSnapshot() {
 		if p.Label == label {
 			return p, true
 		}
@@ -525,7 +531,7 @@ func (client *Client) peerByLabel(label string) (peer, bool) {
 	return peer{}, false
 }
 func (client *Client) peerByMachine(machine string) (peer, bool) {
-	for _, p := range client.peers {
+	for _, p := range client.peerSnapshot() {
 		if p.Machine == machine {
 			return p, true
 		}
@@ -535,6 +541,9 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
+	if target.Origin == "" {
+		return Failed("unavailable", dispatch)
+	}
 	writes := operation != "list" && operation != "profile_usage" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
@@ -639,9 +648,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
 	var value *struct {
-		Code     string `json:"code"`
-		Message  string `json:"message"`
-		Dispatch string `json:"dispatch,omitempty"`
+		Code     string          `json:"code"`
+		Message  string          `json:"message"`
+		Dispatch string          `json:"dispatch,omitempty"`
+		Removal  *fleet.Envelope `json:"removal,omitempty"`
+		Routing  *fleet.Envelope `json:"routing,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -670,7 +681,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
+	case "DeviceRemoved", "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
 		return true
 	default:
 		return false

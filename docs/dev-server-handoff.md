@@ -1,5 +1,11 @@
 # skidbladnir deployment contract
 
+standalone source supersedes the installation/configuration procedures below.
+skid now owns its ordinary installer and services; dev-server is a personal
+consumer. these dated records describe prior installed releases, not a current
+runtime dependency. see [generalization](generalization-plan.md) and its
+[qualification](generalization-qualification.md) for the cutover boundary.
+
 historical restoration source on 2026-09-25 was `/Users/nnandal/Documents/code/skid-v1`,
 based on `927c55412eec7fa129a3325fb8f5ebf8051b6ea0`. publication belongs to the root
 operator. this file's containing commit owns the current source contract;

@@ -86,8 +86,8 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (resu
 	cancel()
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelShutdown()
-	if err := gateway.CloseLiveTerminals(shutdownContext); err != nil {
-		result = errors.Join(result, fmt.Errorf("close live terminals: %w", err))
+	if err := gateway.CloseLiveConnections(shutdownContext); err != nil {
+		result = errors.Join(result, fmt.Errorf("close live connections: %w", err))
 	}
 	if err := server.Shutdown(shutdownContext); err != nil {
 		result = errors.Join(result, fmt.Errorf("shut down gateway HTTP: %w", err))

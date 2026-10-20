@@ -1,143 +1,110 @@
 package dev.niels.skidbladnir
 
-import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
+import java.time.Instant
 import java.util.Base64
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Executor
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 
-private const val FLEET_INVITE_KIND = "skidbladnir.fleet-invite.v2"
-private const val MAXIMUM_FLEET_INVITE_BYTES = 4_096
-internal val FLEET_LABELS = listOf("Arch", "Devbox", "MacBook")
-
-internal class PairingInviteToken private constructor(internal val encoded: String) {
-    companion object {
-        fun parse(candidate: String): PairingInviteToken? =
-            candidate.takeIf(::isCanonicalBase64Url256)?.let(::PairingInviteToken)
-    }
-
-    override fun equals(other: Any?): Boolean = other is PairingInviteToken && encoded == other.encoded
-    override fun hashCode(): Int = encoded.hashCode()
-    override fun toString(): String = "PairingInviteToken(redacted)"
+internal fun fleetBase64(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+internal fun fleetBytes(encoded: String, maximum: Int): ByteArray {
+    require(encoded.length <= (maximum * 4 + 2) / 3)
+    val bytes = Base64.getUrlDecoder().decode(encoded)
+    require(bytes.size <= maximum && fleetBase64(bytes) == encoded)
+    return bytes
 }
-
-internal data class FleetInviteMachine(
-    val machine: PairedMachine,
-    val pairingInviteToken: PairingInviteToken,
+internal fun isCanonicalBase64Url256(candidate: String): Boolean = try {
+    candidate.length == 43 && fleetBytes(candidate, 32).size == 32
+} catch (_: IllegalArgumentException) { false }
+internal fun fleetFingerprint(publicKey: String): String {
+    val key = fleetBytes(publicKey, 32)
+    require(key.size == 32)
+    return MessageDigest.getInstance("SHA-256").digest(key).joinToString("") { "%02x".format(it) }
+}
+@Serializable internal data class FleetMachine(val machine: String, val name: String, val origin: String? = null) {
+    init {
+        require(MachineHandle.parse(machine) != null && MachineLabel.parse(name) != null)
+        require(origin == null || MachineOrigin.parse(origin)?.encoded?.removeSuffix("/") == origin)
+    }
+    fun paired(): PairedMachine = PairedMachine(checkNotNull(MachineHandle.parse(machine)),
+        checkNotNull(MachineLabel.parse(name)), origin?.let { checkNotNull(MachineOrigin.parse(it)) })
+}
+@Serializable internal data class FleetInvite(
+    val schema: Int, val fleetId: String, val publicKey: String, val hub: FleetMachine,
+    val token: String, val expiresAt: String, val proof: FleetEnvelope,
+) {
+    init {
+        require(schema == 1 && fleetFingerprint(publicKey) == fleetId && isCanonicalBase64Url256(token))
+        require(hub.origin != null)
+        acceptWireInstant(expiresAt)
+        val claims = productJson.decodeFromJsonElement<InvitationClaims>(notificationJson(verifiedFleetPayload(proof, publicKey, "invitation")))
+        require(claims == InvitationClaims(1, "invitation", fleetId, hub, token, expiresAt))
+    }
+}
+@Serializable internal data class InvitationClaims(
+    val schema: Int, val kind: String, val fleetId: String, val hub: FleetMachine, val token: String, val expiresAt: String,
 )
-
-internal data class FleetInvite(val machines: List<FleetInviteMachine>, val notifications: NotificationConfig)
-
-internal fun redeemFleetInvite(
-    invite: FleetInvite,
-    executor: Executor,
-    redeem: (FleetInviteMachine) -> GatewayResult<PairingResponse>,
-): CompletableFuture<List<MachineCredential>?> {
-    val redeems = invite.machines.map { machine ->
-        CompletableFuture.supplyAsync({ redeem(machine) }, executor)
-    }
-    return CompletableFuture.allOf(*redeems.toTypedArray()).thenApply {
-        acceptPairingResults(invite, redeems.map { it.join() })
+@Serializable internal data class FleetEnvelope(val payload: String, val signature: String)
+@Serializable internal data class AndroidPush(
+    val id: String, val projectId: String, val applicationId: String, val senderId: String, val apiKey: String,
+) {
+    init {
+        require(listOf(projectId, applicationId, senderId, apiKey).all { it.matches(Regex("[A-Za-z0-9:_.-]{1,256}")) })
+        val bytes = "skidbladnir.android-push.v1\n$projectId\n$applicationId\n$senderId\n$apiKey".encodeToByteArray()
+        require(id == MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) })
     }
 }
-
-internal fun acceptPairingResults(
-    invite: FleetInvite,
-    results: List<GatewayResult<PairingResponse>>,
-): List<MachineCredential>? {
-    if (results.size != invite.machines.size) return null
-    val credentials = results.zip(invite.machines).map { (result, invited) ->
-        val response = (result as? GatewayResult.Success)?.value ?: return null
-        if (response.machine.handle != invited.machine.handle) return null
-        val expectedPlatform = when (invited.machine.label.text) {
-            "Arch", "Devbox" -> MachinePlatform.Linux
-            "MacBook" -> MachinePlatform.Darwin
-            else -> return null
-        }
-        if (response.machine.platform != expectedPlatform) return null
-        MachineCredential(invited.machine, response.bearer)
-    }
-    return credentials.takeIf { fleet -> fleet.map { it.bearer }.distinct().size == fleet.size }
-}
-
-@Serializable
-private data class WireFleetInvite(
-    val kind: String,
-    val machines: List<WireFleetInviteMachine>,
-    val notifications: NotificationConfig,
-)
-
-@Serializable
-private data class WireFleetInviteMachine(
-    val label: String,
-    val origin: String,
-    val machineHandle: String,
-    val pairingInviteToken: String,
-)
-
-internal fun parseFleetInvite(encoded: String): FleetInvite? {
-    if (encoded.toByteArray(StandardCharsets.UTF_8).size !in 1..MAXIMUM_FLEET_INVITE_BYTES) return null
-    return try {
-        val element = strictJsonObject(encoded)
-        if (element.keys != setOf("kind", "machines", "notifications") || element.values.any { it is JsonNull }) return null
-        element.requiredObject("notifications").requireExactKeys(setOf("observerMachine", "ntfyOrigin"))
-        val machineElements = element.getValue("machines").jsonArray
-        if (machineElements.size != FLEET_LABELS.size) return null
-        if (machineElements.any { machine ->
-                val fields = machine.jsonObject
-                fields.keys != setOf("label", "origin", "machineHandle", "pairingInviteToken") ||
-                    fields.values.any { it is JsonNull }
-            }
-        ) return null
-
-        val wire = productJson.decodeFromJsonElement<WireFleetInvite>(element)
-        if (wire.kind != FLEET_INVITE_KIND || wire.machines.map { it.label } != FLEET_LABELS) return null
-        val machines = wire.machines.map { candidate ->
-            val origin = MachineOrigin.parse(candidate.origin)
-            if (origin == null || origin.encoded != candidate.origin) return null
-            FleetInviteMachine(
-                machine = PairedMachine(
-                    handle = MachineHandle.parse(candidate.machineHandle) ?: return null,
-                    label = MachineLabel.parse(candidate.label) ?: return null,
-                    origin = origin,
-                ),
-                pairingInviteToken = PairingInviteToken.parse(candidate.pairingInviteToken) ?: return null,
-            )
-        }
-        if (machines.map { it.machine.handle }.distinct().size != machines.size) return null
-        if (machines.map { it.machine.origin }.distinct().size != machines.size) return null
-        if (machines.map { it.pairingInviteToken }.distinct().size != machines.size) return null
-        val observer = machines.singleOrNull { it.machine.handle.encoded == wire.notifications.observerMachine } ?: return null
-        if (java.net.URI(observer.machine.origin.encoded).host != java.net.URI(wire.notifications.ntfyOrigin).host) return null
-        FleetInvite(machines, wire.notifications)
-    } catch (_: SerializationException) {
-        // justify-ignore-error: scanner text is untrusted and every malformed JSON form has the
-        // single frozen whole-fleet rejection outcome; the payload and decoder cause stay private.
-        null
-    } catch (_: IllegalArgumentException) {
-        // justify-ignore-error: wrong JSON kinds and invalid owned values are the same rejected QR.
-        null
-    } catch (_: NoSuchElementException) {
-        // justify-ignore-error: a missing required member is the same rejected QR.
-        null
+@Serializable internal data class PublicFleet(
+    val schema: Int, val kind: String, val fleetId: String, val authorityEpoch: Long,
+    val stateRevision: Long, val configRevision: Long, val activeHub: String, val machines: List<FleetMachine>,
+    val androidPush: AndroidPush? = null,
+) {
+    init {
+        require(schema == 1 && kind == "fleet" && fleetId.matches(Regex("[0-9a-f]{64}")))
+        require(authorityEpoch > 0 && stateRevision > 0 && configRevision > 0)
+        require(machines.isNotEmpty() && machines.distinctBy { it.machine }.size == machines.size)
+        require(machines.map { it.name.lowercase(java.util.Locale.ROOT) }.distinct().size == machines.size)
+        require(machines.mapNotNull { it.origin }.let { it.distinct().size == it.size })
+        require(machines.single { it.machine == activeHub }.machine == activeHub)
     }
 }
-
-internal fun isCanonicalBase64Url256(candidate: String): Boolean {
-    if (candidate.length != 43 || candidate.any {
-            it !in 'A'..'Z' && it !in 'a'..'z' && it !in '0'..'9' && it != '-' && it != '_'
-        }
-    ) return false
-    val decoded = try {
-        Base64.getUrlDecoder().decode(candidate)
-    } catch (_: IllegalArgumentException) {
-        // justify-ignore-error: invalid base64url is the expected rejection result of this parser.
-        return false
-    }
-    return decoded.size == 32 && Base64.getUrlEncoder().withoutPadding().encodeToString(decoded) == candidate
+internal fun verifiedFleetPayload(envelope: FleetEnvelope, publicKey: String, kind: String): String {
+    val rawKey = fleetBytes(publicKey, 32)
+    require(rawKey.size == 32)
+    val payload = fleetBytes(envelope.payload, 4 * 1_024 * 1_024)
+    val signature = fleetBytes(envelope.signature, 64)
+    require(signature.size == 64)
+    val key = KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(
+        byteArrayOf(0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00) + rawKey,
+    ))
+    require(Signature.getInstance("Ed25519").run {
+        initVerify(key)
+        update("skidbladnir.$kind.v1\u0000".encodeToByteArray())
+        update(payload)
+        verify(signature)
+    })
+    return payload.decodeToString(throwOnInvalidSequence = true)
 }
+internal fun verifyPublicFleet(envelope: FleetEnvelope, publicKey: String, previous: FleetEnvelope? = null): PublicFleet {
+    val value = productJson.decodeFromJsonElement<PublicFleet>(notificationJson(verifiedFleetPayload(envelope, publicKey, "fleet")))
+    require(value.fleetId == fleetFingerprint(publicKey))
+    if (previous != null) {
+        val prior = verifyPublicFleet(previous, publicKey)
+        require(value.authorityEpoch >= prior.authorityEpoch && value.stateRevision >= prior.stateRevision && value.configRevision >= prior.configRevision)
+        require(value.authorityEpoch != prior.authorityEpoch || value.stateRevision != prior.stateRevision || envelope.payload == previous.payload)
+    }
+    return value
+}
+internal fun parseFleetInvite(encoded: String): FleetInvite? = try {
+    require(encoded.startsWith("skid://connect/") && encoded.length <= 8_192)
+    val text = fleetBytes(encoded.removePrefix("skid://connect/"), 4_096).decodeToString(throwOnInvalidSequence = true)
+    val invite = productJson.decodeFromJsonElement<FleetInvite>(notificationJson(text))
+    require(acceptWireInstant(invite.expiresAt).isAfter(Instant.now()))
+    invite
+} catch (_: IllegalArgumentException) { null }
+  catch (_: kotlinx.serialization.SerializationException) { null }
+  catch (_: java.security.GeneralSecurityException) { null }

@@ -164,9 +164,10 @@ type resolvedContext struct {
 }
 
 func (client *Client) lookupContext(ctx context.Context, id string, unavailable map[string]bool) resolvedContext {
-	results := make([]resolvedContext, len(client.peers))
+	peers := client.peerSnapshot()
+	results := make([]resolvedContext, len(peers))
 	var pending sync.WaitGroup
-	for index, target := range client.peers {
+	for index, target := range peers {
 		if unavailable[target.Machine] {
 			continue
 		}

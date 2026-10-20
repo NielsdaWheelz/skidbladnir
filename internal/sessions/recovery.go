@@ -492,7 +492,7 @@ func (manager *Manager) reconcileRecovery() {
 		manager.failRecovery(recoveryOperationError(restore, RecoveryPhaseRestore, "restore_preflight", err), true)
 		return
 	}
-	if _, err := manager.tmux.RestoreWorkspace(restore, destination, recipe.workspace()); err != nil {
+	if _, err := manager.tmux.WithShell(manager.settings.Load().shellPath).RestoreWorkspace(restore, destination, recipe.workspace()); err != nil {
 		manager.failRecovery(recoveryOperationError(restore, RecoveryPhaseRestore, "restore_execute", err), true)
 		return
 	}

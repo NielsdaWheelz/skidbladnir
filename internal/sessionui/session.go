@@ -35,6 +35,7 @@ type notificationMsg struct {
 	view       terminalclient.NotificationView
 	err        error
 }
+type fleetMsg struct{}
 type tickMsg struct{}
 type actionMsg struct {
 	operation string
@@ -52,6 +53,7 @@ type attachedMsg struct {
 type model struct {
 	ctx                       context.Context
 	client                    *fleetclient.Client
+	fleetPending              bool
 	input, output             *os.File
 	peers                     []fleetclient.Peer
 	rows                      []listedRow
@@ -188,6 +190,14 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		m.blurred = false
 	case tickMsg:
 		return m, tea.Batch(m.refresh(false), m.refreshUsage(time.Now(), false), tick())
+	case fleetMsg:
+		m.fleetPending = false
+		m.reconcileFleet()
+		commands := []tea.Cmd{m.refreshUsage(time.Now(), false)}
+		for index := range m.peers {
+			commands = append(commands, m.refreshInventory(index, false))
+		}
+		return m, tea.Batch(commands...)
 	case usageMsg:
 		m.acceptUsage(message)
 		return m, nil
@@ -583,7 +593,7 @@ func (m *model) invalidatePendingPeer() {
 
 // Auth and identity failures are authoritative even before the next inventory.
 func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
-	if failure == nil || failure.Code != "Unauthenticated" && failure.Code != "MachineIdentityMismatch" {
+	if failure == nil || failure.Code != "Unauthenticated" && failure.Code != "MachineIdentityMismatch" && failure.Code != "DeviceRemoved" {
 		return
 	}
 	for index := range m.peers {

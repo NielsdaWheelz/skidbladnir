@@ -103,6 +103,8 @@ func ErrorMessage(failure Failure, request Request, native bool) string {
 		return "could not confirm terminal input. inspect the terminal before trying again."
 	}
 	switch failure.Code {
+	case "DeviceRemoved":
+		return "device removed; join again to restore access."
 	case "SessionNameInvalid":
 		return "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number."
 	case "SessionNameConflict":

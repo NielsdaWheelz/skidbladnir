@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	TmuxPath       string
+	ShellPath      string
 	SocketName     string
 	Workdir        *workdir.Service
 	CataloguePath  string
@@ -33,8 +34,6 @@ type CreateInput struct {
 	Kind             LaunchKind
 	CWD              string
 	Profile          string
-	Model            string
-	Effort           string
 	preparedName     string
 	OptionalTmuxName string
 	Objective        string

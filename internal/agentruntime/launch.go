@@ -4,58 +4,25 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"path/filepath"
-	"strconv"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
 const MaxLaunchBytes = 16 * 1024
 
-var ErrLaunchOptionsInvalid = errors.New("model and effort must each be at most 256 utf-8 bytes without whitespace or controls")
-
-// Empty values are omitted options; wire ingress rejects explicit empty fields.
-func ValidateLaunchOptions(model, effort string) error {
-	for _, value := range [...]string{model, effort} {
-		if len(value) > 256 || !utf8.ValidString(value) || strings.IndexFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-			return ErrLaunchOptionsInvalid
-		}
-	}
-	return nil
-}
-
-// Launch is the one foreground action requested of a newly created shell.
+// Launch carries command text as data until the initialized shell evaluates it.
 type Launch struct {
-	Command     string                `json:"command"`
-	Arguments   []string              `json:"arguments"`
-	Environment []EnvironmentVariable `json:"environment"`
+	Command string `json:"command"`
 }
 
-func NewLaunch(profile Profile, model, effort string) Launch {
-	arguments := make([]string, len(profile.Arguments))
-	copy(arguments, profile.Arguments)
-	if model != "" {
-		arguments = append(arguments, "--model="+model)
-	}
-	if effort != "" {
-		switch profile.Provider {
-		case ProviderCodex:
-			// Validation excludes Go-only control escapes, so Quote is a TOML
-			// basic string and preserves the literal provider value.
-			arguments = append(arguments, "--config", "model_reasoning_effort="+strconv.Quote(effort))
-		case ProviderClaude:
-			arguments = append(arguments, "--effort="+effort)
-		default:
-			panic("unknown launch provider") // justify-defect: validated profiles have one closed provider.
-		}
-	}
-	return Launch{Command: profile.Command, Arguments: arguments, Environment: profile.Environment}
+func NewLaunch(profile Profile) Launch { return Launch{Command: profile.Command} }
+func validCommand(command string) bool {
+	return strings.TrimSpace(command) != "" && utf8.ValidString(command) && !strings.ContainsRune(command, 0)
 }
-
 func EncodeLaunch(launch Launch) (string, error) {
-	if err := validateLaunch(launch); err != nil {
-		return "", err
+	if !validCommand(launch.Command) {
+		return "", errors.New("invalid agent command")
 	}
 	value, err := json.Marshal(launch)
 	if err != nil || len(value) > MaxLaunchBytes {
@@ -63,7 +30,6 @@ func EncodeLaunch(launch Launch) (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
-
 func DecodeLaunch(encoded string) (Launch, error) {
 	if len(encoded) > base64.RawURLEncoding.EncodedLen(MaxLaunchBytes) {
 		return Launch{}, errors.New("agent launch is too large")
@@ -73,27 +39,8 @@ func DecodeLaunch(encoded string) (Launch, error) {
 		return Launch{}, errors.New("invalid agent launch")
 	}
 	var launch Launch
-	if err := json.Unmarshal(value, &launch); err != nil || validateLaunch(launch) != nil {
+	if err := strictjson.Decode(value, &launch); err != nil || !validCommand(launch.Command) {
 		return Launch{}, errors.New("invalid agent launch")
 	}
 	return launch, nil
-}
-
-func validateLaunch(launch Launch) error {
-	if !filepath.IsAbs(launch.Command) || strings.ContainsRune(launch.Command, 0) {
-		return errors.New("invalid agent command")
-	}
-	names := make(map[string]bool, len(launch.Environment))
-	for _, variable := range launch.Environment {
-		if !environmentPattern.MatchString(variable.Name) || names[variable.Name] || strings.ContainsRune(variable.Value, 0) {
-			return errors.New("invalid agent environment")
-		}
-		names[variable.Name] = true
-	}
-	for _, argument := range launch.Arguments {
-		if strings.ContainsRune(argument, 0) {
-			return errors.New("invalid agent argument")
-		}
-	}
-	return nil
 }

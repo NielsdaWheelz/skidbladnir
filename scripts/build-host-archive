@@ -47,7 +47,11 @@ install -m 0644 "$source_dir/catalog/characters.json" "$staging_dir/characters.j
 jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
   '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"
 chmod 0644 "$staging_dir/release.json"
-members=(skidbladnir characters.json release.json)
+mkdir -p "$staging_dir/providers"
+cp -R "$source_dir/deployment/providers/." "$staging_dir/providers/"
+install -m 0755 "$source_dir/deployment/install/native-control" "$staging_dir/providers/native-control"
+python3 "$source_dir/deployment/install/build-native.py" "$platform" "$staging_dir/native-helper"
+members=(skidbladnir characters.json release.json providers native-helper)
 if [[ "$goos" == darwin ]]; then
   "$tool_repo_dir/scripts/build-mac-app" "$source_dir" "$tag" "$sha" "$staging_dir/Skid.app"
   members+=(Skid.app)

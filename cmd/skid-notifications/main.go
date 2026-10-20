@@ -56,7 +56,7 @@ func main() {
 		os.Exit(1)
 	}
 	flags := flag.NewFlagSet("skid-notifications", flag.ContinueOnError)
-	config := flags.String("config", configPath, "private skid client configuration")
+	config := flags.String("config", configPath, "private skid fleet state directory")
 	skid := flags.String("skid", skidPath, "exact skid executable")
 	if flags.Parse(os.Args[1:]) != nil || flags.NArg() != 0 {
 		os.Exit(64)

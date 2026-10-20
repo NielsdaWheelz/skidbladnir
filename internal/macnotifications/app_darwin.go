@@ -227,8 +227,9 @@ func (owner *owner) openSession(ref string) {
 		return
 	}
 	launch := value.(struct {
-		Nonce  string
-		Script string
+		Nonce    string
+		Script   string
+		Terminal string
 	}) // justify-assertion: creator admission owns the launch shape.
 	var surface struct {
 		ID string `json:"id"`
@@ -241,9 +242,13 @@ func (owner *owner) openSession(ref string) {
 	}
 	_, _ = owner.request(owner.ctx, "launched", 0, launchResult{launch.Nonce, surface.ID}) // justify-ignore-error: app shutdown retires its ephemeral launch associations.
 	if err != nil {
+		text := "could not open terminal. open the session from skid."
+		if launch.Terminal == "ghostty" {
+			text = "could not open ghostty. open the session from skid."
+		}
 		_ = bridge.call(owner.ctx, "error", struct {
 			Text string `json:"text"`
-		}{"could not open ghostty. open the session from skid."}, nil) // justify-ignore-error: a failed native dialog has no secondary surface.
+		}{text}, nil) // justify-ignore-error: a failed native dialog has no secondary surface.
 	}
 }
 
@@ -263,10 +268,32 @@ func ghosttyScript(skidPath, configPath, ref, nonce string) (string, error) {
 		"activate window created\nreturn id of focused terminal of selected tab of created\nend tell\nend timeout", nil
 }
 
+// appleTerminalScript captures the window and tab returned by this launch.
+// No title or pre-existing tab is used to associate a session with a surface.
+func appleTerminalScript(skidPath, configPath, ref, nonce string) (string, error) {
+	directory, err := attention.StateDirectory()
+	if err != nil {
+		return "", ErrUnavailable
+	}
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+	command := "SKID_NOTIFICATION_LAUNCH=" + quote(nonce) + " XDG_STATE_HOME=" + quote(filepath.Dir(directory)) + " " + quote(skidPath) + " --config " + quote(configPath) + " enter --ref " + quote(ref)
+	return "with timeout of 2 seconds\ntell application id \"com.apple.Terminal\"\n" +
+		"set created to do script " + strconv.Quote(command) + "\n" +
+		"repeat 40 times\nset createdTTY to tty of created\nif createdTTY is not \"\" then\n" +
+		"repeat with createdWindow in windows\nrepeat with candidate in tabs of createdWindow\n" +
+		"if tty of candidate is createdTTY then\nset selected tab of createdWindow to candidate\nset index of createdWindow to 1\nactivate\n" +
+		"return \"apple-terminal:\" & (id of createdWindow as text) & \":\" & createdTTY\n" +
+		"end if\nend repeat\nend repeat\nend if\ndelay 0.025\nend repeat\nerror \"created terminal unavailable\"\nend tell\nend timeout", nil
+}
+
 func DefaultPaths() (configPath, skidPath string, err error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", "", ErrUnavailable
 	}
-	return filepath.Join(home, ".config", "skidbladnir", "client.json"), filepath.Join(home, ".local", "share", "skidbladnir", "current", "skidbladnir"), nil
+	directory, err := attention.StateDirectory()
+	if err != nil {
+		return "", "", err
+	}
+	return directory, filepath.Join(home, ".local", "share", "skidbladnir", "current", "skidbladnir"), nil
 }

@@ -106,7 +106,7 @@ internal class MachineHandle private constructor(val encoded: String) {
 internal class MachineLabel private constructor(val text: String) {
     companion object {
         fun parse(candidate: String): MachineLabel? {
-            if (candidate.isEmpty() || candidate.length > 40 || candidate != candidate.trim()) return null
+            if (candidate.isEmpty() || candidate != candidate.trim()) return null
             if (candidate.hasDisplayUnsafeCodePoint()) return null
             return MachineLabel(candidate)
         }
@@ -160,7 +160,8 @@ internal class MachineOrigin private constructor(val encoded: String) {
                 // only classification this parser owns is accepted or rejected.
                 return null
             }
-            if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.port != 8443) return null
+            if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.port != 8443 ||
+                !uri.host.lowercase(Locale.ROOT).endsWith(".ts.net") || uri.host == ".ts.net") return null
             if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
             if (uri.rawPath !in setOf("", "/") || candidate.any(Char::isWhitespace)) return null
             // URI.getHost() already returns the RFC 2732 bracketed form for an IPv6 literal, so the
@@ -185,19 +186,19 @@ internal class ProfileKey private constructor(val encoded: String) {
     override fun toString(): String = encoded
 }
 
-internal data class PairedMachine(val handle: MachineHandle, val label: MachineLabel, val origin: MachineOrigin)
+internal data class PairedMachine(val handle: MachineHandle, val label: MachineLabel, val origin: MachineOrigin?)
 internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession)
 internal enum class MachinePlatform { Linux, Darwin }
 internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
 @Serializable internal enum class AgentProvider { Codex, Claude }
-internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider, val historyScope: String? = null)
+internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider?, val historyScope: String? = null)
 
 @Serializable private data class WireMachineSummary(val handle: String, val platform: WireMachinePlatform)
 @Serializable private enum class WireMachinePlatform { Linux, Darwin }
 @Serializable private data class WireProfileChoice(
     val key: String,
     val label: String,
-    val provider: AgentProvider,
+    val provider: AgentProvider? = null,
     val historyScope: String? = null,
 )
 @Serializable internal data class CharacterSummary(val key: String, val displayName: String)
@@ -718,7 +719,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     }
     element.getValue("profiles").jsonArray.forEach { profile ->
         (profile as? JsonObject ?: throw SerializationException("profile is not an object"))
-            .requireAbsentOrNonNull(setOf("historyScope"))
+            .requireAbsentOrNonNull(setOf("provider", "historyScope"))
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
@@ -799,7 +800,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         }
         session.agent?.let { agent ->
             agent.profile?.let { runtimeProfile ->
-                profiles.single { choice -> choice.key == runtimeProfile && choice.provider == agent.provider }
+                profiles.single { choice -> choice.key == runtimeProfile && (choice.provider == null || choice.provider == agent.provider) }
             }
         }
     }
@@ -1118,7 +1119,6 @@ internal enum class ApiErrorCode(val wireName: String) {
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNameChanged("SessionNameChanged"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
-    PairingInviteRejected("PairingInviteRejected"),
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
     TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
@@ -1150,7 +1150,6 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.SessionNameChanged -> RENAME_STALE_EDIT
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
     ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh and try again."
-    ApiErrorCode.PairingInviteRejected -> "This fleet invite is invalid, expired, or already used."
     ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Fleet reset is required."
     ApiErrorCode.InternalError -> "Skíðblaðnir could not complete the request."
     ApiErrorCode.ReconnectRequired -> "Reconnect required."

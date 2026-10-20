@@ -1,44 +1,28 @@
 package dev.niels.skidbladnir
 
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import org.unifiedpush.android.connector.FailedReason
-import org.unifiedpush.android.connector.PushService
-import org.unifiedpush.android.connector.data.PushEndpoint
-import org.unifiedpush.android.connector.data.PushMessage
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import androidx.work.ExistingWorkPolicy
+import java.io.IOException
+import java.security.GeneralSecurityException
 
-/** The official receiver owns token checks, key storage and binding lifetime. */
-class NotificationPushService : PushService() {
-    override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
-        if (instance != NOTIFICATION_INSTANCE || endpoint.temporary) return
-        val keys = endpoint.pubKeySet ?: return
-        val subscription = try {
-            NotificationSubscription(endpoint.url, NotificationSubscriptionKeys(keys.pubKey, keys.auth))
-        } catch (_: IllegalArgumentException) { return }
-        // Enter the sole owner synchronously; the existing durable registration job owns replay.
-        notificationOwner().endpoint(subscription)
+/** FCM carries only enrollment proofs or fetch hints; admission still requires an authenticated read. */
+class NotificationPushService : FirebaseMessagingService() {
+    override fun onRegistered(installationId: String) { firebasePush().registered(installationId) }
+    // unregister is used only for the owned cache reset; its callback cannot identify a request generation.
+    override fun onMessageReceived(message: RemoteMessage) {
+        if (message.notification != null || message.data.size !in 1..9 || message.data.any { it.key.length > 32 || it.value.length > 256 }) return
+        try {
+            if (!firebasePush().accept(message.from, message.data)) return
+            when (message.data["kind"]) {
+                "enrollment" -> NotificationEnrollment.schedule(this, ExistingWorkPolicy.REPLACE)
+                "hint" -> NotificationRefresh.schedule(this, message.priority == RemoteMessage.PRIORITY_HIGH)
+            }
+        } catch (_: IOException) { notificationOwner().deliveryUnavailable() }
+          catch (_: GeneralSecurityException) { /* inaccessible pairing state grants no push authority */ }
+          catch (_: IllegalArgumentException) { /* malformed external hints have no product authority */ }
     }
-
-    override fun onMessage(message: PushMessage, instance: String) {
-        if (instance != NOTIFICATION_INSTANCE || !message.decrypted || message.content.size !in 1..256) return
-        val owner = notificationOwner()
-        // ntfy lends process importance for five seconds through the library's separate
-        // RaiseToForegroundService. The SDK may reuse this adapter after its own unbind.
-        owner.scope.launch { withTimeoutOrNull(4_000) { owner.receiveHint(message.content) } }
+    override fun onDeletedMessages() {
+        if (firebasePush().target() != null) NotificationRefresh.schedule(this, false)
     }
-
-    override fun onRegistrationFailed(reason: FailedReason, instance: String) {
-        if (instance == NOTIFICATION_INSTANCE) notificationOwner().deliveryUnavailable()
-    }
-
-    override fun onUnregistered(instance: String) {
-        if (instance == NOTIFICATION_INSTANCE) notificationOwner().deliveryUnavailable()
-    }
-
-    override fun onTempUnavailable(instance: String) {
-        if (instance == NOTIFICATION_INSTANCE) notificationOwner().deliveryUnavailable()
-    }
-
 }
-
-internal const val NOTIFICATION_INSTANCE = "needs-input"

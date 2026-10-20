@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -59,6 +60,11 @@ func (buffer *outputBuffer) Write(contents []byte) (int, error) {
 }
 
 func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) error {
+	revision := service.sessions.SettingsRevision()
+	current, found := service.sessions.Profile(profile.Key)
+	if !found || current.Provider != profile.Provider || current.Home != profile.Home {
+		return &UnavailableError{Dispatch: "not_sent"}
+	}
 	mutation := operation == "send" || operation == "stop" || operation == "interrupt"
 	dispatch := "not_sent"
 	if mutation {
@@ -80,7 +86,11 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	var output outputBuffer
 	command.Stdout = &output
 	// Provider stderr can contain prompts/account paths; it is never surfaced.
-	command.Env = service.nativeEnvironment(profile)
+	environment, err := service.nativeEnvironment(profile)
+	if err != nil {
+		return &UnavailableError{Dispatch: "not_sent"}
+	}
+	command.Env = environment
 	runErr := command.Run()
 	if runErr != nil {
 		if command.Process == nil {
@@ -105,6 +115,9 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	}
 	var envelope nativeEnvelope
 	if strictjson.Decode(output.data.Bytes(), &envelope) != nil {
+		return unavailable
+	}
+	if service.sessions.SettingsRevision() != revision {
 		return unavailable
 	}
 	return decodeNativeEnvelope(envelope, result, unavailable)
@@ -132,7 +145,7 @@ func decodeNativeEnvelope(envelope nativeEnvelope, result any, unavailable *Unav
 	}
 }
 
-func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string {
+func (service *Service) nativeEnvironment(profile agentruntime.Profile) ([]string, error) {
 	values := make(map[string]string)
 	for _, value := range os.Environ() {
 		name, contents, ok := strings.Cut(value, "=")
@@ -142,15 +155,28 @@ func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string
 	}
 	delete(values, "CODEX_HOME")
 	delete(values, "CLAUDE_CONFIG_DIR")
-	for _, entry := range profile.Environment {
-		values[entry.Name] = entry.Value
+	if profile.Provider == agentruntime.ProviderCodex {
+		values["CODEX_HOME"] = profile.Home
+	}
+	if profile.Provider == agentruntime.ProviderClaude {
+		values["CLAUDE_CONFIG_DIR"] = profile.Home
+		executable, err := exec.LookPath("claude")
+		if err != nil {
+			return nil, err
+		}
+		executable, err = filepath.EvalSymlinks(executable)
+		if err != nil {
+			return nil, err
+		}
+		values["SKIDBLADNIR_CLAUDE_COMMAND"] = executable
+	} else {
+		delete(values, "SKIDBLADNIR_CLAUDE_COMMAND")
 	}
 	delete(values, "SKIDBLADNIR_SHELL")
 	delete(values, "SKIDBLADNIR_AGENT")
-	values["SKIDBLADNIR_CLAUDE_COMMAND"] = profile.Command
 	result := make([]string, 0, len(values))
 	for name, value := range values {
 		result = append(result, name+"="+value)
 	}
-	return result
+	return result, nil
 }

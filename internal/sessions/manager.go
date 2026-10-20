@@ -14,9 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -38,16 +40,18 @@ var (
 )
 
 type Manager struct {
-	tmux          tmuxclient.Client
-	workdir       *workdir.Service
-	catalogue     catalog.Catalogue
-	profiles      []agentruntime.Profile
-	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
-	mutations     chan struct{}
-	recovery      workspaceRecovery
+	tmux      tmuxclient.Client
+	workdir   *workdir.Service
+	catalogue catalog.Catalogue
+	settings  atomic.Pointer[runtimeSettings]
+	mutations chan struct{}
+	recovery  workspaceRecovery
 }
 
 func New(config Config) (*Manager, error) {
+	if err := validateShell(config.ShellPath); err != nil {
+		return nil, err
+	}
 	if err := requireExecutable(config.TmuxPath); err != nil {
 		return nil, fmt.Errorf("tmux executable: %w", err)
 	}
@@ -73,19 +77,63 @@ func New(config Config) (*Manager, error) {
 	for _, profile := range profiles {
 		profilesByKey[profile.Key] = profile
 	}
-	return &Manager{
-		tmux:          tmux,
-		workdir:       config.Workdir,
-		catalogue:     characters,
-		profiles:      profiles,
-		profilesByKey: profilesByKey,
-		mutations:     make(chan struct{}, 1),
-		recovery:      workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
-	}, nil
+	manager := &Manager{
+		tmux:      tmux,
+		workdir:   config.Workdir,
+		catalogue: characters,
+		mutations: make(chan struct{}, 1),
+		recovery:  workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
+	}
+	manager.settings.Store(&runtimeSettings{profiles: profiles, byKey: profilesByKey, shellPath: config.ShellPath, revision: 1})
+	return manager, nil
 }
 
+type runtimeSettings struct {
+	profiles  []agentruntime.Profile
+	byKey     map[agentruntime.ProfileKey]agentruntime.Profile
+	shellPath string
+	revision  uint64
+}
+
+func (manager *Manager) ApplySettings(ctx context.Context, profiles []agentruntime.Profile, shellPath string) error {
+	validated, err := agentruntime.ValidateProfiles(profiles)
+	if err != nil {
+		return err
+	}
+	if err := validateShell(shellPath); err != nil {
+		return err
+	}
+	if err := manager.acquire(ctx); err != nil {
+		return err
+	}
+	defer manager.release()
+	current := manager.settings.Load()
+	if current.shellPath == shellPath && slices.Equal(current.profiles, validated) {
+		return nil
+	}
+	byKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(validated))
+	for _, p := range validated {
+		byKey[p.Key] = p
+	}
+	manager.settings.Store(&runtimeSettings{profiles: validated, byKey: byKey, shellPath: shellPath, revision: manager.SettingsRevision() + 1})
+	return nil
+}
+func validateShell(path string) error {
+	if !filepath.IsAbs(path) {
+		return errors.New("shell must be an absolute bash or zsh executable")
+	}
+	if filepath.Base(path) != "bash" && filepath.Base(path) != "zsh" {
+		return errors.New("shell must be bash or zsh")
+	}
+	if err := requireExecutable(path); err != nil {
+		return fmt.Errorf("shell executable: %w", err)
+	}
+	return nil
+}
+
+func (manager *Manager) SettingsRevision() uint64 { return manager.settings.Load().revision }
 func (manager *Manager) Profiles() []agentruntime.Profile {
-	return agentruntime.CloneProfiles(manager.profiles)
+	return agentruntime.CloneProfiles(manager.settings.Load().profiles)
 }
 
 func (manager *Manager) acquire(ctx context.Context) error {
@@ -282,16 +330,13 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	launch := ""
 	if input.Kind == LaunchAgent {
-		nativeLaunch := agentruntime.NewLaunch(profile, input.Model, input.Effort)
-		if profile.Provider == agentruntime.ProviderCodex {
-			nativeLaunch.Arguments = append(nativeLaunch.Arguments, "--remote", "unix://"+agentruntime.CodexEndpoint(profile), "--cd", cwd.String())
-		}
+		nativeLaunch := agentruntime.NewLaunch(profile)
 		launch, err = agentruntime.EncodeLaunch(nativeLaunch)
 		if err != nil {
 			return ObservedSession{}, err
 		}
 	}
-	terminal, err := manager.tmux.TerminalCommand(cwd.String(), launch)
+	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd.String(), launch)
 	if err != nil {
 		return ObservedSession{}, err
 	}
@@ -497,7 +542,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	session.AttachedClients = inspected.attachedClients
 	session.CWD, session.ActiveCommand = row.CWD, row.Command
 	key := agentruntime.ProfileKey(row.LocalSession.Profile)
-	if _, valid := manager.profilesByKey[key]; valid {
+	if _, valid := manager.Profile(key); valid {
 		session.LaunchProfile = key
 	}
 	if encoded := row.LocalSession.Objective; encoded != "" {
@@ -570,7 +615,7 @@ func (manager *Manager) TerminalContext(connectionID string) (TerminalContext, e
 	if transport, id, recognized := observedTransport(foreground, environment); recognized {
 		result.CWD = ""
 		result.Connection = &Connection{Transport: transport, ID: id}
-	} else if agent := observeRemoteAgent(foreground, environment, manager.profiles); agent != nil {
+	} else if agent := observeRemoteAgent(foreground, environment, manager.Profiles()); agent != nil {
 		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: agent.Profile}
 	}
 	return result, nil

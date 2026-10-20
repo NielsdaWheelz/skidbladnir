@@ -107,29 +107,32 @@ import pathlib
 import sys
 import tarfile
 
-expected = {"skidbladnir": (False, 0o755), "characters.json": (False, 0o644),
-            "release.json": (False, 0o644)}
+required = {"skidbladnir", "characters.json", "release.json", "providers/shell-init",
+            "providers/terminal-context-init", "providers/native-control", "native-helper/runtime.json",
+            "native-helper/source/uv.lock", "native-helper/source/pyproject.toml", "native-helper/requirements.txt", "native-helper/uv"}
 if sys.argv[2] == "darwin-arm64":
-    for name in ("Skid.app", "Skid.app/Contents", "Skid.app/Contents/MacOS",
-                 "Skid.app/Contents/Resources", "Skid.app/Contents/_CodeSignature"):
-        expected[name] = (True, 0o755)
-    for name in ("Info.plist", "Resources/skid.icns", "_CodeSignature/CodeResources"):
-        expected["Skid.app/Contents/" + name] = (False, 0o644)
-    expected["Skid.app/Contents/MacOS/skid-notifications"] = (False, 0o755)
+    required.update({"Skid.app/Contents/Info.plist", "Skid.app/Contents/MacOS/skid-notifications"})
 seen = set()
 with tarfile.open(sys.argv[1], "r:gz") as archive:
     for member in archive:
         name = member.name.rstrip("/")
-        if name not in expected or name in seen:
-            sys.exit("release archive has unexpected or duplicate members")
+        path = pathlib.PurePosixPath(name)
+        if path.is_absolute() or ".." in path.parts or name in seen:
+            sys.exit("release archive has unsafe or duplicate members")
+        if path.parts[0] not in {"skidbladnir", "characters.json", "release.json", "providers", "native-helper", "Skid.app"}:
+            sys.exit("release archive has unexpected members")
         seen.add(name)
-        directory, mode = expected[name]
-        if (not (member.isdir() if directory else member.isfile()) or
-                member.mode != mode):
-            sys.exit("release archive member type or mode differs")
+        if not (member.isfile() or member.isdir() or member.issym()):
+            sys.exit("release archive member type differs")
+        if member.issym():
+            target = pathlib.PurePosixPath(member.linkname)
+            if target.is_absolute():
+                sys.exit("release archive symlink is absolute")
+        elif member.mode not in {0o644, 0o755}:
+            sys.exit("release archive member mode differs")
         if any(key.startswith(("LIBARCHIVE.xattr.", "SCHILY.xattr.")) for key in member.pax_headers):
-            sys.exit(f"{pathlib.Path(sys.argv[1]).name} contains forbidden extended-attribute metadata")
-if seen != set(expected):
+            sys.exit("release archive contains forbidden extended-attribute metadata")
+if not required.issubset(seen):
     sys.exit("release archive is missing required members")
 PY
 }
@@ -140,6 +143,12 @@ verify_go_identity() {
   grep -Fqx $'\tbuild\tGOOS='"$goos" <<<"$build_info" &&
     grep -Fqx $'\tbuild\tGOARCH='"$goarch" <<<"$build_info" &&
     ! grep -Fq $'\tbuild\tvcs=' <<<"$build_info"
+}
+
+verify_mac_floor() {
+  local observed
+  observed="$(xcrun vtool -show-build "$1" | awk '$1 == "minos" {print $2}')" || return 1
+  [[ "$observed" == 26.0 ]] || { printf 'mac binary deployment target differs from declared macos 26.0 floor\n' >&2; return 1; }
 }
 
 verify_mac_app() {
@@ -174,6 +183,7 @@ if sys.argv[5]:
         raise SystemExit("signed mac app metadata differs from release source")
 PY
   verify_go_identity "$app/Contents/MacOS/skid-notifications" darwin arm64 || return 1
+  verify_mac_floor "$app/Contents/MacOS/skid-notifications" || return 1
   [[ "$("$app/Contents/MacOS/skid-notifications" version)" == "$tag $sha" ]] || return 1
   if [[ -n "$reproduce" ]]; then
     codesign --display --entitlements "$stage/observed-entitlements.plist" --xml "$app" >/dev/null 2>&1 || return 1
@@ -189,7 +199,7 @@ PY
     "$repo_dir/scripts/build-mac-icon" "$source_dir" "$stage/expected-skid.icns" || return 1
     cmp -s "$stage/expected-skid.icns" "$app/Contents/Resources/skid.icns" || return 1
     expected="$stage/expected-notifications"
-    (cd "$source_dir" && GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+    (cd "$source_dir" && MACOSX_DEPLOYMENT_TARGET=26.0 GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
       go build -buildvcs=false -mod=readonly -trimpath \
         -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
         -o "$expected" ./cmd/skid-notifications) || return 1
@@ -257,6 +267,7 @@ verify_archive() (
   fi
   verify_go_identity "$staging_dir/skidbladnir" "$goos" "$goarch" || return 1
   if [[ "$goos" == darwin ]]; then
+    verify_mac_floor "$staging_dir/skidbladnir"
     verify_mac_app "$staging_dir/Skid.app" "$tag" "$sha" "$staging_dir"
   fi
 )
@@ -316,10 +327,10 @@ fi
   exit 1
 }
 
-expected_assets=$'SHA256SUMS\nandroid-signing-cert.sha256\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
+expected_assets=$'SHA256SUMS\nandroid-signing-cert.sha256\ninstall\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-darwin-arm64.tar.gz.sig\nskidbladnir-linux-amd64.tar.gz\nskidbladnir-linux-amd64.tar.gz.sig'
 observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | LC_ALL=C sort)"
 [[ "$observed_assets" == "$expected_assets" ]] || {
-  printf 'Release directory does not contain the exact five owned assets\n' >&2
+  printf 'Release directory does not contain the exact eight owned assets\n' >&2
   exit 1
 }
 [[ -z "$(find "$release_dir" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ]] || {
@@ -354,6 +365,28 @@ observed_checksum_names="$(awk '{ print $2 }' "$release_dir/SHA256SUMS" | LC_ALL
   exit 1
 }
 
+cmp -s "$source_dir/internal/install/release-public-key.pem" "$repo_dir/internal/install/release-public-key.pem" || { printf 'release source signing key differs from current trust pin\n' >&2; exit 1; }
+cmp -s "$source_dir/scripts/install" "$release_dir/install" || { printf 'bootstrap installer differs from release source\n' >&2; exit 1; }
+python3 - "$source_dir" <<'PYKEY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+key = (root / "internal/install/release-public-key.pem").read_text().strip()
+script = (root / "scripts/install").read_text()
+match = re.search(r"release_public_key='([^']+)'", script)
+if not match or match[1] != key:
+    raise SystemExit("bootstrap release signing key differs from canonical pin")
+PYKEY
+for name in skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz; do
+  digest="$(mktemp /tmp/skid-release-digest.XXXXXX)"
+  openssl dgst -sha256 -binary "$release_dir/$name" > "$digest"
+  if ! openssl pkeyutl -verify -rawin -pubin -inkey "$source_dir/internal/install/release-public-key.pem" -in "$digest" -sigfile "$release_dir/$name.sig" >/dev/null; then
+    rm -f -- "$digest"
+    printf 'host release signature verification failed\n' >&2
+    exit 1
+  fi
+  rm -f -- "$digest"
+done
+
 verify_archive "$release_dir/skidbladnir-linux-amd64.tar.gz" "$tag" "$sha" \
   'linux-amd64' linux amd64
 verify_archive "$release_dir/skidbladnir-darwin-arm64.tar.gz" "$tag" "$sha" \
@@ -378,9 +411,9 @@ apkanalyzer="$(find_apkanalyzer | tail -n 1)"
   printf 'APK application id is not the production package\n' >&2
   exit 1
 }
-[[ "$($apkanalyzer manifest min-sdk "$release_dir/skidbladnir-android.apk")" == 36 &&
+[[ "$($apkanalyzer manifest min-sdk "$release_dir/skidbladnir-android.apk")" == 33 &&
   "$($apkanalyzer manifest target-sdk "$release_dir/skidbladnir-android.apk")" == 36 ]] || {
-  printf 'APK SDK boundary is not exact API 36\n' >&2
+  printf 'APK SDK boundary must be minimum 33 and target 36\n' >&2
   exit 1
 }
 [[ "$($apkanalyzer manifest debuggable "$release_dir/skidbladnir-android.apk")" == false ]] || {

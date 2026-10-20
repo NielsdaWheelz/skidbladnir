@@ -50,9 +50,18 @@ records v0.17.3 deployment and read-only chooser/resize/cancel smokes.
 
 [the decision record](generalization.md) collects the owner's agreed installation,
 fleet, hub, configuration, pairing, terminal and provider boundaries, and their
-costs. the preference audit is complete; concrete engineering design and
-qualification remain. recording the plan does not authorize implementation or
-deployment.
+costs. [the implementation contract](generalization-plan.md) defines schemas,
+authority, exclusive work slices and temporary acceptance proof. preserve the
+existing look, feel and behavior. unrelated generalization source is implemented;
+the revised optional user-owned firebase integration is implemented on
+`feat/standalone-generalization`. one unchanged project-agnostic apk passed actual
+two-project registration/background delivery and ordinary process-death proof.
+the production adapter/parser also passed actual isolated delivery, disabled
+startup and malformed-option isolation. installed round-trip/doze qualification
+remains separate.
+the public relay/domain deployment is cancelled. [qualification](generalization-qualification.md)
+tracks actual proof and the deferred installed cutover. jarvis service-state
+access remains a separately recorded owner-approved integration issue.
 
 ## claude update recognition — qualified and deployed in v0.17.0
 
@@ -158,8 +167,9 @@ stream. source is implemented.
 from required native-device acceptance. [remaining work](issues/native-notifications.md)
 is open. the 2026-10-09 v0.14.0 cutover installed the signed mac app, devbox
 observer/private ntfy services, notification-enabled desktop configs and android
-update. phone notification enrollment requires reconnecting with a fresh v2
-fleet qr and configuring the production ntfy distributor.
+update. those installed versions use the former v2 qr/ntfy enrollment. the
+standalone source replaces it with `skid connect` and the skid apk; installed
+cutover and real push qualification remain pending.
 
 ## claude usage selection — deployed in v0.18.0
 
@@ -435,16 +445,17 @@ phone. all three hosts pass fleet verification and advance confirmed checkpoints
 live authority and bearer/peer credentials are preserved. published-release
 verification passes for the exact source and all five assets.
 
-`dev-server` owns machine-local installation, services and configuration.
-`scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.
+standalone skid owns installation, services and configuration application.
+`skid connect`, `join`, `remove`, `status` and `apply` own fleet setup and control.
+the preceding installed fleet still uses dev-server until coordinated cutover.
 `scripts/install-android` validates and installs an apk in place; installation
 alone is not pairing or behavioral acceptance. [architecture §5](architecture.md#5-host-architecture)
 and [§6](architecture.md#6-android-surface) own those boundaries.
 
-new agent launches use deployment-owned permission bypass flags under
-[architecture §2](architecture.md#2-fixed-contract). deployed configuration was
-verified historically; restored shared-account launches need qualification. existing
-sessions retain their original launch policy.
+new agent launches execute configured commands exactly. personal deployment
+configuration retains intended permission and daemon arguments explicitly;
+providers own accounts and daemon lifetimes. existing sessions retain their
+original launch policy.
 
 ## open work and acceptance
 

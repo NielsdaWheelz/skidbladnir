@@ -24,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
-import org.unifiedpush.android.connector.UnifiedPush
 
 private val NidavellirTypography = Typography().let { base ->
     base.copy(
@@ -100,9 +99,7 @@ class MainActivity : ComponentActivity() {
         val owner = applicationContext.notificationOwner()
         owner.activityFocus(true, hasWindowFocus())
         owner.refresh()
-        if (owner.view.value.device.config != null && UnifiedPush.getSavedDistributor(this) == "io.heckel.ntfy") {
-            NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.KEEP)
-        }
+        if (firebasePush().status() == FirebasePushStatus.Ready) NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.KEEP)
     }
 
     override fun onPause() {
@@ -120,12 +117,14 @@ class MainActivity : ComponentActivity() {
         val owner = applicationContext.notificationOwner()
         val view = owner.view.value
         val instruction = when {
-            view.device.config == null -> "reconnect the fleet to load its private notification configuration."
+            view.health == NotificationHealth.Disabled -> "background push is optional. session management works without firebase."
+            view.health == NotificationHealth.RestartRequired -> "stop skid in android app settings, then reopen it. your sessions and notification memory stay installed."
+            view.health == NotificationHealth.Unconfigured -> "install the matching private android-push-credentials.json on the hub, then apply."
+            MachineStore(this).read().credentials.isEmpty() -> "connect this phone to a fleet to receive notifications."
             view.health == NotificationHealth.ResetRequired ->
                 "reset notification memory to adopt the current observer. fleet pairings stay installed."
-            view.health == NotificationHealth.SetupRequired || view.health == NotificationHealth.DistributorMissing ->
-                "configure ntfy with the fleet’s private server. keep ntfy and tailscale running in the background."
-            else -> "keep ntfy and tailscale configured and running in the background."
+            view.health == NotificationHealth.PermissionBlocked -> "open notification settings to allow needs-input alerts."
+            else -> "keep tailscale connected, then retry notification setup."
         }
         val dialog = android.app.AlertDialog.Builder(this)
             .setTitle("notifications")
@@ -133,21 +132,19 @@ class MainActivity : ComponentActivity() {
             .setNeutralButton("open notification settings") { _, _ -> startActivity(owner.settingsIntent()) }
             .setNegativeButton("close", null)
         when {
-            view.device.config == null -> dialog.setPositiveButton("reconnect fleet") { _, _ ->
+            view.health in setOf(NotificationHealth.Disabled, NotificationHealth.RestartRequired, NotificationHealth.Unconfigured) -> Unit
+            MachineStore(this).read().credentials.isEmpty() -> dialog.setPositiveButton("reconnect fleet") { _, _ ->
                 controller.requestFleetReconnect()
             }
             view.health == NotificationHealth.ResetRequired -> dialog.setPositiveButton("reset notification memory") { _, _ ->
                 owner.scope.launch { owner.reset() }
             }
             else -> dialog.setPositiveButton("set up notifications") { _, _ ->
-                if (owner.view.value.device.config == null) {
+                if (MachineStore(this).read().credentials.isEmpty()) {
                     controller.requestFleetReconnect()
-                } else if (UnifiedPush.getDistributors(this).contains("io.heckel.ntfy")) {
-                    UnifiedPush.saveDistributor(this, "io.heckel.ntfy")
+                } else {
                     NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.REPLACE)
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://ntfy.sh/docs/subscribe/phone/")))
                 }
             }
         }

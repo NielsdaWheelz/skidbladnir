@@ -46,13 +46,11 @@ case "$gate" in
       scripts/build scripts/build-host-archive scripts/build-host-binary
       scripts/build-mac-app scripts/build-mac-icon
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
-      scripts/check-release scripts/check-release-source scripts/check-release-repository scripts/fleet
+      scripts/check-release scripts/check-release-source scripts/check-release-repository
       scripts/install-android scripts/release scripts/render-release-notes
-      deployment/providers/provider-command deployment/providers/shell-init
+      scripts/install scripts/sign-release deployment/install/native-control deployment/providers/shell-init
       deployment/providers/terminal-context-init
       deployment/providers/claude-agent-identity/bin/agent-hook
-      deployment/native-control/claude
-      deployment/native-control/skidbladnir-provider-runtime-control
     )
     for script in "${shell_scripts[@]}"; do
       run bash-syntax bash -n "$script"
@@ -69,7 +67,7 @@ case "$gate" in
 for name in sys.argv[1:]:
     compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
       scripts/build-terminal-xterm scripts/check-catalogue \
-      scripts/check-terminal-assets scripts/gen-ornament
+      scripts/check-terminal-assets scripts/gen-ornament deployment/install/build-native.py
     run catalogue ./scripts/check-catalogue
     run terminal-assets ./scripts/check-terminal-assets
     run ornament ./scripts/gen-ornament --check
@@ -119,12 +117,15 @@ for name in sys.argv[1:]:
       ([.assets[].name] | sort) == [
         "SHA256SUMS",
         "android-signing-cert.sha256",
+        "install",
         "skidbladnir-android.apk",
         "skidbladnir-darwin-arm64.tar.gz",
-        "skidbladnir-linux-amd64.tar.gz"
+        "skidbladnir-darwin-arm64.tar.gz.sig",
+        "skidbladnir-linux-amd64.tar.gz",
+        "skidbladnir-linux-amd64.tar.gz.sig"
       ]
     ' <<<"$published_metadata" >/dev/null || {
-      printf 'Public release is not immutable, final, exact-SHA, and exact-five-assets.\n' >&2
+      printf 'Public release is not immutable, final, exact-SHA, and exact-eight-assets.\n' >&2
       exit 1
     }
     remote_tags="$(git ls-remote --tags "https://github.com/$published_repo.git" \

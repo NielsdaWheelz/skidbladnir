@@ -58,9 +58,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		Profile string     `json:"profile,omitempty"`
 		Name    string     `json:"optionalTmuxName,omitempty"`
 		Group   string     `json:"group,omitempty"`
-		Model   string     `json:"model,omitempty"`
-		Effort  string     `json:"effort,omitempty"`
-	}{request.Kind, cwd, request.Profile, request.Name, request.Group.String(), request.Model, request.Effort})
+	}{request.Kind, cwd, request.Profile, request.Name, request.Group.String()})
 	if len(body) > MaximumInputBytes {
 		value.Failure = &Failure{Code: "input_limit", Dispatch: "not_sent"}
 		return finish()

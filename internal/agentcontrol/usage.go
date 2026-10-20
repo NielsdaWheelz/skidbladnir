@@ -97,6 +97,7 @@ func parseUsageReport(wire usageReportJSON) (UsageReport, error) {
 func (service *Service) ProfileUsage(parent context.Context) (UsageObservation, error) {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
+	revision := service.sessions.SettingsRevision()
 	declared := service.sessions.Profiles()
 	profiles := make([]agentruntime.Profile, 0, len(declared))
 	for _, profile := range declared {
@@ -131,6 +132,9 @@ func (service *Service) ProfileUsage(parent context.Context) (UsageObservation, 
 		if report := observed[index].Report; report != nil && report.ReportedAt.After(stamp) {
 			observed[index].ReadState, observed[index].Report = "unavailable", nil
 		}
+	}
+	if service.sessions.SettingsRevision() != revision {
+		return UsageObservation{}, &UnavailableError{Dispatch: "not_sent"}
 	}
 	return UsageObservation{ObservedAt: stamp, Profiles: observed}, nil
 }

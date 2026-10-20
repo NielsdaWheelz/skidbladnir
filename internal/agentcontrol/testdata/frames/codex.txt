@@ -1610,7 +1610,7 @@
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
-10|  alias-q high 
+10|  alias-q high
 11|  {b}?{/} for shortcuts
 
 #frame codex-footer12-canonical-plain 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol high"
@@ -1853,9 +1853,89 @@
 08|{b}›{/} {d}Ask Codex to do anything{/}
 10|  {b}?{/} for shortcuts
 
-#frame codex-footer42-native-one-row-items 160x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="GPT-6.1-Sol high"
+#frame codex-footer42-native-one-row-items 160x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage5h=17 footer="GPT-6.1-Sol high"
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
 10|  {mdl}GPT-6.1-Sol high{/fg} · {dir}/dummy/project{/fg} · {d}5h 83% left{/}
+
+#frame codex-usage01-both 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage5h=17 usage7d=50
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 83% left · weekly 50% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage02-weekly 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage7d=100
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}weekly 0% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage03-context 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}Context 17% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage04-monthly 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage7d=50
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}monthly 65% left · weekly 50% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage05-duplicate 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 83% left · 5h 82% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage06-range 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 101% left · weekly 50% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage07-units 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 83% used · weekly 50% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage08-clipped 30x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 83% left · weekly 50% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage09-empty 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage5h=0
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}5h 100% left{/}
+11|  {b}?{/} for shortcuts
+
+#frame codex-usage10-suffix 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle usage7d=75
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {d}branch-5h 83% left · weekly 25% left{/}
+11|  {b}?{/} for shortcuts
