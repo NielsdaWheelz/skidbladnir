@@ -38,6 +38,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 desktop cutover, footer and ordinary creation shortcuts.
 [single-line desktop rows](desktop-single-line-rows.md) owns row layout and
 priority-based omission, deployed in v0.17.3; owner readability review is pending.
+[session name presentation](session-name-presentation.md) owns the implemented
+end-ellipsis and complete-confirmation correction and its isolated qualification.
 [desktop session rows](desktop-session-rows.md) owns the preceding compact layout
 and readability revision; its source and isolated runtime are qualified.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
@@ -1127,6 +1129,11 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-19: [session name presentation](session-name-presentation.md) implements
+the desktop correction. its specification owns scope and passing isolated
+darwin/linux qualification; deployment and installed owner review are separate.
+no public api, schema or stored state is added.
 
 2026-10-16 deployed in v0.17.3: [single-line desktop rows](desktop-single-line-rows.md)
 replaces stacked records with one line, faint location text and the owner's
