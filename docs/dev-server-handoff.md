@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.17.3](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.17.3).
+current published generation: [v0.18.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.18.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
@@ -90,6 +90,11 @@ sampled sessions/workers, private configuration, provider entrypoints and helper
 revision are unchanged; jarvis remains disabled and paused. owner readability
 review is pending. existing desktop processes keep their loaded version; launch
 a fresh browser to see the new rows and quick-terminal chooser.
+
+2026-10-20: [v0.18.0 installed qualification](v0.18.0-installed-qualification.md)
+owns the coordinated latency/usage release, matching host/mac-app/phone identities,
+v4 reset initialization, preservation samples and remaining runtime boundaries.
+existing desktop processes must be reopened to load this generation.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.

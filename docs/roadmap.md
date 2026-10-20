@@ -5,16 +5,17 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## inventory and attachment latency — implemented and isolated-qualified
+## inventory and attachment latency — deployed in v0.18.0
 
 2026-10-20: [the spec and plan](session-latency.md) defines batched native reads,
 cancellable admission, independent desktop/phone publication, strict greeting
 identity and asynchronous notification presentation. it assigns exclusive slices,
 content review and disposable red/green integration/live acceptance. source is
-implemented in an isolated worktree; v4 reset identity is approved. isolated host
+merged and released; v4 reset identity is approved. isolated host
 and real-phone behavioral [qualification](session-latency-qualification.md) passes;
-the preexisting canceled-input dependency race is explicitly deferred. coordinated
-deployment remains unperformed. phone
+the preexisting canceled-input dependency race is explicitly deferred.
+[installed qualification](v0.18.0-installed-qualification.md) records the coordinated
+rollout and its production-entry limits. phone
 [entry metadata](issues/phone-entry-metadata-latency.md),
 [interaction redesign](issues/phone-interaction-redesign.md) and
 [visual redesign](issues/visual-redesign.md) are explicitly deferred.
@@ -152,24 +153,26 @@ observer/private ntfy services, notification-enabled desktop configs and android
 update. phone notification enrollment requires reconnecting with a fresh v2
 fleet qr and configuring the production ntfy distributor.
 
-## claude usage selection — implemented and isolated-qualified
+## claude usage selection — deployed in v0.18.0
 
 2026-10-20: [the spec and plan](claude-usage-selection.md) removes same-host
 disagreement vetoes while retaining one deterministic pane snapshot and latest
 host receipt selection. [qualification](claude-usage-selection.md#qualification)
 passes disposable integration and real darwin browser/gateway/isolated-tmux journeys;
-the probes are retired. release and deployment remain separate. the
+the probes are retired. [installed qualification](v0.18.0-installed-qualification.md)
+owns the subsequent coordinated rollout. the
 [persistent live symptom](issues/claude-usage-persistent-conflict.md) and
 [help mismatch](issues/claude-usage-help.md) remain separate.
 
-## desktop usage — isolated acceptance passed
+## desktop usage — deployed in v0.18.0
 
 2026-10-15: [the spec](desktop-usage.md) owns common remaining values, compact
 weekly/short records, one-hour staleness, day-based countdowns and usage-page key
 removal. [qualification](desktop-usage.md#qualification) records baseline red,
 darwin live acceptance, the linux/amd64 short journey under emulation, content
 and adversarial review, probe retirement and host engineering checks. acquisition
-and wire schemas stay unchanged; deployment remains separate.
+and wire schemas stay unchanged; [installed qualification](v0.18.0-installed-qualification.md)
+records the subsequent rollout and its bounded browser smoke.
 
 ## terminal usage acquisition — deployed
 
@@ -409,14 +412,14 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.17.3` from
-`11f89da683502182832d80ad2aa4cf5265963409`; it does not assert the
+source and artifact digests. it pins immutable `v0.18.0` from
+`c7d4c9e949322ca5f8edda2589b4322637db6983`; it does not assert the
 installed version of any host or phone.
 
-2026-10-16 [current installed qualification](desktop-single-line-rows.md#installed-qualification)
-verifies v0.17.3 on macbook, devbox, arch and android, including fleet health,
-sampled session/configuration continuity and read-only desktop smokes.
-owner readability review remains pending.
+2026-10-20 [current installed qualification](v0.18.0-installed-qualification.md)
+records v0.18.0 on macbook, devbox, arch and android, sampled continuity, fresh
+desktop/phone smokes and the remaining runtime boundaries. owner readability
+review remains pending.
 
 2026-10-15 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 independently verifies v0.16.0 on macbook, devbox, arch and the attached android

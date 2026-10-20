@@ -99,7 +99,9 @@ it is not reported as a successful race check. no dependency workaround was adde
 all eleven temporary test files and their harnesses were retired after review.
 `scripts/check verify all` then passed: host checks/builds, android lint and debug
 assembly; no behavioral suite was retained. the four private phone test packages
-have been removed; the original app was untouched. production installation,
-v4 memory cutover, release and fleet rollout
-remain unperformed and require their own coordinated step. phone model splitting,
-phone interaction and visual redesign retain their separate issue records.
+have been removed; the original app was untouched by that qualification.
+production installation, v4 memory cutover and publication were unperformed at
+source qualification; [v0.18.0 installed qualification](v0.18.0-installed-qualification.md)
+owns the subsequent coordinated rollout. installed production-entry/greeting
+acceptance remains `NOT_RUN`. phone model splitting, phone interaction and visual
+redesign retain their separate issue records.

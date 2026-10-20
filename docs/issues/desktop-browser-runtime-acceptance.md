@@ -1,5 +1,18 @@
 # desktop browser runtime acceptance
 
+## v0.18.0 installed boundary
+
+2026-10-20: [installed qualification](../v0.18.0-installed-qualification.md)
+records matching host/mac-app/phone rollout, read-only desktop presentation and
+the phone's paired dashboard. installed production desktop AND phone terminal
+entry/greeting remain `NOT_RUN`; installation and isolated source journeys do
+not establish those behaviors. the paired production gateways observe default
+tmux servers; private `-L` fixtures cannot prove that production boundary.
+closing it requires a NEW explicit owner exception to the default-server
+guardrail for exact disposable sessions, plus current-turn phone approval.
+preserve every existing pane and prove greeting, output, input and return.
+no such exception is requested or exercised by this rollout.
+
 ## quick terminal — source qualified
 
 2026-10-16: `codex/desktop-quick-terminal`, based on `28660ab3`, implements the

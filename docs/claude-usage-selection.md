@@ -1,6 +1,7 @@
 # claude usage selection
 
-2026-10-20: implemented; [isolated qualification](#qualification) passes.
+2026-10-20: implemented; [isolated qualification](#qualification) passes;
+[v0.18.0 installed qualification](v0.18.0-installed-qualification.md) records rollout.
 architecture, quota content and adversarial acceptance reviews approved.
 this document owns claude disagreement handling, amending [terminal usage](terminal-usage.md)
 and [desktop usage](desktop-usage.md). their acquisition, presentation and historical
@@ -216,6 +217,8 @@ no further refactor was justified.
   syntax/lint, asset/dependency integrity, go vet and go build.
 
 this qualifies authored local displays through real native plumbing and current
-desktop admission. actual claude updates/account freshness, the installed symptom,
-installed fleet, phone and deployment remain `NOT_RUN`. the two separate issues
-remain open; there is no retained automatic regression coverage.
+desktop admission. at this source qualification, installed fleet, phone and
+deployment were `NOT_RUN`; [subsequent rollout](v0.18.0-installed-qualification.md)
+owns installed evidence. actual claude updates/account freshness and the historical
+installed symptom remain unverified. the two separate issues remain open;
+there is no retained automatic regression coverage.

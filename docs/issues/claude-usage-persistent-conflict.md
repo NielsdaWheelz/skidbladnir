@@ -19,7 +19,10 @@ content-free contributor/admission facts; explain the observed state and verify
 that a completed successful one-contributor refresh presents its usage. after
 policy rollout, disappearance of the label alone does not prove normal refresh.
 
-blocker: installed diagnosis is explicitly outside the approved policy scope.
-current-turn tmux approval covered only newly created isolated acceptance resources;
-no installed-fleet diagnosis ran. the replacement selector is
-[isolated-qualified](../claude-usage-selection.md#qualification), not deployed.
+2026-10-20: the correction is [deployed in v0.18.0](../v0.18.0-installed-qualification.md).
+fresh installed desktop smokes show no usage conflict; this does not explain the
+historical symptom or prove its prior contributor/admission state.
+
+blocker: historical installed diagnosis was explicitly outside the policy scope.
+no content-free contributor reconstruction ran; current rollout checks establish
+installed identity and bounded presentation, not the original cause.
