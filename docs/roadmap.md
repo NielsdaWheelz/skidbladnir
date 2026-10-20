@@ -152,6 +152,16 @@ observer/private ntfy services, notification-enabled desktop configs and android
 update. phone notification enrollment requires reconnecting with a fresh v2
 fleet qr and configuring the production ntfy distributor.
 
+## claude usage selection — implemented and isolated-qualified
+
+2026-10-20: [the spec and plan](claude-usage-selection.md) removes same-host
+disagreement vetoes while retaining one deterministic pane snapshot and latest
+host receipt selection. [qualification](claude-usage-selection.md#qualification)
+passes disposable integration and real darwin browser/gateway/isolated-tmux journeys;
+the probes are retired. release and deployment remain separate. the
+[persistent live symptom](issues/claude-usage-persistent-conflict.md) and
+[help mismatch](issues/claude-usage-help.md) remain separate.
+
 ## desktop usage — isolated acceptance passed
 
 2026-10-15: [the spec](desktop-usage.md) owns common remaining values, compact

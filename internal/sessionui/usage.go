@@ -318,7 +318,7 @@ func usageTerminalLess(left, right fleetclient.Session) bool {
 }
 func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
-	conflict, unavailable, absent := false, false, false
+	unavailable, absent := false, false
 	for _, peer := range m.peers {
 		declared := false
 		for _, local := range peer.Profiles {
@@ -334,8 +334,7 @@ func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		}
 		absent = true
 		var candidate *fleetclient.Session
-		var five, seven *int
-		hostConflict, count := false, 0
+		count := 0
 		for index := range peer.Sessions {
 			session := &peer.Sessions[index]
 			if session.Agent == nil {
@@ -353,21 +352,13 @@ func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow
 			known := 0
 			if usage.FiveHourUsedPercent != nil {
 				known++
-				hostConflict = hostConflict || five != nil && *five != *usage.FiveHourUsedPercent
-				five = usage.FiveHourUsedPercent
 			}
 			if usage.SevenDayUsedPercent != nil {
 				known++
-				hostConflict = hostConflict || seven != nil && *seven != *usage.SevenDayUsedPercent
-				seven = usage.SevenDayUsedPercent
 			}
 			if candidate == nil || known > count || known == count && usageTerminalLess(*session, *candidate) {
 				candidate, count = session, known
 			}
-		}
-		if hostConflict {
-			conflict = true
-			continue
 		}
 		if candidate != nil && (row.terminal == nil || usageLater(peer.ReceivedAt, peer.Machine, row.receivedAt, row.machine.Handle)) {
 			row.terminal, row.machine, row.receivedAt = candidate, fleetclient.Machine{Label: peer.Label, Handle: peer.Machine}, peer.ReceivedAt
@@ -382,8 +373,6 @@ func (m *model) claudeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		if value := row.terminal.TerminalUsage.SevenDayUsedPercent; value != nil {
 			row.text.sevenDay = &windowText{remaining: strconv.Itoa(100-*value) + "%", resetsAt: "—", resetsIn: "—"}
 		}
-	} else if conflict {
-		row.state = "conflict"
 	} else if unavailable {
 		row.state = "unavailable"
 	} else if absent {

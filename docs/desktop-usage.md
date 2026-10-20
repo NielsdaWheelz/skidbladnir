@@ -1,5 +1,9 @@
 # desktop usage presentation
 
+2026-10-20: [claude usage selection](claude-usage-selection.md) removes usage
+conflict from the contract below; its [isolated qualification](claude-usage-selection.md#qualification)
+passes. earlier qualification retains its recorded source.
+
 2026-10-15: implemented and qualified at the isolated desktop boundary. one
 remaining-capacity convention, compact profile records, exceptional-state labels
 and automatic updates. this replaces the presentation, freshness cutoff and usage-page keys
@@ -30,8 +34,8 @@ existing native lane (60s)   -> retained codex account reports
 
 keep lane isolation, receipt timestamps, cancellation/generations, access
 rejection, descriptor invalidation, profile declarations and source tie breaks.
-convert percentages after selection. raw used values still determine claude
-conflicts; no splicing, health preference, new ranking or freshness-based
+convert percentages after selection. disagreement never excludes claude usage;
+no splicing, health preference, new ranking or freshness-based
 candidate rejection. a newer partial report replaces the whole older report.
 
 reuse `usageRow` and reshape its existing `usageText` locally:
@@ -40,7 +44,7 @@ reuse `usageRow` and reshape its existing `usageText` locally:
 usageText       = {fiveHour?: windowText, sevenDay?: windowText, stale: bool}
 windowText      = {remaining: string, resetsAt: string, resetsIn: string,
                    expired: bool}
-usageRow.state  = "" | "checking" | "conflict" | "unavailable"
+usageRow.state  = "" | "checking" | "unavailable"
 ```
 
 these are ephemeral presentation values, never another retained model. go
@@ -63,7 +67,7 @@ keep source identity/times for selection even though their prose disappears.
   failure also makes a retained eligible native report stale immediately.
 - claude capture age is `max(0, now-receivedAt)`. pass the same `now` into
   `claudeUsage`. pending reads retain the receipt; successful captures replace
-  it even when values are unchanged. failures/no-match/conflicts/replacement
+  it even when values are unchanged. failures/no-match/replacement
   withdraw eligibility as before; add no claude retention cache.
 - claude capture age is not provider age. recently captured old cells may look
   unstale. no unchanged-value heuristic or implied provider-freshness guarantee.
@@ -98,10 +102,10 @@ per-window status precedence:
 3. otherwise, a present unexpired percentage from a stale source: `stale`;
 4. otherwise, blank. nil windows never inherit `stale`.
 
-an eligible source clears row state and suppresses other-host failures/conflicts.
+an eligible source clears row state and suppresses other-host failures.
 explicitly clear claude's initial checking state after selection; the old
 renderer merely ignored it. without a candidate, retain existing precedence:
-claude conflict, unavailable, successful absence, then checking; native failure
+unavailable, successful absence, then checking; native failure
 over expired-report diagnosis. successful absence is blank state plus dashes.
 an expired diagnostic native report can still supply its actual optional windows.
 retain fleet-empty/checking/declaration-unavailable distinctions from terminal
