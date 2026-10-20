@@ -1,11 +1,13 @@
 # session inventory and attachment latency
 
-2026-10-20: implemented and behaviorally qualified on `codex/session-latency` in
-an isolated worktree; [qualification](session-latency-qualification.md) records
-evidence and limits. this cutover follows the [architecture](architecture.md),
+2026-10-20: merged and deployed in v0.18.0; source behavior was qualified on
+`codex/session-latency` in an isolated worktree.
+[qualification](session-latency-qualification.md) records evidence and limits.
+this cutover follows the [architecture](architecture.md),
 [rules](rules/index.md) and [temporary-test policy](rules/testing.md). v4 reset
 identity and bounded isolated-tmux/real-phone acceptance are explicitly approved;
-installation and deployment remain separate.
+[v0.18.0 installed qualification](v0.18.0-installed-qualification.md) separately
+records the coordinated rollout and its unperformed production-entry boundary.
 
 diagnosis: serial native work, fleet publication barriers and terminal entry
 dependencies; [the evidence](session-latency-qualification.md#diagnosis-and-red)
@@ -437,6 +439,7 @@ make an intermediate slice compile.
 at implementation cutover, reconcile the affected clauses in architecture,
 desktop browser, terminal continuity, native notifications, agent-control UX and
 polling rules. stage one matching gateway/desktop/mac-app/android generation;
-reject old schemas, add no negotiation. rollback uses the prior complete release.
+reject old schemas, add no negotiation. after the phone advances, repair uses a
+coordinated forward release; independent host rollback and apk downgrade are unsupported.
 installation/publication requires its own authorized step and installed boundary
 verification. close linked latency issues only with their real acceptance evidence.
