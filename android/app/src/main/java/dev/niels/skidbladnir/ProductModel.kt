@@ -1333,7 +1333,6 @@ private fun acceptSession(session: TmuxSession) {
     require(session.objective?.isNotEmpty() != false)
     require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
     require(session.agent == null || session.connection == null)
-    if (session.terminalUsage != null) require(session.agent?.provider == AgentProvider.Claude)
     if (session.terminalUsage != null || session.terminalFooter != null) {
         require(session.agent != null && session.connection == null)
         require(session.terminalStatus.source == TerminalStatusSource.Terminal)
