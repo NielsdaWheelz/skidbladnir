@@ -776,13 +776,13 @@ func (s *Service) Report(member Member, report SelfReport) (Status, error) {
 	if report.ApplyStatus.AuthorityEpoch > a.Public.AuthorityEpoch || report.ApplyStatus.ReceivedStateRevision > a.Public.StateRevision || report.ApplyStatus.AppliedConfigRevision > report.ApplyStatus.DesiredConfigRevision || report.ApplyStatus.DesiredConfigRevision > a.Public.ConfigRevision {
 		return s.status(), conflict("host report exceeds published state")
 	}
-	a.Reports[member.DeviceID] = report
 	changed := false
 	for i := range a.Public.Machines {
 		m := &a.Public.Machines[i]
-		if m.Machine == member.Machine && m.Origin != report.Origin {
+		// An empty report has no new network evidence; it does not withdraw a known origin.
+		if report.Origin != "" && m.Machine == member.Machine && m.Origin != report.Origin {
 			for _, other := range a.Public.Machines {
-				if report.Origin != "" && other.Machine != m.Machine && other.Origin == report.Origin {
+				if other.Machine != m.Machine && other.Origin == report.Origin {
 					return s.status(), conflict("origin already belongs to another computer")
 				}
 			}
@@ -790,6 +790,7 @@ func (s *Service) Report(member Member, report SelfReport) (Status, error) {
 			changed = true
 		}
 	}
+	a.Reports[member.DeviceID] = report
 	if changed {
 		a.Public.StateRevision++
 		s.syncRevisions()
