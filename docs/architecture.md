@@ -885,21 +885,24 @@ enum values are defects, with no protocol branch or compatibility state.
   that preference. An insufficient viewport blocks user input with explicit
   recovery controls while preserving output and automatic terminal replies.
   [Readable terminal sizing](terminal-readable-sizing.md) owns the preference,
-  exact version-4 packaged-page protocol, initial geometry, content, and proofs.
+  initial geometry, content, and proofs; [terminal shift](terminal-shift.md)
+  owns the version-5 packaged-page protocol extension.
   The [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
-  input surface: `Esc / - Home ↑ End PgUp` over
+  input surface: `Esc / Shift Home ↑ End PgUp` over
   `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` always owns phone detach. Android Back
   dismisses active native terminal selection first and otherwise owns phone
   detach.
-  Ctrl and Alt are independent visible one-shot modifiers; the page publishes
-  their state atomically, consumes both on the next input, and resets both at
-  lifecycle boundaries. Proven keys use xterm-compatible Ctrl/Alt encoding;
+  ctrl, alt and shift are independent visible one-shot modifiers; the page
+  publishes their state atomically, consumes all three on the next input and
+  resets them at lifecycle boundaries. shift changes only custom-bar navigation
+  and tab, with exact encoding owned by the shift specification. proven keys
+  retain the existing ctrl/alt encoding;
   IME, dictation-shaped, Unicode, multi-character, and pasted text remain
   literal while consuming modifiers. Deck, typed, composed, and pasted input
   share one page-owned ordered ingress. Equal cells are at least `48dp` square,
   with `4dp` outer padding and `2dp` row/column gaps; both rows share one
-  horizontal overflow state below the `356dp` normal-font fit or when large
-  text requires it. Gboard Enter sends `0x0d`. Paste strips ESC
+  horizontal overflow state below the content-measured width; `356dp` is only
+  the minimum target footprint. Gboard Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,
   clipboard reads/paste UI, and dictation; dictation stays editable and never
   auto-sends. The app owns only the explicit terminal-selection clipboard
@@ -953,7 +956,7 @@ enum values are defects, with no protocol branch or compatibility state.
   and semantic labels on all controls. [`design-language.md`](design-language.md)
   owns the implemented palette, typography, shape, ornament, motion and
   terminal theme. The key deck has stable row-major
-  traversal and spoken Ctrl/Alt state; terminal scroll exposes reviewed custom
+  traversal and spoken ctrl/alt/shift state; terminal scroll exposes reviewed custom
   accessibility actions. Copy is accessible after a trusted touch selection;
   end-to-end screen-reader selection construction is not claimed.
   Accessibility beyond those reviewed surfaces remains best-effort.
@@ -994,6 +997,15 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-20 accepted design: [terminal shift](terminal-shift.md) replaces the
+hyphen accessory with one-shot `Shift`, limited to custom-bar navigation and
+tab. it extends the existing page-owned modifier snapshot and hard-cuts the
+packaged page port from 4 to 5; gateway/public protocols remain unchanged.
+the spec owns exact encoding, content, measured-width costs, disjoint slices
+and temporary integration/live/device acceptance. implementation and qualification
+completed on 2026-10-21, including owner haptic/talkback/gboard checks and final
+engineering verification. temporary support was removed; deployment is separate.
 
 2026-10-20: [standalone generalization](generalization-plan.md) explicitly accepts
 arbitrary enrolled hosts/profiles, standalone installation, signed per-device

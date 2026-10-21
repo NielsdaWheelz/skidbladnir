@@ -15,6 +15,14 @@ source, reviewed/deleted red/green checks, signed local candidates and
 [remaining live cells](issues/terminal-only-live-qualification.md). installed cutover
 is separate; the jarvis service-state access issue remains a blocker.
 
+## terminal shift — implemented and qualified
+
+2026-10-21: [the spec and qualification](terminal-shift.md#qualification-2026-10-21)
+records one-shot `Shift` replacing `-` for custom-bar navigation/tab, independent
+gboard text ownership and the strict version-5 page port. temporary red/green,
+installed-provider and phone acceptance pass; tests/support were removed and
+engineering verification passes. deployment remains separate.
+
 ## inventory and attachment latency — deployed in v0.18.0
 
 2026-10-20: [the spec and plan](session-latency.md) defines batched native reads,

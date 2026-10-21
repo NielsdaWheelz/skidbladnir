@@ -78,7 +78,7 @@ internal interface TerminalPage {
 internal enum class TerminalAccessory {
     Escape,
     Slash,
-    Hyphen,
+    Shift,
     Home,
     Up,
     End,
@@ -100,6 +100,7 @@ internal enum class TerminalModifierPhase {
 internal data class TerminalModifiers(
     val control: TerminalModifierPhase,
     val alt: TerminalModifierPhase,
+    val shift: TerminalModifierPhase,
 )
 
 internal interface TerminalPageListener {
@@ -502,13 +503,14 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
-                        "ModifierState" -> if (objectValue.hasExactKeys("kind", "control", "alt")) {
+                        "ModifierState" -> if (objectValue.hasExactKeys("kind", "control", "alt", "shift")) {
                             val control = objectValue.modifierPhase("control")
                             val alt = objectValue.modifierPhase("alt")
-                            if (control == null || alt == null) {
+                            val shift = objectValue.modifierPhase("shift")
+                            if (control == null || alt == null || shift == null) {
                                 markUnavailable()
                             } else {
-                                listener.onModifiersChanged(TerminalModifiers(control = control, alt = alt))
+                                listener.onModifiersChanged(TerminalModifiers(control = control, alt = alt, shift = shift))
                             }
                         } else {
                             markUnavailable()
@@ -595,7 +597,7 @@ internal class LockedTerminalWebView(
             WebMessageCompat(
                 JSONObject()
                     .put("kind", "PagePort")
-                    .put("version", 4)
+                    .put("version", 5)
                     .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
                     .put("fontSizeCssPx", fontSizeCssPx())
                     .toString(),

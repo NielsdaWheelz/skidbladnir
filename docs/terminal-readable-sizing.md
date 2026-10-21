@@ -1,5 +1,9 @@
 # Readable terminal sizing
 
+[terminal shift](terminal-shift.md) owns the packaged page port's version-5
+extension and its qualification; this document retains the sizing contract.
+historical qualification stays attributed to its recorded source.
+
 Status: implemented 2026-09-08 (merged with its paired dev-server change that
 makes `window-size latest` explicit) and published in immutable `v0.2.30`,
 upstream-pinned. Routine verification (`./scripts/test verify`) is green and the
@@ -35,8 +39,9 @@ navigation is shared under the [direct-attachment contract](agent-control-ux.md)
 Ship three capabilities: saved text size, responsive whole-cell fitting, and
 normal tmux sizing participation. Retain JetBrains Mono, theme, padding, key
 deck, gesture/selection owners, FitAddon, and direct pty/client transport.
-This supersedes the 80-column guarantee, protected desktop geometry,
-Owner/Constrained presentation, and packaged-page version 3.
+this supersedes the 80-column guarantee, protected desktop geometry and
+owner/constrained presentation. the later shift extension supersedes this
+change's page-port version 4.
 
 ## Architecture and capability contract
 
@@ -113,16 +118,16 @@ ordered queue; no lease, acknowledgment protocol, or geometry headers.
 
 | Boundary | Single accepted shape / API |
 | --- | --- |
-| Native → page initialization | `{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":16}`; numeric examples are platform-derived |
+| Native → page initialization | `{"kind":"PagePort","version":5,"longPressMilliseconds":500,"fontSizeCssPx":16}`; numeric examples are platform-derived |
 | Native → page size update | `{"kind":"FontSize","fontSizeCssPx":16}`; finite positive number |
-| Page → native usable geometry | Existing `{"kind":"Resize","columns":40,"rows":18}` within `20..240 × 5..120` |
+| Page → native usable geometry | Existing `{"kind":"Resize","columns":40,"rows":18}` within `20..1024 × 5..512`, as owned by the architecture |
 | Page → native insufficient room | `{"kind":"ViewportTooSmall"}` |
 | Gateway → phone presence | Exactly `{"kind":"Hello","attachedClients":2}` or `{"kind":"Presence","attachedClients":2}`; positive integer count |
 | Phone → gateway geometry | Existing `{"kind":"Resize","columns":40,"rows":18}`; also mandatory first client frame |
 | Kotlin page API | Extend `TerminalPage` with typed font update; extend `TerminalPageListener` with too-small notification. Existing Resize callback means Fitted. |
 
 All decoders reject extra/missing keys, wrong types, unknown variants, and
-numeric-string coercion. Page version 4 is the only accepted version; existing
+numeric-string coercion. page version 5 is the only accepted version; existing
 messages otherwise retain their exact contracts. No WSS font/policy field,
 protocol negotiation, new endpoint, generated client, or compatibility reader.
 
