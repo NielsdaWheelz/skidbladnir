@@ -1,5 +1,11 @@
 # terminal-only control qualification
 
+2026-10-21 deployment amendment: the following records isolated source evidence,
+not current installed status. [v0.20.0 installed qualification](v0.20.0-installed-qualification.md)
+owns the subsequent merged release, private configuration and fleet rollout.
+jarvis remains stopped with its separate access issue; linux claude's open live
+cells remain open. historical source/result attribution below is unchanged.
+
 status: source implemented; isolated qualification recorded 2026-10-20/21.
 full live acceptance remains partial: [open cells](issues/terminal-only-live-qualification.md).
 [the approved spec](terminal-only-control.md) owns scope and acceptance. installed

@@ -1,11 +1,14 @@
-# standalone installed cutover and parity
+# remaining standalone installed parity
 
-problem: standalone source and isolated probes do not qualify the installed
-three-host fleet, service lifecycle or the owner's unchanged experience.
+problem: fleet deployment does not establish all standalone lifecycle and
+owner-parity acceptance.
 
-impact: release activation and complete acceptance remain BLOCKED. the owner
-authorized isolated probes and deferred installed cutover until a concrete
-reviewed release. existing hosts and the production phone remain on 0.18.0.
+2026-10-21: the owner subsequently authorized release and deployment.
+[v0.20.0 installed qualification](../v0.20.0-installed-qualification.md) owns the
+three-host and production-phone rollout. that deployment does not establish a
+clean supported-host installation, real uninstall child survival, both mac
+terminal adapters, native popup/sound or complete owner visual parity. those
+remaining cells stay open; release activation is no longer blocked here.
 
 evidence, 2026-10-20: real mac/ubuntu/arch-family helper probes, isolated
 gateway/tmux/shell journeys, apple terminal and physical android test-package
@@ -15,13 +18,11 @@ native popup/sound and installed owner parity remain NOT_RUN. generated host
 services preserve `KillMode=process` and `AbandonProcessGroup=true`; their
 configuration checks do not prove a real restart preserves every session.
 
-resolution: execute the reviewed [cutover](../generalization-cutover.md) against
-matching signed artifacts after explicit activation approval. freeze old
-writers, preserve exact machine handles/order and notification memory, retire
-owned legacy resources, install and re-pair. verify unchanged session lifetimes,
-provider histories/settings, both mac terminal adapters, controls, usage and
-device-local acknowledgement. qualify real service restart/update/uninstall
-without killing tmux or providers and a clean supported-host install.
+resolution: qualify the remaining cells against the current signed release,
+preserving exact machine/terminal identities, provider settings and device-local
+acknowledgement. retain existing results at their stated boundaries; do not
+repeat enrollment or the historical [conversion](../generalization-cutover.md).
+unrun destructive lifecycle work requires its own explicit assignment.
 
 optional [android push setup](../android-push-setup.md) and
 [jarvis service access](jarvis-installed-state-access.md) have separate boundaries.

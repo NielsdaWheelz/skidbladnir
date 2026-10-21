@@ -4,6 +4,8 @@ problem: public linux `claude-work` start writes terminal input after the
 placeholder repair, but working, a model response and ready notification remain
 unproved.
 full live acceptance is partial; source implementation and engineering pass.
+[v0.20.0 deployment](../v0.20.0-installed-qualification.md) passes its installed
+launch/continuity checks and does not close this provider-turn gap.
 
 evidence: the original public start refuses `TerminalInputBlocked/not_sent`.
 a private no-input cell probe of claude 2.1.306 finds every visible placeholder

@@ -1,5 +1,10 @@
 # standalone generalization qualification
 
+2026-10-21 installed-status amendment: [v0.20.0 qualification](v0.20.0-installed-qualification.md)
+owns the subsequent release and fleet rollout. the dated isolated evidence below
+retains its original sources and limits. broader installed parity, optional push
+and jarvis service access are not established by deployment alone.
+
 status: earlier standalone implementation retained; revised optional direct-fcm
 source implemented and independently reviewed on `feat/standalone-generalization`.
 runtime feasibility and scoped production proofs pass. installed/external

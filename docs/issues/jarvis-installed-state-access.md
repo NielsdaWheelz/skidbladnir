@@ -1,5 +1,10 @@
 # jarvis access to installed skid state
 
+2026-10-21: the owner authorized skid deployment with jarvis disabled and stopped.
+this does not block skid's independent rollout. jarvis's
+[authoritative issue](https://github.com/NielsdaWheelz/jarvis/blob/f397031fe089b90c601dcadbbc0d5ab0fc98d3a2/docs/issues/skid-installed-state-access.md)
+records the access work and later activation criteria.
+
 problem: jarvis's system service runs as `jarvis`, with `ProtectHome=true` and
 `NoNewPrivileges=true`. standalone skid's live identity and signed host cache
 belong to the enrolled login user, in private `0600` files. jarvis cannot read

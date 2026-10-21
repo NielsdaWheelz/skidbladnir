@@ -1,9 +1,10 @@
 # private-fleet cutover
 
-status: preparation only. installed activation requires a concrete reviewed
-release and explicit owner approval. this is a one-time operator procedure;
+status: historical one-time conversion procedure with frozen v0.19.0 inputs.
+the current fleet is already enrolled; do not repeat conversion or pairing for
+updates. [v0.20.0 qualification](v0.20.0-installed-qualification.md) records the
+subsequent in-place rollout. new users use the [ordinary installer](../README.md#install).
 standalone skid contains no old configuration, credential or notification reader.
-new users use the [ordinary installer](../README.md#install).
 
 ## inputs and stop conditions
 

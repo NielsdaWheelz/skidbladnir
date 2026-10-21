@@ -6,8 +6,9 @@ application database or execution coordinator. the configured hub owns fleet con
 observer. terminals remain direct host capabilities; the hub is never an
 execution proxy. [standalone generalization](generalization-plan.md) owns the
 configuration, signed fleet, handoff, installer and optional direct-fcm contracts;
-[qualification](generalization-qualification.md) distinguishes source proof from
-the deferred installed cutover.
+[isolated qualification](generalization-qualification.md) records source proof;
+[v0.20.0 qualification](v0.20.0-installed-qualification.md) records the installed
+fleet rollout and its remaining live boundaries.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
 screen regions and their limits, classification, guarded-send admission and the

@@ -1,8 +1,9 @@
 # terminal controls, ordinary launches, account quota
 
-status: source implemented 2026-10-21 on isolated feature worktrees.
-[qualification](terminal-only-control-qualification.md) owns actual results and
-remaining acceptance; installed cutover remains separate and unassigned.
+status: source merged and released in v0.20.0 on 2026-10-21.
+[isolated qualification](terminal-only-control-qualification.md) owns its actual
+results and remaining live acceptance; [installed qualification](v0.20.0-installed-qualification.md)
+owns the separately authorized fleet rollout.
 this is one cross-repository change, not a rollback to an old skid release.
 amends [architecture](architecture.md), [terminal control](terminal-agent-control.md),
 [usage selection](terminal-usage.md) and [generalization](generalization-plan.md)
@@ -249,8 +250,9 @@ do not redesign ordinary rows, navigation or notification presentation.
    checks pass. delete temporary tests/controllers/dependencies after proof and
    reviewed refactor; keep concise content-free results/source ids in qualification.
    existing independently authorized regression fixtures/checks remain.
-5. later, separately authorized stopped/coordinated installed cutover; no service,
-   provider, tmux, phone, database or live configuration mutation in this spec task.
+5. installed cutover requires separate authorization. the owner authorized the
+   coordinated release/deployment on 2026-10-21 under section 7; the original
+   implementation task assigned no installed service/configuration mutation.
 
 | acceptance | temporary proof |
 | --- | --- |
@@ -271,16 +273,23 @@ unrelated repairs. documentation-only work needs link/consistency checks.
 
 ## 7. installed hard cut and tradeoffs
 
-drain jarvis worker actions/waits and pause/stop its service through existing
-checks; jarvis's `docs/issues/skid-installed-state-access.md` remains a separate
-blocker. this change does not assign its repair.
-stage matching skid hosts/android, jarvis and the dev-server pin. update only four
+2026-10-21 owner clarification: deploy skid while jarvis remains disabled and
+stopped. record its live-state access boundary in jarvis's existing
+`docs/issues/skid-installed-state-access.md`; this change assigns no repair or
+worker activation. unfinished retired worker authority must settle before that
+later activation through its existing checks, without replay or ledger rewriting.
+stage matching active skid hosts/android and the dev-server pin. update only four
 command values in devbox's private desired yaml, preserving other content/mode.
 use normal signed config application; verify every host accepted it. no re-pairing,
 fleet reset, provider/account migration or generic release controller.
 
-before plugin deletion, let the owner finish/stop plugin-bearing claude sessions;
-do not kill work automatically. ordinary tmux shells and unrelated providers stay.
+2026-10-21 owner clarification: preserve running claude processes during this cut.
+the verified owned plugin registers only a five-second `SessionStart` identity
+hook, with no tool/prompt/stop hooks or blocking failure policy. a cached hook
+may briefly wait or warn after removal; [upstream documents its failures as
+non-blocking](https://code.claude.com/docs/en/hooks#exit-code-2-behavior-per-event).
+this does not justify interrupting work or retaining a shim/native dispatcher.
+ordinary tmux shells and unrelated providers stay.
 remove only verified deployment-owned files, then empty directories, from
 `~/.local/share/dev-server/claude-agent-identity` and staged
 `~/.local/share/dev-server/assets/claude/agent-identity`. unexpected content blocks
@@ -296,10 +305,10 @@ post-cutover failure is ordinary explicit repair, not restoration of legacy APIs
 
 accepted costs: saved-history/finalized-result/native-turn control disappears;
 bare personal account follows ambient environment; absent fresh quota shows
-unknown; compatible hosts/phone/worker consumers must cut over together; affected
-claude work must drain before plugin retirement; deleting tests gives no retained
-automatic regression protection. native quota still carries managed python/uv
-and provider-runtime base dependencies. keep one existing protocol owner rather
+unknown; compatible active hosts/phone/worker consumers must cut over together;
+affected claude processes may retain a non-blocking stale-hook warning; deleting
+tests gives no retained automatic regression protection. native quota still
+carries managed python/uv and provider-runtime base dependencies. keep one existing protocol owner rather
 than duplicate it in go or redesign shared packaging. public provider-runtime
 conversation/cognitive/archive APIs used outside skid are not legacy skid paths
 and are not removed. no public-data/history deletion or paid-model campaign.
