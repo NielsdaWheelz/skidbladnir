@@ -131,7 +131,7 @@ func (s *Service) Stage(source Member, bundle TransferBundle) (Transfer, error) 
 			}
 			return *old, nil
 		}
-		if s.authority.Public.ActiveHub == s.options.Machine {
+		if s.public.ActiveHub == s.options.Machine {
 			return Transfer{}, conflict("destination already owns active authority")
 		}
 	}
