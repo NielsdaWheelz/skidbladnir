@@ -27,8 +27,11 @@ startup failure reports that the release is installed and needs service repair.
 the installer refuses a release older than its recorded installation. matching-state
 recovery remains an explicit operator action.
 
-supported hosts are macos 26+ arm64, ubuntu 24.04+ amd64 and current arch amd64
-with systemd. mac binaries explicitly encode deployment target 26.0; the release
+supported hosts are macos 26+ arm64, ubuntu 24.04+ amd64 and current arch-family
+amd64 with systemd. arch-family means `ID=arch` or an exact `arch` token in
+`ID_LIKE`; admission and pacman dependency installation use the same decision.
+ubuntu still requires its own `ID=ubuntu` and minimum version. mac binaries
+explicitly encode deployment target 26.0; the release
 checker inspects both. the ubuntu qualification boundary is 24.04/glibc 2.39,
 not an assertion about every linux distribution. android's release check requires
 minimum api 33 and target api 36; physical older-version acceptance is separate.
