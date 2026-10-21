@@ -52,6 +52,39 @@ tests/controllers, test-only modules/binaries, owned sockets, database/forward
 and fixture credentials are removed after final reviewed proof. the retained 466-frame
 classifier corpus passes; it remains independently authorized.
 
+## codex requested-directory live check
+
+2026-10-21: all six cases pass with stock codex 0.163.0: `codex`, `codex-work`
+and `codex-work2` on both darwin and linux. actual public `start --cwd --stdin`
+uses authenticated isolated gateways, genuine signed enrollment and owned tmux
+servers. gateway/parent cwd differs from each fresh requested physical directory,
+whose name contains spaces and lies outside a git project. configured shell,
+environment and account metadata remain ordinary; only the temporary config's
+commands take the approved plain values. no injected `--cd` or `--remote`.
+
+each case submits one request for `/bin/pwd -P`, redirecting tool output to a
+unique initially absent owned receipt outside the requested directory. expected
+cwd is omitted from the prompt. both the exact rendered codex tool block and
+independent receipt bytes must match; model response and pane cwd cannot pass.
+root and the independent reviewer privately verify all six physical cwd receipts
+and owner markers. all cases also show matching foreground profile, written
+input, idle and separate interrupt-written/terminal-closed receipts. six inputs,
+zero retries, no setup answers or unexpected requests. compact tool presentation
+does not independently expose a hidden tool `workdir` argument; this establishes
+actual tool execution in the requested project directory, not that internal fact.
+
+the controller links source `337246e` (documentation after product `096e9cc`),
+and its ordinary shell launcher is the exact signed `096e9cc` binary. reviewed
+controller source sha256: `6f24ea432bb9f801ef324d6a24d9bfe8a2c990367700a42371dd607d3d533ce9`.
+six hashed content-free case logs, process outcomes and cleanup receipt remain in
+`/tmp/terminal-only-cwd-results`; concise evidence is
+`/tmp/terminal-only-client-cwd-evidence.txt`. temporary controller sources,
+modules/binaries, six owned roots/sockets and the remote stage are deleted after
+independent review; final owned-residue checks are zero on both hosts.
+this is isolated live qualification,
+not an installed deployment or a before/after reproduction of the retired remote
+launch defect. the separate linux claude issue remains open.
+
 ## artifacts and engineering
 
 local prospective `v0.20.0` artifacts are in
