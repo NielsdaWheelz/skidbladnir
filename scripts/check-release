@@ -249,6 +249,12 @@ verify_archive() (
     printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
   }
+  jq -e --slurpfile pins "$source_dir/internal/install/native-runtime.json" \
+    '.commit == $pins[0].commit and .python == $pins[0].python and .uv == $pins[0].uv' \
+    "$staging_dir/native-helper/runtime.json" >/dev/null || {
+    printf '%s native runtime pins differ from the exact release source\n' "$(basename "$archive")" >&2
+    return 1
+  }
   cmp -s "$source_dir/catalog/characters.json" "$staging_dir/characters.json" || {
     printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
     return 1
