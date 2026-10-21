@@ -69,6 +69,7 @@ internal fun TerminalScreen(
             TerminalModifiers(
                 control = TerminalModifierPhase.Off,
                 alt = TerminalModifierPhase.Off,
+                shift = TerminalModifierPhase.Off,
             ),
         )
     }
