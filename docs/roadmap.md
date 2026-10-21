@@ -4,6 +4,7 @@
 accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
+the [cleanup campaign](cleanup.md) tracks the 2026-10-21 code-reduction prs.
 
 ## terminal-only controls — released in v0.20.0, live acceptance partial
 
