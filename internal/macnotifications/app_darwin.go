@@ -281,8 +281,8 @@ func appleTerminalScript(skidPath, configPath, ref, nonce string) (string, error
 		"set created to do script " + strconv.Quote(command) + "\n" +
 		"repeat 40 times\nset createdTTY to tty of created\nif createdTTY is not \"\" then\n" +
 		"repeat with createdWindow in windows\nrepeat with candidate in tabs of createdWindow\n" +
-		"if tty of candidate is createdTTY then\nset selected tab of createdWindow to candidate\nset index of createdWindow to 1\nactivate\n" +
-		"return \"apple-terminal:\" & (id of createdWindow as text) & \":\" & createdTTY\n" +
+		"if tty of candidate is createdTTY then\nset createdWindowID to id of createdWindow\nset selected tab of createdWindow to candidate\nset index of createdWindow to 1\nactivate\n" +
+		"return \"apple-terminal:\" & (createdWindowID as text) & \":\" & createdTTY\n" +
 		"end if\nend repeat\nend repeat\nend if\ndelay 0.025\nend repeat\nerror \"created terminal unavailable\"\nend tell\nend timeout", nil
 }
 
