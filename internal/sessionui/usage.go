@@ -223,6 +223,11 @@ func (row usageRow) windowPresentation(window *windowText) (windowText, string) 
 			status = "awaiting update"
 		} else if row.text.stale {
 			status = "stale"
+		} else if row.native != nil {
+			status = "native"
+		} else if row.terminal != nil {
+			status = "terminal"
+			text.remaining = "~" + text.remaining
 		}
 	}
 	return text, status
@@ -408,7 +413,7 @@ func (m *model) usageRows(now time.Time) []usageRow {
 		case "Codex":
 			native := m.nativeUsage(profile, now)
 			terminal := m.terminalUsage(profile, now)
-			if native.native != nil && !native.text.stale {
+			if native.native != nil && !native.text.stale && (native.text.fiveHour != nil && !native.text.fiveHour.expired || native.text.sevenDay != nil && !native.text.sevenDay.expired) {
 				rows[index] = native
 			} else if terminal.terminal != nil && !terminal.text.stale {
 				rows[index] = terminal
@@ -423,6 +428,14 @@ func (m *model) usageRows(now time.Time) []usageRow {
 			rows[index] = m.terminalUsage(profile, now)
 		default:
 			rows[index] = usageRow{profile: profile}
+		}
+		// an ineligible observation keeps its diagnosis, never numeric quota.
+		if rows[index].text.stale {
+			for _, window := range []*windowText{rows[index].text.fiveHour, rows[index].text.sevenDay} {
+				if window != nil {
+					window.remaining, window.resetsAt, window.resetsIn = "—", "—", "—"
+				}
+			}
 		}
 	}
 	return rows

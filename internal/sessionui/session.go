@@ -234,7 +234,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 		}
 		if !message.result.OK {
-			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
+			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending)
 			failure := message.result.Error
 			if message.operation == "start" {
 				failureText = m.pending.Machine + ": " + failureText
@@ -346,7 +346,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				case "invalid_input":
 					problem = "enter 1–8 search words, at most 256 bytes"
 				case "Unauthenticated", "MachineIdentityMismatch":
-					problem = fleetclient.ErrorMessage(*message.result.Error, fleetclient.Request{}, false)
+					problem = fleetclient.ErrorMessage(*message.result.Error, fleetclient.Request{})
 				}
 			}
 			m.searchProblem = problem

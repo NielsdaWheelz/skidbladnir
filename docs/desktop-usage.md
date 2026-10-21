@@ -1,5 +1,11 @@
 # desktop usage presentation
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 2026-10-20: [claude usage selection](claude-usage-selection.md) removes usage
 conflict from the contract below; its [isolated qualification](claude-usage-selection.md#qualification)
 passes. earlier qualification retains its recorded source.

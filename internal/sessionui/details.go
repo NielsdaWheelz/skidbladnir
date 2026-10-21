@@ -37,9 +37,6 @@ func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
 	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetclient.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}}
-	if value.ConversationHandle != "" {
-		facts = append(facts, [2]string{"conversation handle", value.ConversationHandle})
-	}
 	switch current.Kind {
 	case "remote":
 		facts = append(facts, [2]string{"running on", current.Label})
@@ -79,15 +76,6 @@ func (m *model) details(row *listedRow) [][2]string {
 			explanation = prefix + " " + explanation
 		}
 		facts = append(facts, [2]string{"", explanation})
-		if current.Kind == "local" && value.Agent != nil {
-			local := value.Agent
-			if local.ProviderSession != nil {
-				facts = append(facts, [2]string{"provider session", local.ProviderSession.ID + " " + local.ProviderSession.Name})
-			}
-		}
-	}
-	if value.Conversation != nil {
-		facts = append(facts, [2]string{"recorded native conversation", value.Conversation.ConversationID + "; may differ from terminal"})
 	}
 
 	view := m.statusView(*row)

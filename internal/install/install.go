@@ -255,7 +255,7 @@ func (i *installer) validate(ctx context.Context, path string) (releaseManifest,
 	if manifest.Platform != platform || !versionPattern.MatchString(manifest.Version) || !regexpSHA(manifest.SourceSHA) {
 		return manifest, errors.New("release identity or platform invalid")
 	}
-	for _, asset := range []string{"skidbladnir", "characters.json", "providers/shell-init", "providers/terminal-context-init", "providers/native-control", "native-helper/runtime.json", "native-helper/source/uv.lock", "native-helper/uv"} {
+	for _, asset := range []string{"skidbladnir", "characters.json", "providers/shell-init", "providers/terminal-context-init", "providers/quota-read", "native-helper/runtime.json", "native-helper/source/uv.lock", "native-helper/uv"} {
 		if _, e := os.Stat(filepath.Join(path, asset)); e != nil {
 			return manifest, fmt.Errorf("release missing required asset: %s", asset)
 		}
@@ -264,20 +264,19 @@ func (i *installer) validate(ctx context.Context, path string) (releaseManifest,
 	if e != nil || string(output) != manifest.Version+" "+manifest.SourceSHA+"\n" {
 		return manifest, errors.New("release executable identity check failed")
 	}
-	helper := exec.CommandContext(ctx, filepath.Join(path, "providers", "native-control"))
+	helper := exec.CommandContext(ctx, filepath.Join(path, "providers", "quota-read"))
 	helperOutput, helperErr := helper.Output()
 	var rejected *exec.ExitError
-	if !errors.As(helperErr, &rejected) || rejected.ExitCode() != 1 || string(helperOutput) != `{"ok":false,"error":{"code":"rejected","dispatch":"not_sent"}}`+"\n" {
-		return manifest, errors.New("bundled native helper cannot start; installed release unchanged")
+	if !errors.As(helperErr, &rejected) || rejected.ExitCode() != 1 || string(helperOutput) != `{"ok":false,"error":{"code":"rejected"}}`+"\n" {
+		return manifest, errors.New("bundled quota helper cannot start; installed release unchanged")
 	}
 	var native struct {
-		Excluded        []string `json:"excluded"`
-		Interpreter     string   `json:"interpreter"`
-		Commit          string   `json:"commit"`
-		Python          string   `json:"python"`
-		UV              string   `json:"uv"`
-		LockSHA         string   `json:"lockSha256"`
-		RequirementsSHA string   `json:"requirementsSha256"`
+		Interpreter     string `json:"interpreter"`
+		Commit          string `json:"commit"`
+		Python          string `json:"python"`
+		UV              string `json:"uv"`
+		LockSHA         string `json:"lockSha256"`
+		RequirementsSHA string `json:"requirementsSha256"`
 	}
 	nativeBytes, e := os.ReadFile(filepath.Join(path, "native-helper", "runtime.json"))
 	if e != nil {
@@ -286,7 +285,7 @@ func (i *installer) validate(ctx context.Context, path string) (releaseManifest,
 	if e = strictjson.Decode(nativeBytes, &native); e != nil {
 		return manifest, e
 	}
-	if !regexpSHA(native.Commit) || !versionPattern.MatchString("v"+native.Python) || !versionPattern.MatchString("v"+native.UV) || len(native.Excluded) != 1 || native.Excluded[0] != "claude_agent_sdk/_bundled" {
+	if !regexpSHA(native.Commit) || !versionPattern.MatchString("v"+native.Python) || !versionPattern.MatchString("v"+native.UV) || native.Interpreter == "" {
 		return manifest, errors.New("native helper runtime metadata invalid")
 	}
 	lockHash, e := fileHash(filepath.Join(path, "native-helper", "source", "uv.lock"))
@@ -299,11 +298,6 @@ func (i *installer) validate(ctx context.Context, path string) (releaseManifest,
 	}
 	if lockHash != native.LockSHA || requirementsHash != native.RequirementsSHA {
 		return manifest, errors.New("native helper dependency manifests differ")
-	}
-	interpreter := filepath.Join(path, "native-helper", native.Interpreter)
-	check := exec.CommandContext(ctx, interpreter, "-I", "-B", "-c", "import sys; sys.path.insert(0,sys.argv[1]); import claude_agent_sdk, provider_runtime.agent_runtime.native_control_cli", filepath.Join(path, "native-helper", "site-packages"))
-	if e = check.Run(); e != nil {
-		return manifest, errors.New("native helper claude sdk dependency unavailable")
 	}
 	if runtime.GOOS == "darwin" {
 		if e = exec.CommandContext(ctx, "codesign", "--verify", "--strict", filepath.Join(path, "Skid.app")).Run(); e != nil {

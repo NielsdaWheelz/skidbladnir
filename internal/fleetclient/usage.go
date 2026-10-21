@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -70,7 +69,7 @@ func decodeProfileUsage(encoded []byte, target peer) (any, bool) {
 			Key          string                    `json:"key"`
 			Label        string                    `json:"label"`
 			Provider     string                    `json:"provider"`
-			HistoryScope string                    `json:"historyScope,omitempty"`
+			AccountScope *string                   `json:"accountScope,omitempty"`
 			ReadState    string                    `json:"readState"`
 			Report       *agentcontrol.UsageReport `json:"report,omitempty"`
 		} `json:"profiles"`
@@ -84,13 +83,14 @@ func decodeProfileUsage(encoded []byte, target peer) (any, bool) {
 	}
 	profiles := make([]ProfileUsage, len(wire.Profiles))
 	for index, profile := range wire.Profiles {
-		if profile.Key == "" || profile.Label == "" || profile.Provider != "Codex" || profile.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(profile.Provider), ProfileKey: agentruntime.ProfileKey(profile.Key), HistoryScope: profile.HistoryScope, ConversationID: "validation"}).Valid() {
+		descriptor, valid := (hostProfile{Key: profile.Key, Label: profile.Label, Provider: profile.Provider, AccountScope: profile.AccountScope}).project()
+		if !valid || descriptor.Provider != "Codex" {
 			return nil, false
 		}
 		if profile.ReadState != "ok" && profile.ReadState != "unavailable" || profile.ReadState == "unavailable" && profile.Report != nil || profile.Report != nil && profile.Report.ReportedAt.After(stamp) {
 			return nil, false
 		}
-		profiles[index] = ProfileUsage{Profile: Profile{Key: profile.Key, Label: profile.Label, Provider: profile.Provider, HistoryScope: profile.HistoryScope}, ReadState: profile.ReadState, Report: profile.Report}
+		profiles[index] = ProfileUsage{Profile: descriptor, ReadState: profile.ReadState, Report: profile.Report}
 	}
 	return ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: stamp.UTC(), Profiles: profiles}, true
 }

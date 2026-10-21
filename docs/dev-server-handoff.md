@@ -683,6 +683,6 @@ requalification on provider upgrades. no separate provider login is introduced.
 ordinary account state is retained; future provider or project-hook changes
 need integration qualification. tmux ownership is unchanged. remaining native
 background-job stop qualification is recorded in
-[native-control](issues/restoration-native-control.md). receipt admission,
+[native-control](restoration-native-control-qualification.md). receipt admission,
 provider continuity, shell installation and runtime separation are complete;
 source checks and root-reported live results are distinguished above.

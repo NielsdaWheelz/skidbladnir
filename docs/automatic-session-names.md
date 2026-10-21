@@ -1,5 +1,11 @@
 # automatic session names and public handles
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 status: implemented and verified in the isolated worktree. source cutover is
 complete; temporary tests/harnesses are removed. deployment is outside this slice.
 this is the contract for one canonical tmux/skid name, automatic naming and short

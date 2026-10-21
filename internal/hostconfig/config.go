@@ -86,9 +86,9 @@ type Config struct {
 	DefaultMachine string              `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
 	Machines       map[string]Override `yaml:"machines,omitempty" json:"machines,omitempty"`
 	// Installation facts are composed locally; they are never human yaml fields.
-	NativeControlPath string `yaml:"-" json:"-"`
-	TmuxPath          string `yaml:"-" json:"-"`
-	ZoxidePath        string `yaml:"-" json:"-"`
+	QuotaReadPath string `yaml:"-" json:"-"`
+	TmuxPath      string `yaml:"-" json:"-"`
+	ZoxidePath    string `yaml:"-" json:"-"`
 }
 type Settings struct {
 	Shell          string    `json:"shell"`

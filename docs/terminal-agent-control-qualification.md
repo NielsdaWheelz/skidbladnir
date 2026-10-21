@@ -52,7 +52,7 @@ delivery only, never completion. recognition follows supported native executable
 profiles; a node launcher without the canonical provider signature is a generic
 terminal. model endpoints qualify provider interaction without paid network work.
 claude native background-job stop is `NOT_RUN` in this cutover; its existing
-[fleet qualification issue](issues/restoration-native-control.md) remains open.
+[fleet qualification issue](restoration-native-control-qualification.md) remains open.
 this qualification predates the separately merged terminal-attention contract in
 [pr 28](https://github.com/NielsdaWheelz/skidbladnir/pull/28). its former native
 conversation dependency is retired; the [merged phone composition](issues/reply-notifications-phone-composition.md)

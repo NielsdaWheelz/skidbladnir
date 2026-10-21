@@ -92,9 +92,10 @@ skid update
 skid uninstall
 ```
 
-ordinary controls use tmux and exact terminal identities. explicit native reads
-and controls remain separate capabilities; unavailable native access never
-selects terminal writes. quota prefers an already-running native daemon, then
+ordinary controls use tmux and exact terminal identities. read returns rendered
+terminal text; guarded send checks the current screen. stop sends an interrupt.
+receipts prove neither provider acceptance nor completion. quota prefers a fresh
+account report from an already-running native daemon, then
 attributable terminal observations. [agent control](docs/agent-control.md) describes
 the boundaries. readiness is a cue to inspect, not proof of successful work.
 

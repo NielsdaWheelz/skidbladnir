@@ -1,3 +1,7 @@
+historical evidence only. the 2026-10-20 [terminal-only cut](terminal-only-control.md)
+removes this skid capability and its installed acceptance requirement. this is
+not an open skid issue or current product contract.
+
 # claude background-job stop qualification
 
 problem: matched claude background-job stop remains `NOT_RUN` on the restored
@@ -15,8 +19,8 @@ halt unconfirmed; the exact provider processes were absent at the later check.
 that response is contract-valid: the gateway checks foreground exit once after
 closure, and later absence does not establish earlier confirmation. the pinned
 helper `ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f` uses native stop only for a
-matched background job. see [the handoff](../dev-server-handoff.md#qualification-and-remaining-work)
-and [stop contract](../agent-control.md).
+matched background job. see [the handoff](dev-server-handoff.md#qualification-and-remaining-work)
+and [stop contract](agent-control.md).
 
 resolved when: an approved disposable background claude job on each host is
 matched and halted through the installed helper; native confirmation and
@@ -33,5 +37,5 @@ installed three-host fleet; the deployment criterion above remains open.
 stock source qualification, 2026-09-29: the current pinned unpatched helper with
 Claude 2.1.284 and sdk 0.2.130 passed native background identities, exact stop and
 saved-history/results survival in a disposable home. wrong kernel lifetime was
-refused and the control worker retained its pid. [current qualification](../native-agent-qualification.md)
+refused and the control worker retained its pid. [current qualification](native-agent-qualification.md)
 owns the final package evidence; installed fleet remains NOT_RUN.

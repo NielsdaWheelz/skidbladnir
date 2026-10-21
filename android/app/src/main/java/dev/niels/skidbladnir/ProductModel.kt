@@ -4,7 +4,6 @@ import java.net.URI
 import java.net.URISyntaxException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.text.Normalizer
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.ZoneId
@@ -191,7 +190,7 @@ internal data class SessionTarget(val machineHandle: MachineHandle, val session:
 internal enum class MachinePlatform { Linux, Darwin }
 internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
 @Serializable internal enum class AgentProvider { Codex, Claude }
-internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider?, val historyScope: String? = null)
+internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider?, val accountScope: String? = null)
 
 @Serializable private data class WireMachineSummary(val handle: String, val platform: WireMachinePlatform)
 @Serializable private enum class WireMachinePlatform { Linux, Darwin }
@@ -199,28 +198,9 @@ internal data class ProfileChoice(val key: ProfileKey, val label: String, val pr
     val key: String,
     val label: String,
     val provider: AgentProvider? = null,
-    val historyScope: String? = null,
+    val accountScope: String? = null,
 )
 @Serializable internal data class CharacterSummary(val key: String, val displayName: String)
-
-@ConsistentCopyVisibility
-internal data class ProviderSessionFacts private constructor(
-    val id: String? = null,
-    val name: String? = null,
-) {
-    init {
-        require(id != null || name != null)
-        require(id?.let(::isProviderSessionId) != false)
-        require(name?.let(::isProviderSessionName) != false)
-    }
-
-    companion object {
-        fun withId(id: String, name: String? = null): ProviderSessionFacts =
-            ProviderSessionFacts(id = id, name = name)
-
-        fun withName(name: String): ProviderSessionFacts = ProviderSessionFacts(name = name)
-    }
-}
 
 internal data class ForegroundObservation(
     val provider: AgentProvider,
@@ -234,16 +214,11 @@ internal data class AgentRuntime(
     val paneId: String,
     val startIdentity: String,
     val profile: ProfileKey? = null,
-    val providerSession: ProviderSessionFacts? = null,
 ) {
     init {
         require(pid > 0)
         require(paneId.matches(Regex("%[0-9]+")))
         require(startIdentity.isNotEmpty())
-        when (provider) {
-            AgentProvider.Codex -> require(providerSession?.name == null)
-            AgentProvider.Claude -> Unit
-        }
     }
 }
 
@@ -289,7 +264,6 @@ internal data class TmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: AgentRuntime? = null,
-    val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
     val terminalUsage: TerminalUsage? = null,
     val terminalFooter: String? = null,
@@ -418,19 +392,12 @@ private data class WireCreatedSessionResponse(
 )
 
 @Serializable
-private data class WireProviderSessionFacts(
-    val id: String? = null,
-    val name: String? = null,
-)
-
-@Serializable
 private data class WireAgentRuntime(
     val provider: AgentProvider,
     val pid: Long,
     val paneId: String,
     val startIdentity: String,
     val profile: String? = null,
-    val providerSession: WireProviderSessionFacts? = null,
 )
 
 @Serializable
@@ -448,7 +415,6 @@ private data class WireTmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: WireAgentRuntime? = null,
-    val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
     val terminalUsage: TerminalUsage? = null,
     val terminalFooter: String? = null,
@@ -719,7 +685,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     }
     element.getValue("profiles").jsonArray.forEach { profile ->
         (profile as? JsonObject ?: throw SerializationException("profile is not an object"))
-            .requireAbsentOrNonNull(setOf("provider", "historyScope"))
+            .requireAbsentOrNonNull(setOf("provider", "accountScope"))
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
@@ -785,8 +751,8 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
     val profiles = wire.profiles.map { profile ->
         require(profile.label.isNotEmpty())
-        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label, profile.provider, profile.historyScope).also {
-            require(it.historyScope == null || it.historyScope.matches(Regex("[0-9a-f]{64}")))
+        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label, profile.provider, profile.accountScope).also {
+            require(it.accountScope == null || it.accountScope.matches(Regex("[0-9a-f]{64}")))
         }
     }
     require(profiles.map(ProfileChoice::key).allUnique())
@@ -1122,8 +1088,6 @@ internal enum class ApiErrorCode(val wireName: String) {
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
     TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
-    AgentTargetStale("AgentTargetStale"),
-    AgentUnavailable("AgentUnavailable"), AgentInputInvalid("AgentInputInvalid"), HistoryChanged("HistoryChanged"),
 }
 
 internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
@@ -1155,10 +1119,6 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
     ApiErrorCode.TerminalConfigurationUnsupported ->
         "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
-    ApiErrorCode.AgentTargetStale -> "the session changed. refresh and try again."
-    ApiErrorCode.AgentUnavailable -> "this action is unavailable for this session."
-    ApiErrorCode.HistoryChanged -> "native history changed. restart the result scan."
-    ApiErrorCode.AgentInputInvalid -> "the agent input is not valid."
 }
 
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
@@ -1262,17 +1222,15 @@ internal fun sessionStatusContent(
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
     if ("terminalFooter" in this) requiredString("terminalFooter")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection", "terminalUsage", "terminalFooter"))
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection", "terminalUsage", "terminalFooter"))
     if ("terminalUsage" in this) {
         val usage = requiredObject("terminalUsage")
         usage.requireAbsentOrNonNull(setOf("fiveHourUsedPercent", "sevenDayUsedPercent"))
         require(usage.values.all { it is JsonPrimitive && !it.isString })
     }
     (this["agent"] as? JsonObject)?.let { agent ->
-        agent.requireNativeValues()
-        (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
+        agent.requireNonNullValues()
     }
-    (this["conversation"] as? JsonObject)?.requireNativeValues()
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
@@ -1301,7 +1259,6 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,
     agent = session.agent?.let(::acceptAgentRuntime),
-    conversation = session.conversation,
     terminalStatus = session.terminalStatus,
     terminalUsage = session.terminalUsage,
     terminalFooter = session.terminalFooter,
@@ -1314,14 +1271,7 @@ private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentR
     paneId = runtime.paneId,
     startIdentity = runtime.startIdentity,
     profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
-    providerSession = runtime.providerSession?.let(::acceptProviderSessionFacts),
 )
-
-private fun acceptProviderSessionFacts(facts: WireProviderSessionFacts): ProviderSessionFacts = when {
-    facts.id != null -> ProviderSessionFacts.withId(facts.id, facts.name)
-    facts.name != null -> ProviderSessionFacts.withName(facts.name)
-    else -> throw IllegalArgumentException("provider session facts are empty")
-}
 
 private fun acceptSession(session: TmuxSession) {
     require(session.tmuxId.matches(Regex("\\$[0-9]+")) && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
@@ -1350,21 +1300,5 @@ private fun acceptSession(session: TmuxSession) {
                 else -> false
             }
         })
-    }
-}
-
-private fun isProviderSessionId(value: String): Boolean =
-    value.length in 1..128 && value.all { it.code in 0x21..0x7e }
-
-private fun isProviderSessionName(value: String): Boolean {
-    if (!Normalizer.isNormalized(value, Normalizer.Form.NFC)) return false
-    val codePoints = value.codePoints().toArray()
-    return codePoints.size in 1..128 && codePoints.none { codePoint ->
-        Character.isISOControl(codePoint) ||
-            codePoint in 0xd800..0xdfff ||
-            codePoint == 0x061c ||
-            codePoint in 0x200e..0x200f ||
-            codePoint in 0x2028..0x202e ||
-            codePoint in 0x2066..0x2069
     }
 }

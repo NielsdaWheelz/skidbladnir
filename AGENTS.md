@@ -5,15 +5,15 @@ Before changing this repository, read [the architecture](docs/architecture.md),
 [the codebase rules](docs/rules/index.md). tmux owns terminal sessions and pane
 processes; providers own execution and history.
 the phone and desktop are tmux clients. read [agent control](docs/agent-control.md)
-for native observation and explicit controls; [native agent interaction](docs/native-agent-observation.md)
-owns the detailed contract. native failure never selects terminal operations.
+for terminal observation and explicit controls; [terminal-only control](docs/terminal-only-control.md)
+owns the current capability boundary. native account quota is read-only and
+uses attributable terminal evidence when native evidence is unavailable or stale.
 do not reintroduce
 retired machinery: generalized hook runtimes, provenance, sqlite lifecycle facts,
 contract codegen or proof ledgers.
 
-the sole hook exception is the content-free, process-lifetime-bound SessionStart
-identity registration in architecture §4. hooks never publish status/activity,
-track history or parse prompt payloads. a codex completion notifier may emit BEL
+provider conversation hooks and native conversation controls are removed.
+a codex completion notifier may emit BEL
 as terminal-local presentation; it stores no state and has no privileged product
 meaning. architecture §8 governs further upgrades: a new capability requires an
 explicit scope and acceptance-criterion change.

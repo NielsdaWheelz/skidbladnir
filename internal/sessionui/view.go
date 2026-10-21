@@ -424,7 +424,7 @@ func (m *model) bodyLines(height int) []string {
 		}
 		lines := []string{bold.Styled(title), ""}
 		if editor.failure != nil {
-			lines = append(lines, wrapped(fleetclient.ErrorMessage(*editor.failure, editor.request, false), width)...)
+			lines = append(lines, wrapped(fleetclient.ErrorMessage(*editor.failure, editor.request), width)...)
 			lines = append(lines, "")
 		}
 		current := m.rowForReference(editor.request.Ref)
@@ -467,7 +467,7 @@ func (m *model) bodyLines(height int) []string {
 				status = "unchanged; save disabled"
 			}
 		case !fleetclient.ValidSessionName(editor.draft):
-			status = fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request, false)
+			status = fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
 		case current.session.NameMode == "manual" && current.session.Name == editor.draft:
 			status = "unchanged; save disabled"
 		}

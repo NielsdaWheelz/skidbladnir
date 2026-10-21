@@ -42,7 +42,7 @@ func (m *model) openMetadata(operation string) {
 			if m.metadata.acknowledged {
 				m.fail("metadata changed after saving. review and save again.")
 			} else if m.metadata.failure != nil {
-				m.fail(fleetclient.ErrorMessage(*m.metadata.failure, m.metadata.request, false))
+				m.fail(fleetclient.ErrorMessage(*m.metadata.failure, m.metadata.request))
 			}
 			return
 		}
@@ -134,7 +134,7 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 				}
 				naming = fleetclient.Naming{Mode: "automatic"}
 			} else if !fleetclient.ValidSessionName(editor.draft) {
-				m.fail(fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request, false))
+				m.fail(fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request))
 				return nil
 			}
 			if current.session.Naming() == naming {

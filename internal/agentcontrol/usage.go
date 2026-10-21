@@ -106,35 +106,25 @@ func (service *Service) ProfileUsage(parent context.Context) (UsageObservation, 
 		}
 	}
 	observed := make([]ProfileUsage, len(profiles))
-	failures := make([]error, len(profiles))
 	var pending sync.WaitGroup
 	for index, profile := range profiles {
 		pending.Go(func() {
 			value := ProfileUsage{Profile: profile, ReadState: "unavailable"}
-			var report UsageReport
-			err := service.native(ctx, profile, "usage", nil, nil, &report)
-			var unavailable *UnavailableError
-			if err != nil && !errors.As(err, &unavailable) {
-				failures[index] = err
-			}
-			if err == nil && ctx.Err() == nil {
-				value.ReadState, value.Report = "ok", &report
+			if report := service.quota(ctx, profile); report != nil && ctx.Err() == nil {
+				value.ReadState, value.Report = "ok", report
 			}
 			observed[index] = value
 		})
 	}
 	pending.Wait()
 	stamp := time.Now().UTC()
-	for index, err := range failures {
-		if err != nil {
-			return UsageObservation{}, err
-		}
+	for index := range observed {
 		if report := observed[index].Report; report != nil && report.ReportedAt.After(stamp) {
 			observed[index].ReadState, observed[index].Report = "unavailable", nil
 		}
 	}
 	if service.sessions.SettingsRevision() != revision {
-		return UsageObservation{}, &UnavailableError{Dispatch: "not_sent"}
+		return UsageObservation{}, errors.New("quota configuration changed")
 	}
 	return UsageObservation{ObservedAt: stamp, Profiles: observed}, nil
 }

@@ -173,10 +173,10 @@ internal fun notificationReference(encoded: String): NotificationKey {
     require(encoded.length in 1..4_096)
     val decoded = Base64.getUrlDecoder().decode(encoded)
     require(Base64.getUrlEncoder().withoutPadding().encodeToString(decoded) == encoded)
-    return productJson.decodeFromJsonElement<NotificationKey>(nativeJsonObject(decoded.decodeToString(throwOnInvalidSequence = true)))
+    return productJson.decodeFromJsonElement<NotificationKey>(nonNullJsonObject(decoded.decodeToString(throwOnInvalidSequence = true)))
 }
 /** Counter spelling is checked before kotlinx can accept floating-point coercion. */
-internal fun notificationJson(encoded: String): JsonObject = nativeJsonObject(encoded).also { root ->
+internal fun notificationJson(encoded: String): JsonObject = nonNullJsonObject(encoded).also { root ->
     fun inspect(value: JsonElement) {
         when (value) {
             is JsonObject -> {
@@ -190,7 +190,7 @@ internal fun notificationJson(encoded: String): JsonObject = nativeJsonObject(en
             }
             is JsonArray -> value.forEach(::inspect)
             is JsonPrimitive -> Unit
-            kotlinx.serialization.json.JsonNull -> error("nativeJsonObject accepted null")
+            kotlinx.serialization.json.JsonNull -> error("nonNullJsonObject accepted null")
         }
     }
     inspect(root)

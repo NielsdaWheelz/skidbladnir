@@ -461,7 +461,6 @@ internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailu
         ApiErrorCode.ProfileUnknown, ApiErrorCode.SessionNameInvalid, ApiErrorCode.ObjectiveInvalid,
         ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
         ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
-        ApiErrorCode.AgentUnavailable,
     ), creation = true)
 }
 
@@ -554,35 +553,11 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.SessionIdentityMismatch,
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
-    ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.HistoryChanged,
     ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked -> 409
-    ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
     ApiErrorCode.TerminalContextUnavailable -> 404
     ApiErrorCode.InternalError -> 500
     ApiErrorCode.ReconnectRequired, ApiErrorCode.TerminalConfigurationUnsupported -> throw SerializationException("terminal error has no HTTP status")
-}
-
-@Serializable
-private data class AgentErrorResponse(val code: String, val message: String, val dispatch: String)
-
-internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
-    val value = strictJsonObject(encoded)
-    if ("dispatch" !in value) return@decodeProtocol decodeCloseTerminalHttpFailure(status, encoded)
-    if (value.requiredString("code") == ApiErrorCode.InternalError.wireName) {
-        return@decodeProtocol decodeMutationHttpFailure(status, encoded, setOf(ApiErrorCode.InternalError))
-    }
-    val error = productJson.decodeFromJsonElement<AgentErrorResponse>(value)
-    val code = parseApiErrorCode(error.code)
-    require(code in setOf(ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentInputInvalid, ApiErrorCode.HistoryChanged))
-    require(status == apiErrorHttpStatus(code) && error.message == apiErrorMessage(code))
-    val dispatch = when (error.dispatch) {
-        "not_sent" -> MutationDispatch.NotSent
-        "unknown" -> MutationDispatch.Unknown
-        else -> throw SerializationException("invalid agent dispatch")
-    }
-    require(dispatch == MutationDispatch.NotSent || code in setOf(ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentTargetStale))
-    GatewayFailure.Api(code, dispatch)
 }
 
 internal fun decodeTerminalControlHttpFailure(status: Int, encoded: String): GatewayFailure {

@@ -436,7 +436,6 @@ private fun TerminalSessionSheet(
             listOfNotNull(
                 context,
                 directory,
-                "recorded native conversation; may differ from terminal".takeIf { session.conversation != null },
                 status.secondary,
             ).forEach { line ->
                 Text(line, color = Muted, style = MaterialTheme.typography.labelMedium, fontFamily = NidavellirType.Data,

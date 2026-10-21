@@ -108,7 +108,7 @@ import sys
 import tarfile
 
 required = {"skidbladnir", "characters.json", "release.json", "providers/shell-init",
-            "providers/terminal-context-init", "providers/native-control", "native-helper/runtime.json",
+            "providers/terminal-context-init", "providers/quota-read", "native-helper/runtime.json",
             "native-helper/source/uv.lock", "native-helper/source/pyproject.toml", "native-helper/requirements.txt", "native-helper/uv"}
 if sys.argv[2] == "darwin-arm64":
     required.update({"Skid.app/Contents/Info.plist", "Skid.app/Contents/MacOS/skid-notifications"})
@@ -250,7 +250,8 @@ verify_archive() (
     return 1
   }
   jq -e --slurpfile pins "$source_dir/internal/install/native-runtime.json" \
-    '.commit == $pins[0].commit and .python == $pins[0].python and .uv == $pins[0].uv' \
+    'keys == ["commit", "interpreter", "lockSha256", "python", "requirementsSha256", "uv"] and
+     .commit == $pins[0].commit and .python == $pins[0].python and .uv == $pins[0].uv' \
     "$staging_dir/native-helper/runtime.json" >/dev/null || {
     printf '%s native runtime pins differ from the exact release source\n' "$(basename "$archive")" >&2
     return 1

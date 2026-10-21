@@ -67,7 +67,7 @@ func admissionError(code auth.AdmissionCode, logCode logging.ErrorCode) apiError
 }
 
 type profileDTO struct {
-	HistoryScope string `json:"historyScope,omitempty"`
+	AccountScope string `json:"accountScope,omitempty"`
 	Key          string `json:"key"`
 	Label        string `json:"label"`
 	Provider     string `json:"provider,omitempty"`
@@ -78,18 +78,12 @@ type characterDTO struct {
 	DisplayName string `json:"displayName"`
 }
 
-type providerSessionDTO struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-}
-
 type agentDTO struct {
-	PaneID          string              `json:"paneId"`
-	StartIdentity   string              `json:"startIdentity"`
-	Provider        string              `json:"provider"`
-	PID             int                 `json:"pid"`
-	Profile         string              `json:"profile,omitempty"`
-	ProviderSession *providerSessionDTO `json:"providerSession,omitempty"`
+	PaneID        string `json:"paneId"`
+	StartIdentity string `json:"startIdentity"`
+	Provider      string `json:"provider"`
+	PID           int    `json:"pid"`
+	Profile       string `json:"profile,omitempty"`
 }
 
 type connectionDTO struct {
@@ -98,24 +92,23 @@ type connectionDTO struct {
 }
 
 type sessionDTO struct {
-	TerminalStatus  sessions.TerminalStatus    `json:"terminalStatus"`
-	TerminalUsage   *sessions.TerminalUsage    `json:"terminalUsage,omitempty"`
-	TerminalFooter  *sessions.TerminalFooter   `json:"terminalFooter,omitempty"`
-	TmuxID          string                     `json:"tmuxId"`
-	ActivePaneID    string                     `json:"activePaneId"`
-	TmuxName        string                     `json:"tmuxName"`
-	NameMode        sessions.NameMode          `json:"nameMode"`
-	IdentityToken   string                     `json:"identityToken"`
-	Character       characterDTO               `json:"character"`
-	LaunchProfile   string                     `json:"launchProfile,omitempty"`
-	Agent           *agentDTO                  `json:"agent,omitempty"`
-	Conversation    *agentruntime.Conversation `json:"conversation,omitempty"`
-	Connection      *connectionDTO             `json:"connection,omitempty"`
-	Objective       string                     `json:"objective,omitempty"`
-	Group           string                     `json:"group,omitempty"`
-	CWD             string                     `json:"cwd,omitempty"`
-	ActiveCommand   string                     `json:"activeCommand,omitempty"`
-	AttachedClients int                        `json:"attachedClients"`
+	TerminalStatus  sessions.TerminalStatus  `json:"terminalStatus"`
+	TerminalUsage   *sessions.TerminalUsage  `json:"terminalUsage,omitempty"`
+	TerminalFooter  *sessions.TerminalFooter `json:"terminalFooter,omitempty"`
+	TmuxID          string                   `json:"tmuxId"`
+	ActivePaneID    string                   `json:"activePaneId"`
+	TmuxName        string                   `json:"tmuxName"`
+	NameMode        sessions.NameMode        `json:"nameMode"`
+	IdentityToken   string                   `json:"identityToken"`
+	Character       characterDTO             `json:"character"`
+	LaunchProfile   string                   `json:"launchProfile,omitempty"`
+	Agent           *agentDTO                `json:"agent,omitempty"`
+	Connection      *connectionDTO           `json:"connection,omitempty"`
+	Objective       string                   `json:"objective,omitempty"`
+	Group           string                   `json:"group,omitempty"`
+	CWD             string                   `json:"cwd,omitempty"`
+	ActiveCommand   string                   `json:"activeCommand,omitempty"`
+	AttachedClients int                      `json:"attachedClients"`
 }
 
 type machineDTO struct {
@@ -306,9 +299,9 @@ func mapProfiles(profiles []agentruntime.Profile) ([]profileDTO, error) {
 	mapped := make([]profileDTO, len(validated))
 	for index, profile := range validated {
 		mapped[index] = profileDTO{Key: string(profile.Key), Label: profile.Label, Provider: profile.Provider.String()}
-		// justify-ignore-error: absent native home omits this profile's native capability without hiding its terminal launch.
-		if scope, err := agentruntime.HistoryScope(profile); err == nil {
-			mapped[index].HistoryScope = scope
+		// justify-ignore-error: absent account home omits this profile's quota scope without hiding its terminal launch.
+		if scope, err := agentruntime.AccountScope(profile); err == nil {
+			mapped[index].AccountScope = scope
 		}
 	}
 	return mapped, nil
@@ -326,11 +319,6 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
 		Profile:  string(agent.Profile),
-	}
-	if agent.ProviderSession != nil {
-		id := agent.ProviderSession.ID()
-		name := agent.ProviderSession.Name()
-		mapped.ProviderSession = &providerSessionDTO{ID: id, Name: name}
 	}
 	return mapped, nil
 }
@@ -367,7 +355,6 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
-		Conversation:    session.Conversation,
 		TerminalStatus:  session.TerminalStatus,
 		TerminalUsage:   session.TerminalUsage,
 		TerminalFooter:  session.TerminalFooter,
@@ -378,7 +365,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
+	if !card.TerminalStatus.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}

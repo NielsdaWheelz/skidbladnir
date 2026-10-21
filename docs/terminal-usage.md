@@ -1,5 +1,11 @@
 # terminal usage and consolidated profile disclosure
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 2026-10-20: [claude usage selection](claude-usage-selection.md) amends same-host
 selection below; its [isolated qualification](claude-usage-selection.md#qualification)
 passes. earlier qualification applies to its recorded source.
@@ -151,7 +157,7 @@ it becomes codex-only:
 
 ```text
 {machine:{handle,platform}, observedAt, profiles:[{
-  key, label, provider:"Codex", historyScope?,
+  key, label, provider:"Codex", accountScope?,
   readState:"ok"|"unavailable",
   report?:{reportedAt, fiveHour?:{usedPercent,resetsAt?},
                       sevenDay?:{usedPercent,resetsAt?}}
@@ -215,7 +221,7 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
    in the closed configured order. native declarations can supply codex rows even
    without a successful inventory. join only equal key/provider; do not compare
    host-local
-   `historyScope` as account identity. retain declarations through ordinary outage.
+   `accountScope` as account identity. retain declarations through ordinary outage.
    show `no agent profiles` only when every paired host has supplied a full
    inventory declaration and their retained union is empty. while initial full
    declarations are in flight and no profiles are known, show checking; after

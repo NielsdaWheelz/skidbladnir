@@ -77,7 +77,7 @@ func (notice nativeNotice) acknowledged(epoch string, record attention.DeviceRec
 		return false
 	}
 	ref, err := fleetclient.DecodeReference(notice.Ref)
-	return err == nil && ref.Conversation == nil && ref.Machine == record.Key.Machine && ref.TmuxID == record.Key.TmuxID && ref.IdentityToken == record.Key.IdentityToken && ref.PaneID == record.Key.PaneID
+	return err == nil && ref.Machine == record.Key.Machine && ref.TmuxID == record.Key.TmuxID && ref.IdentityToken == record.Key.IdentityToken && ref.PaneID == record.Key.PaneID
 }
 
 type inspection struct {
@@ -490,7 +490,7 @@ func (owner *owner) handle(request ownerRequest) {
 	case "launch":
 		ref := request.value.(string) // justify-assertion: native events carry only their captured session reference.
 		decoded, err := fleetclient.DecodeReference(ref)
-		if err != nil || decoded.Conversation != nil {
+		if err != nil {
 			answer(nil, ErrUnavailable)
 			return
 		}

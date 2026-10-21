@@ -1,3 +1,7 @@
+historical evidence only. the 2026-10-20 [terminal-only cut](terminal-only-control.md)
+removes this skid capability and its installed acceptance requirement. this is
+not an open skid issue or current product contract.
+
 # claude history completeness is not established by the sdk reader
 
 problem: the native-results contract rejects incomplete history, but the pinned
@@ -31,7 +35,7 @@ get_session_messages and helper results with intact controls. metadata lookup
 continues to succeed. native admission/current-work qualification remains NOT_RUN.
 
 the user explicitly replaced strict new-reply notification semantics with
-[terminal attention](../reply-notifications.md). that removes this prerequisite
+[terminal attention](reply-notifications.md). that removes this prerequisite
 from notification delivery; it does NOT repair explicit native results.
 notification implementation changes no provider/helper source or pin.
 

@@ -5,6 +5,15 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## terminal-only controls — source implementation in progress
+
+[the approved contract](terminal-only-control.md) removes native conversation
+control and association from skid and jarvis workers, keeps read-only codex quota
+with terminal fallback, and restores ordinary personal launch commands.
+[qualification](terminal-only-control-qualification.md) records cross-repository
+source, disposable red/green checks and remaining boundaries. installed cutover
+is separate; the jarvis service-state access issue remains a blocker.
+
 ## inventory and attachment latency — deployed in v0.18.0
 
 2026-10-20: [the spec and plan](session-latency.md) defines batched native reads,
@@ -347,7 +356,7 @@ separate; stock launch, provider-owned names and existing bindings are preserved
 presentation-owned visits; its historical results remain source-attributed.
 [merged phone naming composition](issues/reply-notifications-phone-composition.md)
 retains its unperformed naming rows; the new attention/visit portions passed.
-[claude history completeness](issues/claude-history-completeness.md) remains an
+[claude history completeness](claude-history-completeness-qualification.md) remains an
 independent native-provider issue. [terminal qualification](terminal-agent-control-qualification.md)
 records the remaining detector/input/deletion and fleet boundaries.
 
@@ -370,7 +379,7 @@ ordinary upstream npm plus its owning daemon, existing recorded bindings and nat
 operations. the selected-view fork/build and human unread/viewer paths are retired.
 ordinary status/input is terminal-based; explicit native history/control remains separate.
 experimental queueing is unavailable; Claude native input remains unavailable
-following [failed recipient qualification](issues/native-message-qualification.md).
+following [failed recipient qualification](native-message-recipient-qualification.md).
 
 manual conversation association is removed from source: no mobile/browser form,
 cli track/untrack command or host mutation route remains. normal remote-new
@@ -406,7 +415,7 @@ three-host coexistence and the recorded fleet/phone cutover checks, including
 arch prior-generation rollback/restore, opposite-product repeat-apply, both apk
 reinstalls and exact probe cleanup. [live qualification](dev-server-handoff.md#qualification-and-remaining-work)
 states the evidence and its limits; prior-conversation resumption is not claimed.
-[installed-fleet native background-job stop](issues/restoration-native-control.md) remains
+[installed-fleet native background-job stop](restoration-native-control-qualification.md) remains
 `NOT_RUN`, separate from namespace separation. broader ux waivers below remain.
 
 ## implemented scope

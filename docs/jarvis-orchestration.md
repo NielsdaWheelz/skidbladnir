@@ -1,5 +1,11 @@
 # jarvis orchestration changes for skid
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 owner-reviewed local spec and implementation plan, extracted and adversarially reviewed
 2026-10-02. jarvis needs configurable worker launch, an optional initial prompt,
 and honest evidence for asynchronous observation. the launch extension fits

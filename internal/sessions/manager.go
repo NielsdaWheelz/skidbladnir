@@ -526,7 +526,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	session.panePID = inspected.panePID
 	row := inspected.row
 	if row == nil {
-		// Single-target controls keep their independent native observation path.
+		// single-target controls sample their own terminal facts.
 		// justify-ignore-error: these optional reads omit unavailable display facts;
 		// required lifetime and anchor validation remain independent.
 		row = &tmuxclient.InventoryRow{}
@@ -535,8 +535,6 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 		row.Command, _ = manager.tmux.Output(ctx, "read-pane-command", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_command}")
 		row.LocalSession.Profile, _ = manager.sessionOption(ctx, session.TmuxID, "@skid_profile")
 		row.LocalSession.Objective, _ = manager.sessionOption(ctx, session.TmuxID, "@skid_objective_b64")
-		row.LocalSession.Conversation, _ = manager.sessionOption(ctx, session.TmuxID, conversationOption)
-		row.PaneRegistration, _ = manager.paneOption(ctx, inspected.paneID, agentruntime.PaneOption)
 	}
 	session.Group = group.DecodeMetadata(row.LocalSession.Group)
 	session.AttachedClients = inspected.attachedClients
@@ -551,15 +549,9 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 			session.Objective = string(objective)
 		}
 	}
-	if encoded := row.LocalSession.Conversation; encoded != "" {
-		if conversation, err := decodeConversation(encoded); err == nil {
-			session.Conversation = &conversation
-		}
-	}
 	var foregroundErr error
-	session.Agent, session.foreground, foregroundErr = manager.observeAgent(inspected.paneID, inspected.panePID, row.PaneRegistration)
+	session.Agent, session.foreground, foregroundErr = manager.observeAgent(inspected.paneID, inspected.panePID)
 	session.foregroundFailed = foregroundErr != nil
-	manager.projectClaudeConversation(&session)
 	if session.foreground != nil {
 		foreground := *session.foreground
 		if transport, _, recognized := observedTransport(foreground, nil); recognized {
@@ -863,10 +855,6 @@ func selectCharacter(characters []catalog.Character, characterUse map[string]int
 
 func (manager *Manager) sessionOption(ctx context.Context, id, option string) (string, error) {
 	return manager.tmux.Output(ctx, "read-session-option", "show-options", "-qv", "-t", id, option)
-}
-
-func (manager *Manager) paneOption(ctx context.Context, paneID, option string) (string, error) {
-	return manager.tmux.Output(ctx, "read-pane-option", "show-options", "-pqv", "-t", paneID, option)
 }
 
 func (manager *Manager) sessionIdentity(ctx context.Context, id string) (string, bool, error) {

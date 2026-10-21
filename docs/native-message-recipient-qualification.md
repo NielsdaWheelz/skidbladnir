@@ -1,3 +1,7 @@
+historical evidence only. the 2026-10-20 [terminal-only cut](terminal-only-control.md)
+removes this skid capability and its installed acceptance requirement. this is
+not an open skid issue or current product contract.
+
 # claude held messages can cross conversation boundaries
 
 problem: claude 2.1.284 validates the recipient before holding a peer message,
@@ -23,12 +27,12 @@ the recipient failure.
 the former fork/helper checks passed codex guarded peer/user input, persistent
 queue receipts, exact interruption, gateway composition and reciprocal routing.
 that evidence does not qualify the stock cutover; its experimental queue is
-unavailable under [the current contract](../native-agent-observation.md).
+unavailable under [the current contract](native-agent-observation.md).
 successful claude socket writes proved only `written`, never admission.
 
 current contract: helper/gateway/cli rejects claude peer/user/queue sends with
 `unavailable/not_sent` and preserves native result identities.
-[current qualification](../native-agent-qualification.md) owns source and
+[current qualification](native-agent-qualification.md) owns source and
 installation evidence; the helper comes directly from merged source, without patches.
 
 resolved when: native recipient revalidation spans holding and approval, the

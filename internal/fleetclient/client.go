@@ -14,7 +14,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -59,51 +58,6 @@ type Client struct {
 	public         fleet.Public
 	envelope       fleet.Envelope
 	hub            string
-}
-
-// InspectReference retains the locally admitted target even when native inspection
-// fails. Execute's internal inspect result remains the provider runtime envelope.
-func (client *Client) InspectReference(ctx context.Context, encoded string) Result {
-	ref, err := DecodeReference(encoded)
-	if err != nil || ref.Conversation == nil {
-		return Failed("invalid_input", "not_sent")
-	}
-	selected, found := client.peerByMachine(ref.Machine)
-	if !found {
-		return Failed("machine_unknown", "not_sent")
-	}
-	return capturedInspection(selected, ref, encoded, client.Execute(ctx, Request{Operation: "inspect", Ref: encoded}))
-}
-
-func capturedInspection(selected peer, ref Reference, encoded string, inspection Result) Result {
-	value := InspectedReference{Label: selected.Label, Machine: selected.Machine}
-	value.Target.Ref = encoded
-	value.Target.Conversation = ref.Conversation.Binding.Conversation
-	value.Target.Turn = ref.Conversation.Turn
-	value.Inspection = inspection
-	if value.Inspection.OK {
-		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
-		value.ObservedRef = (Reference{Machine: ref.Machine, Conversation: &runtime}).Encode()
-	}
-	return success(value)
-}
-
-// Inspect samples a native handle once; --ref retains its earlier capture.
-func (client *Client) Inspect(parent context.Context, request Request) Result {
-	ctx, cancel := context.WithTimeout(parent, Timeout)
-	defer cancel()
-	if request.Operation != "inspect" || !request.Valid() {
-		return Failed("invalid_input", "not_sent")
-	}
-	if request.Ref != "" {
-		return client.InspectReference(ctx, request.Ref)
-	}
-	ref, _, failure := client.resolve(ctx, request)
-	if failure != nil {
-		return *failure
-	}
-	selected, _ := client.peerByMachine(ref.Machine)
-	return capturedInspection(selected, ref, ref.Encode(), success(*ref.Conversation))
 }
 
 // Execute never retries a write, including after a lost acknowledgement.
@@ -192,37 +146,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			body["expectedNaming"], body["naming"] = request.ExpectedNaming, request.Naming
 		case operation == "close" && request.TerminalOnly:
 			operation = "terminal_close"
-		case ref.Conversation != nil:
-			runtime := ref.Conversation
-			body = map[string]any{"conversation": runtime.Binding.Conversation}
-			path = "/v1/conversations/" + operation
-			switch operation {
-			case "read":
-				scope := request.Scope
-				if scope == "" {
-					scope = "latest"
-				}
-				body["scope"] = scope
-				if request.MaxBytes != 0 {
-					body["maxBytes"] = request.MaxBytes
-				}
-			case "send":
-				input, delivery := request.Input, request.Delivery
-				if input == "" {
-					input = "peer"
-				}
-				if delivery == "" {
-					delivery = "direct"
-				}
-				if delivery == "queue" {
-					return Failed("AgentUnavailable", "not_sent")
-				}
-				body["input"], body["delivery"], body["text"] = input, delivery, request.Text
-			case "stop":
-				if runtime.Turn != nil && runtime.Turn.State == "inProgress" {
-					body["turn"] = runtime.Turn
-				}
-			}
 		default:
 			body["paneId"] = ref.PaneID
 			path += "/terminal/" + operation
@@ -245,23 +168,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, operation, path, encoded)
-		if result.OK && ref.Conversation != nil {
-			switch request.Operation {
-			case "read":
-				value := result.Value.(ReadResult)
-				scope := request.Scope
-				if scope == "" {
-					scope = "latest"
-				}
-				if value.Observation.Binding.Conversation != ref.Conversation.Binding.Conversation || value.Scope != scope {
-					return Failed("protocol_error", "not_sent")
-				}
-			case "inspect":
-				if result.Value.(agentruntime.ConversationRuntime).Binding.Conversation != ref.Conversation.Binding.Conversation {
-					return Failed("protocol_error", "not_sent")
-				}
-			}
-		}
 		if result.OK && request.Operation == "group" {
 			result = success(GroupResult{Group: request.Group.String()})
 		}
@@ -357,18 +263,6 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return Reference{}, ObservedSession{}, &result
 	}
 	var ref Reference
-	if request.ConversationID != "" {
-		selected, found := client.peerByLabel(request.Machine)
-		if !found {
-			return fail("machine_unknown")
-		}
-		conversation, failure := client.conversationByProfile(ctx, selected, request.Profile, request.ConversationID)
-		if failure != nil {
-			return Reference{}, ObservedSession{}, failure
-		}
-		ref, failure := client.inspectConversation(ctx, selected, conversation)
-		return ref, ObservedSession{}, failure
-	}
 	label := request.Machine
 	if request.Ref != "" {
 		var err error
@@ -405,19 +299,6 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 				if !current.SessionEqual(ref) {
 					continue
 				}
-			} else if strings.HasPrefix(request.Handle, "c-") {
-				if row.Conversation == nil {
-					continue
-				}
-				conversation := *row.Conversation
-				tuple, _ := json.Marshal([]string{peer.Machine, string(conversation.Provider), string(conversation.ProfileKey), conversation.HistoryScope, conversation.ConversationID})
-				if seen[string(tuple)] {
-					continue
-				}
-				seen[string(tuple)] = true
-				if conversationHandle(peer.Machine, conversation) != request.Handle {
-					continue
-				}
 			} else {
 				key := Reference{Machine: current.Machine, TmuxID: current.TmuxID, IdentityToken: current.IdentityToken}.Encode()
 				if seen[key] {
@@ -445,29 +326,10 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return fail("handle_ambiguous")
 	}
 	observed := matches[0]
-	if strings.HasPrefix(request.Handle, "c-") {
-		selected, _ := client.peerByMachine(observed.Machine)
-		ref, failure := client.inspectConversation(ctx, selected, *observed.Session.Conversation)
-		return ref, ObservedSession{}, failure
-	}
 	if request.Ref == "" {
 		ref, _ = DecodeReference(observed.Session.Ref)
 	}
 	return ref, observed, nil
-}
-
-func (client *Client) inspectConversation(ctx context.Context, selected peer, conversation agentruntime.Conversation) (Reference, *Result) {
-	encoded, _ := json.Marshal(map[string]any{"conversation": conversation})
-	inspected := client.call(ctx, selected, "inspect", "/v1/conversations/inspect", encoded)
-	if !inspected.OK {
-		return Reference{}, &inspected
-	}
-	runtime := inspected.Value.(agentruntime.ConversationRuntime)
-	if runtime.Binding.Conversation != conversation {
-		failure := Failed("protocol_error", "not_sent")
-		return Reference{}, &failure
-	}
-	return Reference{Machine: selected.Machine, Conversation: &runtime}, nil
 }
 
 // ResolveTerminal resolves a handle once; an exact captured reference needs no inventory.
@@ -544,7 +406,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if target.Origin == "" {
 		return Failed("unavailable", dispatch)
 	}
-	writes := operation != "list" && operation != "profile_usage" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
+	writes := operation != "list" && operation != "profile_usage" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -707,9 +569,6 @@ func (result Result) ExitCode(operation string) int {
 	if !result.OK {
 		return 1
 	}
-	if value, ok := result.Value.(InspectedReference); ok && !value.Inspection.OK {
-		return 1
-	}
 	switch operation {
 	case "start":
 		value := result.Value.(StartResult)
@@ -745,22 +604,4 @@ func (result Result) ExitCode(operation string) int {
 		}
 	}
 	return 0
-}
-
-func (client *Client) conversationByProfile(ctx context.Context, target peer, key, id string) (agentruntime.Conversation, *Result) {
-	listed := client.call(ctx, target, "list", "/v1/sessions", nil)
-	if !listed.OK {
-		return agentruntime.Conversation{}, &listed
-	}
-	for _, profile := range listed.Value.(Peer).Profiles {
-		if profile.Key == key {
-			conversation := agentruntime.Conversation{Provider: agentruntime.Provider(profile.Provider), ProfileKey: agentruntime.ProfileKey(key), HistoryScope: profile.HistoryScope, ConversationID: id}
-			if conversation.Valid() {
-				return conversation, nil
-			}
-			break
-		}
-	}
-	failed := Failed("AgentUnavailable", "not_sent")
-	return agentruntime.Conversation{}, &failed
 }

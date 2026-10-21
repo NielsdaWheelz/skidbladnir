@@ -14,22 +14,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
-type ProviderSession struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-}
 type Agent struct {
-	PID             int64            `json:"pid"`
-	StartIdentity   string           `json:"startIdentity"`
-	Provider        string           `json:"provider"`
-	Profile         string           `json:"profile,omitempty"`
-	ProviderSession *ProviderSession `json:"providerSession,omitempty"`
+	PID           int64  `json:"pid"`
+	StartIdentity string `json:"startIdentity"`
+	Provider      string `json:"provider"`
+	Profile       string `json:"profile,omitempty"`
 }
 type Connection struct {
 	Transport string `json:"transport"`
@@ -48,24 +42,22 @@ type ExecutionContext struct {
 	Agent   *ExecutionAgent `json:"agent,omitempty"`
 }
 type Session struct {
-	TerminalStatus     sessions.TerminalStatus    `json:"terminalStatus"`
-	TerminalUsage      *sessions.TerminalUsage    `json:"terminalUsage,omitempty"`
-	TerminalFooter     *sessions.TerminalFooter   `json:"terminalFooter,omitempty"`
-	ActivePaneID       string                     `json:"activePaneId"`
-	Name               string                     `json:"name"`
-	NameMode           string                     `json:"nameMode"`
-	TerminalHandle     string                     `json:"terminalHandle"`
-	ConversationHandle string                     `json:"conversationHandle,omitempty"`
-	Ref                string                     `json:"ref"`
-	CWD                string                     `json:"cwd,omitempty"`
-	ActiveCommand      string                     `json:"activeCommand,omitempty"`
-	LaunchProfile      string                     `json:"launchProfile,omitempty"`
-	AttachedClients    int                        `json:"attachedClients"`
-	Agent              *Agent                     `json:"agent,omitempty"`
-	Connection         *Connection                `json:"connection,omitempty"`
-	Execution          *ExecutionContext          `json:"execution,omitempty"`
-	Group              group.Label                `json:"-"`
-	Conversation       *agentruntime.Conversation `json:"conversation,omitempty"`
+	TerminalStatus  sessions.TerminalStatus  `json:"terminalStatus"`
+	TerminalUsage   *sessions.TerminalUsage  `json:"terminalUsage,omitempty"`
+	TerminalFooter  *sessions.TerminalFooter `json:"terminalFooter,omitempty"`
+	ActivePaneID    string                   `json:"activePaneId"`
+	Name            string                   `json:"name"`
+	NameMode        string                   `json:"nameMode"`
+	TerminalHandle  string                   `json:"terminalHandle"`
+	Ref             string                   `json:"ref"`
+	CWD             string                   `json:"cwd,omitempty"`
+	ActiveCommand   string                   `json:"activeCommand,omitempty"`
+	LaunchProfile   string                   `json:"launchProfile,omitempty"`
+	AttachedClients int                      `json:"attachedClients"`
+	Agent           *Agent                   `json:"agent,omitempty"`
+	Connection      *Connection              `json:"connection,omitempty"`
+	Execution       *ExecutionContext        `json:"execution,omitempty"`
+	Group           group.Label              `json:"-"`
 }
 
 type groupField struct{ label group.Label }
@@ -96,7 +88,28 @@ type Profile struct {
 	Key          string `json:"key"`
 	Label        string `json:"label"`
 	Provider     string `json:"provider,omitempty"`
-	HistoryScope string `json:"historyScope,omitempty"`
+	AccountScope string `json:"accountScope,omitempty"`
+}
+
+type hostProfile struct {
+	Key          string  `json:"key"`
+	Label        string  `json:"label"`
+	Provider     string  `json:"provider,omitempty"`
+	AccountScope *string `json:"accountScope,omitempty"`
+}
+
+func (wire hostProfile) project() (Profile, bool) {
+	if wire.Key == "" || wire.Label == "" || !slices.Contains([]string{"", "Codex", "Claude"}, wire.Provider) {
+		return Profile{}, false
+	}
+	profile := Profile{Key: wire.Key, Label: wire.Label, Provider: wire.Provider}
+	if wire.AccountScope != nil {
+		if len(*wire.AccountScope) != 64 || strings.Trim(*wire.AccountScope, "0123456789abcdef") != "" {
+			return Profile{}, false
+		}
+		profile.AccountScope = *wire.AccountScope
+	}
+	return profile, true
 }
 
 // Recovery contains one strictly admitted host fact. Clients never persist it.
@@ -216,27 +229,11 @@ type StartResult struct {
 	Failure  *Failure         `json:"failure,omitempty"`
 }
 
-// InspectedReference separates captured action identity from current observation.
-type InspectedReference struct {
-	Label   string `json:"label"`
-	Machine string `json:"machine"`
-	Target  struct {
-		Ref          string                    `json:"ref"`
-		Conversation agentruntime.Conversation `json:"conversation"`
-		Turn         *agentruntime.Turn        `json:"turn,omitempty"`
-	} `json:"target"`
-	Inspection  Result `json:"inspection"`
-	ObservedRef string `json:"observedRef,omitempty"`
-}
 type ReadResult struct {
-	Observation  *agentruntime.Observation `json:"observation,omitempty"`
-	OutputState  string                    `json:"outputState,omitempty"`
-	OutputID     string                    `json:"outputId,omitempty"`
-	OutputTurnID string                    `json:"outputTurnId,omitempty"`
-	Text         string                    `json:"text"`
-	Source       string                    `json:"source"`
-	Scope        string                    `json:"scope"`
-	Truncated    bool                      `json:"truncated"`
+	Text      string `json:"text"`
+	Source    string `json:"source"`
+	Scope     string `json:"scope"`
+	Truncated bool   `json:"truncated"`
 }
 type WriteResult struct {
 	Method  string `json:"method"`
@@ -259,12 +256,11 @@ type DirectorySearchResult struct {
 }
 
 type hostAgent struct {
-	Provider        string           `json:"provider"`
-	Profile         string           `json:"profile,omitempty"`
-	ProviderSession *ProviderSession `json:"providerSession,omitempty"`
-	PID             int              `json:"pid"`
-	PaneID          string           `json:"paneId"`
-	StartIdentity   string           `json:"startIdentity"`
+	Provider      string `json:"provider"`
+	Profile       string `json:"profile,omitempty"`
+	PID           int    `json:"pid"`
+	PaneID        string `json:"paneId"`
+	StartIdentity string `json:"startIdentity"`
 }
 type hostSession struct {
 	TerminalStatus sessions.TerminalStatus  `json:"terminalStatus"`
@@ -279,15 +275,14 @@ type hostSession struct {
 		Key         string `json:"key"`
 		DisplayName string `json:"displayName"`
 	} `json:"character"`
-	LaunchProfile   string                     `json:"launchProfile,omitempty"`
-	Agent           *hostAgent                 `json:"agent,omitempty"`
-	Connection      *Connection                `json:"connection,omitempty"`
-	Objective       string                     `json:"objective,omitempty"`
-	CWD             string                     `json:"cwd,omitempty"`
-	ActiveCommand   string                     `json:"activeCommand,omitempty"`
-	AttachedClients *int                       `json:"attachedClients"`
-	Group           groupField                 `json:"group,omitzero"`
-	Conversation    *agentruntime.Conversation `json:"conversation,omitempty"`
+	LaunchProfile   string      `json:"launchProfile,omitempty"`
+	Agent           *hostAgent  `json:"agent,omitempty"`
+	Connection      *Connection `json:"connection,omitempty"`
+	Objective       string      `json:"objective,omitempty"`
+	CWD             string      `json:"cwd,omitempty"`
+	ActiveCommand   string      `json:"activeCommand,omitempty"`
+	AttachedClients *int        `json:"attachedClients"`
+	Group           groupField  `json:"group,omitzero"`
 }
 type hostInventory struct {
 	Machine struct {
@@ -295,7 +290,7 @@ type hostInventory struct {
 		Platform string `json:"platform"`
 	} `json:"machine"`
 	ObservedAt string        `json:"observedAt"`
-	Profiles   []Profile     `json:"profiles"`
+	Profiles   []hostProfile `json:"profiles"`
 	Sessions   []hostSession `json:"sessions"`
 	Recovery   *Recovery     `json:"recovery"`
 }
@@ -306,14 +301,11 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
-	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, TerminalFooter: s.TerminalFooter, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
+	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, TerminalFooter: s.TerminalFooter, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
 	if s.Agent != nil {
-		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
+		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
 	row.Ref = ref.Encode()
-	if s.Conversation != nil {
-		row.ConversationHandle = conversationHandle(machine, *s.Conversation)
-	}
 	return row
 }
 
@@ -366,12 +358,15 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		if _, err := time.Parse(time.RFC3339Nano, value.ObservedAt); err != nil {
 			return nil, false
 		}
-		for _, p := range value.Profiles {
-			if p.Key == "" || p.Label == "" || !slices.Contains([]string{"", "Codex", "Claude"}, p.Provider) || p.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(p.Provider), ProfileKey: agentruntime.ProfileKey(p.Key), HistoryScope: p.HistoryScope, ConversationID: "validation"}).Valid() {
+		profiles := make([]Profile, len(value.Profiles))
+		for index, wire := range value.Profiles {
+			profile, valid := wire.project()
+			if !valid {
 				return nil, false
 			}
+			profiles[index] = profile
 		}
-		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: value.Profiles, Sessions: make([]Session, 0, len(value.Sessions)), Recovery: value.Recovery}
+		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: profiles, Sessions: make([]Session, 0, len(value.Sessions)), Recovery: value.Recovery}
 		for _, s := range value.Sessions {
 			if !validSession(s) {
 				return nil, false
@@ -400,47 +395,12 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		return ReadResult{Text: *value.Text, Source: value.Source, Scope: value.Scope, Truncated: *value.Truncated}, true
-	case "read":
-		var value *ReadResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil {
-			return nil, false
-		}
-		var fields map[string]json.RawMessage
-		if strictjson.Decode(encoded, &fields) != nil || fields["text"] == nil || fields["truncated"] == nil || len(value.Text) > 32768 {
-			return nil, false
-		}
-		if value.Source != "native" {
-			return nil, false
-		}
-		if value.Scope != "latest" && value.Scope != "history" || value.Observation == nil || !value.Observation.Binding.Valid() || !value.Observation.Status.Valid() || value.Observation.Turn != nil && !value.Observation.Turn.Valid() || !slices.Contains([]string{"partial", "finalized", "unknown", "none"}, value.OutputState) {
-			return nil, false
-		}
-		if value.OutputState == "finalized" && value.OutputID == "" || value.OutputState == "none" && (value.Scope == "latest" && value.Text != "" || value.OutputID != "" || value.OutputTurnID != "") {
-			return nil, false
-		}
-		return *value, true
-	case "send":
-		var value *SendResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Method != "native" || !slices.Contains([]string{"peer", "user"}, value.Input) || value.Delivery != "direct" || value.Outcome != "accepted" {
-			return nil, false
-		}
-		if value.TurnID == "" {
-			return nil, false
-		}
-		return *value, true
-	case "terminal_send", "terminal_keys", "terminal_text", "terminal_stop", "stop":
+	case "terminal_send", "terminal_keys", "terminal_text", "terminal_stop":
 		var value *WriteResult
 		if strictjson.Decode(encoded, &value) != nil || value == nil {
 			return nil, false
 		}
-		if operation != "stop" {
-			if value.Method != "terminal" {
-				return nil, false
-			}
-			if value.Outcome != "written" && value.Outcome != "unknown" {
-				return nil, false
-			}
-		} else if value.Method != "native" || !slices.Contains([]string{"interrupted", "stopped", "finished", "unknown"}, value.Outcome) {
+		if value.Method != "terminal" || value.Outcome != "written" && value.Outcome != "unknown" {
 			return nil, false
 		}
 		return *value, true
@@ -486,25 +446,6 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			}
 		}
 		return result, true
-	case "inspect":
-		var value *agentruntime.ConversationRuntime
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !validConversationRuntime(*value) {
-			return nil, false
-		}
-		return *value, true
-	case "results":
-		var value *ResultsResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.Conversation.Valid() || value.ResultIDs == nil || len(value.ResultIDs) > 128 {
-			return nil, false
-		}
-		seen := make(map[string]bool, len(value.ResultIDs))
-		for _, id := range value.ResultIDs {
-			if !validNativeID(id) || seen[id] {
-				return nil, false
-			}
-			seen[id] = true
-		}
-		return *value, true
 	default:
 		return nil, false
 	}
@@ -519,9 +460,6 @@ func validSession(s hostSession) bool {
 		return false
 	}
 	if s.Connection != nil && (s.Agent != nil || s.CWD != "" || !validConnection(*s.Connection)) {
-		return false
-	}
-	if s.Conversation != nil && !s.Conversation.Valid() {
 		return false
 	}
 	a := s.Agent
@@ -593,22 +531,12 @@ func decodeMutationFailure(operation string, encoded []byte, status int, machine
 		case "ObjectiveInvalid":
 			wantMessage = "Use 1–240 characters without terminal controls."
 		}
-	case "AgentUnavailable", "AgentTargetStale":
-		if operation != "start" {
-			return nil
-		}
-		wantStatus = http.StatusConflict
-		if value.Code == "AgentUnavailable" {
-			wantMessage = "this action is unavailable for this session."
-		} else {
-			wantMessage = "the session changed. refresh and try again."
-		}
 	case "InternalError":
 		wantStatus, wantMessage = http.StatusInternalServerError, "Skíðblaðnir could not complete the request."
 	default:
 		return nil
 	}
-	if status != wantStatus || value.Message != wantMessage || value.Code != "InternalError" && value.Code != "AgentUnavailable" && value.Code != "AgentTargetStale" && value.Dispatch != "not_sent" {
+	if status != wantStatus || value.Message != wantMessage || value.Code != "InternalError" && value.Dispatch != "not_sent" {
 		return nil
 	}
 	if value.Target != nil && (operation != "start" && operation != "shell" || value.Code != "InternalError" || value.Dispatch != "unknown" || !tmuxAddress(value.Target.TmuxID, '$') || value.Target.IdentityToken == "" || !tmuxAddress(value.Target.PaneID, '%')) {
@@ -624,33 +552,10 @@ func decodeMutationFailure(operation string, encoded []byte, status int, machine
 	return failure
 }
 
-type SendResult struct {
-	Method   string `json:"method"`
-	Input    string `json:"input"`
-	Delivery string `json:"delivery"`
-	Outcome  string `json:"outcome"`
-	TurnID   string `json:"turnId,omitempty"`
-}
-type ResultsResult struct {
-	Conversation agentruntime.Conversation `json:"conversation"`
-	ResultIDs    []string                  `json:"resultIds"`
-	NextCursor   string                    `json:"nextCursor,omitempty"`
-}
 type WaitResult struct {
-	Outcome        string                    `json:"outcome"`
-	Target         string                    `json:"target"`
-	Observation    *agentruntime.Observation `json:"observation,omitempty"`
-	TerminalStatus *sessions.TerminalStatus  `json:"terminalStatus,omitempty"`
-}
-
-func StatusText(status agentruntime.Status) string {
-	if status.Source == "unavailable" || status.State == "unknown" {
-		return "status unavailable"
-	}
-	if status.State == "blocked" {
-		return "waiting"
-	}
-	return status.State
+	Outcome        string                   `json:"outcome"`
+	Target         string                   `json:"target"`
+	TerminalStatus *sessions.TerminalStatus `json:"terminalStatus,omitempty"`
 }
 
 // All fleet and local notification schemas distinguish omission from null.
@@ -665,10 +570,6 @@ func nonNullJSON(encoded []byte) bool {
 			return false
 		}
 	}
-}
-
-func validConversationRuntime(value agentruntime.ConversationRuntime) bool {
-	return value.Binding.Valid() && value.Status.Valid() && value.Methods.Valid() && (value.Turn == nil || value.Turn.Valid())
 }
 
 // TerminalInspectResult is one decoded inspect sample; Diagnostics are present
