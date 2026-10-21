@@ -50,9 +50,9 @@ provider installation, accounts, settings, history and daemon lifetime remain
 external. the default yaml has no profiles. local shell use needs no provider,
 network login or runtime download. zoxide, ssh and mosh are optional user tools.
 
-the signed archive contains the public native-helper source at commit
-`d7c2a81971db0818f01b6055125465e4b0e26f39`, its original `uv.lock`, uv `0.11.28`,
-managed python `3.12.13`, and installed distributions admitted by frozen export
+the signed archive contains the public native-helper source, uv, and managed
+python pinned in [`native-runtime.json`](../../internal/install/native-runtime.json),
+the source's original `uv.lock`, and installed distributions admitted by frozen export
 with claude-sdk extras and required wheel hashes. the SDK's `_bundled` provider
 executable is deliberately excluded: skid's native claude reads use only
 `get_session_info` and `get_session_messages`, which read session files. no cli
