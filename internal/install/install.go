@@ -350,6 +350,7 @@ func (i *installer) recordTree(root string) error {
 		}
 		r := resource{Path: path, Directory: entry.IsDir(), Mode: uint32(info.Mode().Perm())}
 		if entry.Type()&os.ModeSymlink != 0 {
+			r.Mode = 0
 			r.Target, err = os.Readlink(path)
 		} else if !entry.IsDir() {
 			r.Hash, err = fileHash(path)
