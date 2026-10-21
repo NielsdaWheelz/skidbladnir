@@ -1,5 +1,11 @@
 # terminal continuity
 
+2026-10-21 amendment: [terminal-only control](terminal-only-control.md) removes
+registration, conversation fields and native-method control below. foreground
+process/account observation and ordinary shell/transport continuity remain.
+combined close sends a terminal interrupt and closes with separate receipt facts;
+stop sends only the interrupt and retains the terminal.
+
 status: shipped in immutable `v0.10.3` from source
 `e5906e4df4244c166eb868e678f738f47b893e86`. matching gateways run on
 macbook, arch, and devbox. isolated mac zsh/bash, ssh/mosh, and the named

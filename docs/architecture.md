@@ -57,7 +57,7 @@ qualification; [native usage](profile-usage.md) owns codex account reads.
 background observation and device acknowledgement. source is implemented;
 [qualification](native-notifications-qualification.md) records verified boundaries
 and remaining release, sleep and deployment work.
-[jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
+[jarvis orchestration](jarvis-orchestration.md) owns profile selection,
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost
 tmux workspaces as fresh shells, its private recipe and passive recovery facts.
@@ -1117,6 +1117,8 @@ stdin initial input, bounded idle/profile/composer admission and compound start
 receipts. discovery and controls use compact ordinary output and existing typed
 handles; captured refs remain in structured host output. native-handle inspect
 reuses current native resolution. the spec owns wire shapes, bounds and acceptance.
+the 2026-10-20 [terminal-only cut](terminal-only-control.md) retires those launch
+overrides and native inspect; ordinary commands/settings own provider options.
 jarvis owns durable asynchronous waits, target capture and notification judgment;
 skid retains synchronous observation and gains no watcher, task/reply protocol,
 new targeting registry, provider association or durable receipt store.

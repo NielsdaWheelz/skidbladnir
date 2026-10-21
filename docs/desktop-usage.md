@@ -60,7 +60,8 @@ strings are output only;
 never parse them to make decisions. absent/expired cells render `—`.
 remove the old age string and combined reset sentence. rename the existing
 `usageWindowText` function if that name becomes the private record type.
-keep source identity/times for selection even though their prose disappears.
+keep source identity/times for selection; disclose source in the existing status
+column without restoring separate age/pane detail lines.
 
 ## percentage and time rules
 
@@ -105,8 +106,10 @@ per-window status precedence:
 
 1. nonempty `usageRow.state`;
 2. otherwise, a known expired window: `awaiting update`;
-3. otherwise, a present unexpired percentage from a stale source: `stale`;
-4. otherwise, blank. nil windows never inherit `stale`.
+3. otherwise, a present window from a stale source: `stale`, with numeric/reset cells cleared;
+4. otherwise, an eligible native report: `native`;
+5. otherwise, eligible terminal evidence: `terminal`, with `~` before its remaining percentage;
+6. otherwise, blank. nil windows never inherit `stale`.
 
 an eligible source clears row state and suppresses other-host failures.
 explicitly clear claude's initial checking state after selection; the old
@@ -123,11 +126,11 @@ illustrative data; spacing follows the budgets below:
 usage
 
 profile      window                    reset (utc)          in (d:hh:mm:ss)
-personal     7d   72%                  2026-10-20 14:30:00  05:04:18:09
-             5h   93%                  2026-10-15 14:30:00  00:04:18:09
-work         7d   61% stale            2026-10-18 09:00:00  02:22:48:09
+personal     7d   72% native           2026-10-20 14:30:00  05:04:18:09
+             5h   93% native           2026-10-15 14:30:00  00:04:18:09
+work         7d     — stale            —                    —
 work2        7d     — awaiting update  —                    —
-claude-work  7d   57%                  —                    —
+claude-work  7d  ~57% terminal         —                    —
 ```
 
 body width is terminal width minus two. columns have two-cell gaps: profile
@@ -142,8 +145,8 @@ datetime or countdown truncation. profile blocks are adjacent, with no blank row
 page title is only `usage`. hide the table's inactive view strip on this page,
 preserving the view for return. [browser simplification](desktop-browser-simplification.md)
 removes machine collection scope throughout the browser. retain the wordmark,
-existing notices and unlabelled footer rule. delete source/terminal/pane/age
-lines, repeated used/remaining prefixes, absence sentences, `all machines`,
+existing notices and unlabelled footer rule. retain source in the status column;
+delete separate source/terminal/pane/age detail lines, repeated used/remaining prefixes, absence sentences, `all machines`,
 `read only` and the routine provider-freshness warning.
 
 footer items are weekly-only: `<profile> 7d <value> [status]`. use the same

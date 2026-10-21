@@ -905,10 +905,12 @@ surface (2.5), a 2.6 family or a screen-reader request; the last two always read
 | --- | --- |
 | `blocked` | interaction is a recognized request or menu (2.6 families, the help grid, the viewed subagent, screen-reader requests): a surface owns the keystrokes |
 | `unknown` | no anchor; a void surface; a `LEFT_LABEL` top rule; the usage-limit wait; an unmatched `M′`; the digit band (`claude.composer.band`); an anchor read cut by clipping |
-| `empty` | the cells after `❯`+NBSP are one of: nothing; one `INV` space (drawn cursor); a placeholder, i.e. an optional single `INV` non-space cell (cursor on the placeholder's first letter) followed only by `DIM` cells; and no continuation row has content. screen reader: nothing but spaces/NBSP after `$` |
+| `empty` | the cells after `❯`+NBSP are one of: nothing; one `INV` space (drawn cursor); a placeholder, i.e. an optional single `INV` non-space cell (cursor on the placeholder's first letter) followed only by `DIM` cells or ordinary default-style spaces; and no continuation row has content. screen reader: nothing but spaces/NBSP after `$` |
 | `draft` | anything else after the prompt: any non-`DIM` non-space cell, spaces before the cursor (a whitespace draft), an `INV` non-space cell with no `DIM` text after it (cursor on a typed character), coloured slash text, paste chips, content on a continuation row. also bash mode (`!`): a send would run a shell command. screen reader: any non-space character after `$` |
 
-placeholders are recognized by `DIM` only, never by their words. at colour level 0
+placeholder glyphs require `DIM`; ordinary default-style spaces between them are
+invisible and need no dim attribute. other non-dim cells remain draft evidence.
+placeholder words never supply authority. at colour level 0
 the placeholder loses sgr 2 and reads as draft (S); that is safe. queued messages
 leave the composer as a placeholder. vim NORMAL mode is invisible (U). a
 screen-reader draft of only spaces reads `empty`: there is no drawn cursor to

@@ -1,8 +1,9 @@
 # jarvis orchestration changes for skid
 
 2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
-conversation targeting, association and controls in this document. only terminal
-refs remain. quota uses `accountScope` and fresh native-account evidence, then
+conversation targeting, association, controls and per-start model/effort overrides
+in this document. configured ordinary commands and upstream settings own provider
+options; only terminal refs remain. quota uses `accountScope` and fresh native-account evidence, then
 fresh attributable terminal evidence, otherwise unknown. earlier qualification
 retains its recorded source; it is not current capability evidence.
 
@@ -285,7 +286,7 @@ raw means provider values, not arbitrary argv, configuration expressions, homes,
 permission flags or commands. each value is nonempty valid utf-8, at most 256
 bytes, with no whitespace or controls; reject rather than trim. lower through
 fixed provider argument positions and preserve the literal value. qualify the
-installed providers' lowering in [launch options](issues/jarvis-launch-options.md).
+installed providers' lowering in [launch options](jarvis-launch-options-qualification.md).
 locally known provider incompatibility rejects before launch; a syntactically
 admissible model later rejected by the account remains a launch failure, without fallback.
 do not create a duplicate model catalogue to promise account availability.
@@ -474,8 +475,8 @@ no new native identity or turn-result retrieval is selected for this release.
 
 baseline gaps have source repairs and isolated live qualification; installed
 artifact/cutover work stays explicit:
-[cli contract](issues/jarvis-cli-contract.md),
-[options](issues/jarvis-launch-options.md),
+[cli contract](jarvis-cli-contract-qualification.md),
+[options](jarvis-launch-options-qualification.md),
 [readiness](issues/jarvis-launch-readiness.md),
 [capture receipts](issues/jarvis-launch-receipts.md).
 

@@ -1,6 +1,11 @@
+historical qualification only. [terminal-only control](terminal-only-control.md)
+and jarvis worker v9 supersede native targets and per-launch provider overrides
+below. current [qualification](terminal-only-control-qualification.md) and the
+separate installed service-access blocker own remaining work.
+
 # raw launch options and shared provider behavior
 
-recorded 2026-10-02; medium priority; [option ownership](../jarvis-orchestration.md#options-and-defaults).
+recorded 2026-10-02; medium priority; [option ownership](jarvis-orchestration.md#options-and-defaults).
 
 source status: lexical bounds, literal provider argv and rejection of competing
 profile model/effort arguments are implemented. temporary argv/TOML/ingress probes
@@ -21,10 +26,10 @@ fail after terminal creation, or a launch change may undermine shared-runtime
 ownership. provider-only selection is ambiguous across three codex accounts.
 
 baseline evidence at skid `79679b4`, before the local changes:
-[profile arguments](../../internal/agentruntime/profile.go),
-[launch copying](../../internal/agentruntime/launch.go) lines 20–24 and
-[codex argument construction](../../internal/sessions/manager.go) lines 234–237.
-[stock connection](../native-agent-observation.md#2-composition-and-stock-connection)
+[profile arguments](../internal/agentruntime/profile.go),
+[launch copying](../internal/agentruntime/launch.go) lines 20–24 and
+[codex argument construction](../internal/sessions/manager.go) lines 234–237.
+[stock connection](native-agent-observation.md#2-composition-and-stock-connection)
 requires the account's owning daemon and a normal remote-new terminal.
 
 research 2026-10-02: [codex docs](https://learn.chatgpt.com/docs/config-file/config-advanced)

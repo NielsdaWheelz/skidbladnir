@@ -1,6 +1,6 @@
 # terminal controls, ordinary launches, account quota
 
-status: implementation assigned 2026-10-20 on isolated feature worktrees.
+status: source implemented 2026-10-21 on isolated feature worktrees.
 [qualification](terminal-only-control-qualification.md) owns actual results and
 remaining acceptance; installed cutover remains separate and unassigned.
 this is one cross-repository change, not a rollback to an old skid release.

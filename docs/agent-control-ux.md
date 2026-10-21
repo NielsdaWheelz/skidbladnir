@@ -1,14 +1,18 @@
 # agent control: usable client, direct attachment
 
+2026-10-21 amendment: [terminal-only control](terminal-only-control.md) removes
+native selectors, conversation columns/details, provider-session indicators and
+per-start model/effort overrides below. current controls use terminal refs only; earlier qualification retains
+its recorded source.
+
 [terminal control](terminal-agent-control.md) owns ordinary session operations and
-references; [native interaction](native-agent-observation.md) owns explicit native
-capabilities. [terminal attention](reply-notifications.md) owns notices and visits. [automatic naming and handles](automatic-session-names.md)
+references; [terminal attention](reply-notifications.md) owns notices and visits. [automatic naming and handles](automatic-session-names.md)
 owns naming, live selectors and name-independent attachment/closure. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
 jarvis worker tools use the same discovery and controls as skid-launched agents:
 list, info, start, read, send, text, keys, wait, stop and close. jarvis deployment
-supplies its private skid client config. cognition retains its existing shared codex process;
+requires live installed-state access, which remains separately blocked. cognition retains its existing shared codex process;
 its availability is separate from worker control and herdr retirement. older
 jarvis routing, rollout and acceptance below remain historical. see the current
 [deployment boundary](dev-server-handoff.md#owned-installation-and-runtime).
