@@ -3,7 +3,6 @@ package install
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,9 +19,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
-
-//go:embed native-runtime.json
-var nativeRuntimePins []byte
 
 type resource struct {
 	Path           string `json:"path"`
@@ -290,16 +286,8 @@ func (i *installer) validate(ctx context.Context, path string) (releaseManifest,
 	if e = strictjson.Decode(nativeBytes, &native); e != nil {
 		return manifest, e
 	}
-	var pins struct {
-		Commit string `json:"commit"`
-		Python string `json:"python"`
-		UV     string `json:"uv"`
-	}
-	if e = strictjson.Decode(nativeRuntimePins, &pins); e != nil {
-		return manifest, e
-	}
-	if native.Commit != pins.Commit || native.Python != pins.Python || native.UV != pins.UV || len(native.Excluded) != 1 || native.Excluded[0] != "claude_agent_sdk/_bundled" {
-		return manifest, errors.New("native helper runtime pins differ")
+	if !regexpSHA(native.Commit) || !versionPattern.MatchString("v"+native.Python) || !versionPattern.MatchString("v"+native.UV) || len(native.Excluded) != 1 || native.Excluded[0] != "claude_agent_sdk/_bundled" {
+		return manifest, errors.New("native helper runtime metadata invalid")
 	}
 	lockHash, e := fileHash(filepath.Join(path, "native-helper", "source", "uv.lock"))
 	if e != nil {
