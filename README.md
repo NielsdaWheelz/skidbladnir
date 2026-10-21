@@ -4,9 +4,8 @@ use codex, claude code, and ordinary shell sessions from your desktop or android
 phone. skid brings enrolled machines' tmux sessions into one view. detach and the
 work keeps running; either device can return to the same live terminal.
 
-standalone generalization is being qualified. the currently published private
-fleet release predates the installer described here; see
-[qualification](docs/generalization-qualification.md) before cutover.
+[v0.20.0 qualification](docs/v0.20.0-installed-qualification.md) records the
+standalone release and installed fleet rollout, with remaining live checks.
 
 ## install
 

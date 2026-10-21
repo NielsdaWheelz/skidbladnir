@@ -5,23 +5,26 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## terminal-only controls — source implemented, live acceptance partial
+## terminal-only controls — released in v0.20.0, live acceptance partial
 
 [the approved contract](terminal-only-control.md) removes native conversation
 control and association from skid and jarvis workers, keeps read-only codex quota
 with terminal fallback, and restores ordinary personal launch commands.
-[qualification](terminal-only-control-qualification.md) records cross-repository
-source, reviewed/deleted red/green checks, signed local candidates and
-[remaining live cells](issues/terminal-only-live-qualification.md). installed cutover
-is separate; the jarvis service-state access issue remains a blocker.
+[isolated qualification](terminal-only-control-qualification.md) records
+cross-repository source, reviewed/deleted red/green checks and
+[remaining live cells](issues/terminal-only-live-qualification.md).
+[installed qualification](v0.20.0-installed-qualification.md) owns the subsequent
+three-host/phone rollout. jarvis remains disabled and stopped; its service-state
+access issue blocks its own activation, not skid deployment.
 
-## terminal shift — implemented and qualified
+## terminal shift — released in v0.20.0
 
 2026-10-21: [the spec and qualification](terminal-shift.md#qualification-2026-10-21)
 records one-shot `Shift` replacing `-` for custom-bar navigation/tab, independent
 gboard text ownership and the strict version-5 page port. temporary red/green,
 installed-provider and phone acceptance pass; tests/support were removed and
-engineering verification passes. deployment remains separate.
+engineering verification passes. [v0.20.0](v0.20.0-installed-qualification.md)
+ships that source; its rollout does not repeat the earlier shift acceptance.
 
 ## inventory and attachment latency — deployed in v0.18.0
 
@@ -78,8 +81,9 @@ the production adapter/parser also passed actual isolated delivery, disabled
 startup and malformed-option isolation. installed round-trip/doze qualification
 remains separate.
 the public relay/domain deployment is cancelled. [qualification](generalization-qualification.md)
-tracks actual proof and the deferred installed cutover. jarvis service-state
-access remains a separately recorded owner-approved integration issue.
+tracks historical isolated proof; [v0.20.0 installed qualification](v0.20.0-installed-qualification.md)
+records the subsequent fleet rollout. broader installed parity and jarvis
+service-state access remain separately recorded integration work.
 
 ## claude update recognition — qualified and deployed in v0.17.0
 
@@ -186,8 +190,9 @@ from required native-device acceptance. [remaining work](issues/native-notificat
 is open. the 2026-10-09 v0.14.0 cutover installed the signed mac app, devbox
 observer/private ntfy services, notification-enabled desktop configs and android
 update. those installed versions use the former v2 qr/ntfy enrollment. the
-standalone source replaces it with `skid connect` and the skid apk; installed
-cutover and real push qualification remain pending.
+standalone installation replaces it with `skid connect` and the skid apk;
+[v0.20.0](v0.20.0-installed-qualification.md) records the subsequent rollout.
+real push qualification remains pending.
 
 ## claude usage selection — deployed in v0.18.0
 
