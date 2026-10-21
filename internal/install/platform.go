@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -31,7 +32,7 @@ func (i *installer) platform(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	switch values["ID"] {
+	switch linuxFamily(values) {
 	case "ubuntu":
 		if values["VERSION_ID"] < "24.04" {
 			return errors.New("ubuntu 24.04 or later is required")
@@ -58,6 +59,14 @@ func linuxRelease() (map[string]string, error) {
 		}
 	}
 	return values, nil
+}
+
+func linuxFamily(values map[string]string) string {
+	family := values["ID"]
+	if family != "ubuntu" && slices.Contains(strings.Fields(values["ID_LIKE"]), "arch") {
+		family = "arch"
+	}
+	return family
 }
 
 // TailscalePath prefers the user's CLI and also supports the official mac app,
@@ -112,7 +121,7 @@ func (i *installer) dependencies(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
-		if values["ID"] == "arch" {
+		if linuxFamily(values) == "arch" {
 			args := append([]string{"pacman", "-S", "--needed"}, missing...)
 			if e = command(ctx, i.stdout, i.stderr, "sudo", args...); e != nil {
 				return e
