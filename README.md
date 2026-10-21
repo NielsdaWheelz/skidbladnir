@@ -4,7 +4,7 @@ use codex, claude code, and ordinary shell sessions from your desktop or android
 phone. skid brings enrolled machines' tmux sessions into one view. detach and the
 work keeps running; either device can return to the same live terminal.
 
-standalone installation is available in v0.19.2. upgrading the preceding private
+standalone installation is available in v0.19.3. upgrading the preceding private
 fleet requires the one-time [cutover](docs/generalization-cutover.md);
 [qualification](docs/generalization-qualification.md) distinguishes published
 artifacts from installed acceptance.

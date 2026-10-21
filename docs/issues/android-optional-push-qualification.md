@@ -1,30 +1,25 @@
-# optional android push: installed round trip and background qualification
+# optional push: remaining installed variants
 
-problem: sdk feasibility and isolated production-code delivery do not qualify the
-ordinary installed hub/phone enrollment, confirmation and current-state admission
-journey under background restrictions. installed fleet cutover and real
-fcm/doze qualification are now authorized; no installed delivery is claimed yet.
+problem: core installed push journey now passes; additional real project-change,
+rotation/removal, outage and planned-hub-transfer variants remain source/isolated
+proof unless explicitly qualified below. do not call every live variant passed.
 
-impact: optional push implementation can be reviewed without claiming complete
-installed acceptance. firebase is not a prerequisite for session management or
-mac notifications. no relay deployment is needed to close this gap.
+actual evidence, 2026-10-20: signed standard v0.19.3, user-owned project and
+hub-only credential0600. actual existing-phone desired/active/confirmed generation1
+and destination match, with no push/registration error. ordinary background fresh
+native571652 arrived about5s after trigger. ordinary `am kill` left process absent;
+real fcm started it and fresh native571964 arrived during simultaneous locked,
+noninteractive IDLE/network-policy restrictions. temporary alarm-entry override
+and all device power/settings restored. no force-stop, fixture receiver activation,
+custom apk or relay. exact native click/output and optional-disable checks remain
+in progress in [qualification](../generalization-qualification.md).
 
-evidence, 2026-10-20: one unchanged project-agnostic sdk apk passed two actual
-projects, return-project registration reset, same-project re-pair and service-only
-cold wake. the production go adapter then sent real enrollment7 and hint9 through
-google to the isolated production android parser; cold default initialization
-and exact stored challenge/hint passed. that probe's receiver activation was
-synthetic. direct receiver/confirmation/durability and phone state/admission
-boundaries have separate disposable integration evidence, not a full installed
-round-trip claim. actual late SDK callback timing and deep doze are unqualified.
+source/isolated evidence: two actual runtime projects, return-project reset,
+source per-device possession/rotation/removal/late-callback fencing, direct adapter
+and receiver handoff, independent state, disabled startup and retry recovery.
+these do not become additional installed passes merely because core push works.
 
-resolve during the authorized coordinated cutover: use the ordinary signed apk and a
-user-configured hub credential; pair normally and observe real possession proof
-and confirmation. background the phone; generate current attention and verify
-authenticated details fetched over tailscale, current-only presentation, unchanged
-click/output acknowledgement and recovery after offline/ordinary process death.
-qualify project-change restart, rotation/removal, delayed callbacks/hints and
-credential-preflight hub transfer without fixtures. verify doze on an explicitly
-authorized device boundary. force-stop requires reopening and first-unlock
-delivery is unsupported, not hidden promises. two physical phones retain their
-[separate explicit deferral](android-two-phone-push-acceptance.md).
+resolve each remaining installed variant with the ordinary signed app/config and
+real callbacks, retaining session/acknowledgement state. two physical phones and
+[mac-asleep/natural-doze](native-notifications-doze.md) retain explicit owner
+deferrals. force-stop requires reopening; before-first-unlock is unsupported.

@@ -1,9 +1,12 @@
 # private-fleet cutover
 
 status: installed activation is owner-authorized and underway. all three hosts
-and the phone run immutable v0.19.1. conversion retained notification memory;
-fresh phone pairing committed. v0.19.2 is building from `e13a8b9` to correct a
-phone inventory-decoder crash and apple terminal's reordered-window receipt.
+and the phone run immutable v0.19.3. conversion retained notification memory;
+fresh phone pairing committed. v0.19.2 from `e13a8b9` corrects a phone
+inventory-decoder crash and apple terminal's reordered-window receipt.
+v0.19.3 (`0872730`) additionally prevents unknown discovery reports from erasing
+known signed routing. upgrade hub first, republish the already-erased mac origin
+through ordinary connect without pairing again, then verify restart retention.
 ordinary patch updates MUST preserve active fleet state: no restaging, converter
 rerun, reset or fresh pairing. [qualification](generalization-qualification.md)
 owns actual results and remaining live checks. standalone skid contains no old

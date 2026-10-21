@@ -3,10 +3,12 @@
 problem: source/isolated proof does not qualify every installed fleet and device
 boundary. authorized activation is underway; remaining live checks stay unpassed.
 
-impact: all3 computers and the phone run signed v0.19.1. preserved identities,
+impact: all3 computers and the phone run signed v0.19.2. preserved identities,
 notification conversion and actual linux lifecycle passed. the paired phone hit
-a decoder crash; its narrow fix and the apple terminal receipt fix are merged
-for v0.19.2, whose installed recovery/notification qualification is pending.
+a decoder crash; its narrow fix and the apple terminal receipt fix shipped
+in v0.19.2. real phone fcm possession confirmation passed; actual mac native presentation/restart/ghostty output acknowledgement and
+phone background/reclaimed-process forced-doze delivery pass. phone click,
+apple terminal, optional-disable and final cleanup remain in progress.
 
 evidence, 2026-10-20: [qualification](../generalization-qualification.md) records
 actual session/process survival, exact durable memory conversion, unchanged

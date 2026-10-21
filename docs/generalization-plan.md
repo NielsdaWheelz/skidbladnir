@@ -229,6 +229,11 @@ unannotated profiles remain selectable ordinary rows with unknown quota and no
 profile-native read; live provider detection does not depend on this annotation.
 only creation model/effort fields are removed, with strict unknown-field rejection.
 
+an absent self-report origin means discovery is unknown; it MUST NOT erase an
+admitted routing origin. only a valid nonempty origin replaces it. availability
+still comes from successful requests; cached routing is not a liveness claim.
+explicit membership removal revokes access.
+
 ## 4. planned hub transfer
 
 yaml `hub` requests placement. signed `activeHub` remains the old hub until the

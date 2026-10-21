@@ -53,9 +53,9 @@ fleet, hub, configuration, pairing, terminal and provider boundaries, and their
 costs. [the implementation contract](generalization-plan.md) defines schemas,
 authority, exclusive work slices and temporary acceptance proof. preserve the
 existing look, feel and behavior. standalone source and optional user-owned
-firebase integration are merged and published; v0.19.1 runs on the three hosts
-and phone, with v0.19.2 preparing two narrow live-discovered fixes. the upstream
-release pin and dev-server consumer are merged through v0.19.1. one unchanged project-agnostic apk passed actual
+firebase integration are merged and published; v0.19.3 runs on the three hosts
+and phone after narrow live-discovered decoder/window/routing fixes. the upstream
+release pin and dev-server consumer are merged through v0.19.3. one unchanged project-agnostic apk passed actual
 two-project registration/background delivery and ordinary process-death proof.
 the production adapter/parser also passed actual isolated delivery, disabled
 startup and malformed-option isolation. installed round-trip/doze qualification

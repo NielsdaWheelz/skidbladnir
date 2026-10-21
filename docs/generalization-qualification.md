@@ -1,11 +1,12 @@
 # standalone generalization qualification
 
-status: standalone source merged at `e7c659e`; immutable v0.19.0 and v0.19.1
-were published and independently verified. all three computers and the phone now
-run v0.19.1. v0.19.2 is building from `e13a8b9` after two real-boundary fixes.
-installed notification acceptance remains pending. [the plan](generalization-plan.md)
-owns acceptance. historical rows below retain their original dates/boundaries;
-this section supersedes their installed-state observations.
+status: immutable v0.19.3 (`0872730`) runs on all three computers and the phone.
+conversion, actual phone enrollment/background delivery, mac notifier restart
+retention and ghostty click/output acknowledgement pass. the owner confirmed
+banner, sound and ghostty opening. actual reclaimed-process forced-doze delivery passes with exact power/settings
+restoration; phone click/apple-terminal/optional-disable checks and cleanup are underway. [the plan](generalization-plan.md) owns acceptance.
+historical sections below retain their original dates/boundaries; this section
+supersedes their installed-state observations.
 
 ## installed activation, 2026-10-20
 
@@ -19,27 +20,32 @@ no public sender/domain/dns/caddy deployment occurs.
 | actual boundary | result and limit |
 | --- | --- |
 | notification freeze/conversion | old writers stopped before FINAL exports; host observer11 records, epoch and revision569446 retained; phone schema3→4 retained11 records and every counter exactly, including5 acknowledged-ready records, with durable reread; old phone credentials retired |
-| ordinary host installation/update | published signed v0.19.1 installed on mac, ubuntu24.04 and actual endeavouros; actual service executable/argv and child-preservation policies checked; signed config converged across3 computers |
+| ordinary host installation/update | published signed v0.19.3 installed on mac, ubuntu24.04 and actual endeavouros; actual service executable/argv and child-preservation policies checked; signed config converged across3 computers |
 | arch-family admission | original signed v0.19.0 install refused actual `ID=endeavouros ID_LIKE=arch`; one shared exact-token admission/package-selection fix in pr103; disposable red/green, review, host checks and actual signed v0.19.1 install passed without spoofing os identity |
 | devbox survival | all3 original session lifetimes and12 tmux/provider identities survived shutdown, retirement, installation and patch update |
-| mac survival | immediate shutdown baseline8 session/pane lifetimes and19 persistent tmux/provider identities survived; v0.19.1 update retained9 immediate lifetimes and20 persistent identities, including the owned test; earlier preflight process drift occurred before shutdown and is not attributed to cutover |
-| arch survival | no original tmux server/processes existed; saved workspace retained |
-| mac memory | exact schema4 bytes retained before new-app startup; all11 keys/resetId/epoch and nondecreasing counters retained; one later acknowledgement advance and a separate presentation closure have no contemporaneous attribution—[open evidence gap](issues/mac-cutover-acknowledgement-attribution.md) |
+| mac survival | immediate shutdown baseline8 session/pane lifetimes and19 persistent tmux/provider identities survived; v0.19.1/0.19.2 retained9 immediate lifetimes and20 persistent identities, including the owned test; v0.19.3 retained8 immediate lifetimes and19 persistent identities; earlier preflight process drift occurred before shutdown and is not attributed to cutover |
+| arch survival | no original tmux server/processes existed; saved workspace retained; a later session closed during the v0.19.3 interval was explicitly confirmed by its owner, while that tmux server survived |
+| mac memory | exact schema4 bytes retained before new-app startup; all11 keys/resetId/epoch and nondecreasing counters initially retained; on restored fresh inventory one already absent fully-handled closed slot retired through ordinary admission, without reset; one later acknowledgement advance and a separate presentation closure have no contemporaneous attribution—[open evidence gap](issues/mac-cutover-acknowledgement-attribution.md) |
 | real fresh-user lifecycle | actual locked account/home/systemd install→same-release update→uninstall passed, retaining settings and dummy provider/private-state sentinels; exact owned account/manager/home removed, unrelated serve routes unchanged; packages already present, so bare-os dependency installation is not claimed |
 | normal connect | all3 computers claim their exact owned tailscale route; devbox's previously absent tailscale operator set to its passwordless-sudo login user with unrelated preferences/routes unchanged; this persistent host-wide tailscale authority is the explicit operational tradeoff |
 | android package/pairing | same-signer converter then ordinary final0.19.0/0.19.1 installed without data reset; actual fresh qr committed one independent phone; cache-only clearing reported by owner; no second scan needed |
-| actual android crash | valid codex `terminalUsage` rejected by obsolete claude-only android guard after pairing; pr105 removes only that guard, retaining structural validation; original red/fixed green and complete live inventories from all3 machines pass the real android codec; signed v0.19.2 recovery pending |
+| actual android crash | valid codex `terminalUsage` rejected by obsolete claude-only android guard after pairing; pr105 removes only that guard, retaining structural validation; original red/fixed green and complete live inventories from all3 machines pass the real android codec; signed v0.19.2 opened with retained pairing and confirmed actual fcm possession; dashboard stable, all3 machine labels present; this alone does not prove live inventory from every host |
+| routing recovery | v0.19.2 exposed unknown discovery self-report erasing signed mac origin; source/actual authenticated peer red→green, pr108 and immutable v0.19.3; ordinary mac connect republished origin, next ordinary mac update/restart preserved it, hub became fresh and actual attention/push resumed; historical discovery failure timing remains unproven |
+| mac native/ghostty | exact episode571652 posted, actual notifier-only restart retained same native notice and ack0; manual native click opened exact owned session in a new ghostty window/client, visible output advanced local ready acknowledgement571652 and closed notice; owner confirmed banner/sound; original windows retained and newly opened test window had already closed before cleanup |
 | apple terminal receipt | real fixture exposed index-based window reference changing after reorder; pr106 captures scalar window id before selection/focus; actual red/green and independent review passed, existing windows unchanged; signed v0.19.2 installed parity pending |
 | real optional firebase setup | user's project, android app, required APIs and message-create-only sender permission verified with actual oauth; public4-field configuration applied through ordinary signed config; sending credential0600 only at hub, outside yaml/phone payloads |
-| push journey/background/doze | ordinary installed enrollment→possession confirmation→native notification remains NOT_RUN; prepared driver distinguishes deep idle, process reclamation and exact restoration; sdk/synthetic evidence below is separate |
+| push journey/background/doze | ordinary installed enrollment→actual phone possession confirmation passed (desired/active/confirmed generation1 and destination match, no push/registration error); actual exact fresh native phone notice arrived while app backgrounded about5s after trigger; actual mac posted same episode571652, then notifier restart retained same native identity/ready and ack0; phone click/output remains pending; actual reclaimed-process forced deep idle passed for fresh episode571964, with original settings/constants/network policy restored; the first doze entry failed before any trigger and restored correctly; the instrumented bounded attempt proved strict idle and actual cold-start/native delivery; natural idle/mac-asleep remains separately deferred; sdk/synthetic evidence below is separate |
 
-upstream release pins and dev-server consumer pins are merged through v0.19.1
-(pr104/pr179). dev-server's whole private desired yaml remains outside git; normal
+upstream release pins and dev-server consumer pins are merged through v0.19.3
+(pr109 / pr181). fresh public exact-source/tag/eight-asset
+verification passed; exact main-push verify run39545873091 passed. dev-server's whole private desired yaml remains outside git; normal
 dotfile apply preserves skid shell blocks. no full fleet provisioning apply or
 provider-daemon restart was performed. jarvis pr54 remains draft and unactivated.
 
-one owned normal-socket session is held working for actual desktop/phone attention
-checks. no real provider was launched for it. original sessions and provider
+one owned normal-socket session is retained for actual desktop/phone attention
+checks; its direct working→idle transition passed, but the first background
+watch had no native notice while the hub lacked mac routing. this failed probe
+is not an fcm failure diagnosis or a delivery pass. no real provider was launched for it. original sessions and provider
 accounts/history are preserved. the original qr window was closed only after
 matching its actual tty/process; apple terminal's faulty reordered receipt was
 rejected before closing any preexisting window. actual phone components have no
