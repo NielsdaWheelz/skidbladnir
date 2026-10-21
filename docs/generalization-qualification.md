@@ -1,19 +1,12 @@
 # standalone generalization qualification
 
-status: immutable v0.19.4 (`d3bb28d`) passed installed hot configuration and the
-planned hub round trip; immutable v0.19.5 (`fef6347`) is being installed for the
-final mac updater correction.
-conversion, actual phone enrollment/background delivery, mac notifier restart
-retention and ghostty click/output acknowledgement pass. the owner confirmed
-banner, sound and ghostty opening. actual reclaimed-process forced-doze delivery passes with exact power/settings
-restoration; phone native click/output and apple terminal with push disabled also pass.
-restoring push exposed a missed config event; pr111 repairs it with guarded
-snapshot dedupe; published same-process disable/restore and actual fresh delivery
-passed. pr112 moves dependency-pin admission to the target-source release gate,
-allowing authenticated runtime upgrades. pr113 corrected former-hub return
-admission before live migration; the actual round trip now passes. pr115 fixes
-umask-dependent symlink comparison; final ordinary/repeat updates and cleanup
-remain. [the plan](generalization-plan.md) owns acceptance.
+status: immutable v0.19.5 (`fef6347`) runs on all three computers and android19005.
+ordinary/repeat updates and final actual background delivery pass. conversion,
+both mac terminal adapters, mac banner/sound/restart, phone native click/output,
+forced doze, hot optional-push configuration and planned hub round trip passed
+at the version-specific boundaries below. the owned session, inactive legacy
+runtime and temporary conversion/test artifacts are removed. [the plan](generalization-plan.md) owns
+acceptance; remaining installed variants and forensic gaps retain separate issues.
 historical sections below retain their original dates/boundaries; this section
 supersedes their installed-state observations.
 
@@ -48,15 +41,21 @@ no public sender/domain/dns/caddy deployment occurs.
 | actual hub round trip | missing mac credential at config8 left devbox active/epoch2, observer advancing and exact receiver3 retained; after private0600 credential placement, ordinary apply moved authority to mac epoch3, preserving observer epoch/records/receiver3; old devbox API503 and file stable5s, mac API200 advancing with all3 machines fresh; actual fresh background phone574158 arrived about4.67s after trigger; exact original whole yaml restored on active mac and devbox, ordinary apply returned authority to devbox epoch4/config9, with retained counters/receiver3 and all3 fresh; old mac API503/file stable5s; only newly created mac credential removed, existing private export retained |
 | round-trip continuity limit | devbox's3 original sessions/12 provider-server lifetimes retained; mac's11 sessions/11 panes, all21 sampled provider processes and original server retained; one other tmux process disappeared, with its client ownership unrecorded, so no claim that every transient client survived; device reset/epoch/14 keys retained with nondecreasing counters |
 | updater boundary repairs | actual old v0.19.3 caller refused signed v0.19.4 changed runtime pins before activation; normal verified bootstrap bridged that update; pr112 retains authenticated payload validation while release qualification binds pins to target source; mac v0.19.4 repeat then exposed only10 symlink modes differing across bootstrap077/ordinary022 umasks; pr115 canonicalizes link mode, preserving target/file/directory checks; published v0.19.5 ordinary update under022 and repeat under077 both passed, preserving11 mac session/pane lifetimes and22 persistent processes, exact yaml/identity/device keys/reset/epoch and nondecreasing counters |
+| final v0.19.5 | ubuntu/arch ordinary update and repeat retained exact identities/yaml/observer epoch/counters, devbox3 sessions/12 processes and arch's server; android19005 retained pairing/permission and real confirmed3; dashboard healthy; actual fresh background574418 through returned devbox arrived about2.76s after trigger, same epoch/slot, without setup/restart/re-pairing during delivery |
+| owned test cleanup | exact-ref terminal-only close of sole owned session/pane, no native stop; owned process/clients gone and workspace recipe omits target; mac native own record retired; all10 unrelated mac session/pane lifetimes, server and23 unrelated provider process lifetimes retained; other13 device keys/reset/epoch retained with nondecreasing counters; owned fixture and inert drivers removed, evidence retained |
+| background retirement limit | exact final phone notice574418 eventually disappeared while app remained backgrounded, without opening/dismissing/acknowledging it or forcing work; earlier reads still showed it; immediate withdrawal latency and the specific wake are unqualified; housekeeping uses normal-priority fcm, unlike high-priority attention |
+| inactive linux runtime cleanup | exact frozen-identity/reference-reviewed manifests removed42 devbox paths and27 arch paths, about10.19gb; symlinks unlinked without following targets, no parent pruning; current .19.x/receipt, private config/keys, frozen original stores and backups retained unchanged; afterward devbox's original3 sessions/12 processes, observer epoch/receiver3 and all3 fresh inventories verified |
+| mac/mobile artifact cleanup | mac's10 quarantined runtime roots and7 exact old release/helper/lock roots removed after frozen inventory/reference checks, about4.68gb; current release/jobs/config, user/provider state and required frozen originals/backups retained; phone's27 exact local converter/build/avd/test-source artifacts removed, about2.57gb; production19005/data/components/permission and original idle settings unchanged; preexisting october4 test package retained; no external cloud deletion |
+| coordinator cleanup | exact30 reviewed inactive paths removed, about601mb: host-converter source/binaries, obsolete private uv copy, superseded candidate payloads and cancelled sender deployment code; published release assets, source clone, checksums/cancellation receipts, frozen identity/state backups and private operator material retained; no parent pruning or external actions |
 
-upstream release pins and dev-server consumer pins are merged through v0.19.3
-(pr109 / pr181). fresh public exact-source/tag/eight-asset
-verification passed; exact main-push verify run39545873091 passed. dev-server's whole private desired yaml remains outside git; normal
+upstream release pins and dev-server consumer pins are merged through v0.19.5
+(pr116 / pr183). fresh public exact-source/tag/eight-asset
+verification passed; exact main-push verify run39552336251 passed. dev-server's whole private desired yaml remains outside git; normal
 dotfile apply preserves skid shell blocks. no full fleet provisioning apply or
 provider-daemon restart was performed. jarvis pr54 remains draft and unactivated.
 
-one owned normal-socket session is retained for actual desktop/phone attention
-checks; its direct working→idle transition passed, but the first background
+one owned normal-socket session was used and closed for actual desktop/phone attention
+checks. its direct working→idle transition passed, but the first background
 watch had no native notice while the hub lacked mac routing. this failed probe
 is not an fcm failure diagnosis or a delivery pass. no real provider was launched for it. original sessions and provider
 accounts/history are preserved. the original qr window was closed only after
@@ -107,8 +106,8 @@ compatibility remains owner-waived;
 owner-deferred on 2026-10-20 and remains unpassed. jarvis's existing dependency audit is open
 in its own repository; its source checks passed before that failure.
 
-operator boundaries: [installed cutover/parity](issues/generalization-installed-cutover.md),
-[optional push installed/background qualification](issues/android-optional-push-qualification.md),
+operator boundaries: [optional push installed/background variants](issues/android-optional-push-qualification.md),
+[missing-dependency installation witness](issues/generalization-missing-dependency-install.md),
 [separate cloud cleanup](issues/cloud-resource-cleanup.md),
 [jarvis installed access](issues/jarvis-installed-state-access.md).
 

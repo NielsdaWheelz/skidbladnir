@@ -1,5 +1,10 @@
 # notification sdk memory qualification
 
+historical attribution only: these runs used the retired unifiedpush/ntfy
+transport. standalone fcm qualification does not explain their preference drift;
+their lost in-memory baselines cannot be reconstructed. this record authorizes
+no old sdk/database reader or current fcm acceptance gate.
+
 problem: two physical runs changed the aggregate byte hash of android shared
 preferences. their causes and owning preference files are unqualified.
 

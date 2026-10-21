@@ -4,10 +4,12 @@ problem: user reports severe heat/battery drain and activity monitor's 12-hour
 power value 9485.15 for the owned notification QA application on 2026-10-03.
 historical cause is unresolved; notification release acceptance is incomplete.
 
-containment: all-process executable inspection found no notification helper
+historical containment, 2026-10-03: all-process executable inspection found no notification helper
 running; the owned QA launch agent was already unloaded and is now disabled.
 the exact reported signed QA bundle was moved out of Applications into its
-private forensic directory. no permanent notification deployment exists.
+private forensic directory. no permanent notification deployment existed then.
+standalone v0.19.5 is now installed; its successful qualification does not explain
+this historical report.
 
 evidence: bounded offline run of that exact signed version 0.13.1 sampled
 0.0–0.1% CPU, constant cumulative CPU 0.06 seconds and about 49 MB RSS over

@@ -6,8 +6,8 @@ application database or execution coordinator. the configured hub owns fleet con
 observer. terminals remain direct host capabilities; the hub is never an
 execution proxy. [standalone generalization](generalization-plan.md) owns the
 configuration, signed fleet, handoff, installer and optional direct-fcm contracts;
-[qualification](generalization-qualification.md) distinguishes source proof from
-the deferred installed cutover.
+[qualification](generalization-qualification.md) distinguishes source proof,
+the completed installed cutover and remaining physical/forensic limits.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
 screen regions and their limits, classification, guarded-send admission and the
@@ -55,8 +55,9 @@ and compact current-location display.
 qualification; [native usage](profile-usage.md) owns codex account reads.
 [native notifications](native-notifications.md) owns needs-input alerts,
 background observation and device acknowledgement. source is implemented;
-[qualification](native-notifications-qualification.md) records verified boundaries
-and remaining release, sleep and deployment work.
+[qualification](native-notifications-qualification.md) records its original boundaries;
+[standalone qualification](generalization-qualification.md) records the current
+installed cutover and remaining physical/forensic limits.
 [jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost

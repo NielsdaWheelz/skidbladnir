@@ -53,19 +53,15 @@ fleet, hub, configuration, pairing, terminal and provider boundaries, and their
 costs. [the implementation contract](generalization-plan.md) defines schemas,
 authority, exclusive work slices and temporary acceptance proof. preserve the
 existing look, feel and behavior. standalone source and optional user-owned
-firebase integration are merged and published; v0.19.3 runs on the three hosts
-and phone after narrow live-discovered decoder/window/routing fixes. the upstream
-release pin and dev-server consumer are merged through v0.19.3. one unchanged project-agnostic apk passed actual
-two-project registration/background delivery and ordinary process-death proof.
-the production adapter/parser also passed actual isolated delivery, disabled
-startup and malformed-option isolation. installed round-trip/doze qualification
-remains separate.
-the public relay/domain deployment is cancelled. [qualification](generalization-qualification.md)
-tracks actual proof and the owner-authorized installed cutover. session/process
-survival, durable conversion and real linux service lifecycle passed; installed
-notification/push/background checks remain pending. the owner accepted os tray
-clearing and authorized one disposable normal-socket test session. jarvis service-state
-access remains a separately recorded owner-approved integration issue.
+firebase integration are merged and published; v0.19.5 runs on the three hosts
+and phone, with upstream/dev-server pins merged. [qualification](generalization-qualification.md)
+records version-specific source and live proof: session/process survival,
+durable conversion, real service lifecycle, cross-umask repeat updates, both mac
+terminal adapters, native clicks/output, actual fcm confirmation/background/forced
+doze, same-process push disable/restore and planned hub round trip. the sole owned
+test session is closed. the public relay/domain deployment is cancelled.
+remaining physical variants and historical attribution gaps retain explicit
+issues; two-phone and jarvis cross-user deployment remain owner-deferred.
 
 ## claude update recognition — qualified and deployed in v0.17.0
 

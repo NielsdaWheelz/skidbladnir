@@ -1,15 +1,14 @@
 # private-fleet cutover
 
-status: installed activation is owner-authorized and underway. all three hosts
-and the phone run immutable v0.19.3. conversion retained notification memory;
-fresh phone pairing committed. v0.19.2 from `e13a8b9` corrects a phone
-inventory-decoder crash and apple terminal's reordered-window receipt.
-v0.19.3 (`0872730`) additionally prevents unknown discovery reports from erasing
-known signed routing. upgrade hub first, republish the already-erased mac origin
-through ordinary connect without pairing again, then verify restart retention.
+status: coordinated activation completed; all three hosts and the phone run
+immutable v0.19.5. conversion retained notification memory; one fresh phone
+pairing committed. narrow live-discovered decoder, window, routing, config-event,
+former-hub and installer comparison defects were repaired and qualified.
+the one-time conversion/staging procedure below is historical: NEVER rerun it
+over the installed fleet. new users follow the ordinary installer.
 ordinary patch updates MUST preserve active fleet state: no restaging, converter
 rerun, reset or fresh pairing. [qualification](generalization-qualification.md)
-owns actual results and remaining live checks. standalone skid contains no old
+owns actual results and remaining exceptions. standalone skid contains no old
 configuration, credential or notification reader. new users use the
 [ordinary installer](../README.md#install).
 
@@ -20,8 +19,10 @@ configuration, credential or notification reader. new users use the
   verified by `scripts/check-release`.
 - temporary host stager/converter and same-id/same-signer android conversion apk
   `0.18.1/18001`; initial final apk was `0.19.0/19000`. subsequent patch
-  updates use the matching published release without repeating conversion. conversion-only source and binaries
-  are held privately outside the final repository/release.
+  updates use the matching published release without repeating conversion.
+  conversion-only source and binaries were held privately outside the final
+  repository/release, then removed after qualification; original inputs and
+  source-bound receipts remain private.
 - rebuild the temporary host converter against the final observer schema3 and
   `IsHub` contract. earlier schema2 converter binaries are superseded; verify
   converted output with the final decoder before admitting staged state.
@@ -112,10 +113,10 @@ place each computer's staged identity/cache/config and preserved `machine-handle
 at its final paths BEFORE ordinary installation starts services. the hub alone
 receives converted observer memory. preserve each mac device's schema4 memory.
 install verified matching archives, then claim the freed tailnet routes with
-`skid connect`. devbox currently has no nonroot tailscale operator; configure
-its existing passwordless-sudo login user as operator before ordinary connect,
-verify unrelated preferences/routes remain unchanged, and retain that setting
-for normal connect/uninstall. do not disguise the dependency with a transient
+`skid connect`. during initial activation, devbox lacked a nonroot tailscale
+operator; its existing passwordless-sudo login user was configured as operator
+with unrelated preferences/routes unchanged. that setting remains for normal
+connect/uninstall. do not disguise the dependency with a transient
 privileged wrapper or run skid as root. apply personal hub yaml and verify each destination's status.
 existing shells can retain already-loaded old launch functions referencing the
 retired provider launcher. preserve those shells/processes; use a fresh login
@@ -128,7 +129,7 @@ verify completion, then install the final apk and perform one fresh connect scan
 per phone. never clear app data, change package/signing identity or restore an
 older notification file over newer acknowledgements.
 
-qualify [installed parity](issues/generalization-installed-cutover.md), including exact session survival,
+qualify [installed parity](generalization-qualification.md#installed-activation-2026-10-20), including exact session survival,
 both mac terminal adapters and independent phone acknowledgement. keep jarvis
 worker activation blocked by its [separate integration](issues/jarvis-installed-state-access.md).
 update the dev-server consumer's release/bootstrap pin only after reviewed

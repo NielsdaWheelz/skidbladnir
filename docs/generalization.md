@@ -3,8 +3,9 @@
 status: implementation authorized, direction updated 2026-10-20. this is the
 owner's decision record. [the implementation contract](generalization-plan.md)
 owns schemas, boundaries and acceptance. unrelated completed implementation is
-retained. installed fleet cutover was authorized on 2026-10-20 and is underway;
-[qualification](generalization-qualification.md) records remaining live checks.
+retained. installed fleet cutover was authorized on 2026-10-20; signed v0.19.5
+now runs on all three computers and android. [qualification](generalization-qualification.md)
+records actual proof, version boundaries and remaining exceptions.
 
 skid should be one installable product for one person and their machines. each
 machine owns its local tmux sessions. desktop and phone clients manage enrolled

@@ -32,8 +32,10 @@ live read-only inventory, 2026-10-20 (02:50 utc on2026-10-21):
 private material is outside source: original key/public export under
 `~/.config/skidbladnir/firebase/`; proof key/config/receipts under
 `~/.local/state/skidbladnir-runtime-push-proof/`. prepared local deployment bundle
-and `afa51ca` release candidate under the private cutover directory are marked
-cancelled/superseded. their prior validation is historical, not activation approval.
+and `afa51ca` release candidate under the private cutover directory were marked
+cancelled/superseded. their local deployment code and candidate payloads are now
+removed; cancellation/checksum receipts and unread private operator material
+remain. prior validation is historical, not activation approval.
 no secret values belong in this issue.
 
 resolve separately after installed acceptance: retain the canonical production

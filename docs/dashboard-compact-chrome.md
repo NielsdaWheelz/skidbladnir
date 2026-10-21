@@ -72,12 +72,10 @@ paint/text/padding, and clears its semantics; it is not independently clickable.
 do not shrink targets or rely on overlapping invisible hit expansion. apply
 these styles locally.
 
-**notifications:** `Ready` renders no dashboard notice or settings-button row.
-every other health retains its existing message, `NoticeTone.Degraded` and
-only `set up notifications`. remove the duplicate settings action and its
-unnecessary action `Column`. keep `notificationHealthMessage`, the setup dialog
-and its `open notification settings` action unchanged. the existing
-[enrollment issue](issues/notification-enrollment-ux.md) remains unresolved.
+**notifications:** retain the existing notice/action placement and omit duplicate
+settings actions. the [standalone optional-push contract](generalization-plan.md#6-optional-direct-android-push)
+now owns health states and recovery copy: opting out is healthy, and firebase
+setup follows the [file-based guide](android-push-setup.md).
 
 ## contracts, composition and internal api
 

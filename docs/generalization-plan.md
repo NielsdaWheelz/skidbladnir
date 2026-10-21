@@ -2,14 +2,15 @@
 
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
-reviewed. [qualification](generalization-qualification.md) separates passing
-isolated boundaries from the authorized, ongoing installed/background acceptance.
+reviewed. signed v0.19.5 is deployed on all three computers and android.
+[qualification](generalization-qualification.md) separates source, installed and
+physical proof from the remaining exceptions.
 completed unrelated source/proof is retained.
-source audited: `d34b6897d7938c301cdfed07d8c792f11beb06a1`.
+original baseline audited: `d34b6897d7938c301cdfed07d8c792f11beb06a1`;
+published source: `fef63472576267541e385cb212b64f7b0e7c327e`.
 [decisions](generalization.md) owns product choices; this document owns their
 implementation boundaries and acceptance. [architecture](architecture.md) remains
-the implemented contract until cutover. refresh the source map against main before
-implementation; preserve intervening product changes.
+the shared implemented contract; intervening product changes were preserved.
 
 ## 1. outcome and invariants
 
@@ -693,10 +694,12 @@ conversion app update. no consensus,
 permanent legacy reader or automatic downgrade. deleting tests retains
 [the existing regression coverage gap](issues/test-system-reset.md).
 
-no product preference remains open. implementation must qualify the ubuntu floor,
-shell startup, apple terminal focus and physical background delivery. none is
-proved by this design review. an unavoidable behavior change requires its
-consequence/recommendation presented before changing this contract.
+no product preference remains open. the ubuntu floor, shell startup, apple
+terminal focus and physical background delivery now have separate implementation
+evidence in [qualification](generalization-qualification.md); design review alone
+proved none of them. an unavoidable behavior change requires its consequence and
+recommendation before changing this contract. housekeeping uses normal-priority
+fcm, so background notification withdrawal has no immediate-delivery guarantee.
 
 2026-10-20 original review, before the optional-push revision: independent authority/handoff, runtime/install/quota and
 notification/push/content reviews found no remaining blocking design contradiction
