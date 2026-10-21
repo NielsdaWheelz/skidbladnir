@@ -692,6 +692,7 @@ internal class SkidbladnirController(
     private fun watchFleet(activeGeneration: Long) {
         fleetClient.stopWatching()
         fleetWatch?.cancel(true)
+        var notificationEnvelope = store.read().envelope
         fleetWatch = network.submit {
             while (isActiveGeneration(activeGeneration) && !Thread.currentThread().isInterrupted) {
                 fleetClient.watch {
@@ -700,7 +701,12 @@ internal class SkidbladnirController(
                         if (!isActiveGeneration(activeGeneration)) return@post
                         if (stored.quarantine != null) return@post
                         val next = stored.credentials
-                        if (next.toSet() == credentials.values.toSet()) return@post
+                        val notificationChanged = stored.envelope != notificationEnvelope
+                        notificationEnvelope = stored.envelope
+                        if (next.toSet() == credentials.values.toSet()) {
+                            if (notificationChanged) notifications.fleetChanged()
+                            return@post
+                        }
                         val prior = credentials.values.toList()
                         val nextByHandle = next.associateBy { it.machine.handle }
                         val terminal = state as? SkidbladnirUiState.Terminal
