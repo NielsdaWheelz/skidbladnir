@@ -5,6 +5,14 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## terminal shift — implemented and qualified
+
+2026-10-21: [the spec and qualification](terminal-shift.md#qualification-2026-10-21)
+records one-shot `Shift` replacing `-` for custom-bar navigation/tab, independent
+gboard text ownership and the strict version-5 page port. temporary red/green,
+installed-provider and phone acceptance pass; tests/support were removed and
+engineering verification passes. deployment remains separate.
+
 ## inventory and attachment latency — deployed in v0.18.0
 
 2026-10-20: [the spec and plan](session-latency.md) defines batched native reads,

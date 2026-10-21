@@ -46,7 +46,7 @@ private val terminalKeyDeckRows = listOf(
     listOf(
         TerminalKeyDeckItem(TerminalAccessory.Escape, "Esc", "Escape"),
         TerminalKeyDeckItem(TerminalAccessory.Slash, "/", "Slash"),
-        TerminalKeyDeckItem(TerminalAccessory.Hyphen, "-", "Hyphen"),
+        TerminalKeyDeckItem(TerminalAccessory.Shift, "Shift", "Shift"),
         TerminalKeyDeckItem(TerminalAccessory.Home, "Home", "Home"),
         TerminalKeyDeckItem(TerminalAccessory.Up, "↑", "Up arrow"),
         TerminalKeyDeckItem(TerminalAccessory.End, "End", "End"),
@@ -172,6 +172,7 @@ private fun TerminalKeyDeckItem.modifierPhase(modifiers: TerminalModifiers): Ter
     when (accessory) {
         TerminalAccessory.Control -> modifiers.control
         TerminalAccessory.Alt -> modifiers.alt
+        TerminalAccessory.Shift -> modifiers.shift
         else -> null
     }
 

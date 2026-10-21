@@ -7,7 +7,7 @@
     var pageFailed = false;
     var fitScheduled = false;
     var fontsSettled = false;
-    var modifiers = { control: "Off", alt: "Off" };
+    var modifiers = { control: "Off", alt: "Off", shift: "Off" };
     var pendingProvenKey = null;
     var compositionActive = false;
     var maximumInputBytes = 1024 * 1024;
@@ -93,7 +93,7 @@
         pageFailed = true;
         if (terminalTouchInteraction) terminalTouchInteraction.dispose();
         clearProvenKey();
-        setModifiers("Off", "Off");
+        setModifiers("Off", "Off", "Off");
         send({ kind: "PageFailure" });
         pagePort = null;
     }
@@ -102,20 +102,21 @@
         send({
             kind: "ModifierState",
             control: modifiers.control,
-            alt: modifiers.alt
+            alt: modifiers.alt,
+            shift: modifiers.shift
         });
     }
 
-    function setModifiers(control, alt) {
-        if (modifiers.control === control && modifiers.alt === alt) return;
-        modifiers = { control: control, alt: alt };
+    function setModifiers(control, alt, shift) {
+        if (modifiers.control === control && modifiers.alt === alt && modifiers.shift === shift) return;
+        modifiers = { control: control, alt: alt, shift: shift };
         publishModifiers();
     }
 
     function resetInputState() {
         clearProvenKey();
         if (terminalTouchInteraction) terminalTouchInteraction.cancel();
-        setModifiers("Off", "Off");
+        setModifiers("Off", "Off", "Off");
     }
 
     function utf8ByteCount(value, maximumBytes) {
@@ -171,7 +172,7 @@
 
     function acceptInput(value, keyProven) {
         var armed = modifiers;
-        setModifiers("Off", "Off");
+        setModifiers("Off", "Off", "Off");
         if (keyProven && armed.control === "Armed") value = controlValue(value);
         if (keyProven && armed.alt === "Armed") value = "\u001b" + value;
         sendInput(value);
@@ -1030,8 +1031,7 @@
         var literals = {
             Escape: "\u001b",
             Slash: "/",
-            Hyphen: "-",
-            Tab: "\t"
+            Tab: modifiers.shift === "Armed" ? "\u001b[Z" : "\t"
         };
         if (Object.prototype.hasOwnProperty.call(literals, key)) {
             return { value: literals[key], modifiersEligible: true };
@@ -1047,8 +1047,9 @@
         var pageParameters = { PageUp: "5", PageDown: "6" };
         var controlArmed = modifiers.control === "Armed";
         var altArmed = modifiers.alt === "Armed";
-        var modified = controlArmed || altArmed;
-        var parameter = 1 + (altArmed ? 2 : 0) + (controlArmed ? 4 : 0);
+        var shiftArmed = modifiers.shift === "Armed";
+        var modified = controlArmed || altArmed || shiftArmed;
+        var parameter = 1 + (shiftArmed ? 1 : 0) + (altArmed ? 2 : 0) + (controlArmed ? 4 : 0);
         if (Object.prototype.hasOwnProperty.call(suffixes, key)) {
             if (modified) {
                 return { value: "\u001b[1;" + parameter + suffixes[key], modifiersEligible: false };
@@ -1071,12 +1072,17 @@
     function acceptAccessory(key) {
         clearProvenKey();
         if (key === "Control") {
-            setModifiers(modifiers.control === "Off" ? "Armed" : "Off", modifiers.alt);
+            setModifiers(modifiers.control === "Off" ? "Armed" : "Off", modifiers.alt, modifiers.shift);
             focusTerminal();
             return;
         }
         if (key === "Alt") {
-            setModifiers(modifiers.control, modifiers.alt === "Off" ? "Armed" : "Off");
+            setModifiers(modifiers.control, modifiers.alt === "Off" ? "Armed" : "Off", modifiers.shift);
+            focusTerminal();
+            return;
+        }
+        if (key === "Shift") {
+            setModifiers(modifiers.control, modifiers.alt, modifiers.shift === "Off" ? "Armed" : "Off");
             focusTerminal();
             return;
         }
@@ -1148,7 +1154,7 @@
         var validHandshake = event.ports && event.ports.length === 1 &&
             handshake &&
             exactObject(handshake, ["kind", "version", "longPressMilliseconds", "fontSizeCssPx"]) &&
-            handshake.kind === "PagePort" && handshake.version === 4 &&
+            handshake.kind === "PagePort" && handshake.version === 5 &&
             typeof handshake.longPressMilliseconds === "number" &&
             Number.isFinite(handshake.longPressMilliseconds) &&
             Number.isInteger(handshake.longPressMilliseconds) &&
