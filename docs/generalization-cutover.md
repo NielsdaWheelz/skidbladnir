@@ -1,11 +1,14 @@
 # private-fleet cutover
 
-status: coordinated installed activation is owner-authorized for immutable
-v0.19.0, source `e7c659e9aa4da0009d6874efd204e0caef77d451`. preflight is complete;
-no installed owner has stopped yet. phone activation awaits the
-[tray continuity decision](issues/android-upgrade-tray-continuity.md). this is a one-time operator procedure;
-standalone skid contains no old configuration, credential or notification reader.
-new users use the [ordinary installer](../README.md#install).
+status: installed activation is owner-authorized and underway. all three hosts
+and the phone run immutable v0.19.1. conversion retained notification memory;
+fresh phone pairing committed. v0.19.2 is building from `e13a8b9` to correct a
+phone inventory-decoder crash and apple terminal's reordered-window receipt.
+ordinary patch updates MUST preserve active fleet state: no restaging, converter
+rerun, reset or fresh pairing. [qualification](generalization-qualification.md)
+owns actual results and remaining live checks. standalone skid contains no old
+configuration, credential or notification reader. new users use the
+[ordinary installer](../README.md#install).
 
 ## inputs and stop conditions
 
@@ -13,7 +16,8 @@ new users use the [ordinary installer](../README.md#install).
   release signatures, package identities and persistent signing certificates
   verified by `scripts/check-release`.
 - temporary host stager/converter and same-id/same-signer android conversion apk
-  `0.18.1/18001`; final apk is `0.19.0/19000`. conversion-only source and binaries
+  `0.18.1/18001`; initial final apk was `0.19.0/19000`. subsequent patch
+  updates use the matching published release without repeating conversion. conversion-only source and binaries
   are held privately outside the final repository/release.
 - rebuild the temporary host converter against the final observer schema3 and
   `IsHub` contract. earlier schema2 converter binaries are superseded; verify
@@ -125,7 +129,8 @@ qualify [installed parity](issues/generalization-installed-cutover.md), includin
 both mac terminal adapters and independent phone acknowledgement. keep jarvis
 worker activation blocked by its [separate integration](issues/jarvis-installed-state-access.md).
 update the dev-server consumer's release/bootstrap pin only after reviewed
-publication; its pending pin deliberately refuses activation.
+publication. use ordinary patch updates after activation; never rerun staging
+or conversion over live state.
 
 firebase is not a core cutover prerequisite. optional android background push
 uses the [user-owned setup](android-push-setup.md) and requires separate actual

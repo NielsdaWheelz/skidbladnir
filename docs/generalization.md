@@ -3,7 +3,8 @@
 status: implementation authorized, direction updated 2026-10-20. this is the
 owner's decision record. [the implementation contract](generalization-plan.md)
 owns schemas, boundaries and acceptance. unrelated completed implementation is
-retained. installed fleet cutover remains deferred.
+retained. installed fleet cutover was authorized on 2026-10-20 and is underway;
+[qualification](generalization-qualification.md) records remaining live checks.
 
 skid should be one installable product for one person and their machines. each
 machine owns its local tmux sessions. desktop and phone clients manage enrolled
@@ -633,5 +634,17 @@ size the checks to the failure's consequences and keep source/build evidence
 separate from installed-host and physical-device behavior.
 
 the [qualification record](generalization-qualification.md) separates completed
-source/probes from this direction's new runtime proof and deferred installation.
+source/probes from this direction's runtime proof and the ongoing installed acceptance.
 the android13 compatibility waiver and two-phone deferral remain explicit.
+
+## installed cutover approvals, 2026-10-20
+
+the owner approved android apk replacement clearing existing tray notices while
+preserving exact durable acknowledgement memory and avoiding replay. the converter
+itself must neither cancel nor repost notices. this is an os upgrade limitation,
+not permission to reset notification memory.
+
+installed acceptance may create, exercise and remove exactly one disposable
+normal-socket tmux session because the installed observer cannot see isolated
+sockets. existing sessions remain observation-only; the exception is bound to
+the newly created session's exact lifetime.

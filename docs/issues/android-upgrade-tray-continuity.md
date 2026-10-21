@@ -12,9 +12,11 @@ evidence, 2026-10-20: private api35 emulator, production-signer seed/converter/f
 upgrade. one native notice before `adb install -r`, zero immediately afterward,
 before converter launch. full converted schema4 records/counters equal their
 source; repeated conversion and final upgrade preserve newer memory. the actual
-production phone is api36 and remains untouched.
+production api36 phone later reproduced tray clearing during the authorized
+converter/final update; all11 durable records and counters survived exactly.
 
 resolution: explicit owner acceptance of os tray clearing while retaining exact
 durable memory and no replay, or defer phone activation until the owner handles
-the existing tray item. permission request is pending. record the actual-phone
-conversion receipt and fresh notification qualification after approval.
+the existing tray item. the owner accepted os tray clearing on2026-10-20; actual-phone conversion and durable-reread equality passed. fresh installed
+notification qualification remains in the separate optional-push issue. this
+accepted os behavior requires no product workaround.

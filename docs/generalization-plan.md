@@ -3,7 +3,7 @@
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
 reviewed. [qualification](generalization-qualification.md) separates passing
-isolated boundaries from deferred installed/background acceptance.
+isolated boundaries from the authorized, ongoing installed/background acceptance.
 completed unrelated source/proof is retained.
 source audited: `d34b6897d7938c301cdfed07d8c792f11beb06a1`.
 [decisions](generalization.md) owns product choices; this document owns their
@@ -584,7 +584,10 @@ rejecting unconverted state rather than silently creating empty memory.
 conversion disables old owners/receivers/workers across restart; reruns cannot
 overwrite newer converted state. clear retired pairing credentials into explicit
 pairing-required state, preserving selections. retain channel ids, notification
-tags, intent actions/identity extras; no cancellation/reposting during conversion.
+tags, intent actions/identity extras; no cancellation/reposting by conversion.
+the owner approved android's os-level clearing of posted tray items during apk
+replacement on2026-10-20. preserve durable memory exactly; never replay old alerts
+to imitate tray continuity. fresh notification qualification remains required.
 
 ## 8. exclusive work slices and content ownership
 

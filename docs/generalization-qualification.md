@@ -1,42 +1,49 @@
 # standalone generalization qualification
 
-status: standalone source is merged at `e7c659e9aa4da0009d6874efd204e0caef77d451`;
-[v0.19.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.19.0)
-is published and immutable. exact main-push verify run39533972037 and fresh public
-asset/source/signature verification pass. installed acceptance remains pending.
-[the plan](generalization-plan.md) owns acceptance. earlier rows below retain
-their original proof boundary; they do not claim installed acceptance.
+status: standalone source merged at `e7c659e`; immutable v0.19.0 and v0.19.1
+were published and independently verified. all three computers and the phone now
+run v0.19.1. v0.19.2 is building from `e13a8b9` after two real-boundary fixes.
+installed notification acceptance remains pending. [the plan](generalization-plan.md)
+owns acceptance. historical rows below retain their original dates/boundaries;
+this section supersedes their installed-state observations.
 
 ## installed activation, 2026-10-20
 
-the owner authorized coordinated three-host/mobile activation, scoped live
-ssh/tmux/adb operations, real service lifecycle and real optional-fcm/doze
-qualification. jarvis deployment remains separately
-[deferred](issues/jarvis-installed-state-access.md). no public sender/domain/dns
-or caddy deployment occurs.
+the owner authorized coordinated activation, scoped ssh/tmux/adb, actual service
+lifecycle, optional fcm and doze. the owner accepted android clearing tray notices
+on package replacement and authorized exactly one disposable normal-socket test
+session; existing sessions remain observation-only. jarvis deployment and
+[two physical phones](issues/android-two-phone-push-acceptance.md) remain deferred.
+no public sender/domain/dns/caddy deployment occurs.
 
-preflight admitted the frozen old owner/unit identities on all three computers.
-mac captured seven existing session lifetimes and20 tmux/provider processes;
-devbox captured three lifetimes and12 processes; arch had no running tmux server.
-these are preflight observations, not stop/restart survival proof. no installed
-owner has yet stopped. final notification exports must follow writer shutdown.
+| actual boundary | result and limit |
+| --- | --- |
+| notification freeze/conversion | old writers stopped before FINAL exports; host observer11 records, epoch and revision569446 retained; phone schema3→4 retained11 records and every counter exactly, including5 acknowledged-ready records, with durable reread; old phone credentials retired |
+| ordinary host installation/update | published signed v0.19.1 installed on mac, ubuntu24.04 and actual endeavouros; actual service executable/argv and child-preservation policies checked; signed config converged across3 computers |
+| arch-family admission | original signed v0.19.0 install refused actual `ID=endeavouros ID_LIKE=arch`; one shared exact-token admission/package-selection fix in pr103; disposable red/green, review, host checks and actual signed v0.19.1 install passed without spoofing os identity |
+| devbox survival | all3 original session lifetimes and12 tmux/provider identities survived shutdown, retirement, installation and patch update |
+| mac survival | immediate shutdown baseline8 session/pane lifetimes and19 persistent tmux/provider identities survived; v0.19.1 update retained9 immediate lifetimes and20 persistent identities, including the owned test; earlier preflight process drift occurred before shutdown and is not attributed to cutover |
+| arch survival | no original tmux server/processes existed; saved workspace retained |
+| mac memory | exact schema4 bytes retained before new-app startup; all11 keys/resetId/epoch and nondecreasing counters retained; one later acknowledgement advance and a separate presentation closure have no contemporaneous attribution—[open evidence gap](issues/mac-cutover-acknowledgement-attribution.md) |
+| real fresh-user lifecycle | actual locked account/home/systemd install→same-release update→uninstall passed, retaining settings and dummy provider/private-state sentinels; exact owned account/manager/home removed, unrelated serve routes unchanged; packages already present, so bare-os dependency installation is not claimed |
+| normal connect | all3 computers claim their exact owned tailscale route; devbox's previously absent tailscale operator set to its passwordless-sudo login user with unrelated preferences/routes unchanged; this persistent host-wide tailscale authority is the explicit operational tradeoff |
+| android package/pairing | same-signer converter then ordinary final0.19.0/0.19.1 installed without data reset; actual fresh qr committed one independent phone; cache-only clearing reported by owner; no second scan needed |
+| actual android crash | valid codex `terminalUsage` rejected by obsolete claude-only android guard after pairing; pr105 removes only that guard, retaining structural validation; original red/fixed green and complete live inventories from all3 machines pass the real android codec; signed v0.19.2 recovery pending |
+| apple terminal receipt | real fixture exposed index-based window reference changing after reorder; pr106 captures scalar window id before selection/focus; actual red/green and independent review passed, existing windows unchanged; signed v0.19.2 installed parity pending |
+| real optional firebase setup | user's project, android app, required APIs and message-create-only sender permission verified with actual oauth; public4-field configuration applied through ordinary signed config; sending credential0600 only at hub, outside yaml/phone payloads |
+| push journey/background/doze | ordinary installed enrollment→possession confirmation→native notification remains NOT_RUN; prepared driver distinguishes deep idle, process reclamation and exact restoration; sdk/synthetic evidence below is separate |
 
-firebase project/package, APIs, message-create-only sender permission and actual
-oauth are verified; private credentials remain outside shared yaml and phone
-payloads. public configuration is prepared privately for the ordinary apk.
-phone remains0.18.0/18000 until the coordinated conversion and fresh pairing.
-upstream release pin is merged in pr101 (`faba9e8`); dev-server consumer/pin is
-merged in pr178 (`8ce67ab`). its normal dotfile apply now preserves skid shell
-blocks, and full private desired hub yaml remains outside git. consumer public
-bootstrap/archive verification and bounded red/green checks pass; installed
-consumer activation has not run. jarvis pr54 remains a draft and unactivated.
+upstream release pins and dev-server consumer pins are merged through v0.19.1
+(pr104/pr179). dev-server's whole private desired yaml remains outside git; normal
+dotfile apply preserves skid shell blocks. no full fleet provisioning apply or
+provider-daemon restart was performed. jarvis pr54 remains draft and unactivated.
 
-an additional package-replacement probe found that android clears a posted tray
-notice before converter startup. durable acknowledgement conversion and final
-upgrade pass. [tray continuity](issues/android-upgrade-tray-continuity.md) needs
-an explicit acceptance decision; no phone update has occurred. deterministic
-installed attention testing also awaits permission for one disposable normal
-socket session, because the installed observer cannot see an isolated socket.
+one owned normal-socket session is held working for actual desktop/phone attention
+checks. no real provider was launched for it. original sessions and provider
+accounts/history are preserved. the original qr window was closed only after
+matching its actual tty/process; apple terminal's faulty reordered receipt was
+rejected before closing any preexisting window. actual phone components have no
+persistent disable overrides after the converter.
 
 ## disposable proof, 2026-10-20
 

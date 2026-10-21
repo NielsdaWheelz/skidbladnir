@@ -4,7 +4,7 @@ use codex, claude code, and ordinary shell sessions from your desktop or android
 phone. skid brings enrolled machines' tmux sessions into one view. detach and the
 work keeps running; either device can return to the same live terminal.
 
-standalone installation is available in v0.19.0. upgrading the preceding private
+standalone installation is available in v0.19.2. upgrading the preceding private
 fleet requires the one-time [cutover](docs/generalization-cutover.md);
 [qualification](docs/generalization-qualification.md) distinguishes published
 artifacts from installed acceptance.
@@ -22,7 +22,7 @@ bash install
 the installer owns skid's services, shell integration and updates. it installs
 missing tmux/tailscale dependencies through native package tools; privilege and
 network login can require your action. mac requires macos 26+ arm64 and homebrew.
-linux supports ubuntu 24.04+ and arch amd64 with systemd. android requires 13+ and
+linux supports ubuntu 24.04+ and arch-family amd64 with systemd. android requires 13+ and
 google play services. use host and phone artifacts from the same release.
 
 run `skid` for the desktop browser. empty profiles support ordinary shells;

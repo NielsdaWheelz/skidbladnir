@@ -1,35 +1,26 @@
 # standalone installed cutover and parity
 
-problem: standalone source and isolated probes do not qualify the installed
-three-host fleet, service lifecycle or the owner's unchanged experience.
+problem: source/isolated proof does not qualify every installed fleet and device
+boundary. authorized activation is underway; remaining live checks stay unpassed.
 
-impact: complete installed acceptance remains pending. the owner has authorized
-coordinated activation and live qualification. immutable v0.19.0 targets
-`e7c659e9aa4da0009d6874efd204e0caef77d451`; published source/assets/signatures pass.
-existing hosts and the production phone remain on0.18.0 during final preflight.
-phone update awaits the [tray continuity decision](android-upgrade-tray-continuity.md).
+impact: all3 computers and the phone run signed v0.19.1. preserved identities,
+notification conversion and actual linux lifecycle passed. the paired phone hit
+a decoder crash; its narrow fix and the apple terminal receipt fix are merged
+for v0.19.2, whose installed recovery/notification qualification is pending.
 
-evidence, 2026-10-20: real mac/ubuntu/arch-family helper probes, isolated
-gateway/tmux/shell journeys, apple terminal and physical android test-package
-journeys passed. package/service lifecycle commands were simulated. real
-supervisor child survival, clean package installation, ghostty presentation,
-native popup/sound and installed owner parity remain NOT_RUN. generated host
-services preserve `KillMode=process` and `AbandonProcessGroup=true`; their
-configuration checks do not prove a real restart preserves every session.
+evidence, 2026-10-20: [qualification](../generalization-qualification.md) records
+actual session/process survival, exact durable memory conversion, unchanged
+routes, signed config and the fresh-user/home/systemd install/update/uninstall.
+arch-family ordinary signed installation passed after pr103. no provider daemon
+was restarted. no bare-os missing-dependency install is claimed.
 
-resolution: execute the reviewed [cutover](../generalization-cutover.md) against
-matching signed artifacts after explicit activation approval. freeze old
-writers, preserve exact machine handles/order and notification memory, retire
-owned legacy resources, install and re-pair. verify unchanged session lifetimes,
-provider histories/settings, both mac terminal adapters, controls, usage and
-device-local acknowledgement. qualify real service restart/update/uninstall
-without killing tmux or providers and a clean supported-host install.
+resolve: install the verified patch ordinarily without reset/reconversion/re-pair;
+qualify both mac terminal adapters, popup/sound, exact notification clicks/output
+acknowledgement, service restart memory and unchanged desktop/mobile management.
+close the separate [optional push journey](android-optional-push-qualification.md)
+at its real boundary. retain the historical
+[mac acknowledgement attribution gap](mac-cutover-acknowledgement-attribution.md)
+and explicit unavailable-device/owner-parity limits rather than inferring passes.
 
-optional [android push setup](../android-push-setup.md) and
-[jarvis service access](jarvis-installed-state-access.md) have separate boundaries.
-[the push qualification gap](android-optional-push-qualification.md) distinguishes
-isolated actual delivery from the deferred ordinary installed round trip.
-firebase is not a session-management or mac-notification cutover prerequisite.
-the old `afa51ca` candidate is superseded; no public sender is to be deployed.
-unavailable devices and visual checks require explicit waivers or remain open;
-source builds and fcm acceptance cannot substitute for them.
+[jarvis service access](jarvis-installed-state-access.md) and two physical phones
+remain owner-deferred. no public sender/domain/dns/caddy deployment occurs.
