@@ -32,10 +32,11 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.18.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.18.0).
-[`release-pin.json`](../release-pin.json) owns its source and artifact digests;
-[`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
-names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
+historical generation: [v0.18.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.18.0).
+its [frozen release pin](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/release-pin.json)
+owns that generation's source and artifact digests;
+[`deployment/native-control/helper.json`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/native-control/helper.json)
+names its then-unpinned native helper. [historical qualification](native-agent-qualification.md)
 records isolated source checks, artifact verification, installed native lifecycles
 and owner-confirmed phone attachment. broader phone-native interaction retains
 its separate acceptance scope.
@@ -210,7 +211,7 @@ skidbladnir gateway --listen=127.0.0.1:7341 --bearer-file=HOME/.config/skidbladn
 
 ## host config and validator
 
-render [`deployment/providers/host-config.json`](../deployment/providers/host-config.json)
+render [`deployment/providers/host-config.json`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/providers/host-config.json)
 to the generation's `host-config.json`. replace tokens in decoded json string
 values, then serialize json; do not shell-interpolate json. substitutions:
 
@@ -322,7 +323,7 @@ runtime profile remains unknown and uses terminal
 observation/control; it does not add a fifth native-helper account. permission
 bypass is preserved; provider trust/setup may still prompt.
 
-install [`provider-command`](../deployment/providers/provider-command) at
+install [`provider-command`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/providers/provider-command) at
 `current/providers/provider-command` (0755), rendering `@ROOT_SHELL@`,
 `@CODEX_SHELL@`, and `@CLAUDE_SHELL@` as shell-quoted literals from the same
 deployment inputs as the json config. install
@@ -488,7 +489,7 @@ skid installs no codex hooks. foreground presence and explicitly tracked native
 conversation are separate projections. no selected-view interface remains. the unused codex writer and
 template are retired; existing `hooks.json` remains untouched by skid setup.
 no hook merger is needed. stage the supplied
-[`claude-agent-identity`](../deployment/providers/claude-agent-identity) tree at
+[`claude-agent-identity`](https://github.com/NielsdaWheelz/skidbladnir/tree/bc93dd2baf97abee3ef080cd3a4192fe4e89b049/deployment/providers/claude-agent-identity) tree at
 the generation's `providers/claude-agent-identity`, with its public path supplied
 by the stable symlink above. its `bin/agent-hook` is 0755, json files 0644.
 both scoped manual claude commands and the forge explicitly load it. the plugin
@@ -524,7 +525,7 @@ not qualify the new native interaction contract.
 
 ## native helper
 
-consume [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
+consume [`deployment/native-control/helper.json`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/native-control/helper.json)
 and [the installation contract](restoration-native-control.md):
 
 - install llm-calling's current default-branch revision directly, one generation
@@ -536,9 +537,9 @@ and [the installation contract](restoration-native-control.md):
 - install the helper environment beneath `~/.local/share/skidbladnir/` and expose
   its entry point as `~/.local/bin/skidbladnir-provider-runtime-control`.
   stage/verify before switching; retain only skid-owned rollback revisions.
-- install [`native-control/claude`](../deployment/native-control/claude) as the
+- install [`native-control/claude`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/native-control/claude) as the
   environment's `bin/claude` (0755). render
-  [`the helper launcher`](../deployment/native-control/skidbladnir-provider-runtime-control)
+  [`the helper launcher`](https://github.com/NielsdaWheelz/skidbladnir/blob/d34b6897d7938c301cdfed07d8c792f11beb06a1/deployment/native-control/skidbladnir-provider-runtime-control)
   with `@ENVIRONMENT_SHELL@` equal to the shell-quoted absolute venv path;
   install it as the generation's `providers/native-control` (0755), reached
   through the stable public symlink above. this generation contract supersedes
@@ -683,6 +684,6 @@ requalification on provider upgrades. no separate provider login is introduced.
 ordinary account state is retained; future provider or project-hook changes
 need integration qualification. tmux ownership is unchanged. remaining native
 background-job stop qualification is recorded in
-[native-control](issues/restoration-native-control.md). receipt admission,
+[native-control](restoration-native-control-qualification.md). receipt admission,
 provider continuity, shell installation and runtime separation are complete;
 source checks and root-reported live results are distinguished above.

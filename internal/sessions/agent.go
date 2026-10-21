@@ -25,13 +25,12 @@ func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 	return &foreground, nil
 }
 
-func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID, registration string) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
+func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
 	foreground, err := paneForeground(panePID)
 	if err != nil || foreground == nil {
 		return nil, nil, err
 	}
-	// Project accepts only the captured registration for this exact foreground.
-	agent, found := agentruntime.Project(manager.Profiles(), *foreground, registration)
+	agent, found := agentruntime.Project(*foreground)
 	if !found {
 		return nil, foreground, nil
 	}
@@ -49,7 +48,7 @@ func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID, reg
 }
 
 func observeRemoteAgent(foreground processinfo.Observation, environment map[string]string, profiles []agentruntime.Profile) *agentruntime.AgentRuntime {
-	agent, found := agentruntime.Project(profiles, foreground, "")
+	agent, found := agentruntime.Project(foreground)
 	if !found {
 		return nil
 	}

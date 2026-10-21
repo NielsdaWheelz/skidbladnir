@@ -38,7 +38,6 @@ type Route string
 
 const (
 	RouteTerminalControl   Route = "/v1/sessions/{tmuxId}/terminal/{operation}"
-	RouteConversations     Route = "/v1/conversations/{operation}"
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteProfileUsage      Route = "/v1/profile-usage"
@@ -58,7 +57,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
+	case RouteTerminalControl, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -71,10 +70,6 @@ const (
 	ErrorTerminalTargetChanged       ErrorCode = "TerminalTargetChanged"
 	ErrorTerminalUnavailable         ErrorCode = "TerminalUnavailable"
 	ErrorTerminalInputBlocked        ErrorCode = "TerminalInputBlocked"
-	ErrorAgentTargetStale            ErrorCode = "AgentTargetStale"
-	ErrorAgentUnavailable            ErrorCode = "AgentUnavailable"
-	ErrorHistoryChanged              ErrorCode = "HistoryChanged"
-	ErrorAgentInputInvalid           ErrorCode = "AgentInputInvalid"
 	ErrorNone                        ErrorCode = ""
 	ErrorUnauthenticated             ErrorCode = "Unauthenticated"
 	ErrorInvalidRequest              ErrorCode = "InvalidRequest"
@@ -102,7 +97,7 @@ const (
 
 func (code ErrorCode) valid() bool {
 	switch code {
-	case ErrorTerminalTargetChanged, ErrorTerminalUnavailable, ErrorTerminalInputBlocked, ErrorAgentTargetStale, ErrorAgentUnavailable, ErrorHistoryChanged, ErrorAgentInputInvalid, ErrorUnauthenticated,
+	case ErrorTerminalTargetChanged, ErrorTerminalUnavailable, ErrorTerminalInputBlocked, ErrorUnauthenticated,
 		ErrorInvalidRequest,
 		ErrorRequestTooLarge,
 		ErrorWorkingDirectoryInvalid,

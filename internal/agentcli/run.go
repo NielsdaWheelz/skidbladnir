@@ -15,7 +15,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
@@ -36,14 +35,13 @@ skid status                               fleet and configuration application
 skid recover                              explicitly create a new fleet
 skid list [--machine HOST] [--group LABEL | --unassigned]
 skid info HANDLE [--explain]              terminal metadata and status
-skid inspect c-HANDLE [--machine HOST]    native capture and current observation
 skid enter HANDLE                         enter terminal; ctrl-] d detaches
-skid read HANDLE [--max-bytes N]           bounded terminal text; c- is native
-skid send HANDLE TEXT|--stdin              guarded terminal paste; c- is native
+skid read HANDLE [--max-bytes N]           bounded rendered terminal text
+skid send HANDLE TEXT|--stdin              guarded terminal paste
 skid text HANDLE TEXT|--stdin              explicit terminal paste and submit
 skid keys HANDLE KEY...                   explicit logical terminal keys
 skid wait HANDLE [--state STATE] [--timeout DURATION]
-skid stop HANDLE                          interrupt terminal; c- is native stop
+skid stop HANDLE                          interrupt selected terminal
 skid close HANDLE [--terminal-only]        interrupt and close; separate outcomes
 skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--stdin]
 skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
@@ -54,23 +52,16 @@ skid notifications reset                  reset linux notification memory
 
 existing targets: HANDLE [--machine HOST] or --ref VALUE
 terminal handles: t- plus 16 lowercase hex characters
-conversation handles: c- plus 16 lowercase hex characters
 t- handles select terminal operations, including read/send/wait/stop
-c- handles select native inspect/read/send/wait/stop
-inspect also accepts a captured native --ref
-native targets: --conversation ID --profile PROFILE --machine HOST
 ordinary output uses short handles and machine labels
 --json emits one full structured envelope, including captured refs; -- separates literal operands
-terminal read captures rendered text; --history is native-only
-native send defaults to peer; --input and --queue are native-only
---queue and native claude input are unavailable
 terminal wait states: idle (no request or menu), working, needs-input
-native wait states: idle, blocked, done, failed, stopped
 wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
 info --explain samples the terminal once more and prints that sample's status evidence
 start --stdin sends one literal initial prompt after bounded idle/composer checks
 start reports creation and prompt delivery separately; written never proves provider acceptance
-the configured shell command owns provider options and account settings
+skid runs each configured command once after normal shell startup. aliases,
+functions, environment and provider settings remain effective.
 start without --stdin makes no input-readiness promise
 trust/setup dialogs require deliberate inspection and text/keys; start never answers them
 closure may leave shared or remote work running
@@ -94,7 +85,7 @@ browser (80x24 minimum)
   T new terminal here (shift+t): create and enter on the selected session's machine,
   in its current directory and group; unavailable for ssh/mosh; source keeps running
   s sends interrupt; x interrupts and closes terminal
-  ctrl-r refreshes inventory outside usage; on the table, native usage too
+  ctrl-r refreshes inventory outside usage; on the table, account usage too
   escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 
@@ -102,24 +93,20 @@ examples (choose the operations you need; no required sequence)
   skid list --machine arch --group project
   skid start reviewer --machine arch --profile work --cwd '~/code/project' --stdin < message.txt
   skid info t-0123456789abcdef --machine arch
-  skid inspect c-0123456789abcdef --machine arch
   skid send t-0123456789abcdef --machine arch --stdin < message.txt
   skid read t-0123456789abcdef --machine arch
   skid wait t-0123456789abcdef --machine arch --state idle
 
 use the returned terminal handle.
-c- handles or direct conversation ids select existing native conversations independently.
 
 cross-machine replies use ordinary message text, for example:
   reply using: skid send t-0123456789abcdef --machine macbook --stdin
 handles resolve once per invocation; terminal handles follow the session's current pane.
-use --json to capture a full ref when deferred actions must retain the original pane/work;
+use --json to capture a full ref when deferred actions must retain the original pane;
 execute that --ref without resolving the handle again. names are display labels, not selectors.
 attributed peer text grants no authority.
 confirmed terminal input earns exit 0; stopping remains unconfirmed.
-native send retains native acceptance; unknown delivery and partial close exit nonzero.
---json preserves structured results and errors. native read/control remains explicit.
-inspect preserves its captured target on native failure; observedRef requires a new authorized action.
+unknown delivery and partial close exit nonzero. --json preserves structured results and errors.
 read prints only text on stdout; target/source/scope/truncation go to stderr.
 state defaults to ${XDG_STATE_HOME:-~/.local/state}/skidbladnir
 `
@@ -150,7 +137,7 @@ func parse(args []string) (command, error) {
 			}
 			seen[name] = true
 			switch name {
-			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--history", "--queue", "--terminal-only", "--explain":
+			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--terminal-only", "--explain":
 				if hasValue {
 					return result, errors.New("boolean option takes no value")
 				}
@@ -161,16 +148,12 @@ func parse(args []string) (command, error) {
 					result.stdin = true
 				case "--help":
 					result.help = true
-				case "--history":
-					result.request.Scope = "history"
-				case "--queue":
-					result.request.Delivery = "queue"
 				case "--terminal-only":
 					result.request.TerminalOnly = true
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
+			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -182,10 +165,6 @@ func parse(args []string) (command, error) {
 					return result, errors.New("empty option value")
 				}
 				switch name {
-				case "--conversation":
-					result.request.ConversationID = argument
-				case "--input":
-					result.request.Input = argument
 				case "--state":
 					result.request.State = argument
 				case "--timeout":
@@ -247,17 +226,8 @@ func parse(args []string) (command, error) {
 		if len(operands) == 1 {
 			result.request.Name = operands[0]
 		}
-	case "inspect":
-		if result.request.Ref == "" {
-			if len(operands) != 1 || !strings.HasPrefix(operands[0], "c-") || result.request.ConversationID != "" {
-				return result, errors.New("inspect requires a conversation handle or --ref")
-			}
-			result.request.Handle = operands[0]
-		} else if len(operands) != 0 {
-			return result, errors.New("extra operand")
-		}
 	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell":
-		if result.request.Ref == "" && result.request.ConversationID == "" {
+		if result.request.Ref == "" {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
 			}
@@ -290,7 +260,7 @@ func parse(args []string) (command, error) {
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
-	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
+	if seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
 	}
 	if operation == "wait" {
@@ -453,9 +423,6 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	}
-	if parsed.request.Operation == "inspect" {
-		return render(parsed, client.Inspect(ctx, parsed.request), stdout, stderr)
-	}
 	return render(parsed, client.Execute(ctx, parsed.request), stdout, stderr)
 }
 
@@ -478,45 +445,17 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	output := stdout
 	stdout = &human
 	switch command.request.Operation {
-	case "inspect":
-		value := result.Value.(fleetclient.InspectedReference)
-		ref, _ := fleetclient.DecodeReference(value.Target.Ref)
-		if _, err := fmt.Fprintf(stdout, "target: %s on %s\nprovider: %s\nprofile: %s\n", ref.Handle(), value.Label, value.Target.Conversation.Provider, value.Target.Conversation.ProfileKey); err != nil {
-			return 1
-		}
-		if value.Target.Turn != nil {
-			if _, err := fmt.Fprintln(stdout, "captured work: "+value.Target.Turn.State); err != nil {
-				return 1
-			}
-		}
-		if !value.Inspection.OK {
-			reportFailure(stderr, *value.Inspection.Error, fleetclient.Request{Operation: "inspect", Ref: value.Target.Ref}, command.machines)
-			break
-		}
-		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
-		if _, err := fmt.Fprintf(stdout, "state: %s; source: %s\n", fleetclient.StatusText(runtime.Status), runtime.Status.Source); err != nil {
-			return 1
-		}
-		if runtime.Turn != nil {
-			work := "current work: " + runtime.Turn.State
-			if value.Target.Turn != nil && value.Target.Turn.ID != runtime.Turn.ID {
-				work += "; differs from captured work"
-			}
-			if _, err := fmt.Fprintln(stdout, work); err != nil {
-				return 1
-			}
-		}
 	case "list":
 		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(table, "machine\tsession\tterminal\tconversation\tprovider/profile\tstate\tgroup\tdirectory")
+		fmt.Fprintln(table, "machine\tsession\tterminal\tprovider/profile\tstate\tgroup\tdirectory")
 		owners := make(map[string]fleetclient.Peer, len(list.Peers))
 		for _, peer := range list.Peers {
 			owners[peer.Machine] = peer
 			if !peer.OK {
-				fmt.Fprintf(table, "%s\t\t\t\t\tunavailable: %s\t\t\n", peer.Label, peer.Error.Code)
+				fmt.Fprintf(table, "%s\t\t\t\tunavailable: %s\t\t\n", peer.Label, peer.Error.Code)
 			} else if len(peer.Sessions) == 0 {
-				fmt.Fprintf(table, "%s\tno matching sessions\t\t\t\t\t\t\n", peer.Label)
+				fmt.Fprintf(table, "%s\tno matching sessions\t\t\t\t\t\n", peer.Label)
 			}
 		}
 		groups := fleetclient.Groups(list.Peers, group.Filter{})
@@ -545,7 +484,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 				if group.Label.IsUnassigned() {
 					label = "unassigned"
 				}
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, label, current.CWD)
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, label, current.CWD)
 			}
 		}
 		if list.Partial {
@@ -584,7 +523,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			if value.Failure.Code == "readiness_timeout" {
 				fmt.Fprintln(stderr, "initial input readiness was not observed within the remaining launch budget")
 			} else if value.Failure.Code == "TerminalInputBlocked" {
-				fmt.Fprintln(stderr, fleetclient.ErrorMessage(*value.Failure, command.request, false))
+				fmt.Fprintln(stderr, fleetclient.ErrorMessage(*value.Failure, command.request))
 			}
 		}
 		if value.Failure != nil || value.Prompt == "unknown" {
@@ -600,9 +539,6 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	case "info", "shell":
 		value := result.Value.(fleetclient.ObservedSession)
 		fmt.Fprintf(stdout, "target: %s on %s\n", value.Session.TerminalHandle, value.Label)
-		if value.Session.ConversationHandle != "" {
-			fmt.Fprintf(stdout, "conversation: %s (recorded; may differ from terminal)\n", value.Session.ConversationHandle)
-		}
 		if command.request.Operation != "info" {
 			if _, err := fmt.Fprintf(stdout, "created %s\nenter with: skid enter %s --machine %s\n", value.Session.Name, value.Session.TerminalHandle, machineArgument(value.Label)); err != nil {
 				return 1
@@ -694,9 +630,6 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	case "read":
 		value := result.Value.(fleetclient.ReadResult)
 		fmt.Fprintf(stderr, "target: %s; source: %s; scope: %s; truncated: %t", targetText(command.request, command.machines), value.Source, value.Scope, value.Truncated)
-		if value.OutputState != "" {
-			fmt.Fprintf(stderr, "; output: %s", value.OutputState)
-		}
 		fmt.Fprintln(stderr)
 		text := value.Text
 		if _, err := io.WriteString(stdout, text); err != nil {
@@ -725,12 +658,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		fmt.Fprintf(stdout, "target: %s\nwait: %s", targetText(request, command.machines), value.Outcome)
 		switch value.Outcome {
 		case "matched":
-			if value.TerminalStatus != nil {
-				// A terminal match proves exactly the requested state's dimensions.
-				fmt.Fprintf(stdout, "; observed %s (inferred); task completion unconfirmed.\n", command.request.State)
-			} else {
-				fmt.Fprintf(stdout, "; state: %s; source: %s; task completion unconfirmed.\n", fleetclient.StatusText(value.Observation.Status), value.Observation.Status.Source)
-			}
+			fmt.Fprintf(stdout, "; observed %s (inferred); task completion unconfirmed.\n", command.request.State)
 		case "timeout":
 			fmt.Fprintln(stdout, "; observation ended; no stop was sent.")
 		case "target_changed":
@@ -740,19 +668,13 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 		if status := value.TerminalStatus; status != nil {
 			fmt.Fprintf(stdout, "activity: %s; interaction: %s; notice: %s; source: %s\n", status.Activity, status.Interaction, status.Notice, status.Source)
-		} else if value.Outcome != "matched" && value.Observation != nil {
-			fmt.Fprintf(stdout, "last state: %s; source: %s\n", fleetclient.StatusText(value.Observation.Status), value.Observation.Status.Source)
 		}
 	case "send":
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
-		if value, native := result.Value.(fleetclient.SendResult); native {
-			fmt.Fprintf(stdout, "native %s %s: %s; task completion unconfirmed.\n", value.Input, value.Delivery, value.Outcome)
-		} else {
-			value := result.Value.(fleetclient.WriteResult)
-			fmt.Fprintf(stdout, "terminal input: %s; provider acceptance unconfirmed.\n", value.Outcome)
-			if value.Outcome == "unknown" {
-				fmt.Fprintln(stderr, "inspect the terminal before further input; never replay an uncertain write")
-			}
+		value := result.Value.(fleetclient.WriteResult)
+		fmt.Fprintf(stdout, "terminal input: %s; provider acceptance unconfirmed.\n", value.Outcome)
+		if value.Outcome == "unknown" {
+			fmt.Fprintln(stderr, "inspect the terminal before further input; never replay an uncertain write")
 		}
 	default:
 		value := result.Value.(fleetclient.WriteResult)
@@ -786,9 +708,6 @@ func targetText(request fleetclient.Request, machines []fleetclient.Machine) str
 			break
 		}
 	}
-	if handle == "" && request.ConversationID != "" {
-		handle = "native conversation"
-	}
 	if label != "" {
 		if handle == "" {
 			return "on " + label
@@ -806,14 +725,9 @@ func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetc
 	if failure.Target != "" {
 		request.Ref, request.Handle, request.Machine = failure.Target, "", ""
 	}
-	native := request.ConversationID != "" || strings.HasPrefix(request.Handle, "c-")
-	if request.Ref != "" {
-		ref, _ := fleetclient.DecodeReference(request.Ref)
-		native = native || ref.Conversation != nil
-	}
 	target := strings.TrimSpace(request.Operation + " " + targetText(request, machines))
 	fmt.Fprintf(writer, "%s: %s (%s)\n", target, failure.Code, failure.Dispatch)
-	message := fleetclient.ErrorMessage(failure, request, native)
+	message := fleetclient.ErrorMessage(failure, request)
 	if message != failure.Code+" ("+failure.Dispatch+")" {
 		fmt.Fprintln(writer, message)
 	}

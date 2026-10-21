@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -39,14 +38,10 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return success(result)
 		}
 		sampleContext, cancelSample := context.WithTimeout(ctx, Timeout)
-		operation, path := "terminal_inspect", "/v1/sessions/"+captured.TmuxID+"/terminal/inspect"
+		path := "/v1/sessions/" + captured.TmuxID + "/terminal/inspect"
 		body := map[string]any{"identityToken": captured.IdentityToken, "paneId": captured.PaneID}
-		if captured.Conversation != nil {
-			operation, path = "inspect", "/v1/conversations/inspect"
-			body = map[string]any{"conversation": captured.Conversation.Binding.Conversation}
-		}
 		encoded, _ := json.Marshal(body)
-		sampled := client.call(sampleContext, target, operation, path, encoded)
+		sampled := client.call(sampleContext, target, "terminal_inspect", path, encoded)
 		cancelSample()
 		if parent.Err() != nil {
 			return Failed("cancelled", "not_sent")
@@ -55,41 +50,28 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return success(result)
 		}
 		if !sampled.OK {
-			if sampled.Error.Code == "AgentTargetStale" || sampled.Error.Code == "TerminalTargetChanged" || sampled.Error.Code == "SessionNotFound" || sampled.Error.Code == "SessionIdentityMismatch" {
+			if sampled.Error.Code == "TerminalTargetChanged" || sampled.Error.Code == "SessionNotFound" || sampled.Error.Code == "SessionIdentityMismatch" {
 				result.Outcome = "target_changed"
 				return success(result)
 			}
 			return sampled
 		}
 		matched := false
-		if captured.Conversation == nil {
-			status := sampled.Value.(TerminalInspectResult).TerminalStatus
-			if status.Source == sessions.SourceUnavailable {
-				return Failed("TerminalUnavailable", "not_sent")
-			}
-			result.TerminalStatus = &status
-			// Each state tests its own dimensions; an unknown tested dimension never matches.
-			switch request.State {
-			case "idle":
-				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone
-			case "working":
-				matched = status.Activity == sessions.ActivityWorking
-			case "needs-input":
-				matched = NeedsInput(status)
-			default:
-				panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
-			}
-		} else {
-			runtime := sampled.Value.(agentruntime.ConversationRuntime)
-			if !runtime.Binding.Equal(captured.Conversation.Binding) {
-				result.Outcome = "target_changed"
-				return success(result)
-			}
-			if runtime.Status.Source != "native" {
-				return Failed("AgentUnavailable", "not_sent")
-			}
-			result.Observation = &agentruntime.Observation{Binding: runtime.Binding, Status: runtime.Status, Turn: runtime.Turn}
-			matched = runtime.Status.State == request.State
+		status := sampled.Value.(TerminalInspectResult).TerminalStatus
+		if status.Source == sessions.SourceUnavailable {
+			return Failed("TerminalUnavailable", "not_sent")
+		}
+		result.TerminalStatus = &status
+		// Each state tests its own dimensions; an unknown tested dimension never matches.
+		switch request.State {
+		case "idle":
+			matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone
+		case "working":
+			matched = status.Activity == sessions.ActivityWorking
+		case "needs-input":
+			matched = NeedsInput(status)
+		default:
+			panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
 		}
 		if matched {
 			result.Outcome = "matched"
@@ -106,29 +88,4 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		case <-timer.C:
 		}
 	}
-}
-
-func (client *Client) Results(parent context.Context, ref Reference, conversation agentruntime.Conversation, cursor string) Result {
-	ctx, cancel := context.WithTimeout(parent, Timeout)
-	defer cancel()
-	target, found := client.peerByMachine(ref.Machine)
-	if !found {
-		return Failed("machine_unknown", "not_sent")
-	}
-	if !conversation.Valid() {
-		return Failed("invalid_input", "not_sent")
-	}
-	body := struct {
-		Conversation agentruntime.Conversation `json:"conversation"`
-		Cursor       string                    `json:"cursor,omitempty"`
-	}{conversation, cursor}
-	encoded, _ := json.Marshal(body)
-	if len(encoded) > MaximumInputBytes {
-		return Failed("input_limit", "not_sent")
-	}
-	result := client.call(ctx, target, "results", "/v1/conversations/results", encoded)
-	if result.OK && result.Value.(ResultsResult).Conversation != conversation {
-		return Failed("protocol_error", "not_sent")
-	}
-	return result
 }

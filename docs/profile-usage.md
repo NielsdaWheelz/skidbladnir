@@ -1,5 +1,11 @@
 # native codex profile usage
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 [terminal usage](terminal-usage.md) owns all-host collection, consolidated desktop
 selection and claude terminal evidence. [desktop usage](desktop-usage.md) owns
 presentation and freshness policy, with [isolated desktop qualification](desktop-usage.md#qualification).
@@ -9,7 +15,7 @@ supersedes the earlier claude publisher and devbox-only contracts.
 
 ## acquisition and normalization
 
-the existing `llm-calling` native helper's profile-scoped `usage` operation uses
+the bounded `provider_runtime.agent_runtime.quota_cli` helper uses
 skid's validated environment and `agentruntime.CodexEndpoint`. it initializes a
 connection to the already-running account daemon and calls
 `account/rateLimits/read`. no caller supplies a home, socket or conversation target.
@@ -24,7 +30,7 @@ the read creates no thread or inference turn. it never starts/restarts a daemon,
 replaces an owner, answers another client's requests, logs in or forces token
 refresh. provider-owned authentication remains unchanged. missing owners and
 unsupported methods/fields make only that profile unavailable. no notification
-subscription, helper change or extra service is part of the terminal cutover.
+subscription or extra service is part of the terminal cutover.
 
 ## route and report
 
@@ -35,7 +41,7 @@ follows from this capability; there is no `source` member or claude variant.
 
 ```text
 {machine:{handle,platform}, observedAt, profiles:[{
-  key, label, provider:"Codex", historyScope?,
+  key, label, provider:"Codex", accountScope?,
   readState:"ok"|"unavailable",
   report?:{
     reportedAt,

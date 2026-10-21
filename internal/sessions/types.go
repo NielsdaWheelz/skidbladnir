@@ -92,7 +92,6 @@ type Session struct {
 	IdentityToken    string
 	LaunchProfile    agentruntime.ProfileKey
 	Agent            *agentruntime.AgentRuntime
-	Conversation     *agentruntime.Conversation
 	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol.Enrich observes the session
 	TerminalUsage    *TerminalUsage
 	TerminalFooter   *TerminalFooter

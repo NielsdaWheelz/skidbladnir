@@ -9,8 +9,6 @@ import (
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
-// Native callers retain their separate exact-conversation stale error.
-var ErrAgentTargetStale = errors.New("agent target changed")
 var (
 	ErrTerminalTargetChanged      = errors.New("terminal target changed")
 	ErrTerminalUnavailable        = errors.New("terminal unavailable")

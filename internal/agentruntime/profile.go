@@ -172,9 +172,9 @@ func safeProfileLabel(label string) bool {
 func CodexEndpoint(profile Profile) string {
 	return filepath.Join(profile.Home, "app-server-control", "app-server-control.sock")
 }
-func HistoryScope(profile Profile) (string, error) {
+func AccountScope(profile Profile) (string, error) {
 	if profile.Provider == "" || profile.Home == "" {
-		return "", errors.New("profile omits native history home")
+		return "", errors.New("profile omits account home")
 	}
 	home, err := filepath.EvalSymlinks(profile.Home)
 	if err != nil {

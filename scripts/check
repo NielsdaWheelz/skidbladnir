@@ -48,9 +48,8 @@ case "$gate" in
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
       scripts/check-release scripts/check-release-source scripts/check-release-repository
       scripts/install-android scripts/release scripts/render-release-notes
-      scripts/install scripts/sign-release deployment/install/native-control deployment/providers/shell-init
+      scripts/install scripts/sign-release deployment/install/quota-read deployment/providers/shell-init
       deployment/providers/terminal-context-init
-      deployment/providers/claude-agent-identity/bin/agent-hook
     )
     for script in "${shell_scripts[@]}"; do
       run bash-syntax bash -n "$script"

@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
 )
 
 const coherentObservationAttempts = 8
@@ -79,61 +77,6 @@ func SameObservation(left, right Observation) bool {
 		left.Executable == right.Executable &&
 		left.StartIdentity == right.StartIdentity &&
 		slices.Equal(left.Argv, right.Argv)
-}
-
-// TerminalDeviceAt resolves the kernel device identity of an exact character
-// device path. Tmux's pane_tty and the hook process observation must name the
-// same value before runtime identity may mutate a pane option.
-func TerminalDeviceAt(path string) (TerminalDevice, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, fmt.Errorf("stat terminal device: %w", err)
-	}
-	if info.Mode()&os.ModeCharDevice == 0 {
-		return 0, errors.New("terminal path is not a character device")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Rdev == 0 {
-		return 0, errors.New("terminal device identity is unavailable")
-	}
-	return TerminalDevice(stat.Rdev), nil
-}
-
-// ObserveAncestry walks from initial toward PID 1 and returns the observable
-// prefix of the chain. The walk ends successfully at PID 1, at a parentless
-// process, or at the first ancestor outside the caller's observation boundary
-// (a protected or already-exited process); the caller-owned chain the walk
-// exists to capture is always complete before that frontier.
-func ObserveAncestry(initial PID, limit int) ([]Observation, error) {
-	if initial <= 0 || limit <= 0 {
-		return nil, errors.New("invalid process ancestry request")
-	}
-	ancestry := make([]Observation, 0, 8)
-	seen := make(map[PID]struct{}, 8)
-	pid := initial
-	for len(ancestry) < limit {
-		if _, exists := seen[pid]; exists {
-			return nil, errors.New("process ancestry contains a cycle")
-		}
-		seen[pid] = struct{}{}
-		observation, err := Observe(pid)
-		if err != nil {
-			if pid != initial && (errors.Is(err, ErrProcessAbsent) || errors.Is(err, ErrProcessNotPermitted)) {
-				// justify-ignore-error: an unobservable ancestor is the privilege or
-				// lifetime frontier of the walk, and the observed prefix is the
-				// modeled successful result; only the initial process must be
-				// observable for the walk to mean anything.
-				return ancestry, nil
-			}
-			return nil, err
-		}
-		ancestry = append(ancestry, observation)
-		if observation.ParentPID <= 0 || observation.PID == 1 {
-			return ancestry, nil
-		}
-		pid = observation.ParentPID
-	}
-	return nil, errors.New("process ancestry exceeds its closed bound")
 }
 
 func ObserveForeground(panePID PID) (Observation, error) {

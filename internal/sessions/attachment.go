@@ -17,7 +17,6 @@ var (
 
 type TerminalAttachment struct {
 	sourceID string
-	profiles []agentruntime.Profile
 	runtime  *tmuxclient.Attachment
 }
 
@@ -58,7 +57,7 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 		}
 		return nil, classified
 	}
-	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime, profiles: manager.Profiles()}, nil
+	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime}, nil
 }
 
 type TerminalGreeting struct {
@@ -67,8 +66,8 @@ type TerminalGreeting struct {
 	Foreground      *agentruntime.Foreground
 }
 
-// Greeting samples the owned client's final pane without inventory, registration
-// or profile-environment reads. Optional kernel uncertainty never refuses entry.
+// Greeting samples the owned client's final pane without inventory or account
+// environment reads. Optional kernel uncertainty never refuses entry.
 func (attachment *TerminalAttachment) Greeting(ctx context.Context) (TerminalGreeting, error) {
 	before, err := attachment.runtime.ObserveClient(ctx)
 	if err != nil {
@@ -82,7 +81,7 @@ func (attachment *TerminalAttachment) Greeting(ctx context.Context) (TerminalGre
 	b, bErr := paneForeground(processinfo.PID(after.PanePID))
 	greeting := TerminalGreeting{AttachedClients: after.AttachedClients, PaneID: after.PaneID}
 	if before.PaneID == after.PaneID && before.PanePID == after.PanePID && aErr == nil && bErr == nil && a != nil && b != nil && processinfo.SameObservation(*a, *b) {
-		if foreground, found := agentruntime.ClassifyForeground(attachment.profiles, *b); found {
+		if foreground, found := agentruntime.ClassifyForeground(*b); found {
 			greeting.Foreground = &foreground
 		}
 	}

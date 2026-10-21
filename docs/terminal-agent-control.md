@@ -1,5 +1,11 @@
 # terminal status and control
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 [non-native terminal observation](terminal-observation.md) owns the status facts,
 the observed screen regions and their limits, provider classification,
 guarded-send admission and the terminal wait states. this document keeps
@@ -74,7 +80,6 @@ provider's state.
 ```text
 terminal target = {identityToken, paneId} // machine + tmuxId supplied by routing
 session += {terminalStatus: TerminalStatus}
-session.conversation? = Conversation // recorded native identity only, no runtime
 ```
 
 [observation §2](terminal-observation.md#2-capability-and-wire-contract) owns
@@ -84,15 +89,8 @@ once at ingress. every member is required and non-null; the former
 `{state, source}` shape is rejected.
 retain existing `activePaneId`, foreground `agent?`, connection and account facts;
 do not introduce a second pane/provider identity or per-action capability map.
-native `ConversationRuntime`, status and methods remain on explicit native
-operations. ordinary inventory makes no helper status/history calls. metadata
-does not establish what a terminal displays, change status, or enable controls.
-keep native status validation separate. sessions never imports its higher-level
-observer. preserve metadata-only claude identity projection from its validated
-registration and codex's recorded identity; neither requires helper calls.
-inventory/create never fabricate native methods or turns. explicit native
-resolution obtains its runtime through native inspect; captured native
-references keep their exact turn.
+sessions never imports its higher-level observer. no provider-session or
+conversation identity is projected or used for controls.
 
 one sample serves inventory, inspect and guarded send:
 
@@ -291,8 +289,7 @@ reject. this remains terminal delivery, with no atomic provider-admission claim.
 ordinary terminal selectors/ref route inspect/read/send/text/keys/wait/stop/close
 to these terminal operations. remove `--terminal` from read/stop; retain
 `start --terminal` and its existing shell-creation semantics.
-`--history`, `--input` and `--queue` reject on terminal targets. native targets
-retain their existing flags and unavailable-capability semantics. `text` remains
+`--history`, `--input`, `--queue` and native targets reject before effects. `text` remains
 distinct from guarded send. stdout/json and exit codes distinguish written from
 unknown; unknown/refusal/timeouts are nonzero. no native acceptance wording.
 close exits zero only for `interrupt:written,terminal:closed`; a partial result
@@ -302,21 +299,10 @@ the captured target kind selects the expected response decoder before dispatch;
 reject opposite-kind receipts/status rather than changing interpretation on return.
 terminal routes return `200` with declared bodies; deletion retains `204`.
 
-terminal reference = existing opaque machine/tmuxId/identityToken plus `paneId`;
-it contains neither captured agent PID nor native conversation. native-only
-references retain their existing conversation schema and contain no terminal.
-reject old mixed references; do not add another codec or compatibility reader.
-[naming](automatic-session-names.md) owns selector grammar/typed handles; its
-terminal selectors must not implicitly become conversation selectors. this plan
-supersedes its command routing table: terminal handles select info/enter/read/send/
-text/keys/wait/stop/close/shell/group; conversation handles select native
-inspect/read/send/wait/stop, while direct native ids select read/send/wait/stop.
-handle-based inspect is specified
-in [jarvis targeting](jarvis-orchestration.md#agent-use-and-targeting) and
-[native interaction](native-agent-observation.md). conversation handles explicitly select
-native identity, never whichever terminal happens to contain it. terminal inspection
-stays an internal client operation plus the declared api, surfaced only by
-`skid info HANDLE --explain` ([output](agent-control-ux.md#selection-identity-and-results));
+terminal reference = `{machine,tmuxId,identityToken,paneId}`. all are required;
+conversation-bearing refs reject. terminal handles select info/enter/read/send/
+text/keys/wait/stop/close/shell/group. info --explain owns sampled diagnostics;
+
 add no public terminal inspect command.
 root integrates overlapping files serially, with one grammar in the final release;
 no selector redesign or compatibility alias is implemented in this slice.
@@ -327,7 +313,6 @@ is bounded by the monotonic remaining deadline. the cli supplies the defaults;
 the client validates the state against the captured target kind before polling.
 [observation §5](terminal-observation.md#5-controls-and-diagnostic-api) defines
 the terminal states and their matching; a sample that does not match continues.
-native-only waits retain idle/blocked/done/failed/stopped.
 unavailable-source samples return an unavailable error.
 active-pane selection change, pane destruction or session replacement ends target_changed;
 foreground exit/restart/resume within the same pane remains the same terminal
@@ -336,36 +321,15 @@ not completed work; automation must inspect its task's actual result separately.
 terminal wait result is `{outcome:matched|timeout|target_changed,target:<captured-ref>,
 terminalStatus?}`; timeout retains the last successful status. only matched exits
 zero and requires a matching status. omit status only before any successful sample.
-native wait retains its existing result schema; no new wait service.
+no native wait schema or new wait service remains.
 
-## 5. retained native capability and adjacent work
+## 5. account quota and independent provider APIs
 
-retain native adapter methods, helper pin, provider configuration, exact-target
-validators, explicit conversation endpoints/cli targeting and creation behavior.
-retain creation-time association metadata for its current consumers. manual
-track/untrack/forms/routes are being removed independently; never restore them.
-ordinary terminal references never resolve through a recorded association.
-remove native method gating from terminal cards and shortcuts, not the native
-capability implementation. this is the explicit preservation exception requested
-by the user; no copied old controller, dormant fallback tree or speculative
-reactivation framework. a future terminal/native integration requires supported
-current-selection evidence and a new reviewed capability contract.
-remove the former session-native compound-close controller with its route; its
-provider stop adapter remains. explicit native stop and terminal deletion remain
-separate operations, never an automatic composite selected from session metadata.
-
-[reply notifications](reply-notifications.md) owns `r`/`replies`/viewer deletion,
-notification stores, colors and visit policy. do not implement those changes here.
-the user approved replacing native-reply claims with terminal `ready` attention.
-that revised contract follows this exact terminal and foreground evidence after
-`/resume`; it never claims native work identity/finality. both implementations
-must still qualify their combined lifecycle and content before release. terminal
-primitives and notification client slices remain separate owners.
-
-the naming plan owns automatic titles/handles; titles never become status evidence.
-its exact-lifetime deletion change is shared with this plan: implement once at
-`sessions`/`tmux`, reuse from both, and remove old name authority once. startup
-repairs and native history/notification qualification retain their own issues.
+only read-only codex account quota remains native inside skid. it carries no
+conversation identity, history, input, results or stop/wait operation. foreground
+provider/account detection remains independent from terminal screen state.
+provider-runtime's public conversation/cognitive/archive APIs serve other
+consumers; this skid removal does not delete those independent library APIs.
 
 ## 6. content contract
 
@@ -400,8 +364,7 @@ desktop s/x appear in agents and terminal/group views; mobile equivalents appear
 on cards and terminal screens. availability never depends on agent presence or
 configured profiles; retain freshness checks and explicit failure feedback.
 remove routine `conversation not tracked`, tracking chips and native-method gates.
-secondary details may say `recorded native conversation; may differ from terminal`;
-never claim current identity or recommend manual tracking as repair.
+remove provider-session/conversation fields from secondary details too.
 
 [observation §6](terminal-observation.md#6-content-attention-and-filtering) owns
 presentation precedence, copy, tone, stale and accessibility treatment;

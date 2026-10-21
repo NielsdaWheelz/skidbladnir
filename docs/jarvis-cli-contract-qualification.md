@@ -1,14 +1,19 @@
+historical qualification only. [terminal-only control](terminal-only-control.md)
+and jarvis worker v9 supersede native targets and per-launch provider overrides
+below. current [qualification](terminal-only-control-qualification.md) and the
+separate installed service-access blocker own remaining work.
+
 # jarvis compatibility with the current skid cli
 
 recorded 2026-10-02; high priority; repair belongs to jarvis. this local record
-tracks the dependency of the [orchestration plan](../jarvis-orchestration.md),
+tracks the dependency of the [orchestration plan](jarvis-orchestration.md),
 with installed adapter cutover separate from current-source qualification.
 
 source status: skid's compact cli, native-handle capture and compound start are
 implemented. strict public cli/HTTPS and adapter checks pass. isolated darwin
 stock-provider launch/input, lost acknowledgements and changed-pane control pass;
 39 actual postgres/process-crash cases and eleven service/stock-cli/postgres observation checks
-pass. the [audit defects](../jarvis-orchestration.md#adversarial-review) are corrected.
+pass. the [audit defects](jarvis-orchestration.md#adversarial-review) are corrected.
 installed exact-artifact compatibility remains `NOT_RUN` and keeps this record
 open. linux stock-provider controls, native capture and actual cognitive wait
 integration pass; external delivery/production activation remain unqualified.
@@ -28,18 +33,18 @@ flags does not repair the boundary or provide the accepted short-target interfac
 baseline evidence, not current source: jarvis at `cc4873f`, `src/jarvis/agent_tools.py` lines 72–73,
 181–217: closed models omit `terminalStatus`, `nameMode`, `terminalHandle`,
 process identity and the current conversation shape. compare
-[skid session projection](../../internal/fleetclient/response.go) lines 27–66.
+[skid session projection](../internal/fleetclient/response.go) lines 27–66.
 baseline jarvis `agent_control.py` lines 346–357 always supplies `--input peer`;
-[skid validation](../../internal/fleetclient/request.go) lines 156–163 rejects
+[skid validation](../internal/fleetclient/request.go) lines 156–163 rejects
 native input fields on terminal targets. jarvis lines 143–152 turns decoding
 failure after a write into unknown. its normative spec also retains old shapes.
 
 baseline jarvis `agent_tools.py` lines 76–83 requires a `ref` of up to 4096 characters;
 `AgentTerminal` exposes that full ref while omitting existing short handles.
-skid [handles](../../internal/fleetclient/handles.go) exclude pane id from the
+skid [handles](../internal/fleetclient/handles.go) exclude pane id from the
 terminal handle; its resolver captures the current pane per call. baseline
 `inspect` accepted only `--ref`; native short-handle capture now uses the narrow
-cli extension specified in [agent use and targeting](../jarvis-orchestration.md#agent-use-and-targeting).
+cli extension specified in [agent use and targeting](jarvis-orchestration.md#agent-use-and-targeting).
 
 owner scope 2026-10-02: optimize discovery and every control for ordinary agent
 use in the same pr. model targets/results use existing short typed handles and

@@ -843,7 +843,8 @@ func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
 
 // claudeInput reads the ordinary composer's input row and its continuation
 // rows: empty when only a drawn cursor or a dim placeholder follows the
-// prompt. Placeholders are known by their dim style, never by their words.
+// prompt. Placeholders are known by their dim style, never by their words;
+// default-style spaces do not change their visible styling.
 func claudeInput(screen *claudeScreen, chevron, bottom int) composer {
 	for r := chevron + 1; r < bottom; r++ {
 		if !screen.lines[r].blank() {
@@ -865,7 +866,7 @@ func claudeInput(screen *claudeScreen, chevron, bottom int) composer {
 		return composerDraft // the cursor on a typed character
 	}
 	for _, cell := range cells {
-		if !cell.style.dim {
+		if !cell.style.dim && (cell.text != " " || cell.style != (style{})) {
 			return composerDraft
 		}
 	}

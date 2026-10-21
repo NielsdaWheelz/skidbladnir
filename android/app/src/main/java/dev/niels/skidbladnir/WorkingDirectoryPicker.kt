@@ -255,8 +255,6 @@ internal fun completeWorkingDirectoryRequest(
                 ApiErrorCode.SessionIdentityMismatch,
                 ApiErrorCode.ReconnectRequired,
                 ApiErrorCode.TerminalConfigurationUnsupported,
-                ApiErrorCode.AgentTargetStale,
-                ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentInputInvalid, ApiErrorCode.HistoryChanged,
                 -> throw ProtocolDecodeException("directory-listing completion error set")
             }
         }
@@ -463,8 +461,6 @@ internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean = when (this) {
         ApiErrorCode.InternalError,
         ApiErrorCode.ReconnectRequired,
         ApiErrorCode.TerminalConfigurationUnsupported,
-        ApiErrorCode.AgentTargetStale,
-        ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentInputInvalid, ApiErrorCode.HistoryChanged,
         -> false
     }
 }

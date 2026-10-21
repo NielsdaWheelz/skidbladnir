@@ -40,7 +40,7 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, see
 		}
 	}()
 	ref, err := fleetclient.DecodeReference(encodedRef)
-	if err != nil || ref.Conversation != nil {
+	if err != nil {
 		return Result{Err: errors.New("enter requires an exact terminal reference")}
 	}
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {

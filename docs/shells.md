@@ -8,18 +8,15 @@ creates and attaches a home terminal. `N` opens the advanced form.
 new-terminal-here is unavailable during a remote ssh/mosh connection. the older
 red/green evidence here does not qualify those changes.
 
-current launch contract: [the deployment handoff](dev-server-handoff.md)
-selects existing personal accounts and adds `SKIDBLADNIR_SHELL=1` to new terminal
-startup, with final bash/zsh startup integration for bare/account provider
-commands. inherited provider homes and skid launch context are cleared at the
-pane boundary; the existing tmux server and unrelated sessions are unchanged. this supersedes
-provider-environment inheritance below only for new skid terminals. ordinary
-shells keep their existing provider commands, homes, histories and user
-integrations. skid apply owns the guarded shell source installation;
-shared provider maintenance has no skid startup-file prerequisite. inherited
-`SKIDBLADNIR_AGENT` is cleared; only the final provider exec sets it. personal
-claude uses its native unset `CLAUDE_CONFIG_DIR` default. shell readiness remains
-unpromised.
+current launch contract: [terminal-only control](terminal-only-control.md) and
+[terminal continuity](terminal-continuity.md) own ordinary command execution.
+new terminal startup adds `SKIDBLADNIR_SHELL=1` and replaces private inherited
+launch markers. provider home/environment variables remain inherited; normal
+bash/zsh startup, aliases/functions and account wrappers select their settings.
+profile observation metadata never overrides execution. no provider-session
+marker or conversation association is established. skid apply owns guarded shell
+source installation; shared provider maintenance has no skid startup prerequisite.
+shell input readiness remains unpromised without the explicit guarded-input path.
 
 implemented: standalone terminal and new terminal here, following [groups](groups.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected
@@ -169,7 +166,7 @@ table. retain every nonempty profile constraint and the existing config schema;
 do not add arbitrary subsets or a second profile registry. successful host/fleet
 inventories include `profiles:[]` when empty, never omit it or encode null.
 no agent installation is needed for the empty
-case; existing absolute native-control-path admission remains unchanged. creation
+case; the configured quota helper still requires an absolute path. creation
 logging permits an absent launch profile and stays content-free.
 
 ## 4. client ownership and completion

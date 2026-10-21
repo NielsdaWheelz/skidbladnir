@@ -2397,3 +2397,27 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  dummy │ Alias-R │ ctx --
 08|  «f2»dummy │ Alias-Q high │ ctx 7%«/f»
 09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== F78_full_placeholder_default_spaces w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+04|«f»─{80}«/f»
+05|❯⍽«d»Try«/» «d»"dummy«/» «d»example«/» «d»prompt"«/»
+06|«f»─{80}«/f»
+07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== N63_full_draft_among_dim_default_spaces w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽«d»Try«/» «d»"«/»d«d»ummy«/» «d»example«/» «d»prompt"«/»
+06|«f»─{80}«/f»
+07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== N63b_full_placeholder_reverse_space w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽«d»Try«/»«i» «/»«d»"dummy example prompt"«/»
+06|«f»─{80}«/f»
+07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== N63c_full_placeholder_background_space w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽«d»Try«/»«g» «/»«d»"dummy example prompt"«/»
+06|«f»─{80}«/f»
+07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»

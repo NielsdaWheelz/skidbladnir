@@ -1,5 +1,11 @@
 # terminal usage and consolidated profile disclosure
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 2026-10-20: [claude usage selection](claude-usage-selection.md) amends same-host
 selection below; its [isolated qualification](claude-usage-selection.md#qualification)
 passes. earlier qualification applies to its recorded source.
@@ -151,7 +157,7 @@ it becomes codex-only:
 
 ```text
 {machine:{handle,platform}, observedAt, profiles:[{
-  key, label, provider:"Codex", historyScope?,
+  key, label, provider:"Codex", accountScope?,
   readState:"ok"|"unavailable",
   report?:{reportedAt, fiveHour?:{usedPercent,resetsAt?},
                       sevenDay?:{usedPercent,resetsAt?}}
@@ -179,7 +185,7 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
    receipt together.
    compare no remote `observedAt`/`reportedAt` values across hosts.
 3. claude candidates derive from current admitted successful inventories, never
-   from table-filtered rows or a new cache. require current registered
+   from table-filtered rows or a new cache. require current foreground-observed
    `agent.profile` to match that host's configured claude descriptor. historical
    `launchProfile`, cwd and provider presence are insufficient. unknown-profile
    terminals may transport usage but supply no profile row.
@@ -203,10 +209,11 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
 7. codex candidates retain successful reports by machine handle/full local profile
    descriptor. failures preserve original times and mark them stale. success
    replaces the whole report; omissions clear that host's old fields. discard
-   descriptor/identity changes. select the latest received report with at least
-   one currently displayable window, even if that latest eligible report is stale;
-   do not rank an older healthy report ahead of it. known reset expiry omits that
-   window. [desktop usage](desktop-usage.md) owns stale presentation; preserve
+   descriptor/identity changes. select one whole fresh native report with at least
+   one currently displayable window; receipt order breaks ties. otherwise select
+   fresh attributable terminal evidence; without either, show no numeric quota.
+   preserve stale/expired diagnostics, never a third numeric source. known reset
+   expiry omits that window. [desktop usage](desktop-usage.md) owns stale presentation; preserve
    host-clock/monotonic age math. access/identity rejection follows the common
    admission rule.
    failure diagnoses only profiles declared on that host or still unknown there;
@@ -215,7 +222,7 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
    in the closed configured order. native declarations can supply codex rows even
    without a successful inventory. join only equal key/provider; do not compare
    host-local
-   `historyScope` as account identity. retain declarations through ordinary outage.
+   `accountScope` as account identity. retain declarations through ordinary outage.
    show `no agent profiles` only when every paired host has supplied a full
    inventory declaration and their retained union is empty. while initial full
    declarations are in flight and no profiles are known, show checking; after

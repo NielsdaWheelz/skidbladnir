@@ -55,14 +55,11 @@ def main():
         environment = dict(os.environ, UV_PYTHON_INSTALL_DIR=str(out / "python"), UV_PYTHON_BIN_DIR=str(scratch / "bin"))
         run(builder, "python", "install", "--no-bin", python_target, env=environment)
         requirements = out / "requirements.txt"
-        run(builder, "export", "--project", str(source), "--frozen", "--no-dev", "--extra", "claude-sdk", "--no-emit-project", "--no-header", "--no-annotate", "--output-file", str(requirements), stdout=subprocess.DEVNULL)
+        run(builder, "export", "--project", str(source), "--frozen", "--no-dev", "--no-emit-project", "--no-header", "--no-annotate", "--output-file", str(requirements), stdout=subprocess.DEVNULL)
         run(builder, "pip", "install", "--target", str(out / "site-packages"), "--python-version", PYTHON,
             "--python-platform", target, "--only-binary", ":all:", "--require-hashes", "-r", str(requirements))
         # source is an immutable import root, rather than an editable checkout or runtime build.
         shutil.copytree(source / "src" / "provider_runtime", out / "site-packages" / "provider_runtime")
-        # Native reads use only the SDK's session-file APIs. Its 259 MB bundled
-        # provider executable is neither installed nor used by skid.
-        shutil.rmtree(out / "site-packages/claude_agent_sdk/_bundled")
         for directory in out.rglob("__pycache__"):
             shutil.rmtree(directory)
         for path in out.rglob("*"):
@@ -75,7 +72,7 @@ def main():
                            if path.is_dir() and not path.is_symlink())
         manifest = {"commit": COMMIT, "uv": UV, "python": PYTHON, "interpreter": str(interpreter.relative_to(out)),
                     "lockSha256": hashlib.sha256((source / "uv.lock").read_bytes()).hexdigest(),
-                    "requirementsSha256": hashlib.sha256(requirements.read_bytes()).hexdigest(), "excluded": ["claude_agent_sdk/_bundled"]}
+                    "requirementsSha256": hashlib.sha256(requirements.read_bytes()).hexdigest()}
         (out / "runtime.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
         # Dependency caches and wheels may carry private directory modes. The
         # complete release tree has canonical modes, independent of that cache

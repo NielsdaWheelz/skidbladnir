@@ -1,5 +1,10 @@
 # standalone generalization: implementation contract
 
+2026-10-21 amendment: [terminal-only control](terminal-only-control.md) removes
+conversation discovery/controls and hooks below, replaces `historyScope`
+with `accountScope`, and narrows the packaged helper to quota. ordinary commands
+and existing terminal observation remain. the earlier native clauses are historical.
+
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
 reviewed. [qualification](generalization-qualification.md) separates passing

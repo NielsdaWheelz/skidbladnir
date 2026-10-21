@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -19,11 +18,8 @@ type InventoryRow struct {
 	PanePID, AttachedClients int
 	Title, CWD, Command      string
 	LocalSession             SessionMetadata
-	PaneRegistration         string
 }
-type SessionMetadata struct{ Character, AutoName, Group, Profile, Objective, Conversation string }
-
-var inventoryTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]+$`)
+type SessionMetadata struct{ Character, AutoName, Group, Profile, Objective string }
 
 func (client Client) ReadInventory(ctx context.Context, expected ServerIdentity) (InventoryCapture, error) {
 	return client.readInventory(ctx, expected, "")
@@ -93,10 +89,9 @@ func (client Client) readInventory(ctx context.Context, expected ServerIdentity,
 	var metadata strings.Builder
 	for _, row := range capture.Rows {
 		branch := commandText("display-message", "-p", "-l", "M"+row.ID)
-		for _, option := range []string{"@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64", "@skid_conversation_b64"} {
+		for _, option := range []string{"@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64"} {
 			branch += " ; " + commandText("show-options", "-q", "-t", row.ID, option)
 		}
-		branch += " ; " + commandText("if-shell", "-F", "-t", row.ID, "#{==:#{pane_id},"+row.PaneID+"}", commandText("show-options", "-pq", "-t", row.PaneID, "@skid_agent_runtime"), "")
 		branch += " ; " + commandText("display-message", "-p", "-l", "N")
 		metadata.WriteString(commandText("if-shell", "-F", inventorySessionExists(row.ID), branch, commandText("display-message", "-p", "-l", "D"+row.ID)) + " ; ")
 	}
@@ -135,17 +130,16 @@ func (client Client) readInventory(ctx context.Context, expected ServerIdentity,
 				return InventoryCapture{}, WorkspaceProtocolInvalid
 			}
 			switch option {
-			case "@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64", "@skid_conversation_b64", "@skid_agent_runtime":
+			case "@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64":
 			default:
 				return InventoryCapture{}, WorkspaceProtocolInvalid
 			}
 			options[option] = ""
-			if option == "@skid_agent_runtime" && inventoryTokenPattern.MatchString(value) || option != "@skid_agent_runtime" && tmuxCommandTokenPattern.MatchString(value) {
+			if tmuxCommandTokenPattern.MatchString(value) {
 				options[option] = value
 			}
 		}
-		row.LocalSession = SessionMetadata{Character: options["@skid_character"], AutoName: options[AutoNameOption], Group: options[GroupOption], Profile: options["@skid_profile"], Objective: options["@skid_objective_b64"], Conversation: options["@skid_conversation_b64"]}
-		row.PaneRegistration = options["@skid_agent_runtime"]
+		row.LocalSession = SessionMetadata{Character: options["@skid_character"], AutoName: options[AutoNameOption], Group: options[GroupOption], Profile: options["@skid_profile"], Objective: options["@skid_objective_b64"]}
 		rows = append(rows, row)
 	}
 	if len(output) != 0 {

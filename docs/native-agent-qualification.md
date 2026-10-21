@@ -123,8 +123,8 @@ passed signer, package/version, archive and digest checks; both host binaries
 reproduced byte-for-byte from the clean exact source. published tag/immutability
 and hosted verification also passed. this does not establish deployment.
 native Claude input remains
-unavailable under [recipient qualification](issues/native-message-qualification.md);
-[background stop](issues/restoration-native-control.md) retains its separate
+unavailable under [recipient qualification](native-message-recipient-qualification.md);
+[background stop](restoration-native-control-qualification.md) retains its separate
 source/fleet evidence. release pins identify sources and digests, not deployment.
 [deployment handoff](dev-server-handoff.md) owns installed-fleet evidence.
 the human native-output viewer and unread qualification are retired with that

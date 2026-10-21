@@ -5,6 +5,16 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## terminal-only controls — source implemented, live acceptance partial
+
+[the approved contract](terminal-only-control.md) removes native conversation
+control and association from skid and jarvis workers, keeps read-only codex quota
+with terminal fallback, and restores ordinary personal launch commands.
+[qualification](terminal-only-control-qualification.md) records cross-repository
+source, reviewed/deleted red/green checks, signed local candidates and
+[remaining live cells](issues/terminal-only-live-qualification.md). installed cutover
+is separate; the jarvis service-state access issue remains a blocker.
+
 ## terminal shift — implemented and qualified
 
 2026-10-21: [the spec and qualification](terminal-shift.md#qualification-2026-10-21)
@@ -241,8 +251,9 @@ Discord delivery and production activation remain separate.
 open qualification:
 [partial launch evidence](issues/jarvis-launch-receipts.md),
 [readiness](issues/jarvis-launch-readiness.md),
-[jarvis cli compatibility](issues/jarvis-cli-contract.md) and
-[option ownership/provider behavior](issues/jarvis-launch-options.md).
+the [v9 qualification](terminal-only-control-qualification.md). earlier
+[cli compatibility](jarvis-cli-contract-qualification.md) and
+[option ownership](jarvis-launch-options-qualification.md) evidence is historical.
 jarvis owns durable asynchronous observations and decides when to notify the
 owner. after the original owner turn closes, worker events confer read/integrate/
 notify authority only; further writes require new current owner authority.
@@ -355,8 +366,8 @@ separate; stock launch, provider-owned names and existing bindings are preserved
 presentation-owned visits; its historical results remain source-attributed.
 [merged phone naming composition](issues/reply-notifications-phone-composition.md)
 retains its unperformed naming rows; the new attention/visit portions passed.
-[claude history completeness](issues/claude-history-completeness.md) remains an
-independent native-provider issue. [terminal qualification](terminal-agent-control-qualification.md)
+[claude history completeness](claude-history-completeness-qualification.md) is
+historical; skid no longer reads provider history. [terminal qualification](terminal-agent-control-qualification.md)
 records the remaining detector/input/deletion and fleet boundaries.
 
 ## skid-only cutover
@@ -378,7 +389,7 @@ ordinary upstream npm plus its owning daemon, existing recorded bindings and nat
 operations. the selected-view fork/build and human unread/viewer paths are retired.
 ordinary status/input is terminal-based; explicit native history/control remains separate.
 experimental queueing is unavailable; Claude native input remains unavailable
-following [failed recipient qualification](issues/native-message-qualification.md).
+following [failed recipient qualification](native-message-recipient-qualification.md).
 
 manual conversation association is removed from source: no mobile/browser form,
 cli track/untrack command or host mutation route remains. normal remote-new
@@ -414,8 +425,8 @@ three-host coexistence and the recorded fleet/phone cutover checks, including
 arch prior-generation rollback/restore, opposite-product repeat-apply, both apk
 reinstalls and exact probe cleanup. [live qualification](dev-server-handoff.md#qualification-and-remaining-work)
 states the evidence and its limits; prior-conversation resumption is not claimed.
-[installed-fleet native background-job stop](issues/restoration-native-control.md) remains
-`NOT_RUN`, separate from namespace separation. broader ux waivers below remain.
+[installed-fleet native background-job stop](restoration-native-control-qualification.md)
+was not qualified on that source and is now outside skid capabilities. broader ux waivers below remain.
 
 ## implemented scope
 

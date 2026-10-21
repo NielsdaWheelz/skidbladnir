@@ -2,6 +2,8 @@ package dev.niels.skidbladnir
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -163,3 +165,21 @@ private class UniqueJsonObjectKeyScanner(private val encoded: String) {
         return true
     }
 }
+
+/** protocol records consistently omit absent values; null is never another encoding of absence. */
+internal fun JsonElement.requireNonNullValues() {
+    when (this) {
+        JsonNull -> throw kotlinx.serialization.SerializationException("protocol field is null")
+        is JsonObject -> {
+            for (field in listOf("pid")) {
+                this[field]?.let { value ->
+                    require(value is JsonPrimitive && !value.isString && value.content.matches(Regex("[0-9]+")))
+                }
+            }
+            values.forEach { it.requireNonNullValues() }
+        }
+        is JsonArray -> forEach { it.requireNonNullValues() }
+        is JsonPrimitive -> Unit
+    }
+}
+internal fun nonNullJsonObject(encoded: String): JsonObject = strictJsonObject(encoded).also { it.requireNonNullValues() }

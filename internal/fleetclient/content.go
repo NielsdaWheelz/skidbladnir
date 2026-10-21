@@ -76,7 +76,7 @@ func RecoveryNotice(peer Peer) (text string, failure bool) {
 }
 
 // ErrorMessage is shared by command output and the desktop browser.
-func ErrorMessage(failure Failure, request Request, native bool) string {
+func ErrorMessage(failure Failure, request Request) string {
 	if (request.Operation == "start" || request.Operation == "shell") && failure.Target != "" {
 		ref, _ := DecodeReference(failure.Target)
 		return "terminal was created (" + ref.Handle() + "); creation follow-up failed. refresh to inspect it."
@@ -90,9 +90,6 @@ func ErrorMessage(failure Failure, request Request, native bool) string {
 		}
 		if request.Operation == "start" || request.Operation == "shell" {
 			return "could not confirm terminal creation. refresh before taking another action."
-		}
-		if native {
-			return "could not confirm the native request. inspect the conversation before trying again."
 		}
 		if request.Operation == "close" {
 			if request.TerminalOnly {
@@ -120,10 +117,6 @@ func ErrorMessage(failure Failure, request Request, native bool) string {
 		return "send unavailable for this screen. open the terminal or use text/keys."
 	case "TerminalUnavailable":
 		return "terminal action unavailable. open the terminal or refresh before trying again."
-	case "AgentTargetStale":
-		return "the native conversation changed. inspect it before trying again."
-	case "AgentUnavailable":
-		return "this native action is unavailable for the selected conversation."
 	default:
 		return failure.Code + " (" + failure.Dispatch + ")"
 	}
@@ -131,13 +124,7 @@ func ErrorMessage(failure Failure, request Request, native bool) string {
 
 func WriteText(operation string, receipt WriteResult) string {
 	if receipt.Outcome == "unknown" {
-		if receipt.Method == "native" {
-			return "could not confirm native interruption. inspect the conversation before trying again."
-		}
 		return "could not confirm terminal input. inspect the terminal before trying again."
-	}
-	if receipt.Method == "native" {
-		return "native work: " + receipt.Outcome + "; pending input may remain."
 	}
 	switch operation {
 	case "stop":

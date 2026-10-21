@@ -1,5 +1,11 @@
 # explicit native conversations
 
+2026-10-20: [terminal-only control](terminal-only-control.md) supersedes native
+conversation targeting, association and controls in this document. only terminal
+refs remain. quota uses `accountScope` and fresh native-account evidence, then
+fresh attributable terminal evidence, otherwise unknown. earlier qualification
+retains its recorded source; it is not current capability evidence.
+
 2026-09-29 · stock-provider source qualified; no installed-fleet acceptance.
 [qualification](native-agent-qualification.md) owns evidence. this contract
 supersedes selected-view registration, the codex fork and native user queueing. terminal and conversation are separate
@@ -214,7 +220,7 @@ this does not prove success.
 enumerate independently of newest/running work, ≤128 unique ids per page in
 native history order. helper cursors anchor to history identity; HistoryChanged
 restarts enumeration idempotently. unavailable/incomplete history is never an
-empty success. [claude completeness](issues/claude-history-completeness.md)
+empty success. [claude completeness](claude-history-completeness-qualification.md)
 records the unresolved SDK boundary limitation. this explicit native capability
 is retained under terminal control's preservation exception; clients do not poll
 it for notifications. historical final text cannot establish current work or

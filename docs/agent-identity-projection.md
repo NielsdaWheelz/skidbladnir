@@ -1,4 +1,9 @@
-# Optional agent runtime identity
+# optional agent runtime identity
+
+historical registration contract. [terminal-only control](terminal-only-control.md)
+retires this subsystem entirely: no hook, registration metadata reader/writer or
+provider-session projection remains. [agent control](agent-control.md) owns current
+foreground process/account observation; it supplies no conversation association.
 
 this document owns optional process-lifetime registration. [agent control](agent-control.md)
 owns the current foreground target, sampled status and controls. only claude

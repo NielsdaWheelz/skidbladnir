@@ -205,8 +205,6 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.createShell(writer, request)
 	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/group"):
 		gateway.setSessionGroup(writer, request)
-	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/conversations/"):
-		gateway.conversationOperation(writer, request)
 	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.Contains(request.URL.Path, "/terminal/"):
 		gateway.terminalOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
@@ -843,8 +841,6 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteDirectorySearches
 	case strings.HasPrefix(path, "/v1/terminal-contexts/"):
 		return logging.RouteTerminalContexts
-	case strings.HasPrefix(path, "/v1/conversations/"):
-		return logging.RouteConversations
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/terminal/"):
 		return logging.RouteTerminalControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):

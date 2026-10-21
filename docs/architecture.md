@@ -16,12 +16,12 @@ targets, capture mechanics, rendered reads, exact terminal effects and wait's
 polling loop. [terminal attention](reply-notifications.md) owns the existing
 transition predicates. [native notifications](native-notifications.md) supersedes
 its device-local reducer and visit clauses: the active hub owns readiness, each device
-owns acknowledgement and native presentation. [native interaction](native-agent-observation.md)
-owns explicit conversation targets and provider capabilities; native failure
-never selects terminal operations. stop retains the terminal; close reports
-interruption and terminal closure separately.
-[qualification](native-agent-qualification.md) records source, installed-host
-and phone evidence with their limits.
+owns acknowledgement and native presentation. [terminal-only control](terminal-only-control.md)
+owns the terminal capability boundary and read-only account quota. stop retains
+the terminal; close reports interruption and terminal closure separately.
+[qualification](terminal-only-control-qualification.md) records current source
+evidence and remaining acceptance. preceding
+[native qualification](native-agent-qualification.md) remains historical.
 [terminal qualification](terminal-agent-control-qualification.md) records the
 terminal cutover separately from current-main release composition, and then the
 terminal observation cutover.
@@ -57,7 +57,7 @@ qualification; [native usage](profile-usage.md) owns codex account reads.
 background observation and device acknowledgement. source is implemented;
 [qualification](native-notifications-qualification.md) records verified boundaries
 and remaining release, sleep and deployment work.
-[jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
+[jarvis orchestration](jarvis-orchestration.md) owns profile selection,
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost
 tmux workspaces as fresh shells, its private recipe and passive recovery facts.
@@ -87,8 +87,8 @@ feature plans; those recipes do not recreate removed gates.
 
 [automatic session names and public handles](automatic-session-names.md) owns
 one canonical tmux name, automatic/manual ownership, typed live selectors and
-their acceptance. names describe sessions; exact lifetimes and native references
-target operations.
+their acceptance. names describe sessions; captured terminal references retain
+exact lifetimes and panes for operations.
 
 ## 1. Philosophy
 
@@ -99,15 +99,10 @@ target operations.
   transient metadata is a kernel-validated ssh/mosh connection registration. it records
   association, never session lifetime, status, or history.
 - **providers own execution and history.** skid observes foreground process
-  presence separately from a captured native conversation, and offers bounded
-  reads and explicit controls.
-  ordinary status and controls use terminal evidence and input; explicit native
-  status/history/results and qualified controls use a short-lived helper.
-  codex native commands target an explicitly recorded conversation; foreground
-  terminal selection never changes that target.
-  explicit terminal reads/text/keys remain separate. no history is copied into
-  a skid store, and no helper
-  owns the provider's lifetime. identity hooks never publish status or content.
+  provider and account identity, bounded rendered reads and explicit terminal
+  controls. no provider history or conversation identity enters a skid store.
+  a short-lived read-only quota helper observes existing account daemons; it
+  owns no provider lifetime and dispatches no conversation operations.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
   capability over one local tmux server. android composes enrolled gateways; an
   attachment still means one process, one screen, and one draft shared with
@@ -115,7 +110,7 @@ target operations.
 
 from the android phone, the user can see every tmux session on enrolled
 computers in one collection, with machine identity,
-optional exact foreground-agent identity, inferred terminal status and recorded native identity;
+optional foreground-provider/account identity and inferred terminal status;
 create on an explicit machine and directory using terminal or that host's
 allowlisted agent profiles; create an independent terminal from a session's
 current host/cwd/group; attach the same stock TUI that host's laptop sees; type, paste, and
@@ -137,7 +132,7 @@ machine does not block or authorize action against another.
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | auth | independent256-bit bearer per device; hosts store sha256 verifiers; signed routing and one-use five-minute signed invitation; exact machine header remains required |
 | profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; sparse machine overrides; terminal remains a separate launch choice |
-| agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
+| agent control | foreground provider/account observation and terminal controls under [agent control](agent-control.md); read-only account quota; no conversation hooks, targeting or execution supervisor |
 | state | tmux owns live terminals; providers own history/execution; fleet owns private identity/authority and replaceable signed caches; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
@@ -156,13 +151,12 @@ normal meaning. aliases, functions, environment and provider settings remain the
 user's. skid adds no provider flags, account variables, plugin or daemon startup.
 only its private inherited launch markers are removed.
 
-provider detection and exact native targets remain separate from launch labels.
-readable live process/account evidence must match one configured provider/home;
-missing or ambiguous evidence is unknown. explicit configured claude identity
-registration remains content-free and optional. native reads use the installed
-pinned helper and already-running daemons; native failure never selects terminal
-writes. quota alone has the approved native-first, attributable-terminal source
-selection. the same logical profile denotes one account across machines.
+provider/account detection remains separate from launch labels. readable live
+process/account evidence must match one configured provider/home; missing or
+ambiguous evidence is unknown. quota uses a pinned read-only helper and existing
+daemons, then attributable terminal evidence when native evidence is unavailable
+or stale. no fresh source means unknown. the same logical profile denotes one
+account across machines.
 
 ### Product language
 
@@ -264,7 +258,7 @@ failed-machine, notification-store and fresh workspace-recovery notices remain
 outside every view. recovery adds no controls or saved client state.
 
 - One card anchors to the session's current window and that window's active
-  pane. cwd, command, foreground process, and runtime registration come
+  pane. cwd, command and foreground process come
   from that anchor. a foreground ssh/mosh transport replaces local execution
   facts with a client-resolved remote context, or an explicit unknown context.
   the source still owns attachment and every control.
@@ -273,16 +267,14 @@ outside every view. recovery adds no controls or saved client state.
 - **Card facts:** machine label, exact local tmux id, tmux name, an opaque
   server-lifetime identity token, required dwarf icon portrait, launch profile
   (`@skid_profile` when present), optional exact foreground agent provider/PID,
-  pane id/start identity; separate recorded native conversation identity and terminal status; for a proven claude
-  registration, runtime profile and provider session id; independently observed
-  explicit claude name; objective (optional; URL-safe base64 in
+  pane id/start identity, observed account profile and terminal status; objective (optional; URL-safe base64 in
   `@skid_objective_b64`, decoded by the gateway), optional group label
   (`@skid_space_b64`), pane cwd and active command when tmux exposes them,
   attached-client count. `agent` is optional; when present its provider, pid,
   pane/start identity are required. ordinary `terminalStatus` is inferred;
-  optional `terminalUsage` carries only recognized local claude display percentages
+  optional `terminalUsage` carries recognized local provider display percentages
   under [terminal usage](terminal-usage.md), from the same guarded capture;
-  `conversation` is identity metadata only. no flat activity remains.
+  no conversation metadata or flat activity remains.
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
@@ -298,8 +290,7 @@ outside every view. recovery adds no controls or saved client state.
   [terminal attention](reply-notifications.md) owns dismissal, visit boundaries
   and durable memory across uncertain observations. the device-local v2 owner
   remembers non-idle until idle, and actual output presentation acknowledges
-  ready while preserving armed work. no human reply viewer or read receipt. recorded
-  native identity is secondary and may differ from the terminal. every card shows
+  ready while preserving armed work. no human reply viewer or read receipt. every card shows
   machine context. the accepted roster puts the dwarf beside status when space
   permits and profile/host/path in a full-width wrapping footer. the flat
   needs-input queue adds one quiet group-context line; only `all` retains group
@@ -309,8 +300,7 @@ outside every view. recovery adds no controls or saved client state.
   one, and no profile for a pane without an agent, whose status already reads
   `terminal`. It never substitutes launch
   profile for missing runtime profile. Cwd abbreviation never changes its
-  complete spoken value. the tracked conversation id is explicit; foreground
-  provider session name and PID stay off the card. a tap opens the terminal;
+  complete spoken value. a tap opens the terminal;
   change group, send interrupt and both confirmed closures sit behind the
   card's overflow and are mirrored as TalkBack custom actions.
 - Character normalization runs under the gateway's one mutation lock. Valid assignments are retained. Missing or
@@ -325,30 +315,20 @@ outside every view. recovery adds no controls or saved client state.
   only a freshly recognized local provider is classified, from bounded
   current-screen regions; successful ambiguity is unknown with source terminal;
   a failed stage is unavailable. terminal status neither proves task completion
-  nor supplies native admission. it is distinct from inventory freshness and
+  nor supplies execution authority. it is distinct from inventory freshness and
   liveness; each effect revalidates its exact target.
 - a vanished session reconciles out. failed required tmux
   snapshot collection fails that machine's request; optional agent-observation
   failure omits identity or reports unavailable status, never fabricated facts.
-- Laptop-created sessions use the same current-pane observation and hook
-  registration path. Their character is normalized as above; absent hooks,
-  unnamed provider sessions, raw launches, and unproven profiles are successful
+- laptop-created sessions use the same current-pane observation
+  path. their character is normalized as above; raw launches and unproven
+  profiles are successful
   omission, never guessed.
 - Codex home labels are sampled from the foreground process's native
   environment and matched to the destination host's configured account homes.
   launch profile is historical and cannot determine the current account.
 - status carries no transition time or age. only top-level inventory freshness
   carries a clock; android does not locally decay the sampled status.
-- The agent registration is exactly
-  `v1:<pid>:<kernel-start-id>:<Codex|Claude>:<profile-key|->:<session-id-b64url>`
-  in pane option `@skid_agent_runtime`. Inventory accepts its registered fields
-  only when provider, PID, start id, pane, and foreground origin match the same
-  observation used for optional identity. Stale, malformed, nested, ambiguous, or
-  wrong-provider registrations are ignored and never repaired. Provider ids and
-  names are bounded facts, never authority. a conversation id addresses native
-  history only with its configured profile/scope. only claude
-  registration supplies projected profile/provider-session id; codex's old
-  hook registration is not used for native binding or projected identity.
 - all/group grid order: named groups in ascii-folded/exact utf-8 label order,
   then unassigned; under the accepted roster only `all` renders headings.
   sessions within each group sort by case-folded/exact machine label,
@@ -414,7 +394,7 @@ phase/cause pair; savedAt is the last confirmed recipe's capture time.
 owns its exact schema and passive copy. failed recovery preserves ordinary live inventory;
 clients never use the saved recipe as inventory or revive old terminal authority.
 
-### agent observation and identity hooks
+### agent observation
 
 [terminal observation](terminal-observation.md) owns status;
 [terminal control](terminal-agent-control.md) owns bounded reads/controls.
@@ -422,21 +402,10 @@ clients never use the saved recipe as inventory or revive old terminal authority
 using one focused observation per session: sessions captures bounded screen
 regions of the exact target and revalidates the foreground it sampled
 ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
-then a pure provider classifier interprets them. ordinary inventory never calls
-native history/status. enrichment shares one two-second deadline and reuses the
+then a pure provider classifier interprets them. inventory makes no provider
+history/status calls. enrichment shares one two-second deadline and reuses the
 foreground five-second inventory schedule. pressure has its own coalesced polling
 lane.
-
-[identity registration](agent-identity-projection.md) is content-free and bound
-to the exact foreground process lifetime. the explicitly loaded claude plugin
-calls `agent-hook Claude SessionStart`. only a skid provider launch marked
-`SKIDBLADNIR_AGENT=1` may reach input/config admission. its
-bounded decoder reads only the documented session id and writes
-`@skid_agent_runtime` after PID/start/tty/profile validation. the current
-projection consumes claude registration only; the unused codex writer is retired.
-missing, stale, malformed,
-nested or ambiguous registration does not prevent terminal observation/control.
-hooks never publish status, activity, lifecycle, attention, prompts or results.
 
 `skid-notify` may emit BEL to its inherited exact pane as terminal-local
 presentation. it stores no state, calls no gateway and has no privileged
@@ -445,7 +414,7 @@ product meaning.
 ### profile usage
 
 [terminal usage](terminal-usage.md) owns consolidated read-only desktop quota
-observations. existing inventory captures carry optional literal claude used
+observations. existing inventory captures carry optional literal provider used
 percentages; the independent [native route](profile-usage.md) reads codex only.
 both existing lanes read all paired hosts independently of table filters. the
 desktop selects one whole eligible observation per profile by client-local
@@ -499,8 +468,7 @@ the exact configured command and provider settings own those choices. both carry
    invalid input mutates nothing. interactive named-group creation prefills a
    visible editable label; a group supplies no other launch context.
 4. one tmux queue creates the session; configured commands and providers own
-   conversation creation. skid performs no provider preparation. no native
-   id or conversation binding is reserved. unknown terminal creation remains
+   provider execution. skid performs no provider preparation. unknown terminal creation remains
    unknown and never triggers replay or compensating cleanup.
    the queue creates the session (named
    `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>` for an agent,
@@ -644,7 +612,7 @@ read, send, text, keys, wait, stop, close, start, shell, and group. `list --grou
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
 use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
 clients read the installed private identity and signed cache from
-`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config` selects another state directory. typed terminal/conversation handles select
+`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config` selects another state directory. typed terminal handles select
 once across complete scoped inventory; `--machine` narrows that scope and `--ref`
 preserves exact captured identity for saved automation. names are creation input
 only. cli and tui consume one fleetclient projection. jarvis consumes the current
@@ -652,10 +620,6 @@ cli with its existing exact-target/write policy. its cross-user installed-state
 access is a separately [deferred integration](issues/jarvis-installed-state-access.md). ordinary
 output uses short handles and readable machine labels; full `--json` retains
 captured refs and transport facts. skid does not provision jarvis credentials.
-`inspect c-HANDLE --machine HOST` captures a native target; `inspect --ref` projects the captured
-conversation separately from its current native observation; only a later
-explicitly authorized action may choose the separate `observedRef`. terminal
-reassociation or deletion does not retarget captured conversation inspection.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
 the tui's `n` chooses only a machine, initially the configured default; enter
 creates and attaches a home terminal there. `N` opens explicit new-terminal
@@ -728,20 +692,19 @@ history item is `current`.
   authority transfer. an invalid local shell/path retains previous launch
   settings without blocking newer membership or revocation. no json host config,
   injected provider command policy or daemon lifecycle remains.
-  `internal/process` owns native foreground and ancestry observation for
-  runtime identity, command revalidation and the content-free SessionStart hook
-  adapter. it establishes process identity, not work state.
+  `internal/process` owns foreground observation for
+  process identity and command revalidation, not work state.
   `internal/agentruntime` owns provider/profile validation,
-  foreground classification, registration encoding/acceptance, and
+  foreground classification, and
   opaque command envelopes and optional observation metadata. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
   `ps` output or a Linux fallback.
-  `internal/agentcontrol` depends on sessions and the configured native helper;
+  `internal/agentcontrol` depends on sessions and the configured quota helper;
   sessions never imports agentcontrol. the gateway composes both. short-lived
-  native helpers inspect/read/control using the selected profile environment;
-  neither helper nor client owns the provider runtime.
+  quota helpers read existing codex account daemons using the selected profile
+  environment; neither helper nor client owns the provider runtime.
 - `internal/install` owns the signed bootstrap, immutable releases, dependencies,
   services, exact shell blocks and tailscale route receipts. install/update stage
   and validate before switching `current`; restart skid services only. uninstall
@@ -775,7 +738,7 @@ history item is `current`.
 
 | Method/path | Contract |
 | --- | --- |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; profiles have `key,label,provider?,historyScope?`; session includes terminal identity/facts, optional foreground `agent`, separate identity-only `conversation`, and optional `connection`. connection suppresses local cwd/agent, never retargets recorded conversation |
+| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; profiles have `key,label,provider?,accountScope?`; session includes terminal identity/facts, optional foreground `agent`, and optional `connection`. connection suppresses local cwd/agent |
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
 | `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
@@ -785,7 +748,6 @@ history item is `current`.
 | `PATCH /v1/sessions/{tmuxId}` | `{identityToken,expectedNaming,naming}`; closed automatic/manual unions under the [naming contract](automatic-session-names.md), bodyless `204`, then inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates server lifetime/id before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{identityToken}`; one-queue exact lifetime session deletion |
-| `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
 | `POST /v1/sessions/{tmuxId}/terminal/{operation}` | exact `{identityToken,paneId}` plus operation fields; inferred `inspect`, rendered `read`, guarded `send`, deliberate `text`/`keys`, interrupt `stop`, separate-effects `close`; [terminal contract](terminal-agent-control.md#4-api-and-client-commands) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 | `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` codex-only quota observation; configured descriptors, read state and optional normalized native report, governed by [profile usage](profile-usage.md) |
@@ -1099,7 +1061,7 @@ the spec owns source qualification and the separate installed usability step.
 2026-10-15 accepted claude update-recognition correction: [the spec and plan](claude-update-recognition.md)
 replaces the mutable `executablePath` rule with direct-child matching in a
 configured canonical versions directory. launch configuration stays separate;
-foreground group-leader selection, codex basename matching, registration,
+foreground group-leader selection, codex basename matching,
 controls, parsers and clients are unchanged. wrapper discovery and deleted-image
 recovery remain excluded. source qualification passes on darwin/linux; `v0.17.0`
 is installed across the host fleet, with original-process continuity qualified.
@@ -1167,6 +1129,8 @@ stdin initial input, bounded idle/profile/composer admission and compound start
 receipts. discovery and controls use compact ordinary output and existing typed
 handles; captured refs remain in structured host output. native-handle inspect
 reuses current native resolution. the spec owns wire shapes, bounds and acceptance.
+the 2026-10-20 [terminal-only cut](terminal-only-control.md) retires those launch
+overrides and native inspect; ordinary commands/settings own provider options.
 jarvis owns durable asynchronous waits, target capture and notification judgment;
 skid retains synchronous observation and gains no watcher, task/reply protocol,
 new targeting registry, provider association or durable receipt store.

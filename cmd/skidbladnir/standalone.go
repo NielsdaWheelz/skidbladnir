@@ -33,8 +33,8 @@ import (
 )
 
 type runtimeHostConfig struct {
-	TmuxPath, ZoxidePath, NativeControlPath string
-	Profiles                                []agentruntime.Profile
+	TmuxPath, ZoxidePath, QuotaReadPath string
+	Profiles                            []agentruntime.Profile
 }
 
 func loadRuntimeHostConfig(ctx context.Context) (runtimeHostConfig, error) {
@@ -65,7 +65,7 @@ func loadRuntimeHostConfig(ctx context.Context) (runtimeHostConfig, error) {
 	if lookupErr != nil {
 		zoxide = ""
 	} // justify-ignore-error: directory search explicitly supports an absent optional zoxide.
-	return runtimeHostConfig{tmux, zoxide, filepath.Join(directories.Data, "current", "providers", "native-control"), profiles}, nil
+	return runtimeHostConfig{tmux, zoxide, filepath.Join(directories.Data, "current", "providers", "quota-read"), profiles}, nil
 }
 
 func serveStandalone(logOutput io.Writer) (result error) {
@@ -162,7 +162,7 @@ func serveStandalone(logOutput io.Writer) (result error) {
 		return err
 	}
 	manager.Store(sessionManager)
-	agents, err := agentcontrol.New(sessionManager, runtime.NativeControlPath)
+	agents, err := agentcontrol.New(sessionManager, runtime.QuotaReadPath)
 	if err != nil {
 		return err
 	}
