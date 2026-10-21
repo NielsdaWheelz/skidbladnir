@@ -234,6 +234,11 @@ admitted routing origin. only a valid nonempty origin replaces it. availability
 still comes from successful requests; cached routing is not a liveness claim.
 explicit membership removal revokes access.
 
+on the phone, accepted signed config changes reach notification reconciliation
+even when machine credentials are unchanged. duplicate snapshots/reconnects are
+not new changes and must not replace enrollment work. credentials, envelope and
+read failure classification come from one guarded store snapshot.
+
 ## 4. planned hub transfer
 
 yaml `hub` requests placement. signed `activeHub` remains the old hub until the
@@ -521,6 +526,11 @@ and mac app in the archive. pin helper commit, interpreter and admitted dependen
 artifacts per release, including required claude sdk extras; no remote `HEAD` or
 `uv sync --upgrade`. runtime startup never downloads packages. clean installation
 must need no private repository checkout or credentials.
+
+release qualification binds archive helper pins to the exact target source.
+installation authenticates that release and validates its own manifest, lock
+hashes and helper imports; an older installer must not require the incoming
+release to retain its own embedded dependency versions.
 
 install/reuse tmux and tailscale through native package/installation mechanisms.
 linux uses apt/pacman and user systemd; mac uses the existing launch-agent model,
