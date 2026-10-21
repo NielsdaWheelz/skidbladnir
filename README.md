@@ -4,9 +4,10 @@ use codex, claude code, and ordinary shell sessions from your desktop or android
 phone. skid brings enrolled machines' tmux sessions into one view. detach and the
 work keeps running; either device can return to the same live terminal.
 
-standalone generalization is being qualified. the currently published private
-fleet release predates the installer described here; see
-[qualification](docs/generalization-qualification.md) before cutover.
+standalone installation is available in v0.19.0. upgrading the preceding private
+fleet requires the one-time [cutover](docs/generalization-cutover.md);
+[qualification](docs/generalization-qualification.md) distinguishes published
+artifacts from installed acceptance.
 
 ## install
 
@@ -58,6 +59,17 @@ edits retain the accepted settings.
 1. for remote/mobile access, connect tailscale on both devices and enable tailnet https.
 2. install the matching skid apk.
 3. run `skid connect` on an installed computer; scan its single-use five-minute qr.
+
+on linux, the login user must be able to configure tailscale serve without root.
+if needed, an administrator can grant that user local tailscale administration:
+
+```sh
+sudo tailscale set --operator="$USER"
+```
+
+this is host-wide tailscale authority, not a skid-only permission; see the
+[official cli contract](https://tailscale.com/docs/reference/tailscale-cli#set).
+keep skid running as your normal user.
 
 session management needs no firebase setup. android background notifications are
 an [optional integration](docs/android-push-setup.md): you own its firebase project

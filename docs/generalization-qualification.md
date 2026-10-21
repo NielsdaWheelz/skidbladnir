@@ -1,15 +1,42 @@
 # standalone generalization qualification
 
-status: earlier standalone implementation retained; revised optional direct-fcm
-source implemented and independently reviewed on `feat/standalone-generalization`.
-runtime feasibility and scoped production proofs pass. installed/external
-acceptance remains pending.
-base: `d34b6897d7938c301cdfed07d8c792f11beb06a1`; worktree
-`/Users/nnandal/Documents/code/skidbladnir-generalization`.
-[the plan](generalization-plan.md) owns acceptance. this record separates local
-proof from installed and external qualification. the owner authorized isolated tmux/ssh/adb probes; installed cutover remains
-deferred until a concrete reviewed release. jarvis deployment is separately
-[deferred](issues/jarvis-installed-state-access.md).
+status: standalone source is merged at `e7c659e9aa4da0009d6874efd204e0caef77d451`;
+[v0.19.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.19.0)
+is published and immutable. exact main-push verify run39533972037 and fresh public
+asset/source/signature verification pass. installed acceptance remains pending.
+[the plan](generalization-plan.md) owns acceptance. earlier rows below retain
+their original proof boundary; they do not claim installed acceptance.
+
+## installed activation, 2026-10-20
+
+the owner authorized coordinated three-host/mobile activation, scoped live
+ssh/tmux/adb operations, real service lifecycle and real optional-fcm/doze
+qualification. jarvis deployment remains separately
+[deferred](issues/jarvis-installed-state-access.md). no public sender/domain/dns
+or caddy deployment occurs.
+
+preflight admitted the frozen old owner/unit identities on all three computers.
+mac captured seven existing session lifetimes and20 tmux/provider processes;
+devbox captured three lifetimes and12 processes; arch had no running tmux server.
+these are preflight observations, not stop/restart survival proof. no installed
+owner has yet stopped. final notification exports must follow writer shutdown.
+
+firebase project/package, APIs, message-create-only sender permission and actual
+oauth are verified; private credentials remain outside shared yaml and phone
+payloads. public configuration is prepared privately for the ordinary apk.
+phone remains0.18.0/18000 until the coordinated conversion and fresh pairing.
+upstream release pin is merged in pr101 (`faba9e8`); dev-server consumer/pin is
+merged in pr178 (`8ce67ab`). its normal dotfile apply now preserves skid shell
+blocks, and full private desired hub yaml remains outside git. consumer public
+bootstrap/archive verification and bounded red/green checks pass; installed
+consumer activation has not run. jarvis pr54 remains a draft and unactivated.
+
+an additional package-replacement probe found that android clears a posted tray
+notice before converter startup. durable acknowledgement conversion and final
+upgrade pass. [tray continuity](issues/android-upgrade-tray-continuity.md) needs
+an explicit acceptance decision; no phone update has occurred. deterministic
+installed attention testing also awaits permission for one disposable normal
+socket session, because the installed observer cannot see an isolated socket.
 
 ## disposable proof, 2026-10-20
 
@@ -25,7 +52,7 @@ deferred until a concrete reviewed release. jarvis deployment is separately
 | apple terminal | actual isolated window/tab receipts, exact focus/output acknowledgement and departure pass; ghostty preservation and actual popup/sound qualification remain separate |
 | android | isolated physical test package passes keystore/atomic pairing, lost response, signed routing/proof/regressions, push generations, native tag/extras, click-no-ack and output-only acknowledgement; real production app remains 0.18.0/18000 |
 | android background recovery | actual workmanager retry after tls503 then recovery passes; prior unconditional-success mutant fails. independent review's local transport-health, background hub discovery and pending-removal regressions each fail before correction and pass afterward on the physical isolated package. real fcm/doze/tailscale delivery NOT_RUN |
-| conversion | signed temporary same-id/signer 0.18.1/18001 prepared; isolated populated android conversion preserves counters, native notices and newer rerun acknowledgements. host converter passes against a rehearsal copy of the real devbox schema1 store with 10 records, including active-writer refusal and post-rename durability retries; offline three-host staging preserves order, desired hub/config and exact observer counters; final frozen export and installed conversion NOT_RUN |
+| conversion | signed temporary same-id/signer 0.18.1/18001 prepared; isolated populated android conversion preserves counters and newer rerun acknowledgements; later package-replacement proof clears the posted tray notice before converter launch (see the installed-activation section). host converter passes against a rehearsal copy of the real devbox schema1 store with 10 records, including active-writer refusal and post-rename durability retries; offline three-host staging preserves order, desired hub/config and exact observer counters; final frozen export and installed conversion NOT_RUN |
 | external consumers | independent review and dev-server's three/jarvis's six disposable groups pass; adapters committed as dev-server `a0fe999` and jarvis `2353878`; jarvis engineering checks pass before existing dependency audit failure; its installed cross-user access is explicitly deferred |
 | installed fleet | read-only inventory/reachability confirmed on mac, ubuntu and arch; new installed behavior, coordinated cutover, two physical phones and visual owner parity NOT_RUN |
 
@@ -46,8 +73,8 @@ instead of asking for a public-client-key classification exception. jarvis's hos
 job fails before source checks because its existing private-library credential
 is empty; that preexisting issue remains recorded in jarvis.
 
-these results do not waive unrun acceptance. no installed cutover or published
-standalone release is claimed. actual runtime-probe delivery is recorded below;
+these earlier results do not waive unrun acceptance. publication and current
+installed activation are recorded separately above. actual runtime-probe delivery is recorded below;
 it does not qualify production integration. android13
 compatibility remains owner-waived;
 [two-physical-phone acceptance](issues/android-two-phone-push-acceptance.md) is

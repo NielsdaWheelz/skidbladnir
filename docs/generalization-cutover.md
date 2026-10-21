@@ -1,7 +1,9 @@
 # private-fleet cutover
 
-status: preparation only. installed activation requires a concrete reviewed
-release and explicit owner approval. this is a one-time operator procedure;
+status: coordinated installed activation is owner-authorized for immutable
+v0.19.0, source `e7c659e9aa4da0009d6874efd204e0caef77d451`. preflight is complete;
+no installed owner has stopped yet. phone activation awaits the
+[tray continuity decision](issues/android-upgrade-tray-continuity.md). this is a one-time operator procedure;
 standalone skid contains no old configuration, credential or notification reader.
 new users use the [ordinary installer](../README.md#install).
 
@@ -103,7 +105,15 @@ place each computer's staged identity/cache/config and preserved `machine-handle
 at its final paths BEFORE ordinary installation starts services. the hub alone
 receives converted observer memory. preserve each mac device's schema4 memory.
 install verified matching archives, then claim the freed tailnet routes with
-`skid connect`. apply personal hub yaml and verify each destination's status.
+`skid connect`. devbox currently has no nonroot tailscale operator; configure
+its existing passwordless-sudo login user as operator before ordinary connect,
+verify unrelated preferences/routes remain unchanged, and retain that setting
+for normal connect/uninstall. do not disguise the dependency with a transient
+privileged wrapper or run skid as root. apply personal hub yaml and verify each destination's status.
+existing shells can retain already-loaded old launch functions referencing the
+retired provider launcher. preserve those shells/processes; use a fresh login
+shell before reusing an affected function. never inject refresh commands into
+an existing session or retain the retired launcher as a compatibility path.
 
 install/open the temporary android conversion apk in place. it disables old
 owners and converts acknowledgement memory without cancelling/reposting notices.

@@ -3,9 +3,11 @@
 problem: standalone source and isolated probes do not qualify the installed
 three-host fleet, service lifecycle or the owner's unchanged experience.
 
-impact: release activation and complete acceptance remain BLOCKED. the owner
-authorized isolated probes and deferred installed cutover until a concrete
-reviewed release. existing hosts and the production phone remain on 0.18.0.
+impact: complete installed acceptance remains pending. the owner has authorized
+coordinated activation and live qualification. immutable v0.19.0 targets
+`e7c659e9aa4da0009d6874efd204e0caef77d451`; published source/assets/signatures pass.
+existing hosts and the production phone remain on0.18.0 during final preflight.
+phone update awaits the [tray continuity decision](android-upgrade-tray-continuity.md).
 
 evidence, 2026-10-20: real mac/ubuntu/arch-family helper probes, isolated
 gateway/tmux/shell journeys, apple terminal and physical android test-package

@@ -43,7 +43,13 @@ administrator permission. homebrew itself is an explicit mac prerequisite when
 missing packages need it. the bootstrap uses openssl 3+ for ed25519 verification;
 macos's system libressl is insufficient, so it installs homebrew openssl when
 available. tailscale login and mac system-extension permission are user actions,
-required only for remote access. linux startup before login additionally needs
+required only for remote access. linux remote connect and route removal also
+require the installing user to operate tailscaled without sudo. an administrator
+can set `sudo tailscale set --operator="$(id -un)"`; this grants host-wide
+tailscale administration, not a skid-only capability. keep skid itself running
+as the login user. local-only use needs no operator setting. see the
+[official cli](https://tailscale.com/docs/reference/tailscale-cli#set).
+linux startup before login additionally needs
 `sudo loginctl enable-linger USER`; the installer prints the exact command.
 
 provider installation, accounts, settings, history and daemon lifetime remain

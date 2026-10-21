@@ -2,7 +2,8 @@
 
 problem: sdk feasibility and isolated production-code delivery do not qualify the
 ordinary installed hub/phone enrollment, confirmation and current-state admission
-journey under background restrictions. installed fleet cutover is owner-deferred.
+journey under background restrictions. installed fleet cutover and real
+fcm/doze qualification are now authorized; no installed delivery is claimed yet.
 
 impact: optional push implementation can be reviewed without claiming complete
 installed acceptance. firebase is not a prerequisite for session management or
@@ -17,7 +18,7 @@ synthetic. direct receiver/confirmation/durability and phone state/admission
 boundaries have separate disposable integration evidence, not a full installed
 round-trip claim. actual late SDK callback timing and deep doze are unqualified.
 
-resolve after reviewed activation approval: use the ordinary signed apk and a
+resolve during the authorized coordinated cutover: use the ordinary signed apk and a
 user-configured hub credential; pair normally and observe real possession proof
 and confirmation. background the phone; generate current attention and verify
 authenticated details fetched over tailscale, current-only presentation, unchanged
