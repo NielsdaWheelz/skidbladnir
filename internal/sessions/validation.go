@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -60,29 +59,6 @@ func isC0OrC1(value rune) bool {
 
 func newSessionError(code ErrorCode, message string) *Error {
 	return &Error{Code: code, Message: message}
-}
-
-// PreflightCreate rejects known request failures before provider launch preparation.
-func (manager *Manager) PreflightCreate(ctx context.Context, input CreateInput) (CreateInput, error) {
-	cwd, profile, err := manager.validateCreate(input)
-	if err != nil {
-		return CreateInput{}, err
-	}
-	scan, err := manager.scanSessions(ctx)
-	if err != nil {
-		return CreateInput{}, err
-	}
-	if input.OptionalTmuxName == "" {
-		prefix := string(profile.Key)
-		if input.Kind == LaunchTerminal {
-			prefix = "terminal"
-		}
-		input.preparedName = generatedTmuxName(scan.names, prefix)
-	} else if _, exists := scan.names[input.OptionalTmuxName]; exists {
-		return CreateInput{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
-	}
-	input.CWD = cwd.String()
-	return input, nil
 }
 
 func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirectory, agentruntime.Profile, error) {

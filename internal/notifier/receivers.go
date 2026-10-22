@@ -73,7 +73,7 @@ func token(value string, maximum int) bool {
 	return true
 }
 func (value receiver) valid() bool {
-	if !fleet.ValidDeviceID(value.DeviceID) || value.Floor >= math.MaxInt64 || value.Configuration != "" && !digestValid(value.Configuration) {
+	if !fleet.ValidDeviceID(value.DeviceID) || value.Configuration != "" && !digestValid(value.Configuration) {
 		return false
 	}
 	if value.Removed {
@@ -127,27 +127,20 @@ func (observer *Observer) saveReceiver(value receiver) error {
 	}
 	return observer.save(file)
 }
-func revoked(value receiver) (receiver, error) {
-	if value.Floor >= math.MaxInt64-1 {
-		return value, attention.ErrUnavailable
-	}
-	return receiver{DeviceID: value.DeviceID, Configuration: value.Configuration, Floor: value.Floor + 1, Removed: true}, nil
+func revoked(value receiver) receiver {
+	return receiver{DeviceID: value.DeviceID, Configuration: value.Configuration, Floor: value.Floor + 1, Removed: true}
 }
-func retireAbsent(file observerFile, members []fleet.Member) (observerFile, bool, error) {
+func retireAbsent(file observerFile, members []fleet.Member) (observerFile, bool) {
 	changed := false
 	file.Receivers = slices.Clone(file.Receivers)
 	for index, value := range file.Receivers {
 		if value.Removed || slices.ContainsFunc(members, func(member fleet.Member) bool { return member.Kind == "phone" && member.DeviceID == value.DeviceID }) {
 			continue
 		}
-		value, err := revoked(value)
-		if err != nil {
-			return file, false, err
-		}
-		file.Receivers[index] = value
+		file.Receivers[index] = revoked(value)
 		changed = true
 	}
-	return file, changed, nil
+	return file, changed
 }
 
 // ConfigurePush changes only push transport. It is synchronous, offline and safe
@@ -202,18 +195,14 @@ func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
 	if observer.drained || observer.unavailable {
 		return attention.ErrUnavailable
 	}
-	file, changed, err := retireAbsent(observer.file, members)
-	if err != nil {
-		observer.unavailable = true
-		return err
-	}
+	file, changed := retireAbsent(observer.file, members)
 	if !changed {
 		return nil
 	}
 	if observer.sendCancel != nil {
 		observer.sendCancel()
 	}
-	if err = observer.save(file); err != nil {
+	if err := observer.save(file); err != nil {
 		return err
 	}
 	observer.signal(false)
@@ -234,15 +223,10 @@ func (observer *Observer) Revoke(device string) error {
 	if value.Removed {
 		return nil
 	}
-	value, err := revoked(value)
-	if err != nil {
-		observer.unavailable = true
-		return err
-	}
 	if observer.sendCancel != nil {
 		observer.sendCancel()
 	}
-	if err = observer.saveReceiver(value); err != nil {
+	if err := observer.saveReceiver(revoked(value)); err != nil {
 		return err
 	}
 	observer.signal(false)

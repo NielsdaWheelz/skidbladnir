@@ -314,10 +314,6 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	name := input.OptionalTmuxName
 	if name == "" {
-		name = input.preparedName
-	}
-	_, occupiedPrepared := scan.names[name]
-	if name == "" || input.OptionalTmuxName == "" && occupiedPrepared {
 		prefix := string(profile.Key)
 		if input.Kind == LaunchTerminal {
 			prefix = "terminal"

@@ -297,9 +297,5 @@ func terminalFailure(err error) apiError {
 		failure = sessionFailure(err)
 	}
 	failure.Dispatch = "not_sent"
-	var dispatched interface{ DispatchState() string }
-	if errors.As(err, &dispatched) {
-		failure.Dispatch = dispatched.DispatchState()
-	}
 	return failure
 }

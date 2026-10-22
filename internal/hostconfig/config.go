@@ -13,7 +13,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -85,10 +84,6 @@ type Config struct {
 	Terminal       string              `yaml:"terminal,omitempty" json:"terminal,omitempty"`
 	DefaultMachine string              `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
 	Machines       map[string]Override `yaml:"machines,omitempty" json:"machines,omitempty"`
-	// Installation facts are composed locally; they are never human yaml fields.
-	QuotaReadPath string `yaml:"-" json:"-"`
-	TmuxPath      string `yaml:"-" json:"-"`
-	ZoxidePath    string `yaml:"-" json:"-"`
 }
 type Settings struct {
 	Shell          string    `json:"shell"`
@@ -97,18 +92,6 @@ type Settings struct {
 	Profiles       []Profile `json:"profiles"`
 }
 
-func Load(path string, _ platform.Kind) (Config, error) {
-	f, e := os.Open(path)
-	if e != nil {
-		return Config{}, fmt.Errorf("read config: %w", e)
-	}
-	data, e := io.ReadAll(io.LimitReader(f, MaximumBytes+1))
-	e = errors.Join(e, f.Close())
-	if e != nil {
-		return Config{}, fmt.Errorf("read config: %w", e)
-	}
-	return Parse(data)
-}
 func Parse(data []byte) (Config, error) {
 	if len(data) > MaximumBytes {
 		return Config{}, errors.New("config: exceeds 64 kib")

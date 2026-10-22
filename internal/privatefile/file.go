@@ -1,12 +1,37 @@
-// Package privatefile owns durable replacement of private local state.
+// Package privatefile owns reads and durable replacement of private local state.
 package privatefile
 
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
+
+// Read returns one private (0600) regular file of at most limit bytes. A missing
+// file reports an error that matches os.ErrNotExist.
+func Read(path string, limit int) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return nil, errors.New("private state must be a private regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	if err = errors.Join(err, file.Close()); err != nil {
+		return nil, err
+	}
+	if len(data) > limit {
+		return nil, errors.New("private state too large")
+	}
+	return data, nil
+}
 
 // WriteFile replaces one private file. The caller serializes competing writes.
 // An error may follow rename: callers must never interpret it as proof that the

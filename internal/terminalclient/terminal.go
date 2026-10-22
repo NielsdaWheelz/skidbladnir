@@ -192,13 +192,10 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 				if len(event.body) > 0 && !presentedOutput {
 					frozen = visit.freeze(hello)
 				}
-				remaining := event.body
-				for len(remaining) > 0 {
-					n, err := output.Write(remaining)
-					if err != nil || n <= 0 || n > len(remaining) {
+				if len(event.body) > 0 {
+					if _, err := output.Write(event.body); err != nil {
 						return errors.New("terminal output unavailable")
 					}
-					remaining = remaining[n:]
 				}
 				if len(event.body) > 0 && !presentedOutput {
 					presentedOutput = true

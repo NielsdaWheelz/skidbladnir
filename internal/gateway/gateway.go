@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -70,20 +69,6 @@ type Gateway struct {
 }
 
 func New(config Config) *Gateway {
-	if config.Workdir == nil {
-		panic("gateway working directory service is not configured") // justify-defect: main must share one concrete validated workdir service with sessions and the gateway.
-	}
-	if config.Machine.String() == "" {
-		panic("gateway machine identity is not configured") // justify-defect: gateway composition must load one canonical machine handle before construction.
-	}
-	switch config.Platform.Kind {
-	case platform.KindLinux, platform.KindDarwin:
-	default:
-		panic("gateway platform is not configured") // justify-defect: platform.Current returns only the closed supported platform union.
-	}
-	if config.Fleet == nil {
-		panic("gateway fleet service is not configured") // justify-defect: composition owns one fleet authority for authentication.
-	}
 	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	return &Gateway{
 		agents:               config.Agents,
@@ -156,10 +141,6 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 }
 
 func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.Request) {
-	if request.URL.Path == "/healthz" {
-		gateway.serveHealth(writer, request)
-		return
-	}
 	if !strings.HasPrefix(request.URL.Path, "/v1") {
 		writeError(writer, errorInvalidRequest)
 		return
@@ -185,7 +166,7 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		return
 	}
 
-	if strings.HasPrefix(request.URL.Path, "/v1/notifications/") && gateway.notifications != nil {
+	if strings.HasPrefix(request.URL.Path, "/v1/notifications/") {
 		ctx, cancel := context.WithCancel(request.Context())
 		defer cancel()
 		deviceID := request.Context().Value(deviceContextKey{}).(string)
@@ -255,12 +236,7 @@ func (gateway *Gateway) listDirectory(writer http.ResponseWriter, request *http.
 		writeDirectoryListingError(writer, err)
 		return
 	}
-	mapped, err := mapDirectoryListing(gateway.machineDTO(), listing)
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	writeDirectoryListing(writer, mapped)
+	writeDirectoryListing(writer, mapDirectoryListing(gateway.machineDTO(), listing))
 }
 
 func writeDirectoryListingError(writer http.ResponseWriter, err error) {
@@ -325,20 +301,10 @@ func (gateway *Gateway) bindMachine(writer http.ResponseWriter, request *http.Re
 	return true
 }
 
-func (gateway *Gateway) serveHealth(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet || request.URL.RawQuery != "" || !isLoopbackRemote(request.RemoteAddr) {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(writer, "ok\n") // justify-ignore-error: the client disconnecting after the health status is not actionable.
-}
-
 type deviceContextKey struct{}
 
 func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.Request) (fleet.Member, bool) {
-	member, _, err := gateway.fleet.Authenticate(request)
+	member, err := gateway.fleet.Authenticate(request)
 	if err == nil {
 		return member, true
 	}
@@ -367,15 +333,6 @@ func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.R
 
 func (gateway *Gateway) machineDTO() machineDTO {
 	return machineDTO{Handle: gateway.machine.String(), Platform: gateway.platform.Kind}
-}
-
-func requireEmptyRequest(request *http.Request) bool {
-	if request.URL.RawQuery != "" || request.ContentLength != 0 || len(request.TransferEncoding) != 0 || request.Header.Get("Content-Type") != "" || request.Header.Get("Content-Encoding") != "" {
-		return false
-	}
-	var one [1]byte
-	read, err := request.Body.Read(one[:])
-	return read == 0 && errors.Is(err, io.EOF)
 }
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
@@ -487,20 +444,14 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorGroupInvalid)
 		return
 	}
-	createInput := sessions.CreateInput{
+	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
 		Kind:             input.Kind,
 		CWD:              input.CWD.value,
 		Profile:          input.Profile.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
 		Group:            label,
-	}
-	createInput, err = gateway.sessions.PreflightCreate(request.Context(), createInput)
-	if err != nil {
-		gateway.completeCreation(request.Context(), writer, sessions.ObservedSession{}, err, startedAt)
-		return
-	}
-	created, err := gateway.sessions.Create(request.Context(), createInput)
+	})
 	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
 }
 
@@ -696,10 +647,6 @@ func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *a
 		failure := errorInvalidRequest
 		return zero, &failure
 	}
-	if request.ContentLength > MaximumBodyBytes {
-		failure := errorRequestTooLarge
-		return zero, &failure
-	}
 	// MaxBytesReader marks the connection for closure through an unexported
 	// method of net/http's own writer, which the tracking wrapper would hide.
 	limitWriter := writer
@@ -827,8 +774,6 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteLocal
 	case strings.HasPrefix(path, "/v1/notifications/"):
 		return logging.RouteNotifications
-	case path == "/healthz":
-		return logging.RouteHealth
 	case path == "/v1/sessions":
 		return logging.RouteSessions
 	case path == "/v1/profile-usage":
@@ -877,15 +822,6 @@ func (gateway *Gateway) log(event logging.Event) {
 		return
 	}
 	panic("invalid structured log event") // justify-defect: only a programming/configuration error reaches this branch.
-}
-
-func isLoopbackRemote(remoteAddress string) bool {
-	host, _, err := net.SplitHostPort(remoteAddress)
-	if err != nil {
-		return false
-	}
-	address := net.ParseIP(host)
-	return address != nil && address.IsLoopback()
 }
 
 func (writer *trackedResponseWriter) Flush() {

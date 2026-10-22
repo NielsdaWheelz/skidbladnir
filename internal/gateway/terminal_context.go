@@ -46,7 +46,6 @@ func (gateway *Gateway) readTerminalContext(writer http.ResponseWriter, request 
 		result.Agent = &remoteAgentDTO{Provider: string(observed.Agent.Provider), Profile: string(observed.Agent.Profile)}
 	}
 	if observed.Connection != nil {
-		result.CWD = ""
 		result.Connection = &connectionDTO{Transport: observed.Connection.Transport, ID: observed.Connection.ID}
 	}
 	encoded, err := json.Marshal(result)

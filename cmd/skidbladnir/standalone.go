@@ -162,10 +162,7 @@ func serveStandalone(logOutput io.Writer) (result error) {
 		return err
 	}
 	manager.Store(sessionManager)
-	agents, err := agentcontrol.New(sessionManager, runtime.QuotaReadPath)
-	if err != nil {
-		return err
-	}
+	agents := agentcontrol.New(sessionManager, runtime.QuotaReadPath)
 	client, err := fleetclient.Open(state)
 	if err != nil {
 		return err

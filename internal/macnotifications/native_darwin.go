@@ -3,7 +3,7 @@
 package macnotifications
 
 /*
-#cgo CFLAGS: -x objective-c -fobjc-arc -fblocks -mmacosx-version-min=13.0
+#cgo CFLAGS: -x objective-c -fobjc-arc -fblocks
 #cgo LDFLAGS: -framework AppKit -framework UserNotifications -framework Foundation -framework CoreServices
 #include <stdlib.h>
 #include "native.h"
@@ -58,17 +58,6 @@ func NativeRegister(appPath string) error {
 		return fmt.Errorf("native app registration failed (%d)", status)
 	}
 	return nil
-}
-
-// NativeStatus observes the exact installed app without starting its owner.
-func NativeStatus(appPath string) (int, error) {
-	path := C.CString(appPath)
-	defer C.free(unsafe.Pointer(path))
-	pid := int(C.skid_native_status(path))
-	if pid <= 0 {
-		return 0, errors.New("notification app unavailable")
-	}
-	return pid, nil
 }
 
 // NativeStopApplication waits for the exact app to quit after its waiter stops.

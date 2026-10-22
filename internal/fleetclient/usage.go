@@ -30,18 +30,11 @@ type ProfileUsageObservation struct {
 	Peers []ProfileUsagePeer
 }
 
-// ProfileUsage reads only the named usage scope, independently of inventories.
-func (client *Client) ProfileUsage(parent context.Context, machineScope string) Result {
+// ProfileUsage reads every peer's usage, independently of inventories.
+func (client *Client) ProfileUsage(parent context.Context) Result {
 	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
 	peers := client.peerSnapshot()
-	if machineScope != "" {
-		selected, found := client.peerByLabel(machineScope)
-		if !found {
-			return Failed("machine_unknown", "not_sent")
-		}
-		peers = []peer{selected}
-	}
 	rows := make([]ProfileUsagePeer, len(peers))
 	var pending sync.WaitGroup
 	for index, selected := range peers {

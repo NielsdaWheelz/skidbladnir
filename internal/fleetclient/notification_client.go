@@ -12,21 +12,19 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 )
 
-func (client *Client) NotificationConfig() (attention.Config, bool) {
+// Hub returns the notification observer's machine handle.
+func (client *Client) Hub() (string, bool) {
 	client.mu.RLock()
 	defer client.mu.RUnlock()
-	if client.hub == "" {
-		return attention.Config{}, false
-	}
-	return attention.Config{ObserverMachine: client.hub}, true
+	return client.hub, client.hub != ""
 }
 func (client *Client) notificationRequest(ctx context.Context, path string) (*http.Request, error) {
 	_ = client.Refresh() // justify-ignore-error: preserve the admitted cache while its durable replacement is unavailable.
-	config, configured := client.NotificationConfig()
+	hub, configured := client.Hub()
 	if !configured {
 		return nil, attention.ErrUnavailable
 	}
-	target, found := client.peerByMachine(config.ObserverMachine)
+	target, found := client.peerByMachine(hub)
 	if !found {
 		return nil, attention.ErrUnavailable
 	}
@@ -59,7 +57,7 @@ func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot
 	if err != nil || len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &snapshot) != nil || !snapshot.Valid() {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
-	config, _ := client.NotificationConfig()
+	hub, _ := client.Hub()
 	if len(snapshot.Machines) != len(client.Machines()) {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
@@ -68,7 +66,7 @@ func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot
 			return attention.Snapshot{}, attention.ErrUnavailable
 		}
 	}
-	if _, found := client.peerByMachine(config.ObserverMachine); !found {
+	if _, found := client.peerByMachine(hub); !found {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
 	return snapshot, nil

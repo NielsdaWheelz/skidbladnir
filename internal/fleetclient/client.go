@@ -129,10 +129,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			result = success(observed)
 			break
 		}
-		if request.Operation == "enter" {
-			return Failed("invalid_input", "not_sent")
-		}
-
 		body := map[string]any{"identityToken": ref.IdentityToken}
 		path := "/v1/sessions/" + ref.TmuxID
 		operation := request.Operation
@@ -174,7 +170,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "text" || request.Operation == "stop" || request.Operation == "close" || request.Operation == "group" || request.Operation == "rename" {
+		if request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "text" || request.Operation == "stop" || request.Operation == "close" || request.Operation == "group" || request.Operation == "rename" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
@@ -406,7 +402,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if target.Origin == "" {
 		return Failed("unavailable", dispatch)
 	}
-	writes := operation != "list" && operation != "profile_usage" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context"
+	writes := operation != "list" && operation != "profile_usage" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -514,7 +510,6 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 		Message  string          `json:"message"`
 		Dispatch string          `json:"dispatch,omitempty"`
 		Removal  *fleet.Envelope `json:"removal,omitempty"`
-		Routing  *fleet.Envelope `json:"routing,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -580,11 +575,7 @@ func (result Result) ExitCode(operation string) int {
 			return 1
 		}
 	case "send", "text", "keys", "stop":
-		value, write := result.Value.(WriteResult)
-		if !write {
-			break
-		}
-		if value.Outcome == "unknown" {
+		if result.Value.(WriteResult).Outcome == "unknown" {
 			return 1
 		}
 	case "close":

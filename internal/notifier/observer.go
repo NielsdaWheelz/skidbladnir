@@ -8,13 +8,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -23,6 +20,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 )
 
 type Config struct {
@@ -66,7 +64,7 @@ func (file *observerFile) UnmarshalJSON(data []byte) error {
 }
 func decodeFile(data []byte) (observerFile, error) {
 	var stored observerFile
-	if len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &stored) != nil || stored.Schema != 3 || stored.Configuration != "" && !digestValid(stored.Configuration) || !digestValid(stored.FleetID) || stored.ImportDigest != "" && !digestValid(stored.ImportDigest) || !attention.EpochValid(stored.Epoch) || stored.Revision < 0 || stored.Revision >= math.MaxInt64-1 || stored.Records == nil || stored.Receivers == nil {
+	if len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &stored) != nil || stored.Schema != 3 || stored.Configuration != "" && !digestValid(stored.Configuration) || !digestValid(stored.FleetID) || stored.ImportDigest != "" && !digestValid(stored.ImportDigest) || !attention.EpochValid(stored.Epoch) || stored.Revision < 0 || stored.Records == nil || stored.Receivers == nil {
 		return stored, attention.ErrUnavailable
 	}
 	slots := map[attention.Slot]bool{}
@@ -95,12 +93,10 @@ type Observer struct {
 	push             *hostconfig.AndroidPush
 	sendCancel       context.CancelFunc
 	path             string
-	lock             *os.File
 	file             observerFile
 	snapshot         attention.Snapshot
 	unavailable      bool
 	drained          bool
-	closed           bool
 	cancel           context.CancelFunc
 	done             chan struct{}
 	changed          chan struct{}
@@ -118,37 +114,28 @@ func New(config Config) (*Observer, error) {
 	if err := os.MkdirAll(filepath.Dir(config.StatePath), 0700); err != nil {
 		return nil, attention.ErrUnavailable
 	}
-	lock, err := os.OpenFile(config.StatePath+".lock", os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return nil, attention.ErrUnavailable
-	}
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = lock.Close() // justify-ignore-error: lock admission failure is primary.
-		return nil, attention.ErrUnavailable
-	}
-	observer := &Observer{client: config.Client, machine: config.Machine, fleet: config.Fleet, sender: config.Sender, path: config.StatePath, lock: lock, changed: make(chan struct{}, 1), subscribers: map[chan struct{}]struct{}{}}
+	// One gateway process owns this state directory through fleet's authority
+	// lock, and composition serializes construction against drain and Restore.
+	observer := &Observer{client: config.Client, machine: config.Machine, fleet: config.Fleet, sender: config.Sender, path: config.StatePath, changed: make(chan struct{}, 1), subscribers: map[chan struct{}]struct{}{}}
 	stored := observerFile{Schema: 3, FleetID: config.FleetID, Records: []attention.Record{}, Receivers: []receiver{}}
-	data, err := readPrivate(config.StatePath, attention.MaximumSnapshotBytes)
+	data, err := privatefile.Read(config.StatePath, attention.MaximumSnapshotBytes)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, observer.closeFailure()
+		return nil, attention.ErrUnavailable
 	}
 	if err == nil {
 		stored, err = decodeFile(data)
 		if err != nil || stored.FleetID != config.FleetID {
-			return nil, observer.closeFailure()
+			return nil, attention.ErrUnavailable
 		}
 	} else {
 		random := [16]byte{}
 		if _, err = rand.Read(random[:]); err != nil {
-			return nil, observer.closeFailure()
+			return nil, attention.ErrUnavailable
 		}
 		stored.Epoch = hex.EncodeToString(random[:])
 	}
 	// Membership is captured by composition outside fleet callbacks.
-	stored, _, err = retireAbsent(stored, config.Members)
-	if err != nil {
-		return nil, observer.closeFailure()
-	}
+	stored, _ = retireAbsent(stored, config.Members)
 	stored.Revision++
 	observer.file = stored
 	observer.snapshot = attention.Snapshot{Schema: 1, Epoch: stored.Epoch, Revision: stored.Revision, Machines: []attention.MachineSnapshot{}}
@@ -156,16 +143,12 @@ func New(config Config) (*Observer, error) {
 		observer.snapshot.Machines = append(observer.snapshot.Machines, attention.MachineSnapshot{Machine: host.Handle, Availability: "gap"})
 	}
 	if observer.save(stored) != nil {
-		return nil, observer.closeFailure()
+		return nil, attention.ErrUnavailable
 	}
 	if err := observer.ConfigurePush(config.Push, config.Sender); err != nil {
-		return nil, observer.closeFailure()
+		return nil, attention.ErrUnavailable
 	}
 	return observer, nil
-}
-func (observer *Observer) closeFailure() error {
-	_ = observer.lock.Close() // justify-ignore-error: state admission failure is primary.
-	return attention.ErrUnavailable
 }
 func (observer *Observer) save(file observerFile) error {
 	encoded, err := json.Marshal(file)
@@ -211,7 +194,7 @@ func (observer *Observer) Export() (map[string]json.RawMessage, error) {
 }
 
 // Restore installs transferred evidence, never freshness. New advances revision
-// and starts every machine at gap. The caller must first close the prior owner.
+// and starts every machine at gap. The caller must first drain the prior owner.
 func digestValid(value string) bool {
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == 32 && hex.EncodeToString(decoded) == value
@@ -227,7 +210,7 @@ func Restore(path string, owned map[string]json.RawMessage) error {
 	}
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
-	current, err := readPrivate(path, attention.MaximumSnapshotBytes)
+	current, err := privatefile.Read(path, attention.MaximumSnapshotBytes)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return attention.ErrUnavailable
 	}
@@ -253,17 +236,6 @@ func Restore(path string, owned map[string]json.RawMessage) error {
 			return attention.ErrUnavailable
 		}
 	}
-	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return attention.ErrUnavailable
-	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return attention.ErrUnavailable
-	}
-	defer lock.Close() // justify-ignore-error: release follows completed import or its primary failure.
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return attention.ErrUnavailable
-	}
 	imported.ImportDigest = digest
 	encoded, err := json.Marshal(imported)
 	if err != nil {
@@ -271,25 +243,13 @@ func Restore(path string, owned map[string]json.RawMessage) error {
 	}
 	return attention.WriteFile(path, encoded)
 }
-func (observer *Observer) Close() error {
-	_, drainErr := observer.Drain()
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.closed {
-		return drainErr
-	}
-	observer.closed = true
-	return errors.Join(drainErr, observer.lock.Close())
-}
-
 func (observer *Observer) commit(host string, peer fleetclient.Peer, err error) error {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	if observer.drained {
 		return nil
 	}
-	if observer.unavailable || observer.file.Revision >= math.MaxInt64-1 {
-		observer.unavailable = true
+	if observer.unavailable {
 		return attention.ErrUnavailable
 	}
 	index := slices.IndexFunc(observer.snapshot.Machines, func(current attention.MachineSnapshot) bool { return current.Machine == host })
@@ -374,9 +334,6 @@ func (observer *Observer) membership(hosts []fleetclient.Machine) error {
 	}
 	if slices.EqualFunc(observer.snapshot.Machines, machines, func(a, b attention.MachineSnapshot) bool { return a.Machine == b.Machine }) {
 		return nil
-	}
-	if observer.file.Revision >= math.MaxInt64-1 {
-		return attention.ErrUnavailable
 	}
 	file := observer.file
 	file.Revision++
@@ -491,24 +448,4 @@ func (observer *Observer) Run(parent context.Context) error {
 			return nil
 		}
 	}
-}
-
-func readPrivate(path string, limit int64) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return nil, attention.ErrUnavailable
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, attention.ErrUnavailable
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, limit+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || int64(len(data)) > limit {
-		return nil, attention.ErrUnavailable
-	}
-	return data, nil
 }

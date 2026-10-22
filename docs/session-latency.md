@@ -107,7 +107,7 @@ reuse this scanner for checkpoint normalization. release manager ownership befor
 kernel/process and screen enrichment; project the captured registration without
 another per-row tmux read.
 
-remove manager locks from `ValidateTerminal`, `OpenTerminal` and `PreflightCreate`:
+remove manager locks from `ValidateTerminal` and `OpenTerminal`:
 they read immutable configuration/native facts, reserve nothing, and have exact
 checks at dispatch. retain gateway `terminalLifecycle` registration/cancel/join/
 close ordering and tmux's final attach predicate. inventory cannot block attachment

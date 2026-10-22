@@ -38,7 +38,6 @@ type Route string
 
 const (
 	RouteTerminalControl   Route = "/v1/sessions/{tmuxId}/terminal/{operation}"
-	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteProfileUsage      Route = "/v1/profile-usage"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
@@ -57,7 +56,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteTerminalControl, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
+	case RouteTerminalControl, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -172,7 +171,6 @@ const (
 	eventSessionCreated            eventKind = "Session.Created"
 	eventSessionKilled             eventKind = "Session.Killed"
 	eventPressureSampled           eventKind = "Pressure.Sampled"
-	eventAuthenticationRejected    eventKind = "Authentication.Rejected"
 	eventTerminalCleanupFailed     eventKind = "Terminal.CleanupFailed"
 	eventTerminalObservationFailed eventKind = "Terminal.ObservationFailed"
 	eventWorkspaceRecoveryChanged  eventKind = "Workspace.RecoveryChanged"
@@ -317,14 +315,6 @@ func NewPressureSampled(level PressureLevel, reasons []PressureReason, duration 
 	return event, nil
 }
 
-func NewAuthenticationRejected(route Route) (Event, error) {
-	event := Event{kind: eventAuthenticationRejected, route: route}
-	if !event.valid() {
-		return Event{}, errors.New("invalid authentication-rejected log event")
-	}
-	return event, nil
-}
-
 func (event Event) valid() bool {
 	switch event.kind {
 	case eventGatewayStarted, eventTerminalCleanupFailed, eventNotificationsUnavailable:
@@ -358,8 +348,6 @@ func (event Event) valid() bool {
 			seen[reason] = struct{}{}
 		}
 		return true
-	case eventAuthenticationRejected:
-		return event.route.valid()
 	case eventWorkspaceRecoveryChanged:
 		return event.recovery != nil && event.recovery.Valid()
 	default:
@@ -432,8 +420,6 @@ func (logger Logger) Write(event Event) error {
 		}
 		fields["skidbladnir.pressure.reasons"] = reasons
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
-	case eventAuthenticationRejected:
-		fields["http.route"] = event.route
 	case eventWorkspaceRecoveryChanged:
 		change := event.recovery
 		fields["skidbladnir.recovery.at"] = change.At.UTC().Format(time.RFC3339Nano)

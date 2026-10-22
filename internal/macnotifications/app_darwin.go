@@ -255,7 +255,7 @@ func (owner *owner) openSession(ref string) {
 func ghosttyScript(skidPath, configPath, ref, nonce string) (string, error) {
 	directory, err := attention.StateDirectory()
 	if err != nil {
-		return "", ErrUnavailable
+		return "", attention.ErrUnavailable
 	}
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	command := quote(skidPath) + " --config " + quote(configPath) + " enter --ref " + quote(ref)
@@ -273,7 +273,7 @@ func ghosttyScript(skidPath, configPath, ref, nonce string) (string, error) {
 func appleTerminalScript(skidPath, configPath, ref, nonce string) (string, error) {
 	directory, err := attention.StateDirectory()
 	if err != nil {
-		return "", ErrUnavailable
+		return "", attention.ErrUnavailable
 	}
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	command := "SKID_NOTIFICATION_LAUNCH=" + quote(nonce) + " XDG_STATE_HOME=" + quote(filepath.Dir(directory)) + " " + quote(skidPath) + " --config " + quote(configPath) + " enter --ref " + quote(ref)
@@ -289,7 +289,7 @@ func appleTerminalScript(skidPath, configPath, ref, nonce string) (string, error
 func DefaultPaths() (configPath, skidPath string, err error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", ErrUnavailable
+		return "", "", attention.ErrUnavailable
 	}
 	directory, err := attention.StateDirectory()
 	if err != nil {

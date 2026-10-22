@@ -232,7 +232,6 @@ func controlRequest(ctx context.Context, target controlTarget, method, path stri
 		var failure struct {
 			Code    string          `json:"code"`
 			Message string          `json:"message"`
-			Routing *fleet.Envelope `json:"routing,omitempty"`
 			Removal *fleet.Envelope `json:"removal,omitempty"`
 		}
 		if strictjson.Decode(data, &failure) != nil {

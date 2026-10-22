@@ -107,7 +107,6 @@ reuse machine handles, bearer generation, atomic replacement and notification st
 
 ```text
 identity.json       machine handle, active enrollment/key/bearer, pending enrollment
-fleet.json          signed public routing snapshot (phones)
 host-state.json     coherent public/private signed pair (computers)
 resolved.json       immutable locally resolved settings + source revision/digest
 authority.json     hub signing key, members, accepted yaml, revisions, handoff state
@@ -222,11 +221,11 @@ operational/private-state access. admit proof only for its current fleet/device.
 | `POST /v1/fleet/invites`, `POST /v1/fleet/join` | hub: authenticated invite creation; join requires single-use invite |
 | `DELETE /v1/fleet/members/{deviceId}` | hub: durable removal, per-host pending status |
 | `PUT /v1/fleet/self` | hub: computer reports only its own origin/version/received control epoch/revision and config application status |
-| `POST /v1/fleet/handoff/{prepare,activate,status}` | designated source/destination only; exact transfer contract below |
+| `POST /v1/fleet/handoff/{prepare,activate,abort}` | designated source/destination only; exact transfer contract below |
 
 reuse existing typed errors/envelopes. invalid input `400`, failed auth `401`,
 wrong device kind/target `403`, conflict/wrong authority `409`, unavailable hub `503`.
-wrong-hub errors carry only verified routing; do not blindly redirect credentials.
+wrong-hub errors carry no routing; do not blindly redirect credentials.
 preserve existing session/conversation/terminal/profile-usage endpoints and
 `t-`/`c-` handles. profile descriptors become
 `{key,label,provider?,historyScope?}` everywhere; absent metadata stays absent.

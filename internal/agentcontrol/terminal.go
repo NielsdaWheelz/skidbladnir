@@ -18,9 +18,8 @@ var ErrTerminalInputBlocked = errors.New("terminal input blocked")
 
 type TerminalInputBlockedError struct{ Reason string }
 
-func (err *TerminalInputBlockedError) Error() string         { return "terminal input blocked: " + err.Reason }
-func (err *TerminalInputBlockedError) Unwrap() error         { return ErrTerminalInputBlocked }
-func (err *TerminalInputBlockedError) DispatchState() string { return "not_sent" }
+func (err *TerminalInputBlockedError) Error() string { return "terminal input blocked: " + err.Reason }
+func (err *TerminalInputBlockedError) Unwrap() error { return ErrTerminalInputBlocked }
 
 // Enrich sets each session's terminal facts from one focused observation of
 // the identity List or creation captured, never resolving it again. Every

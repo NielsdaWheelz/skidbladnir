@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +25,6 @@ type Options struct {
 	// Callbacks run under the fleet lock and must not call Service methods.
 	PushChanged                                                    func(*hostconfig.AndroidPush)
 	ValidateHub                                                    func(*hostconfig.AndroidPush) error
-	HTTPClient                                                     *http.Client
 	Directory, ConfigPath, Machine, Name, Origin, Home, LoginShell string
 	Version                                                        string
 	Resolve                                                        func(hostconfig.Settings) error
@@ -83,7 +80,6 @@ type Error struct {
 	Code    string
 	Message string
 	Status  int
-	Routing *Envelope
 	Removal *Envelope
 }
 
@@ -216,24 +212,9 @@ func Open(options Options) (service *Service, resultErr error) {
 }
 func (s *Service) path(name string) string { return filepath.Join(s.options.Directory, name) }
 func readPrivate(path string, target any) error {
-	info, e := os.Stat(path)
+	b, e := privatefile.Read(path, MaximumStateBytes*3)
 	if e != nil {
 		return e
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return errors.New("fleet state must be a private regular file")
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	b, e := io.ReadAll(io.LimitReader(f, MaximumStateBytes*3+1))
-	e = errors.Join(e, f.Close())
-	if e != nil {
-		return e
-	}
-	if len(b) > MaximumStateBytes*3 {
-		return errors.New("fleet state too large")
 	}
 	return strictjson.Decode(b, target)
 }
@@ -391,8 +372,7 @@ func (s *Service) active() error {
 	return nil
 }
 func (s *Service) wrongHub() error {
-	routing := s.state.Public
-	return &Error{Code: "WrongHub", Message: "request the active hub using verified fleet routing", Status: 409, Routing: &routing}
+	return &Error{Code: "WrongHub", Message: "request the active hub using verified fleet routing", Status: 409}
 }
 
 // IsHub reports whether this process currently owns writable hub authority.
@@ -423,7 +403,7 @@ func (s *Service) publish() error {
 	}
 	s.state, s.public, s.private = state, admittedPublic, admittedPrivate
 	s.notify()
-	return errors.Join(writePrivate(s.path("host-state.json"), state), writePrivate(s.path("fleet.json"), pub))
+	return writePrivate(s.path("host-state.json"), state)
 }
 func (s *Service) notify() { close(s.changed); s.changed = make(chan struct{}) }
 func (s *Service) Identity() Identity {
@@ -755,9 +735,6 @@ func (s *Service) Report(member Member, report SelfReport) (Status, error) {
 	}
 	if member.Kind != "computer" {
 		return s.status(), &Error{Code: "Forbidden", Message: "computer membership required", Status: 403}
-	}
-	if strings.HasPrefix(member.DeviceID, "local-") && member.Machine == s.options.Machine && s.identity.ActiveFleet != nil {
-		member.DeviceID = s.identity.ActiveFleet.DeviceID
 	}
 	found := false
 	for _, m := range s.private.Members {

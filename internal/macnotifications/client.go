@@ -21,8 +21,6 @@ import (
 
 const operationTimeout = 3 * time.Second
 
-var ErrUnavailable = errors.New("notifications unavailable")
-
 type View struct {
 	DeviceSnapshot          attention.DeviceSnapshot `json:"deviceSnapshot"`
 	ProducerAvailable       bool                     `json:"producerAvailable"`
@@ -36,10 +34,10 @@ func (view *View) UnmarshalJSON(data []byte) error {
 		CurrentProducerSnapshot *attention.Snapshot       `json:"currentProducerSnapshot,omitempty"`
 	}
 	if attention.Decode(data, &wire) != nil || wire.DeviceSnapshot == nil || wire.ProducerAvailable == nil || !wire.DeviceSnapshot.Valid() || wire.CurrentProducerSnapshot != nil && !wire.CurrentProducerSnapshot.Valid() {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	if *wire.ProducerAvailable && (wire.CurrentProducerSnapshot == nil || wire.DeviceSnapshot.ObserverEpoch != wire.CurrentProducerSnapshot.Epoch || wire.DeviceSnapshot.AdmittedRevision != wire.CurrentProducerSnapshot.Revision) {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	*view = View{*wire.DeviceSnapshot, *wire.ProducerAvailable, wire.CurrentProducerSnapshot}
 	return nil
@@ -85,7 +83,7 @@ type Visit struct {
 func SocketPath() (string, error) {
 	directory, err := attention.StateDirectory()
 	if err != nil {
-		return "", ErrUnavailable
+		return "", attention.ErrUnavailable
 	}
 	return filepath.Join(directory, "notifications.sock"), nil
 }
@@ -134,7 +132,7 @@ func Abandon(ctx context.Context, nonce string) error {
 	if err := call(ctx, conn, bufio.NewReader(conn), "abandon", struct {
 		LaunchNonce string `json:"launchNonce"`
 	}{nonce}, &result); err != nil || result == nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return nil
 }
@@ -150,7 +148,7 @@ func Setup(ctx context.Context) error {
 	defer conn.Close() // justify-ignore-error: setup owns no connection-bound visit.
 	var result *struct{}
 	if err := call(ctx, conn, bufio.NewReader(conn), "setup", struct{}{}, &result); err != nil || result == nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return nil
 }
@@ -166,7 +164,7 @@ func Register(ctx context.Context, args RegisterArgs) (*Visit, error) {
 	var result registration
 	if err := call(ctx, conn, reader, "register", args, &result); err != nil || !attention.EpochValid(result.VisitID) || result.Surface != nil && !validSurface(*result.Surface) {
 		_ = conn.Close() // justify-ignore-error: registration failed; disconnect retires it.
-		return nil, ErrUnavailable
+		return nil, attention.ErrUnavailable
 	}
 	visit := &Visit{args: args, operation: make(chan struct{}, 1)}
 	visit.connected(conn, reader, result)
@@ -185,7 +183,7 @@ func (visit *Visit) Presented(ctx context.Context, resetID string, token attenti
 	visit.args.ResetID = resetID
 	visit.args.Presented = true
 	if visit.closed || visit.conn == nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return visit.call(ctx, "presented", struct {
 		VisitID string               `json:"visitId"`
@@ -210,7 +208,7 @@ func (visit *Visit) Reconnect(ctx context.Context) error {
 	}
 	defer visit.release()
 	if visit.closed {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	if visit.conn != nil {
 		_ = visit.conn.Close() // justify-ignore-error: a replacement connection ends its own prior visit.
@@ -225,7 +223,7 @@ func (visit *Visit) Reconnect(ctx context.Context) error {
 	var result registration
 	if err := call(ctx, conn, reader, "register", args, &result); err != nil || !attention.EpochValid(result.VisitID) || result.Surface != nil && !validSurface(*result.Surface) {
 		_ = conn.Close() // justify-ignore-error: failed reconstruction retires its connection-owned visit.
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	visit.connected(conn, reader, result)
 	return nil
@@ -260,7 +258,7 @@ func (visit *Visit) connected(conn net.Conn, reader *bufio.Reader, result regist
 func (visit *Visit) call(ctx context.Context, op string, args any) error {
 	deadline, _ := ctx.Deadline()
 	if ctx.Err() != nil || visit.conn.SetWriteDeadline(deadline) != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	data, err := encodeRequest(op, args)
 	if err != nil {
@@ -268,7 +266,7 @@ func (visit *Visit) call(ctx context.Context, op string, args any) error {
 	}
 	if _, err := visit.conn.Write(data); err != nil {
 		_ = visit.conn.Close() // justify-ignore-error: an uncertain rpc cannot leave a reply for the next operation.
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	select {
 	case line := <-visit.replies:
@@ -278,10 +276,10 @@ func (visit *Visit) call(ctx context.Context, op string, args any) error {
 		}
 		return err
 	case <-visit.done:
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	case <-ctx.Done():
 		_ = visit.conn.Close() // justify-ignore-error: discard uncertain rpc state by ending its connection.
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 }
 
@@ -302,7 +300,7 @@ func (visit *Visit) End(ctx context.Context) error {
 	<-visit.done
 	visit.conn, visit.closed = nil, true
 	if err != nil || closeErr != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return nil
 }
@@ -322,11 +320,11 @@ func (visit *Visit) Close() error {
 func (visit *Visit) acquire(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	case visit.operation <- struct{}{}:
 		if ctx.Err() != nil {
 			visit.release()
-			return ErrUnavailable
+			return attention.ErrUnavailable
 		}
 		return nil
 	}
@@ -343,7 +341,7 @@ func dial(ctx context.Context) (net.Conn, error) {
 	defer cancel()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, attention.ErrUnavailable
 	}
 	return conn, nil
 }
@@ -354,7 +352,7 @@ func call(ctx context.Context, conn net.Conn, reader *bufio.Reader, op string, a
 		deadline = bound
 	}
 	if ctx.Err() != nil || conn.SetDeadline(deadline) != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	encoded, err := encodeRequest(op, args)
 	if err != nil {
@@ -363,11 +361,11 @@ func call(ctx context.Context, conn net.Conn, reader *bufio.Reader, op string, a
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() }) // justify-ignore-error: cancellation owns this bounded rpc's connection.
 	defer stop()
 	if _, err := conn.Write(encoded); err != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	line, err := readLine(reader, 1<<20)
 	if err != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return decodeReply(line, result)
 }
@@ -378,7 +376,7 @@ func encodeRequest(op string, args any) ([]byte, error) {
 		Args any    `json:"args"`
 	}{op, args})
 	if err != nil || len(encoded)+1 > 4096 {
-		return nil, ErrUnavailable
+		return nil, attention.ErrUnavailable
 	}
 	return append(encoded, '\n'), nil
 }
@@ -390,10 +388,10 @@ func decodeReply(line []byte, result any) error {
 		Error string          `json:"error,omitempty"`
 	}
 	if attention.Decode(line, &reply) != nil || !reply.OK || reply.Error != "" || len(reply.Value) == 0 {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	if result != nil && strictjson.Decode(reply.Value, result) != nil {
-		return ErrUnavailable
+		return attention.ErrUnavailable
 	}
 	return nil
 }
@@ -403,7 +401,7 @@ func readLine(reader *bufio.Reader, maximum int) ([]byte, error) {
 	for {
 		part, err := reader.ReadSlice('\n')
 		if len(result)+len(part) > maximum {
-			return nil, ErrUnavailable
+			return nil, attention.ErrUnavailable
 		}
 		result = append(result, part...)
 		if errors.Is(err, bufio.ErrBufferFull) {

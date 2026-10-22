@@ -59,7 +59,7 @@ func (m *model) refreshUsage(now time.Time, manual bool) tea.Cmd {
 	go func() {
 		defer workers.Done()
 		defer cancel()
-		result := client.ProfileUsage(ctx, "")
+		result := client.ProfileUsage(ctx)
 		completed <- usageMsg{generation: generation, result: result}
 	}()
 	return func() tea.Msg { return <-completed }

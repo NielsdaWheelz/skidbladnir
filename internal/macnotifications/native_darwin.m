@@ -41,16 +41,6 @@ int32_t skid_native_register(const char *application_path) {
     }
 }
 
-int32_t skid_native_status(const char *application_path) {
-    @autoreleasepool {
-        NSURL *url = ApplicationURL(application_path);
-        if (url == nil) return 0;
-        NSArray<NSRunningApplication *> *apps = ApplicationsAtURL(url);
-        if (apps.count != 1 || !apps[0].isFinishedLaunching || apps[0].processIdentifier <= 0) return 0;
-        return apps[0].processIdentifier;
-    }
-}
-
 int32_t skid_native_stop_application(const char *application_path) {
     @autoreleasepool {
         NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 3.0;

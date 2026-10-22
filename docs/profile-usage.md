@@ -34,7 +34,7 @@ subscription or extra service is part of the terminal cutover.
 
 ## route and report
 
-authenticated, machine-bound `GET /v1/profile-usage` accepts no body or query.
+authenticated, machine-bound `GET /v1/profile-usage` accepts no query; a body is ignored.
 it invokes no tmux and returns only configured codex profiles, in configured
 order, including unused profiles. zero codex profiles returns `[]`. native origin
 follows from this capability; there is no `source` member or claude variant.

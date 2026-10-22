@@ -26,7 +26,7 @@ func main() {
 		fmt.Printf("%s %s\n", releaseVersion, releaseSHA)
 		return
 	}
-	if len(os.Args) >= 2 && (os.Args[1] == "register" || os.Args[1] == "status" || os.Args[1] == "stop") {
+	if len(os.Args) >= 2 && (os.Args[1] == "register" || os.Args[1] == "stop") {
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "usage: skid-notifications %s ABSOLUTE_APP_BUNDLE\n", os.Args[1])
 			os.Exit(1)
@@ -35,12 +35,6 @@ func main() {
 		switch os.Args[1] {
 		case "register":
 			err = macnotifications.NativeRegister(os.Args[2])
-		case "status":
-			var pid int
-			pid, err = macnotifications.NativeStatus(os.Args[2])
-			if err == nil {
-				fmt.Println(pid)
-			}
 		case "stop":
 			err = macnotifications.NativeStopApplication(os.Args[2])
 		}

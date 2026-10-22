@@ -15,10 +15,6 @@ type profileUsageDTO struct {
 }
 
 func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *http.Request) {
-	if !requireEmptyRequest(request) {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
 	observed, err := gateway.agents.ProfileUsage(request.Context())
 	if err != nil {
 		writeError(writer, errorInternal)
