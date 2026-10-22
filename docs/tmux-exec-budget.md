@@ -303,8 +303,9 @@ explicit owner acceptance.
 skid needs these steps once, inside dev-server's window:
 1. a released skid version with the `ProcessType` change, pinned by dev-server.
    release and re-pin are separate requests under the campaign's process.
-2. `skid update` on the macbook. launchd boots serve out and bootstraps it
-   again; `AbandonProcessGroup` keeps tmux and the agents running.
+2. install it on the macbook through dev-server's pinned path,
+   `./workstation gateway apply skidbladnir`, which runs the reviewed
+   bootstrap. launchd boots serve out and bootstraps it again; `AbandonProcessGroup` keeps tmux and the agents running.
 3. verify that serve runs at priority 31.
 4. the operator stops agent work, then runs `tmux kill-server`. serve's
    recovery reconstructs the layout as fresh shells, under a new server it
