@@ -73,16 +73,8 @@ func TestFrames(t *testing.T) {
 				t.Errorf("%s: terminal footer does not match authored expectation", frame.ID)
 			}
 		}
-		var rules []string
-		for _, rule := range got.rules {
-			id := rule.ID
-			if rule.Region != DiagnosticBottom {
-				id += "@" + string(rule.Region)
-			}
-			rules = append(rules, id)
-		}
-		if strings.Join(rules, ",") != strings.Join(frame.Expect.Rules, ",") {
-			t.Errorf("%s: rules %v, want %v", frame.ID, rules, frame.Expect.Rules)
+		if strings.Join(got.rules, ",") != strings.Join(frame.Expect.Rules, ",") {
+			t.Errorf("%s: rules %v, want %v", frame.ID, got.rules, frame.Expect.Rules)
 		}
 	}
 	if err := scanner.Err(); err != nil {

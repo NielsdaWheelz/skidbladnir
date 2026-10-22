@@ -245,22 +245,15 @@ cancellation still wins. no retry finishes a partial operation.
 write receipt = {method:"terminal", outcome:written|unknown}
 close result = {interrupt:written|not_sent|unknown,
                 terminal:closed|not_closed|unknown}
-diagnostics = {rules: [{id, region: top|bottom|compound}],
-               capture?: {width, height, alternate, topClipped, bottomClipped},
-               elapsedMs: {resolve?, capture?, classify?}}
+diagnostics = {rules: [id]}
 ```
 
 `explain` is a boolean accepted only by inspect; absent means false and null
-rejects. diagnostics are present exactly when `explain` is true and describe the
-same sample as the status. `rules` is always an array, possibly empty, of at
-most eight content-free `{id, region}` entries whose ids are 1–48
-`[a-z0-9_.-]` characters; `capture` is present only when a screen was captured;
-`elapsedMs` holds only the stages that ran, as integer milliseconds in
-`0..2147483647`. `agentcontrol.Diagnostics.Valid` owns these bounds and
-fleetclient ingress calls it.
-an observation failure after target admission is `200` with an unavailable
-status and, when explained, its diagnostics; target, auth and identity failures
-keep their errors.
+rejects. diagnostics are present exactly when `explain` is true and name the
+rules of the same sample as the status: `rules` is always an array, possibly
+empty, of content-free rule ids. an observation failure after target admission
+is `200` with an unavailable status and, when explained, `rules: []`; target,
+auth and identity failures keep their errors.
 
 close `not_closed` means positively refused before deletion; `unknown` means
 deletion may have occurred. omit neither effect and never turn unknown into

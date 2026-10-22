@@ -580,43 +580,11 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 			fmt.Fprintf(stdout, "observed: %s\n", value.ObservedAt)
 			if diagnostics := value.Diagnostics; diagnostics != nil {
-				status := row.TerminalStatus
-				rules := []string{}
-				for _, rule := range diagnostics.Rules {
-					rules = append(rules, rule.ID+" ("+string(rule.Region)+")")
+				status, rules := row.TerminalStatus, "none"
+				if len(diagnostics.Rules) > 0 {
+					rules = strings.Join(diagnostics.Rules, ", ")
 				}
-				if len(rules) == 0 {
-					rules = append(rules, "none")
-				}
-				capture := "not collected"
-				if observed := diagnostics.Capture; observed != nil {
-					screen, clipped := "main screen", []string{}
-					if observed.Alternate {
-						screen = "alternate screen"
-					}
-					if observed.TopClipped {
-						clipped = append(clipped, "top")
-					}
-					if observed.BottomClipped {
-						clipped = append(clipped, "bottom")
-					}
-					if len(clipped) == 0 {
-						clipped = append(clipped, "none")
-					}
-					capture = fmt.Sprintf("%d × %d, %s, clipped: %s", observed.Width, observed.Height, screen, strings.Join(clipped, ", "))
-				}
-				timing := []string{}
-				for _, stage := range []struct {
-					name    string
-					elapsed *int64
-				}{{"resolve", diagnostics.ElapsedMs.Resolve}, {"capture", diagnostics.ElapsedMs.Capture}, {"classify", diagnostics.ElapsedMs.Classify}} {
-					if stage.elapsed == nil {
-						timing = append(timing, stage.name+" not collected")
-					} else {
-						timing = append(timing, fmt.Sprintf("%s %d ms", stage.name, *stage.elapsed))
-					}
-				}
-				fmt.Fprintf(stdout, "status evidence\n  activity: %s\n  interaction: %s\n  notice: %s\n  reason: %s\n  rules: %s\n  capture: %s\n  timing: %s\n", status.Activity, status.Interaction, status.Notice, view.Reason, strings.Join(rules, ", "), capture, strings.Join(timing, ", "))
+				fmt.Fprintf(stdout, "status evidence\n  activity: %s\n  interaction: %s\n  notice: %s\n  reason: %s\n  rules: %s\n", status.Activity, status.Interaction, status.Notice, view.Reason, rules)
 			}
 		}
 	case "read":

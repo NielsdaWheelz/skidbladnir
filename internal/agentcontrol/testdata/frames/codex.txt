@@ -2,7 +2,7 @@
 ; `capture.py` regenerates observations.jsonl from both corpora; frames_test.go replays it. grammar:
 ; docs/terminal-observation-codex.md. frames ending -default-footer or n12/n60 have no run-state word (idle from the screen).
 ; header: #frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer>
-;         reason=<reason> rules=<id>[@top|@compound],...|none (the classifier's decision order; regions default to bottom).
+;         reason=<reason> rules=<id>,...|none (the classifier's decision order).
 ;         optional final footer=<JSON string|null> asserts the recognized model/effort phrase or its absence; omission leaves it unchecked.
 ; obs=... drops the rows above <row> from the bottom region and marks it clipped, as a byte cap would.
 ; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
@@ -412,7 +412,7 @@
 08|  3. Continue without trusting (hooks won't run)
 11|  {b}enter{/}{d} confirm · {/}{b}esc{/}{d} skip{/}
 
-#frame codex-f49-setup-trust-tall-top 80x100 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust@top
+#frame codex-f49-setup-trust-tall-top 80x100 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust
 01|{b}  Folder access{/}
 02|  {d}/dummy/project{/}
 04|  Trust this folder? Codex can read, edit, and run files here, subject to your
@@ -423,7 +423,7 @@
 10|  2. Quit
 12|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} quit{/}
 
-#frame codex-f50-menu-pager-tall-compound 60x80 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.pager@compound
+#frame codex-f50-menu-pager-tall-compound 60x80 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.pager
 00|{d}/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / /{/}
 01|{b}› {/}dummy first prompt
 03|{d}• {/}Dummy answer.
@@ -509,7 +509,7 @@
 11|  {b}›{/} {d}Type your answer{/}
 13|  {b}enter{/} to submit answer{d} | {/}{b}ctrl+p / ctrl+n{/} change field{d} | {/}{b}esc{/} to cancel
 
-#frame codex-f60-setup-trust-tall-compound 80x70 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust@compound
+#frame codex-f60-setup-trust-tall-compound 80x70 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust
 01|{b}  Folder access{/}
 02|  {d}/dummy/project{/}
 04|  Trust this folder? Codex can read, edit, and run files here, subject to your
@@ -935,7 +935,7 @@
 08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}                                                        {mag}Goal achieved (6s){/fg}
 09|  {b}?{/} for shortcuts
 
-#frame codex-f71-tall-fresh-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle@compound,codex.run_state.ready
+#frame codex-f71-tall-fresh-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
 01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
 02|     {d}/dummy/project{/}
 03|{d}  permissions: {/}{b}{mag}YOLO mode{/}
@@ -948,7 +948,7 @@
 78|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 79|  {b}?{/} for shortcuts
 
-#frame codex-f72-tall-one-turn-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle@compound,codex.run_state.ready
+#frame codex-f72-tall-one-turn-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
 01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
 02|     {d}/dummy/project{/}
 03|{d}  permissions: {/}{b}{mag}YOLO mode{/}

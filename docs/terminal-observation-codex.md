@@ -132,7 +132,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | `/ What we detected` pager | PU | confirmation | `codex.confirmation.details_pager` | source-only | `app/misalignment_policy.rs:23-46` |
 | inline banner with actions (`Press a number to choose`) | PU | confirmation | `codex.confirmation.inline_banner` | source-only | `bottom_pane/actionable_banner.rs:167-205`, `bottom_pane/mod.rs:2181-2187` |
 | inline banner, information only | PU | interaction unknown | none | source-only | same |
-| trust / folder access | RP | unknown/setup/none/blocked | `codex.setup.trust` | darwin (including a title in the top region, `compound`), linux | `onboarding/trust_directory.rs` |
+| trust / folder access | RP | unknown/setup/none/blocked | `codex.setup.trust` | darwin (including a title in the top region), linux | `onboarding/trust_directory.rs` |
 | update prompt | RP | setup | `codex.setup.update` | darwin | `update_prompt.rs` |
 | login, first screen | RP | setup | `codex.setup.login` | darwin | `onboarding/auth.rs` |
 | model migration prompt | PU | setup | `codex.setup.migration` | source-only | `model_migration.rs:280-305` |
@@ -157,7 +157,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | image-only prompt (`  [Image #N]` rows, no `›` row) | AC | a prompt stop of the transcript scan | — | source-only: only remote images (another client's history) render labels outside the message | `history_cell/messages.rs:204-237` |
 | inline layout (`alt=0`) | RP | same values | same ids | darwin, linux | — |
 | known terminal background (OSC 10/11 answered) | RP | same values | same ids | darwin | `style.rs:60-75,143-153,209-214`, `style/contrast.rs:35-78` |
-| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.activity.idle` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
+| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.activity.idle` | darwin, linux | `transcript_view.rs:518-545` |
 | tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | none | darwin, linux | spec §3 |
 | stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown; under a shell that prints nothing, the old request (§6 c13) | none, or the old request's | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 c13 |
 | remote image rows `[Image #N]` above the prompt | RP | composer draft | — | source-only: only rehydrated history from another client attaches remote images | `chat_composer.rs:4927-4932`, `composer_layout.rs:118-129` |
@@ -180,7 +180,7 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    rows ([spec §3](terminal-observation.md#3-composition-and-observation-boundary):
    the top region is rows `0..min(h−65, 191)`).
    - `E` is found upward from `h−1` over blank rows, from the bottom region into
-     the top region; rules matched wholly in the top region carry region `top`.
+     the top region.
    - a dropped row reached before any non-blank row: the screen may continue
      into rows that were not captured: unknown/unknown, `evidence_clipped` (a
      pre-session screen near the top of a pane taller than 256 rows leaves the
@@ -193,10 +193,6 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    pager's row 0 (2.7). a scan crosses from the bottom region into the top
    region by row. a dropped row stops it *unproven*; an unparseable row stops it
    *unreadable*: unknown, never clipped.
-   - a rule whose decisive row lies in the top region carries region `compound`:
-     the title rules and `codex.menu.pager` / the details pagers (row 0),
-     `codex.activity.idle` (the settled stop), `codex.activity.prompt_pending`
-     (the prompt stop).
    - a byte-capped top region keeps rows from row 0 downward and drops its lower
      rows, so it keeps row 0 but never continues the bottom region.
 3. `E` is the last non-blank row of the screen. never assume `E == h−1`.
@@ -232,10 +228,9 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    `codex.scope.side`, `codex.composer.external_editor`, the interaction rule,
    `codex.activity.status_row`, the activity cause (`codex.activity.disconnected`,
    `codex.activity.goal_active` or `codex.activity.prompt_pending`), then the
-   run-state rule, each when it applies: at most six, under
-   [spec §5](terminal-observation.md#5-controls-and-diagnostic-api)'s cap of
-   eight. no rule names a clipped read; the reason carries it (claude names one,
-   `claude.region.clipped`; the difference is accepted).
+   run-state rule, each when it applies: at most six. no rule names a clipped
+   read; the reason carries it (claude names one, `claude.region.clipped`; the
+   difference is accepted).
 
 shared anatomy:
 
@@ -689,11 +684,11 @@ pager (rule 6):
 - `E` = `{d}" "{/}K{d}" close"…`; `E−1` = `" "K{d}" to scroll · "…`; optional rows
   above: `{b}"Ctrl+Space"{/}{d}" select"` and a dim `─…─ p% ─` rule.
 - row 0 of the pane is the dim header `"/ " <title>` over a `/ / /` fill
-  (`pager_overlay.rs:206-212`). it is in the bottom region when h ≤ 64 (region
-  bottom) and in the top region otherwise (region `compound`). the top region
-  keeps row 0 even when clipped. a clipped bottom region at h ≤ 64 drops it:
-  interaction unknown, `evidence_clipped`. an unparseable row 0 is no title:
-  interaction unknown, not clipped.
+  (`pager_overlay.rs:206-212`). it is in the bottom region when h ≤ 64 and in
+  the top region otherwise. the top region keeps row 0 even when clipped. a
+  clipped bottom region at h ≤ 64 drops it: interaction unknown,
+  `evidence_clipped`. an unparseable row 0 is no title: interaction unknown, not
+  clipped.
 - closed title map:
   - `E X E C`, `P A T C H`, `P E R M I S S I O N S`, `E L I C I T A T I O N`,
     `U S E R  V E R I F I C A T I O N` → permission
@@ -722,8 +717,8 @@ result for resume, warnings and menu pagers: unknown/menu/none/blocked.
   tolerated.
 - result: unknown/setup/none/blocked.
 - tall panes: a pre-session screen is top-anchored. for 65 ≤ h ≤ 256 it lies in
-  the top region (region `top`) when it fits rows `0..h−65`, and otherwise
-  straddles both regions and resolves through continuation (region `compound`).
+  the top region when it fits rows `0..h−65`, and otherwise straddles both
+  regions and resolves through continuation.
   h > 256 with a blank bottom region: unknown/unknown, `evidence_clipped`.
 - negative: the history box `╭…╮ │ ✨ Update available! A -> B │ …` left after
   skipping the update is not setup.

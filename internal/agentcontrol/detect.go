@@ -14,7 +14,7 @@ type detection struct {
 	composer composer
 	usage    *sessions.TerminalUsage
 	footer   *sessions.TerminalFooter
-	rules    []DiagnosticRule
+	rules    []string
 }
 
 // composer says whether guarded send may paste into the ordinary composer. Its
@@ -41,7 +41,7 @@ type reading struct {
 	notice           turnNotice
 	usage            *sessions.TerminalUsage
 	footer           *sessions.TerminalFooter
-	rules            []DiagnosticRule
+	rules            []string
 }
 
 // turnNotice is how the latest turn ended when it ended abnormally: the
@@ -137,5 +137,5 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}
-	return detection{status: status, composer: read.composer, usage: read.usage, footer: read.footer, rules: read.rules[:min(len(read.rules), maxDiagnosticRules)]}
+	return detection{status: status, composer: read.composer, usage: read.usage, footer: read.footer, rules: read.rules}
 }

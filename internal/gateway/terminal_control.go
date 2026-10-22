@@ -133,7 +133,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		if input.Explain != nil && *input.Explain {
 			// A nil slice is zero rules, but encoding/json writes it as null.
 			if diagnostics.Rules == nil {
-				diagnostics.Rules = []agentcontrol.DiagnosticRule{}
+				diagnostics.Rules = []string{}
 			}
 			inspected.Diagnostics = &diagnostics
 		}

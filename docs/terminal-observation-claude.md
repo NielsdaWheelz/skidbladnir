@@ -18,7 +18,7 @@ installed versions qualified:
 
 | platform | tmux | claude | renderers run |
 | --- | --- | --- | --- |
-| darwin 25.4.0 arm64 | 3.7c | 2.1.286 (`~/.local/bin/claude` → `versions/2.1.286`) | fullscreen, classic, screen reader |
+| darwin 25.4.0 arm64 | 3.7c | 2.1.286 (`~/.local/bin/claude` → `versions/2.1.286`) | fullscreen, classic |
 | linux: devbox (ubuntu, kernel 6.8, x86_64), arch (kernel 7.2.6, x86_64) | 3.4 (devbox), 3.7c (arch) | 2.1.284 (same layout) | fullscreen (the default without a `tui` setting); classic for idle, draft, work, a single question, Bash permission and tall panes |
 
 ## 1. frozen capability table
@@ -61,24 +61,15 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 20 | working with a statusline (hint suppressed) | R | working via spinner + loading chevron | `claude.activity.spinner` | darwin (classic) |
 | 21 | loading chevron, no spinner/retry/hint | P | activity unknown | — | never observed |
 | 22 | spinner/retry shape or hint with a ready chevron | P | activity unknown, `evidence_conflict` | `claude.activity.conflict` | source-only |
-| 23 | screen-reader startup quiet (banner is the lowest row) | R | starting | `claude.activity.starting_sr` | darwin |
 | 24 | fullscreen/classic startup | U | the REPL mounts ready; no startup structure | — | darwin |
-| 25 | screen reader: working (hint) / idle | R | working / idle | `claude.activity.hint_sr` / `claude.activity.idle_sr` | darwin |
-| 26 | screen reader: draft during work, retry, fresh session, statusline | P | activity unknown | — | darwin |
-| 27 | screen reader: pill in the mode row | P | process tolerated | `claude.activity.idle_sr` | darwin (`1 shell`) |
-| 28 | screen reader: wrapped mode row or completion row | P | unknown | — | darwin |
-| 29 | screen reader: announcements below `$` | P | unknown until repaint | — | source-only |
-| 30 | screen reader: agent/workflow panel | P | unknown | — | source-only (rendering unknown) |
 | 31 | permission: Bash, Write, Edit, wrapped at 26/40/60/80 | R | permission | `claude.permission.dialog` | darwin, linux (Bash at 100 columns) |
 | 32 | permission: MCP tool | R | permission | `claude.permission.dialog` | darwin |
 | 33 | permission: dynamic workflow (`Run a dynamic workflow?`) | R | permission | `claude.permission.workflow` | darwin (100/60/40) |
 | 34 | permission: Fetch, notebook, subagent- or plugin-sourced | R | permission | `claude.permission.dialog` | source-only |
-| 35 | permission, screen reader | R | permission | `claude.permission.sr` | darwin |
 | 36 | question: single, free-text focus, multi-question, multiSelect, wrapped hint, chat-row focus | R | question | `claude.question.form` | darwin, linux (single) |
 | 37 | question with countdown `auto-continue in Ns · any key to stay` or plugin notice row | R | question | `claude.question.form` | source-only |
 | 38 | question with option previews, chat focus | R | question | `claude.question.preview` | darwin (single question, including previews that draw their own boxes); the two-question hint source-only |
 | 39 | question submit review | R | question | `claude.question.review` | darwin |
-| 40 | question, screen reader | R | question | `claude.question.sr` | darwin |
 | 41 | plan approval with plan, wrapped at 80/60/40 | R | confirmation | `claude.confirmation.plan` | darwin (fullscreen, 30–80 columns); classic fails live: unknown/unknown at every width, its dialog drawn at col 1 where rule 15 reads col 3 |
 | 42 | exit plan mode without plan | R | confirmation | `claude.confirmation.exit_plan` | darwin |
 | 43 | enter plan mode dialog (only under an `ask` rule naming `EnterPlanMode`) | R | confirmation | `claude.confirmation.enter_plan` | darwin (80/40) |
@@ -92,10 +83,9 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 51 | setup: settings error (invalid settings file) | R | setup | `claude.setup.settings_error` | darwin (80/40) |
 | 52 | setup: auto-mode default offer | R | no rule: unknown/unknown | — | source-only (§5 c15) |
 | 53 | setup/input: rate-limit options, consumer-terms update, trial expired | R | no rule: unknown/unknown | — | source-only (§5 c15) |
-| 54 | setup, screen reader: theme, api key, security notes, trust | R | setup | `claude.setup.sr` | darwin; bypass, mcp and login source-only |
 | 55 | provider announcement modal | P | interaction unknown | — | source-only |
 | 56 | digit band above the composer (2.3) | P | composer unknown | `claude.composer.band` | source-only |
-| 57 | usage-limit wait, in the pinned column (2.3, 2.5) | P | never idle; interaction and composer unknown; activity from spinner, hint or panel | `claude.limit.wait` | darwin (the pinned column's placement); the wait itself source-only (§5 c17) |
+| 57 | usage-limit wait, in the pinned column (2.3) | P | never idle; interaction and composer unknown; activity from spinner, hint or panel | `claude.limit.wait` | darwin (the pinned column's placement); the wait itself source-only (§5 c17) |
 | 58 | menus: model, settings, theme, resume, help, /btw | R | menu | `claude.menu.<variant>` | darwin (fullscreen); classic `/model` fails live: unknown/unknown at every width, its hint at col 2 under a `RULE` where rule 4 reads col 3 under an `EDGE`; the other menus not run in classic |
 | 59 | menus: transcript viewer, agents view | R | menu | `claude.menu.transcript` / `.agents_view` | darwin |
 | 60 | menu whose hint is obscured (narrow or short pane) | P | unknown/unknown | — | darwin (§5 c19: fullscreen `/model` reads menu only while its whole box fits the pane) |
@@ -114,8 +104,8 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 73 | vim editor mode: `-- INSERT/VISUAL/VISUAL LINE --` prefix / NORMAL | R / U | prefix tolerated / NORMAL invisible | — | source-only |
 | 74 | compaction / hook spinners | R | working | `claude.activity.spinner` | source-only |
 | 75 | title, progress (osc 9;4), bell | X | never read | — | — |
-| 76 | classic tall pane, composer in the top region | R | as bottom | `claude.layout.composer` (region top) | darwin, linux |
-| 77 | tall pane, pre-REPL dialog in the top region or straddling it | R | as bottom | family rule (region top / compound) | darwin (trust at 100 and 70 rows) |
+| 76 | classic tall pane, composer in the top region | R | as bottom | `claude.layout.composer` | darwin, linux |
+| 77 | tall pane, pre-REPL dialog in the top region or straddling it | R | as bottom | family rule | darwin (trust at 100 and 70 rows) |
 | 78 | pane taller than 256 rows: rows `192..h−65` absent; a read reaching them | P | unknown, `evidence_clipped` | `claude.region.clipped` | darwin (classic and fullscreen at 300 rows), linux (classic at 300 rows) |
 | 79 | byte-capped region | P | `evidence_clipped` only where a read reaches the cut | `claude.region.clipped` | capture: darwin, linux |
 | 80 | colour level 0 (`NO_COLOR`, `FORCE_COLOR=0`, `TERM=dumb`) | P | never idle; working via hint/background only | — | darwin (`NO_COLOR`); the others source-only |
@@ -129,7 +119,7 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 88 | gated unified footer (`tengu_copper_thistle`) | R | vocabulary covers it | — | source-only |
 | 89 | fullscreen stale cells after a resize | P | exact match fails: unknown until repaint | — | darwin |
 | 90 | other sessions needing input: footer `← N agent(s)` | P | interaction none (§5 c16) | — | source-only |
-| 91 | pinned notices (`⚠ ` items of the pinned column: transcript saving off, transcript writes failing) | P | fullscreen/classic: opaque footer rows, tolerated; screen reader: idle lost (§5 c4) | — | darwin |
+| 91 | pinned notices (`⚠ ` items of the pinned column: transcript saving off, transcript writes failing) | P | opaque footer rows, tolerated | — | darwin |
 | 92 | narrow mode item: the cycle hint cut or wrapped away whole, or the row ending at `on` (2.4) | R | as the whole row: the hint proves the slot (P0); `on` with 4 blank cells to the row end does (P2) | `claude.activity.idle` / `.spinner` | darwin (fullscreen and classic; production bypass arguments: idle, draft, spinner and tool at every width 30–60; auto mode and accept edits idle 20–60; plan mode idle 20–40; manual mode 16–40, empty and draft) |
 
 ## 2. screen grammar
@@ -202,8 +192,7 @@ claude's layout and in tmux (`⏸ ⏵ ← ↓ ✔ ☐` measured).
 - `notification(row)`: at least 8 leading spaces (a right-aligned notification:
   classic footer, fullscreen top margin), or `col` 2 and `plain` begins
   `  tmux detected · ` or `  tmux focus-events off · `. this is the only
-  notification predicate; 2.5 applies the same copies to joined screen-reader
-  rows.
+  notification predicate.
 
 **logical block `blk(c, end)`.** the rows from `end` upward while each row is
 non-blank, has `|col − c| ≤ 1`, and is not a `MARKER` or `BOXROW`; its topmost row
@@ -218,9 +207,7 @@ word-bounded, so matching never depends on those spaces.
 `r` cannot extend it) and whose block's topmost row is at exactly column `c`. a
 2.6 hint or anchor block `blk(c)` holds under the same condition (2.6: every
 column is exact), which keeps col-2 transcript text out of lower columns. `above`
-takes the plain `blk`. a rule's decisive row among `texts(c)` is the top of the
-matching block nearest above its hint: the dialog's own text, below any
-transcript that quotes it.
+takes the plain `blk`. a family reads `texts(c)` at and above `L′`.
 
 **numbered options `opt(c, end)`.** skip blank rows above `end`, then take the
 contiguous rows that are either an option start `^ {c}(❯| ) N\. label` or a
@@ -257,27 +244,18 @@ absent).
   absent row it can meet is `floor−1`; there it fails:
   - the dependent dimension is unknown with `evidence_clipped` and rule
     `claude.region.clipped`. required reads are the slot walk (activity), the
-    composer anchor search, the screen reader's pinned-column read (interaction,
-    2.5) and a family's anchors (interaction). an intact lower composer whose walk
-    ends at or below `floor` is unaffected.
+    composer anchor search and a family's anchors (interaction). an intact lower
+    composer whose walk ends at or below `floor` is unaffected.
   - if no dispatch step matches and some read reached the cut: unknown/unknown,
     `evidence_clipped`, `claude.region.clipped` (a classic pane taller than 256
     rows whose lowest drawn row lies above the bottom region). a cut that no read
     reached does not make the reading clipped.
-- **diagnostic region.** each rule names the region of the rows that decided it:
-  `top`, `bottom`, or `compound` when they span both. `claude.region.clipped` names
-  the captured row just below the cut, or the bottom region when it kept no row at
-  all.
 
 ### 2.2 dispatch (first match)
 
-1. screen-reader startup (2.5).
-2. screen-reader surface: the first cell of `L` is `$` and its second cell, if any,
-   is NBSP (2.5). a shell prompt `$ ` (ordinary space) never qualifies.
-3. screen-reader request (2.5).
-4. composer surface, when the composer anchor holds (2.3).
-5. families at `L′`, in the order of 2.6.
-6. nothing matched: unknown/unknown/none, composer unknown, `layout_unknown`. an
+1. composer surface, when the composer anchor holds (2.3).
+2. families at `L′`, in the order of 2.6.
+3. nothing matched: unknown/unknown/none, composer unknown, `layout_unknown`. an
    unknown pane is never promoted to `input`.
 
 ### 2.3 composer surface (fullscreen, classic)
@@ -291,7 +269,7 @@ to the first other row `c`. the anchor holds iff:
   historical user prompt, never a chevron;
 - the row above `c` is the top rule `t`: a `RULE`, a `BANNER` or a `LEFT_LABEL`.
 
-otherwise the anchor fails and dispatch continues at step 5. no other `RULE` is
+otherwise the anchor fails and dispatch continues at step 2. no other `RULE` is
 tried: a dead process's frame above a newer surface can never capture it. rules
 indented by 2 are quoted text.
 
@@ -501,10 +479,10 @@ then zero or more ` · <segment>`, where a segment contains no ` · `.
 - a run of ≥ 3 spaces followed by text starts a right-aligned notification suffix
   (classic), not parsed.
 - a trailing ` ·` means a later item was cut.
-- outside the screen reader and manual mode, a narrow row may show only the
-  mode item's first wrapped line (layout below): `on`, then either ` (` and a
-  character prefix of `<chord> to cycle)` taken token by token, as a cut segment
-  is (earlier tokens whole, the last possibly partial), or nothing. claude wraps
+- outside manual mode, a narrow row may show only the mode item's first wrapped
+  line (layout below): `on`, then either ` (` and a character prefix of
+  `<chord> to cycle)` taken token by token, as a cut segment is (earlier tokens
+  whole, the last possibly partial), or nothing. claude wraps
   at word boundaries, so live rows show whole tokens (`(shift+tab to`,
   `(shift+tab`). after a cut hint come two or more spaces and the separator, a
   notification suffix, or the row end. after `on` alone, two or more spaces and
@@ -674,76 +652,6 @@ by its own mechanism (§5 c4, c5):
   so the mode row does not parse and the footer is void: idle and working are
   both lost.
 
-### 2.5 screen reader
-
-the screen reader has no sgr and no box drawing. it flattens the footer tree:
-sibling boxes join with one space, so box separators read `  ·  `, while
-separators inside `Hs` stay ` · `. every line wraps by word with hard breaks at the
-pane width (S).
-
-- **startup (`claude.activity.starting_sr`).** `plain(L)` at col 0 is exactly
-  `[Screen Reader Mode: on via flag]`, `[Screen Reader Mode: on via env]`,
-  `[Screen Reader Mode: on via settings]` or `[Screen Reader Mode: on]`. rows above
-  are ignored: a launch from a shell prompt prints the banner under the shell's
-  output. result starting/unknown/none, composer unknown. this is the startup
-  quiet (S: `CLAUDE_AX_STARTUP_QUIET_MS`, default 3000, at most 600000); every
-  mounted layout ends with a `$` row or a request row.
-- **surface (`claude.layout.sr`).** `L` is the input row: `$`, then NBSP or
-  nothing.
-  - walk upward from `L−1` over recognized notification blocks: a row
-    `^effort: (low|medium|high|xhigh|max)( · ultracode)? · /effort$`, or 1–3 rows
-    whose texts joined by one space equal
-    `tmux detected · scroll with PgUp/PgDn · or add 'set -g mouse on' to ~/.tmux.conf for wheel scroll`
-    or
-    `tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking`.
-    if the walk meets the cut while the rows joined so far, after a space, end such
-    a text, the notice's head and `M′` lie in the cut: unknown/unknown,
-    `evidence_clipped`.
-  - the first other row is `M′`. replace every `\s+·\s+` in it with ` · ` and
-    match
-    `^(-- (INSERT|VISUAL|VISUAL LINE) -- )?(manual mode|plan mode|accept edits|auto mode|bypass permissions|don't ask) on( \(\S+ to cycle\))?( · <segment>)*$`.
-    segments are classified by exact instance of the 2.4 labels (the screen reader
-    never cuts; the indicator loses its aria-hidden `◆` and is `unlisted`).
-  - `M′` unmatched, or any segment `unlisted`: interaction, activity and composer
-    unknown. a wrapped mode row puts its continuation directly above `$` and lands
-    here.
-  - **pinned column.** claude draws its pinned column (2.3) directly above `M′`,
-    above any statusline rows; the screen reader drops its padding, so its
-    `⚠ `-led items and their wrapped rows sit at col 0. from `M′−1`, look at most 16
-    rows up for the lowest row starting `⚠ `; the rows from it to `M′−1`, joined,
-    are read for the 2.3 copies. a match: interaction and composer unknown,
-    `claude.limit.wait`. a cut met before such a row may hide one: interaction and
-    composer unknown, `evidence_clipped`. no such row within 16 rows: no column.
-    the bound keeps a quoted `⚠ ` row higher in the transcript out of the read; a
-    wait taller than 16 rows is part of §5 c17. activity below still applies.
-  - otherwise interaction `none`, and activity is, first match:
-    - working (`claude.activity.background`): a `work` segment;
-    - working (`claude.activity.hint_sr`): an `interrupt` segment;
-    - idle (`claude.activity.idle_sr`): no `unknown_pill` segment, an empty `$`
-      row, and the row directly above `M′` is a completion row
-      `^(Baked|Brewed|Churned|Cogitated|Cooked|Crunched|Sautéed|Worked) for ` or
-      starts `claude: `;
-    - otherwise unknown: a spinner line without the hint (a draft suppresses it),
-      a retry row, a statusline, `you:`/`tool:`/`error:` neighbours, a wrapped
-      completion row, the fresh-session header, a pinned notice.
-- **requests.** if `plain(L)` is `Esc to cancel · Tab to amend` or
-  `Enter to confirm · Esc to cancel`, or starts ` Syntax theme: ` (the theme
-  preview stays below the prompt), the request row is the row above `L`, else `L`.
-  the request row matches `^Select with numbers \[1-\d+\]`,
-  `^Enter text for option \d+ `, `^Enter y/n:$` (api key, trust) or
-  `^Press Enter to continue…$` (security notes). the anchors are rows above the
-  request row, first match:
-
-  | order | rule | condition |
-  | --- | --- | --- |
-  | 1 | `claude.setup.sr` | a row that, after an optional `Permission Required: ` prefix (trust), starts with `Accessing workspace:`, `Detected a custom API key in your environment`, `WARNING: Claude Code running in Bypass Permissions mode`, `New MCP server found in this project: `, `Select login method:`, `Let's get started.`, `Security notes:` or `Settings Error` |
-  | 2 | `claude.permission.sr` | a row starting `Permission Required: ` and a row `^Do you want to .+\?$` |
-  | 3 | `claude.question.sr` | a tab row `^←\s+[☐☒✔]` or header `^ [☐☒✔] \S`, or a row `^> .+\?$` |
-
-  composer `blocked`. a request row with no anchor reads unknown/unknown. a wrapped
-  transcript row that begins like an anchor can only swap the request kind, never
-  invent a request: the request row is drawn only while a request is live.
-
 ### 2.6 request and menu families (no composer anchor)
 
 **`L′`.** start from `L` and skip at most two trailing right-aligned rows (≥ 8
@@ -866,13 +774,11 @@ the only `❯` to `❯ N. Chat about this`.
   - otherwise `recognized`, `partial` or `layout_unknown`, by the count of known
     dimensions.
 - **diagnostics** (in this order, ≤ 5 entries): the region rule
-  `claude.region.clipped` when a dimension became unknown by the cut; the layout
-  rule of an anchored surface (`claude.layout.composer`, `claude.layout.sr`); the
-  family, menu or limit rule; the activity rule; the composer rule
-  (`claude.composer.empty|draft|blocked|band`). a 2.6 family has no layout rule;
-  screen-reader startup emits only its activity rule; a void surface emits only its
-  layout rule. each entry's region is that of its decisive rows (2.1). 48 rule ids,
-  each at most 48 chars of `[a-z0-9_.-]`.
+  `claude.region.clipped` when a dimension became unknown by the cut; the composer
+  surface's layout rule `claude.layout.composer`; the family, menu or limit rule;
+  the activity rule; the composer rule (`claude.composer.empty|draft|blocked|band`).
+  a 2.6 family has no layout rule; a void surface emits only its layout rule. 43
+  rule ids, each a literal of `[a-z0-9_.-]`.
 
 ### 2.8 notices
 
@@ -890,31 +796,28 @@ past at most six notification rows and blank rows (as the slot walk does):
 - otherwise none. the same rows above a later prompt or turn are history and set
   nothing; footer notifications are not task notices.
 
-the notice is read on the ordinary composer surface only; the screen-reader
-surface reads none. the interrupted or failed turn itself still reads idle, so it
-raises ready under its notice label (spec §6).
+the notice is read on the ordinary composer surface only. the interrupted or
+failed turn itself still reads idle, so it raises ready under its notice label
+(spec §6).
 
 ## 3. composer semantics
 
-the composer comes from an accounted composer surface (2.3), the screen-reader
-surface (2.5), a 2.6 family or a screen-reader request; the last two always read
-`blocked`. first match:
+the composer comes from an accounted composer surface (2.3) or a 2.6 family,
+which always reads `blocked`. first match:
 
 | value | condition |
 | --- | --- |
-| `blocked` | interaction is a recognized request or menu (2.6 families, the help grid, the viewed subagent, screen-reader requests): a surface owns the keystrokes |
-| `unknown` | no anchor; a void surface; a `LEFT_LABEL` top rule; the usage-limit wait; an unmatched `M′`; the digit band (`claude.composer.band`); an anchor read cut by clipping |
-| `empty` | the cells after `❯`+NBSP are one of: nothing; one `INV` space (drawn cursor); a placeholder, i.e. an optional single `INV` non-space cell (cursor on the placeholder's first letter) followed only by `DIM` cells or ordinary default-style spaces; and no continuation row has content. screen reader: nothing but spaces/NBSP after `$` |
-| `draft` | anything else after the prompt: any non-`DIM` non-space cell, spaces before the cursor (a whitespace draft), an `INV` non-space cell with no `DIM` text after it (cursor on a typed character), coloured slash text, paste chips, content on a continuation row. also bash mode (`!`): a send would run a shell command. screen reader: any non-space character after `$` |
+| `blocked` | interaction is a recognized request or menu (2.6 families, the help grid, the viewed subagent): a surface owns the keystrokes |
+| `unknown` | no anchor; a void surface; a `LEFT_LABEL` top rule; the usage-limit wait; the digit band (`claude.composer.band`); an anchor read cut by clipping |
+| `empty` | the cells after `❯`+NBSP are one of: nothing; one `INV` space (drawn cursor); a placeholder, i.e. an optional single `INV` non-space cell (cursor on the placeholder's first letter) followed only by `DIM` cells or ordinary default-style spaces; and no continuation row has content |
+| `draft` | anything else after the prompt: any non-`DIM` non-space cell, spaces before the cursor (a whitespace draft), an `INV` non-space cell with no `DIM` text after it (cursor on a typed character), coloured slash text, paste chips, content on a continuation row. also bash mode (`!`): a send would run a shell command |
 
 placeholder glyphs require `DIM`; ordinary default-style spaces between them are
 invisible and need no dim attribute. other non-dim cells remain draft evidence.
 placeholder words never supply authority. at colour level 0
 the placeholder loses sgr 2 and reads as draft (S); that is safe. queued messages
-leave the composer as a placeholder. vim NORMAL mode is invisible (U). a
-screen-reader draft of only spaces reads `empty`: there is no drawn cursor to
-separate it (§5 c14). stale fullscreen cells after a resize can make any exact
-comparison fail: unknown.
+leave the composer as a placeholder. vim NORMAL mode is invisible (U). stale
+fullscreen cells after a resize can make any exact comparison fail: unknown.
 
 rule ids: `claude.composer.empty`, `claude.composer.draft`,
 `claude.composer.blocked`, `claude.composer.band`. any other unknown emits no
@@ -927,20 +830,20 @@ display configuration is retained; skid overrides nothing.
 | knob | effect on the grammar |
 | --- | --- |
 | `tui: "fullscreen" \| "default"`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN` | renderer `full` vs `classic`; auto-disabled under `tmux -CC` and after crashed boots. setup dialogs before the REPL render at the top of the normal screen (alt=0). everything is positional. 2.1.284 on linux draws fullscreen with no `tui` setting |
-| `statusLine {…}` | 0..n opaque rows between the bottom rule and `M`. suppresses `esc to interrupt`, `? for shortcuts` and voice in the default footer (D), so working needs spinner + loading chevron and idle needs P0, P1 via another `Hs` member, or P2. the gated footer does not suppress the hint. in the screen reader the statusline sits above `M′`, so idle_sr is lost |
+| `statusLine {…}` | 0..n opaque rows between the bottom rule and `M`. suppresses `esc to interrupt`, `? for shortcuts` and voice in the default footer (D), so working needs spinner + loading chevron and idle needs P0, P1 via another `Hs` member, or P2. the gated footer does not suppress the hint |
 | colour level 0: `NO_COLOR` (with `FORCE_COLOR` unset), `FORCE_COLOR=0`, `TERM=dumb` | no `FG`/`DIM`/`BG`; `INV` survives (S). `STYLE_LIVE` fails, so never idle; working only via hint or background; placeholder reads as draft |
 | `prefersReducedMotion` | spinner glyph `●`, frozen timer |
-| `axScreenReader`, `CLAUDE_AX_SCREEN_READER`, `--ax-screen-reader`; `CLAUDE_AX_STARTUP_QUIET_MS` | screen-reader renderer (ignores `tui`; gated remotely, default on); startup quiet length |
+| `axScreenReader`, `CLAUDE_AX_SCREEN_READER`, `--ax-screen-reader`, `CLAUDE_AX_STARTUP_QUIET_MS` | unsupported: reads unknown. the renderer draws no sgr or box glyphs, so no 2.2 surface anchors: unknown/unknown/none, composer unknown, `layout_unknown`, or `evidence_clipped` with `claude.region.clipped` when a read met the cut (2.1); no status, attention, ready, queue entry or guarded send (§5 c14). the corpus keeps its frames as negatives |
 | `CLAUDE_CODE_ACCESSIBILITY=1` | native cursor; the drawn `INV` cursor may be absent. `empty` tolerates that |
 | `theme` (dark, light, daltonized, ansi, custom) | colour values only |
 | `spinnerVerbs`, `spinnerTipsEnabled`, custom tips, `spinnerTipLabel` | spinner message; the `⎿` tip row and its label, skipped structurally |
-| `showTurnDuration` | completion and waiting rows present or absent. off: `WAIT` never renders and screen-reader idle needs a `claude: ` neighbour; linux `●` bullets can then sit in the slot as an `SP`-shaped row with a ready chevron (conflict) |
+| `showTurnDuration` | completion and waiting rows present or absent. off: `WAIT` never renders; linux `●` bullets can then sit in the slot as an `SP`-shaped row with a ready chevron (conflict) |
 | keybindings (`chat:cancel`, `chat:cycleMode`, `app:toggleTodos`, `footer:*`, `scroll:*`) | chords inside hints; matched as `<chord>`/`\S+` (one token) |
 | `editorMode: vim`, `statusLine.hideVimModeIndicator` | optional `-- MODE -- ` prefix in `M`; NORMAL invisible |
 | `--name`, `/rename`, `/color <c>`, `--agent`, teammates | a `BANNER` top rule; `/color` recolours both rules and backs the label, `STYLE_LIVE` still holds. the prompt stays `❯`: the `@name` prompt glyph is reachable only in the dense prompt layout, whose gate is constant false in 2.1.286 (S) |
 | permission mode (`defaultMode`, shift+tab, `--permission-mode`, `--dangerously-skip-permissions`) | mode item text; non-default modes draw the cycle hint (P0) when no pill exists. new configs default to auto mode with an onboarding notice (`hasSeenAutoDefaultNotice`). `--dangerously-skip-permissions` shows the bypass warning once per config |
 | `prStatusFooterEnabled`, `footerLinksRegexes` | PR badge and helper tolerated; links `unlisted` |
-| `CLAUDE_CODE_FOOTER_INDICATOR`, settings `footer_indicator`, remote per-model indicator | `indicator` class; fullscreen/classic only. in the screen reader it loses its glyph and is `unlisted` |
+| `CLAUDE_CODE_FOOTER_INDICATOR`, settings `footer_indicator`, remote per-model indicator | `indicator` class |
 | `subagentStatusLine` | replaces panel row bodies: such rows show no readable status and make no work claim |
 | `feedbackDrafts`, `feedbackSurveyRate`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` | the digit band (composer unknown) |
 | plugin render hooks (`AbovePrompt`, `PromptHint`) | unsupported: an undetectable digit band / an `unlisted` footer segment (§5 c11) |
@@ -961,10 +864,9 @@ each unknown or none, never a false claim unless the item says otherwise:
   unrepresentable.
 - **c2** notices (2.8) come from the turn's last row or block, so a reply that ends with
   a quoted `⎿  Interrupted` row reads interrupted, and any turn-ending system message
-  drawn in one colour (an auto-continuing usage limit included) reads error; the
-  screen-reader surface reads none. claude cancels a turn interrupted before any
-  output or tool call silently, restoring the prompt as a draft, so that turn reads
-  idle without a notice.
+  drawn in one colour (an auto-continuing usage limit included) reads error.
+  claude cancels a turn interrupted before any output or tool call silently,
+  restoring the prompt as a draft, so that turn reads idle without a notice.
 - **c3** a loading chevron with no corroborator is unknown. teammate views never
   reach idle.
 - **c4** idle is lost when:
@@ -980,7 +882,7 @@ each unknown or none, never a false claim unless the item says otherwise:
     labels and `<chord>`-led members, so the segment is `unlisted`;
   - the pane is taller than 256 rows and the slot walk reaches rows `192..h−65` (a
     fullscreen pane that tall with a short transcript), or a byte cap cut the walk;
-  - a footer link, a render hook or a screen-reader indicator is configured;
+  - a footer link or a render hook is configured;
   - the footer is non-ordinary or void (bash, history recall, help, autocomplete,
     an unrecognized col-2 notification under the mode row, a mode row that does
     not parse: bypass at 27 columns and narrower, where `on` wraps away);
@@ -989,11 +891,7 @@ each unknown or none, never a false claim unless the item says otherwise:
     `subagentStatusLine` body;
   - usage-limit copy appears below the bottom rule, including a statusline or panel
     row that prints it;
-  - colour level 0;
-  - a screen-reader session has no completion row or `claude:` neighbour directly
-    above an unwrapped mode row: every fresh screen-reader session until its first
-    turn, every screen-reader session with a statusline, every screen-reader
-    session while claude pins a notice.
+  - colour level 0.
 - **c5** working is lost when:
   - an unknown col-2 notification sits in the composer margin while a statusline
     suppresses the hint: the notification becomes `S`;
@@ -1018,13 +916,15 @@ each unknown or none, never a false claim unless the item says otherwise:
   plugin render hooks are unsupported display configuration: an `AbovePrompt` band
   with digit seats is undetectable, so a single-character guarded send can reach
   it, and a `PromptHint` hook makes the footer `unlisted`.
-- **c12** stale fullscreen cells after a resize, screen-reader announcements below
-  `$`, and a dead process's frame during a relaunched claude's first second give
-  unknown until repaint.
+- **c12** stale fullscreen cells after a resize and a dead process's frame during a
+  relaunched claude's first second give unknown until repaint.
 - **c13** the no-response retry variant draws a second row under `RT`; without the
   hint it reads unknown.
-- **c14** a screen-reader draft of only spaces reads `empty`, so guarded send is
-  admitted and appends to it.
+- **c14** screen-reader mode is unsupported (§4): its screens read
+  unknown/unknown/none, composer unknown. such a session gets no status,
+  attention, ready or needs-input entry; guarded send refuses, `start --stdin`
+  ends in `readiness_timeout` and `wait` never matches. stop and close are
+  unaffected.
 - **c15** human-request dialogs without a rule (auto-mode offer, rate-limit options,
   consumer terms, trial expired) read unknown/unknown. live qualification of each
   is an [open blocker](issues/claude-unruled-request-dialogs.md).
@@ -1032,11 +932,9 @@ each unknown or none, never a false claim unless the item says otherwise:
   interaction `none`, and `ready` can fire beside it.
 - **c17** remote usage-limit copy: only the default copies are anchored. a remotely
   configured wrap-up lead and waiting copy without any anchor make an armed wait
-  indistinguishable from idle (a false idle), and in the screen reader remote copy
-  long enough to push the `⚠ ` lead more than 16 rows above `M′` hides the wait.
-  the stricter rule, any unrecognized notification blocks idle, is rejected: it
-  kills idle while any other notification is visible and in every brief-mode
-  session.
+  indistinguishable from idle (a false idle). the stricter rule, any
+  unrecognized notification blocks idle, is rejected: it kills idle while any
+  other notification is visible and in every brief-mode session.
 - **c18** 2.1.284's theme picker below 40 columns reads layout_unknown: accepted.
   in the measured cases it reads unknown/unknown/none, composer unknown, never a
   false claim.
@@ -1086,9 +984,9 @@ every record is content-free.
    (`/tmp/cc-daemon-<uid>/<hash>`) survives the tmux server: kill it and remove
    that directory afterwards. remove the socket directory
    (`/tmp/cc-socks-<uid>`) only if the probe created it.
-4. qualify every renderer in use (fullscreen, classic, screen reader) on each
-   platform and tmux version, at the default width and at the narrow widths 2.4
-   (its mode-row table: every width from 30 to 60) and rule 24 measure. classify
+4. qualify every renderer in use (fullscreen, classic) on each platform and
+   tmux version, at the default width and at the narrow widths 2.4 (its mode-row
+   table: every width from 30 to 60) and rule 24 measure. classify
    through the real capture and `detect`; expectations come from the mock step
    and the keys sent, never from skid's output.
 5. for families the mock cannot produce (the usage-limit wait, teammates, the §5
@@ -1127,10 +1025,9 @@ conservative bound from `claudeReadUsage`:
 this counts the model phrase as well as the prefix; it works without quota.
 a row touching the bound omits. missing/unparseable
 rows, wrapped fields, incomplete boundaries and unsupported custom layouts omit.
-do not join fragments or infer missing text from an ellipsis. screen-reader,
-picker and other nonordinary branches omit. these rules do not change quota
-admission; reuse parsing primitives without making one capability depend on the
-other.
+do not join fragments or infer missing text from an ellipsis. picker and other
+nonordinary branches omit. these rules do not change quota admission; reuse
+parsing primitives without making one capability depend on the other.
 
 source: the managed [formatter](https://github.com/NielsdaWheelz/dev-server/blob/6339edc3a923e3f926e855e60a0f07c7814b2ede/assets/claude/statusline.sh)
 joins native display name and effort into this delimited clause; no formatter
