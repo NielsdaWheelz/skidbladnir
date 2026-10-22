@@ -146,16 +146,17 @@ continues aggregating that primitive.
 the desktop model owns these private lanes; use existing resource owners on phone:
 
 ```text
-inventory[machine] = {generation, flight?, trailingRead, admittedPeer}
-context[machine]   = {sourceGeneration, flight?}
-notifications     = {generation, flight?, trailingRead, admittedView?, failed}
+lane               = {generation, flight?, trailing}
+inventory[machine] = {lane, settled, writing}
+context[machine]   = lane
+notifications      = lane
 ```
 
 one inventory request per machine. initial load and five-second ticks start idle
 lanes; ordinary ticks skip occupied lanes. manual refresh starts idle lanes and
 coalesces one trailing read behind occupied lanes. matching completion releases
-its own flight; obsolete completion cannot alter admitted state. quit cancels and
-joins owned workers; buffered completion delivery cannot strand them.
+its own flight; obsolete completion cannot alter admitted state. quit cancels
+owned reads without joining them; the process exits.
 
 publish successful base rows immediately. failure retains that host's previous
 rows/time with actions/ready disabled; another host's success cannot clear it.
@@ -172,13 +173,12 @@ look fresh or undo acknowledgement. ready stays unqualified until the new
 notification outcome.
 
 each successful admitted source inventory starts one optional context pass: two seconds
-total, at most one per source and, on desktop, three overall. cancel an obsolete pass and
-coalesce its latest successor without overlap. deduplicate ids within each pass;
-use the destination context's `agent.label`, otherwise the existing profile-key label.
-never list sessions solely for a label. apply overlays only when source generation,
-session lifetime and connection id still match; never replace a current peer with
-an enriched old peer. remote rows start as `remoteUnknown`, hiding source cwd/
-provider. failed peers retire overlays and never enrich stale rows. overlays
+total, at most one per source. cancel an obsolete pass and coalesce its latest
+successor without overlap. deduplicate ids within each pass; use the
+destination context's `agent.label`, otherwise the existing profile-key label. never list
+sessions solely for a label. adopt a pass's rows only while no inventory, write
+or entry has fenced it; never replace the current peer. remote rows start as
+`remoteUnknown`, hiding source cwd/provider. failed peers retire overlays and never enrich stale rows. overlays
 cannot change source identity, availability, status or actions.
 
 android retains credential/runtime/read-sequence and mutation fences. publish base
@@ -232,8 +232,8 @@ leak backward into terminal wire types.
 | --- | --- |
 | h → g | `OpenTerminal(lifetimeCtx,startupCtx,input) (*TerminalAttachment,error)`; tmux startup uses the same two-context order; attachment exposes final `{attachedClients,paneId,foreground?}` |
 | g → clients | `HelloFrame{AttachedClients,PaneID,Foreground?}`; `EncodeHello(HelloFrame)`; wire foreground has exactly provider/pid/startIdentity |
-| d → clients/observer | `InventoryMachine(ctx,machineHandle) Result` returns raw `Peer` or typed failure; `EnrichContexts(ctx,source Peer,catalogues []Peer) []ContextObservation`; overlay is `{sourceRef,connectionID,execution}` |
-| n → d | `Run(ctx,client,encodedRef,input,output) Result`; `Result{Err,NotificationErr}` |
+| d → clients/observer | `InventoryMachine(ctx,machineHandle) Result` returns raw `Peer` or typed failure; `EnrichContexts(ctx,source Peer,peers []Peer) Peer` returns source with each remote row's execution |
+| n → d | `Run(ctx,client,ref Reference,input,output) Result`; `Result{Err,NotificationErr}` |
 | a receive order | `onHello(attachedClients,paneId,foreground?)` precedes following binary page application on the existing main queue |
 
 return terminal result after tty restoration and owned cleanup; notification error stays
@@ -257,7 +257,7 @@ its pane inside old cwd/agent/status/footer metadata. the
 | terminal status enrichment | existing shared 2 s, also capped by remaining inventory budget |
 | pre-upgrade lifetime validation | 5 s child of http request |
 | post-resize startup through greeting | 5 s child of attachment lifetime; includes admission/readiness |
-| display context | 2 s per source pass; at most three concurrent passes on desktop, one per machine on the phone |
+| display context | 2 s per source pass; one pass per source machine at a time, on desktop and phone |
 | optional notification operations | existing 3 s; never on terminal pump |
 
 retain existing 15 s client, initial-resize, recovery, liveness and cleanup owners.
@@ -306,7 +306,7 @@ writing that tty. cli prints the secondary notice after restoration; browser use
 its secondary state after return. do not expose gate/parser details in ordinary ui.
 
 accepted costs: a native transcript parser;
-independent sample times; up to three context passes with cross-source duplicate
+independent sample times; one context pass per source with cross-source duplicate
 lookups; temporarily unknown context; ready possibly remaining after an uncertain
 visit; a coordinated strict greeting/local-socket cutover; required inventory
 failing at five seconds rather than waiting through the client budget; temporary

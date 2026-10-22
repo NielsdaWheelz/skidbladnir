@@ -28,7 +28,7 @@ type tableViewport struct {
 func (m *model) tableLayout(width int) tableLayout {
 	layout := tableLayout{width: width, headings: make([]bool, len(m.rows))}
 	for index, row := range m.rows {
-		layout.name = max(layout.name, ansi.StringWidth(attention.SingleLine(row.session.Name)))
+		layout.name = max(layout.name, ansi.StringWidth(attention.SingleLine(row.Session.Name)))
 		layout.headings[index] = m.opensGroup(index)
 	}
 	layout.name = min(layout.name, 28)
@@ -63,7 +63,7 @@ func (layout tableLayout) viewport(first, height int) tableViewport {
 	return viewport
 }
 
-func (m *model) rowMetadata(row listedRow) (provider, profile, footer string) {
+func (m *model) rowMetadata(row fleetclient.Row) (provider, profile, footer string) {
 	if agent := m.current(&row).Agent; agent != nil {
 		provider, profile = agent.Provider, agent.Profile
 		if profile == "" {
@@ -113,8 +113,11 @@ func rowDirectory(current fleetclient.ExecutionContext, width int) (string, bool
 	return prefix + tail(path, suffixWidth), true
 }
 
+// the browser lays out nothing below 80 × 24.
+func (m *model) tooSmall() bool { return m.width < 80 || m.height < 24 }
+
 func (m *model) fitViewports() {
-	if m.width < 80 || m.height < 24 || m.page != "" || m.cursor < 0 {
+	if m.tooSmall() || m.page != "" || m.cursor < 0 {
 		return
 	}
 	layout := m.tableLayout(m.width - 2)
@@ -155,17 +158,17 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 			lines = append(lines, "")
 		}
 		if placement.heading {
-			heading := ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.session.Group)), layout.width-1, "…") + ":"
+			heading := ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.Session.Group)), layout.width-1, "…") + ":"
 			lines = append(lines, faint.Styled(heading))
 		}
 		gutter, nameStyle := "  ", plain
-		if !row.available {
+		if !row.Available {
 			nameStyle = faint
 		}
 		if index == m.cursor {
 			gutter, nameStyle = here.Styled("▌")+" ", nameStyle.Bold()
 		}
-		name := attention.SingleLine(row.session.Name)
+		name := attention.SingleLine(row.Session.Name)
 		name = ansi.Truncate(name, layout.name, "…")
 		printed, statusStyle := m.tableStatus(row)
 		printed = attention.SingleLine(printed)
@@ -174,8 +177,8 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 		used := 2 + layout.name + 2 + ansi.StringWidth(printed)
 		provider, profile, footer := m.rowMetadata(row)
 		metadata := []string{}
-		if m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned() {
-			metadata = append(metadata, "in "+ansi.Truncate(attention.SingleLine(row.session.Group.String()), 16, "…"))
+		if m.view.kind == viewNeedsInput && !row.Session.Group.IsUnassigned() {
+			metadata = append(metadata, "in "+ansi.Truncate(attention.SingleLine(row.Session.Group.String()), 16, "…"))
 		}
 		for _, text := range []string{provider, profile, footer} {
 			if text != "" {

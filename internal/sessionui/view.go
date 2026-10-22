@@ -34,7 +34,7 @@ type hint struct{ key, label string }
 
 func (m *model) View() tea.View {
 	var content string
-	if m.width < 80 || m.height < 24 {
+	if m.tooSmall() {
 		// the outcome still shows, so a refused ctrl-c says why.
 		lines := append(wrapped("80 × 24 minimum; ctrl-c quits", m.width), m.outcomeLines(m.width)...)
 		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
@@ -205,11 +205,11 @@ func (m *model) footerLines() []string {
 	case "confirm":
 		legend = target(m.pendingName, m.pendingLabel, width)
 	case "details", "group-edit", "name-edit":
-		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
+		legend = target(m.pageRow.Session.Name, m.pageRow.Label, width)
 	case "quick-create":
 		legend = "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width/2, "…")
 	case "create":
-		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[0]), width/2, "…")
+		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[formMachine]), width/2, "…")
 	}
 	lines := append(notices, usage...)
 	lines = append(lines, rule(legend, end, width))
@@ -246,7 +246,7 @@ func (m *model) noticeLines(width int) []string {
 				suffix += "; showing its last observation"
 			}
 			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
-		} else if !peer.OK {
+		} else if checking(peer) {
 			suffix := ": checking inventory"
 			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
 			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
@@ -286,7 +286,7 @@ func (m *model) hints() [][]hint {
 			return [][]hint{keys}
 		}
 		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
-		if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
+		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && row.Session.NameMode == "manual" {
 			keys = append(keys, hint{"ctrl-a", "use automatic title"})
 		}
 		return [][]hint{keys}
@@ -295,25 +295,25 @@ func (m *model) hints() [][]hint {
 	case "create":
 		enter := hint{"enter", "next"}
 		next := hint{"tab", "next"}
-		if m.field == len(m.form) {
+		if m.field == formCreate {
 			enter.label = "create"
-		} else if m.field == 4 {
+		} else if m.field == formGroup {
 			enter.label = "uses and continues"
 			next.label = "uses and continues"
 		}
 		hints := []hint{next, {"shift-tab", "back"}, enter, {"escape", "cancel"}}
-		if m.field == 0 || m.field == 1 || m.field == 3 || m.field == 4 {
+		if m.field == formMachine || m.field == formLaunch || m.field == formDirectory || m.field == formGroup {
 			hints = append([]hint{{"←→", "choose"}}, hints...)
 		}
-		if m.field == 3 {
+		if m.field == formDirectory {
 			hints = append(hints, hint{"ctrl-u", "home"})
-		} else if m.field == 4 {
+		} else if m.field == formGroup {
 			hints = append(hints, hint{"ctrl-u", "unassigned"})
 		}
 		return [][]hint{hints}
 	case "details":
 		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
-		if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
+		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
 			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
 		}
 		return [][]hint{keys}
@@ -322,10 +322,10 @@ func (m *model) hints() [][]hint {
 	}
 	session := []hint{}
 	global := []hint{{"n", "quick terminal"}, {"N", "new terminal options"}}
-	if row := m.selectedRow(); row != nil && row.available {
+	if row := m.selectedRow(); row != nil && row.Available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
 		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
-		if !m.busy && row.session.Connection == nil {
+		if !m.busy && row.Session.Connection == nil {
 			global = append(global, hint{"T", "new terminal here"})
 		}
 	} else if row != nil {
@@ -395,10 +395,9 @@ func (m *model) confirmationContent() (fixed, facts []string) {
 	fixed = []string{danger.Styled(action + "?"), ""}
 	fixed = append(fixed, wrapped(effect, width)...)
 	fixed = append(fixed, "")
-	ref, _ := fleetclient.DecodeReference(m.pending.Ref)
 	facts = append(facts, field("session name", m.pendingName, false, false, 13, width)...)
 	facts = append(facts, field("terminal host", m.pendingLabel, false, false, 13, width)...)
-	facts = append(facts, field("selected pane", ref.PaneID, false, false, 13, width)...)
+	facts = append(facts, field("selected pane", m.pending.Ref.PaneID, false, false, 13, width)...)
 	return fixed, facts
 }
 
@@ -430,9 +429,9 @@ func (m *model) bodyLines(height int) []string {
 		}
 		current := m.rowForReference(editor.request.Ref)
 		if current != nil {
-			value := fleetclient.GroupHeading(current.session.Group)
+			value := fleetclient.GroupHeading(current.Session.Group)
 			if m.page == "name-edit" {
-				value = current.session.Name + " (" + current.session.NameMode + ")"
+				value = current.Session.Name + " (" + current.Session.NameMode + ")"
 			}
 			lines = append(lines, field("current", value, false, false, axis, width)...)
 		}
@@ -458,18 +457,18 @@ func (m *model) bodyLines(height int) []string {
 			status = "saving; delivery will be reported"
 		case editor.checking:
 			status = "checking inventory; escape returns to info"
-		case current == nil || !current.available:
+		case current == nil || !current.Available:
 			status = "session unavailable; save disabled"
 		case m.page == "group-edit":
 			value, err := group.ParseDraft(editor.draft)
 			if err != nil {
 				status = group.ErrInvalid.Error()
-			} else if current.session.Group == value {
+			} else if current.Session.Group == value {
 				status = "unchanged; save disabled"
 			}
 		case !fleetclient.ValidSessionName(editor.draft):
 			status = fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
-		case current.session.NameMode == "manual" && current.session.Name == editor.draft:
+		case current.Session.NameMode == "manual" && current.Session.Name == editor.draft:
 			status = "unchanged; save disabled"
 		}
 		lines = append(lines, "")
@@ -477,7 +476,7 @@ func (m *model) bodyLines(height int) []string {
 		lines = append(lines, "")
 		if m.page == "name-edit" {
 			lines = append(lines, "saving a name stops automatic naming.")
-			if current != nil && current.session.NameMode == "automatic" {
+			if current != nil && current.Session.NameMode == "automatic" {
 				lines = append(lines, "follows the active pane's terminal title.")
 			}
 		}
@@ -492,7 +491,7 @@ func (m *model) bodyLines(height int) []string {
 			context = "home (~) · group: " + m.pending.Group.String()
 		}
 		lines = append(lines, wrapped(context, width)...)
-		if peer := m.quickCreatePeer(); peer == nil || !peer.OK {
+		if peer := m.peerLabeled(m.pending.Machine); peer == nil || !peer.OK {
 			status := attention.SingleLine(m.pending.Machine) + " unavailable; opening disabled"
 			if m.targetChecking(m.pending.Machine) {
 				status = "checking inventory; opening disabled"
@@ -506,22 +505,22 @@ func (m *model) bodyLines(height int) []string {
 		focusStart, focusEnd := 0, 0
 		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
 			value := m.form[index]
-			if index == 3 {
+			if index == formDirectory {
 				if _, _, problem := parseDirectoryDraft(value); problem != "" {
 					value = strconv.QuoteToASCII(value)
 				}
-				if value == "" && m.field != 3 {
+				if value == "" && m.field != formDirectory {
 					value = "home (~)"
 				}
 			}
-			if index == 4 {
+			if index == formGroup {
 				value = groupDraftDisplay(value)
 			}
 			if index == m.field {
 				focusStart = len(lines)
 			}
-			lines = append(lines, field(label, value, index == m.field, index < 2, 9, width)...)
-			if index == 3 && m.field == 3 {
+			lines = append(lines, field(label, value, index == m.field, index < formName, 9, width)...)
+			if index == formDirectory && m.field == formDirectory {
 				if value == "" {
 					lines[len(lines)-1] += faint.Styled(" home (~); type to search")
 				}
@@ -533,32 +532,32 @@ func (m *model) bodyLines(height int) []string {
 					lines = append(lines, field("", status, false, false, 9, width)...)
 				}
 			}
-			if index == 4 && m.field == 4 {
-				lines = append(lines, m.groupPreview(m.form[4], &m.groupSelection, 9, width)...)
+			if index == formGroup && m.field == formGroup {
+				lines = append(lines, m.groupPreview(m.form[formGroup], &m.groupSelection, 9, width)...)
 			}
 			if index == m.field {
 				focusEnd = len(lines)
 			}
 		}
-		if m.field == len(m.form) {
+		if m.field == formCreate {
 			focusStart = len(lines)
 		}
-		lines = append(lines, field("", "create", m.field == len(m.form), false, 9, width)...)
-		if m.field == len(m.form) {
+		lines = append(lines, field("", "create", m.field == formCreate, false, 9, width)...)
+		if m.field == formCreate {
 			focusEnd = len(lines)
 		}
 		lines = append(lines, "", "name: leave blank to follow the terminal title.")
-		if m.field == 3 {
+		if m.field == formDirectory {
 			lines = append(lines, "type search words or a path (/… or ~/…); tab uses the match.")
 		}
 		if !m.createAvailable() {
 			status := "host unavailable; create disabled"
-			if m.targetChecking(m.form[0]) {
+			if m.targetChecking(m.form[formMachine]) {
 				status = "checking inventory; create disabled"
 			}
 			lines = append(lines, status)
 		}
-		if _, err := group.ParseDraft(m.form[4]); err != nil {
+		if _, err := group.ParseDraft(m.form[formGroup]); err != nil {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
 		return window(lines, focusStart, focusEnd, height)
@@ -650,11 +649,11 @@ func (m *model) groupPreview(draft string, selection *groupSelection, axis, widt
 func (m *model) detailLines() []string {
 	width := m.width - 2
 	facts := m.details(&m.pageRow)
-	row := m.rowForReference(m.pageRow.session.Ref)
+	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
 	axis := 16
 	for index := range facts {
 		label := facts[index][0]
-		if row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
+		if row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
 			if label == "name" {
 				label += " [r]"
 			} else if label == "group" {
@@ -694,13 +693,13 @@ func (m *model) headings() bool {
 
 // opensGroup reports whether a group heading precedes this row.
 func (m *model) opensGroup(index int) bool {
-	return m.headings() && (index == 0 || m.rows[index].session.Group != m.rows[index-1].session.Group)
+	return m.headings() && (index == 0 || m.rows[index].Session.Group != m.rows[index-1].Session.Group)
 }
 
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a good read of the hub's notification state.
-func (m *model) statusView(row listedRow) fleetclient.StatusView {
-	view := fleetclient.ProjectStatus(row.session, row.available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.session))
+func (m *model) statusView(row fleetclient.Row) fleetclient.StatusView {
+	view := fleetclient.ProjectStatus(row.Session, row.Available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.Session))
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail
@@ -710,12 +709,12 @@ func (m *model) statusView(row listedRow) fleetclient.StatusView {
 
 // hostChecking reports a row without remote actions whose host has not failed a
 // read: its host is unobserved or being re-read after a metadata change.
-func (m *model) hostChecking(row listedRow) bool {
-	if row.available {
+func (m *model) hostChecking(row fleetclient.Row) bool {
+	if row.Available {
 		return false
 	}
 	for _, peer := range m.peers {
-		if peer.Machine == row.machine && peer.Error != nil {
+		if peer.Machine == row.Machine && peer.Error != nil {
 			return false
 		}
 	}
@@ -726,7 +725,7 @@ func (m *model) hostChecking(row listedRow) bool {
 // reads faint `checking`; any other row reads the projected label in its tone,
 // so a row whose host failed a read reads its last observation. an errored
 // host also keeps its notice.
-func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
+func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
 	if m.hostChecking(row) {
 		return "checking", faint
 	}

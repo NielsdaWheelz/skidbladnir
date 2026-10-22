@@ -2,6 +2,7 @@ package sessionui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -22,23 +23,33 @@ const (
 	directorySearchFailed
 )
 
-// targetChecking distinguishes an unobserved or invalidated peer from a failed host.
-func (m *model) targetChecking(label string) bool {
-	for _, peer := range m.peers {
-		if peer.Label == label {
-			return !peer.OK && peer.Error == nil
-		}
-	}
-	return false
-}
+// The create form's fields in focus order; formCreate is the create button after them.
+const (
+	formMachine = iota
+	formLaunch
+	formName
+	formDirectory
+	formGroup
+	formCreate
+)
 
-func (m *model) quickCreatePeer() *fleetclient.Peer {
+func (m *model) peerLabeled(label string) *fleetclient.Peer {
 	for index := range m.peers {
-		if m.peers[index].Label == m.pending.Machine {
+		if m.peers[index].Label == label {
 			return &m.peers[index]
 		}
 	}
 	return nil
+}
+
+// checking is a peer without a current inventory that has not failed a read:
+// unobserved, or invalidated by a write until its next inventory.
+func checking(peer fleetclient.Peer) bool { return !peer.OK && peer.Error == nil }
+
+// targetChecking distinguishes an unobserved or invalidated peer from a failed host.
+func (m *model) targetChecking(label string) bool {
+	peer := m.peerLabeled(label)
+	return peer != nil && checking(*peer)
 }
 
 func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
@@ -60,7 +71,7 @@ func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
 			break
 		}
 	case "enter":
-		peer := m.quickCreatePeer()
+		peer := m.peerLabeled(m.pending.Machine)
 		if peer == nil || !peer.OK {
 			return nil
 		}
@@ -73,96 +84,77 @@ func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *model) directoryAvailable() bool {
-	for _, peer := range m.peers {
-		if peer.Label == m.form[0] {
-			return peer.OK
-		}
-	}
-	return false
+	peer := m.peerLabeled(m.form[formMachine])
+	return peer != nil && peer.OK
 }
 
 func (m *model) createAvailable() bool {
-	for _, peer := range m.peers {
-		if peer.Label != m.form[0] || !peer.OK {
-			continue
-		}
-		if m.form[1] == "terminal" {
-			return true
-		}
-		for _, profile := range peer.Profiles {
-			if profile.Key == m.form[1] {
-				return true
-			}
-		}
-	}
-	return false
+	peer := m.peerLabeled(m.form[formMachine])
+	return peer != nil && peer.OK && (m.form[formLaunch] == "terminal" ||
+		slices.ContainsFunc(peer.Profiles, func(profile fleetclient.Profile) bool { return profile.Key == m.form[formLaunch] }))
 }
 
 func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
-	previousDirectory := m.form[3]
-	previousGroup := m.form[4]
+	previousDirectory := m.form[formDirectory]
+	previousGroup := m.form[formGroup]
 	switch key.String() {
 	case "esc":
 		m.page = ""
 		m.clearDirectorySearch()
 	case "tab", "enter":
-		if m.field == 3 && !m.acceptDirectory() {
+		if m.field == formDirectory && !m.acceptDirectory() {
 			return nil
 		}
-		if m.field == 4 {
-			draft, err := m.groupSelection.accept(m.form[4], m.groupChoices(m.form[4]))
+		if m.field == formGroup {
+			draft, err := m.groupSelection.accept(m.form[formGroup], m.groupChoices(m.form[formGroup]))
 			if err != nil {
 				m.fail(group.ErrInvalid.Error())
 				return nil
 			}
-			m.form[4] = draft
+			m.form[formGroup] = draft
 			m.groupSelection.prefill(draft, m.groupChoices(draft))
 		}
-		if key.String() == "tab" || m.field < len(m.form) {
-			return m.focusForm((m.field + 1) % (len(m.form) + 1))
+		if key.String() == "tab" || m.field < formCreate {
+			return m.focusForm((m.field + 1) % (formCreate + 1))
 		}
-		cwd, terms, problem := parseDirectoryDraft(m.form[3])
+		cwd, terms, problem := parseDirectoryDraft(m.form[formDirectory])
 		if problem != "" || len(terms) > 0 {
 			if problem == "" {
 				problem = "choose a matching directory"
 			}
 			m.inform(problem)
-			return m.focusForm(3)
+			return m.focusForm(formDirectory)
 		}
-		label, err := group.ParseDraft(m.form[4])
+		label, err := group.ParseDraft(m.form[formGroup])
 		if err != nil {
-			m.focusForm(4)
+			m.focusForm(formGroup)
 			m.inform(group.ErrInvalid.Error())
 			return nil
 		}
 		if !m.createAvailable() {
 			m.inform("host unavailable; refresh before creating")
-			if m.targetChecking(m.form[0]) {
+			if m.targetChecking(m.form[formMachine]) {
 				m.inform("checking inventory; refresh before creating")
 			}
 			return nil
 		}
-		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: cwd, Group: label}
-		if m.form[1] == "terminal" {
+		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[formMachine], Profile: m.form[formLaunch], Name: m.form[formName], CWD: cwd, Group: label}
+		if m.form[formLaunch] == "terminal" {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
-		}
-		if !request.Valid() {
-			m.inform("machine, launch, and directory are required")
-			return nil
 		}
 		return m.execute(request)
 	case "shift+tab":
-		return m.focusForm((m.field + len(m.form)) % (len(m.form) + 1))
+		return m.focusForm((m.field + formCreate) % (formCreate + 1))
 	case "left", "right":
-		if m.field == 3 {
+		if m.field == formDirectory {
 			m.directorySelection.cycle(m.searchDirectories, key.String() == "left")
 			return nil
 		}
-		if m.field == 4 {
-			m.groupSelection.cycle(m.groupChoices(m.form[4]), key.String() == "left")
+		if m.field == formGroup {
+			m.groupSelection.cycle(m.groupChoices(m.form[formGroup]), key.String() == "left")
 			return nil
 		}
-		if m.field > 1 {
+		if m.field > formLaunch {
 			return nil
 		}
 		options := []string{}
@@ -170,10 +162,10 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			if !peer.OK {
 				continue
 			}
-			if m.field == 0 {
+			if m.field == formMachine {
 				options = append(options, peer.Label)
 			}
-			if m.field == 1 && peer.Label == m.form[0] {
+			if m.field == formLaunch && peer.Label == m.form[formMachine] {
 				for _, profile := range peer.Profiles {
 					options = append(options, profile.Key)
 				}
@@ -196,53 +188,50 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			index = (index + 1) % len(options)
 		}
 		m.form[m.field] = options[index]
-		if m.field == 0 {
-			m.form[3] = ""
+		if m.field == formMachine {
+			m.form[formDirectory] = ""
 			m.clearDirectorySearch()
 			m.inform("")
-			if m.form[1] != "terminal" {
-				m.form[1] = "terminal"
-				for _, peer := range m.peers {
-					if peer.Label == m.form[0] && len(peer.Profiles) != 0 {
-						m.form[1] = peer.Profiles[0].Key
-						break
-					}
+			if m.form[formLaunch] != "terminal" {
+				m.form[formLaunch] = "terminal"
+				if peer := m.peerLabeled(m.form[formMachine]); peer != nil && len(peer.Profiles) != 0 {
+					m.form[formLaunch] = peer.Profiles[0].Key
 				}
 			}
 		}
 	case "ctrl+u":
-		if m.field == 3 || m.field == 4 {
+		if m.field == formDirectory || m.field == formGroup {
 			m.form[m.field] = ""
 		}
 	case "backspace":
-		if m.field >= 2 && m.field < len(m.form) && m.form[m.field] != "" {
+		if m.field >= formName && m.field < formCreate && m.form[m.field] != "" {
 			_, size := utf8.DecodeLastRuneInString(m.form[m.field])
 			m.form[m.field] = m.form[m.field][:len(m.form[m.field])-size]
 		}
 	default:
-		if m.field >= 2 && m.field < len(m.form) {
-			if m.field == 3 || m.field == 4 {
+		if m.field >= formName && m.field < formCreate {
+			if m.field == formDirectory || m.field == formGroup {
 				m.form[m.field] += key.Text
 			} else {
 				m.form[m.field] += attention.SingleLine(key.Text)
 			}
 		}
 	}
-	if m.field == 3 && m.form[3] != previousDirectory {
+	if m.field == formDirectory && m.form[formDirectory] != previousDirectory {
 		return m.searchDirectory()
 	}
-	if m.field == 4 && (m.form[4] != previousGroup || key.String() == "ctrl+u") {
-		m.groupSelection.reset(m.form[4], m.groupChoices(m.form[4]))
+	if m.field == formGroup && (m.form[formGroup] != previousGroup || key.String() == "ctrl+u") {
+		m.groupSelection.reset(m.form[formGroup], m.groupChoices(m.form[formGroup]))
 	}
 	return nil
 }
 
 func (m *model) focusForm(field int) tea.Cmd {
 	m.field = field
-	if field == 4 {
-		m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
+	if field == formGroup {
+		m.groupSelection.prefill(m.form[formGroup], m.groupChoices(m.form[formGroup]))
 	}
-	if field == 3 && m.searchState == directorySearchIdle {
+	if field == formDirectory && m.searchState == directorySearchIdle {
 		return m.searchDirectory()
 	}
 	return nil
@@ -298,14 +287,14 @@ func (m *model) clearDirectorySearch() {
 
 func (m *model) searchDirectory() tea.Cmd {
 	m.clearDirectorySearch()
-	_, terms, problem := parseDirectoryDraft(m.form[3])
+	_, terms, problem := parseDirectoryDraft(m.form[formDirectory])
 	m.inform(problem)
 	if problem != "" || len(terms) == 0 || m.blurred {
 		return nil
 	}
 	if !m.directoryAvailable() {
 		m.inform("host unavailable; refresh before searching")
-		if m.targetChecking(m.form[0]) {
+		if m.targetChecking(m.form[formMachine]) {
 			m.inform("checking inventory; refresh before searching")
 		}
 		return nil
@@ -313,7 +302,7 @@ func (m *model) searchDirectory() tea.Cmd {
 	m.searchState = directorySearchLoading
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.searchCancel = cancel
-	client, machine, revision := m.client, m.form[0], m.searchRevision
+	client, machine, revision := m.client, m.form[formMachine], m.searchRevision
 	return func() tea.Msg {
 		defer cancel()
 		timer := time.NewTimer(150 * time.Millisecond)
@@ -329,7 +318,7 @@ func (m *model) searchDirectory() tea.Cmd {
 
 // Suggestions never edit the query. Advancing accepts the current choice once.
 func (m *model) acceptDirectory() bool {
-	_, terms, problem := parseDirectoryDraft(m.form[3])
+	_, terms, problem := parseDirectoryDraft(m.form[formDirectory])
 	if problem != "" {
 		m.inform(problem)
 		return false
@@ -346,19 +335,19 @@ func (m *model) acceptDirectory() bool {
 		m.inform("choose a matching directory")
 		return false
 	}
-	m.form[3] = choice
+	m.form[formDirectory] = choice
 	m.clearDirectorySearch()
 	m.inform("")
 	return true
 }
 
 func (m *model) directoryStatus() string {
-	_, terms, problem := parseDirectoryDraft(m.form[3])
+	_, terms, problem := parseDirectoryDraft(m.form[formDirectory])
 	if problem != "" || len(terms) == 0 {
 		return problem
 	}
 	if !m.directoryAvailable() {
-		if m.targetChecking(m.form[0]) {
+		if m.targetChecking(m.form[formMachine]) {
 			return "checking inventory; refresh before searching"
 		}
 		return "host unavailable; refresh before searching"

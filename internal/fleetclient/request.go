@@ -1,12 +1,14 @@
 package fleetclient
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -26,7 +28,7 @@ type Request struct {
 	Name           string
 	Handle         string
 	Machine        string
-	Ref            string
+	Ref            Reference // the exact captured target; zero means resolve Handle
 	Kind           LaunchKind
 	Profile        string
 	CWD            string
@@ -79,7 +81,12 @@ func (ref Reference) Encode() string {
 
 // Handle names the session lifetime, independently of the selected pane.
 func (ref Reference) Handle() string {
-	return terminalHandle(ref)
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode([]string{"skid-terminal-handle", ref.Machine, ref.TmuxID, ref.IdentityToken})
+	digest := sha256.Sum256(bytes.TrimSuffix(encoded.Bytes(), []byte{'\n'}))
+	return "t-" + hex.EncodeToString(digest[:8])
 }
 
 // SessionEqual compares session lifetime, independently of pane selection and name.
@@ -87,91 +94,14 @@ func (ref Reference) SessionEqual(other Reference) bool {
 	return ref.TmuxID != "" && ref.Machine == other.Machine && ref.TmuxID == other.TmuxID && ref.IdentityToken == other.IdentityToken
 }
 
-func (request Request) Valid() bool {
-	if request.Operation == "rename" {
-		if request.ExpectedNaming == nil || request.Naming == nil || !request.ExpectedNaming.valid() || !request.Naming.valid() || request.Naming.Mode == "manual" && !ValidSessionName(request.Naming.Name) {
-			return false
-		}
-	} else if request.ExpectedNaming != nil || request.Naming != nil {
-		return false
-	}
-	if request.Operation != "wait" && (request.State != "" || request.WaitTimeout != 0) || request.Operation != "close" && request.TerminalOnly || request.Operation != "info" && request.Explain {
-		return false
-	}
-	if request.Operation != "start" && request.Operation != "group" && !request.Group.IsUnassigned() || request.Operation != "list" && request.GroupFilter.Kind() != group.FilterAll {
-		return false
-	}
-	if request.Operation != "read" && request.MaxBytes != 0 {
-		return false
-	}
-	if request.Operation != "send" && request.Operation != "text" && request.Operation != "start" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
-		return false
-	}
-	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" || request.CWD != "") {
-		return false
-	}
-	switch request.Operation {
-	case "list":
-		return request.Name == "" && request.Handle == "" && request.Ref == ""
-	case "start":
-		return request.Machine != "" && request.Handle == "" && request.Ref == "" &&
-			(request.Kind == LaunchAgent && request.Profile != "" && (request.Text == "" || validInputText(request.Text)) ||
-				request.Kind == LaunchTerminal && request.Profile == "" && request.Text == "")
-	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "rename", "shell":
-	default:
-		return false
-	}
-	if request.Name != "" {
-		return false
-	}
-	if request.Handle != "" && !validHandle(request.Handle, request.Operation) {
-		return false
-	}
-	if request.Ref != "" {
-		if request.Handle != "" || request.Machine != "" {
-			return false
-		}
-		if _, err := DecodeReference(request.Ref); err != nil {
-			return false
-		}
-	} else if request.Handle == "" {
-		return false
-	}
-	switch request.Operation {
-	case "read":
-		return request.MaxBytes >= 0 && request.MaxBytes <= 32768
-	case "send", "text":
-		return validInputText(request.Text)
-	case "wait":
-		// A request names its state and timeout; the cli owns skid's documented defaults.
-		if request.WaitTimeout <= 0 || request.WaitTimeout > time.Hour {
-			return false
-		}
-		switch request.State {
-		case "idle", "working", "needs-input":
-			return true
-		default:
-			return false
-		}
-	case "keys":
-		if len(request.Keys) < 1 || len(request.Keys) > 16 {
-			return false
-		}
-		for _, key := range request.Keys {
-			switch key {
-			case "enter", "escape", "ctrl-c", "up", "down", "left", "right", "tab", "backspace", "page-up", "page-down":
-			default:
-				return false
-			}
-		}
-	}
-	return true
-}
+func (ref Reference) IsZero() bool { return ref == Reference{} }
+
+// Ref is a Reference in the cli's json form: its encoded string, the value
+// --ref accepts. Reference's own json is the notifier's persisted record key.
+type Ref struct{ Reference }
+
+func (ref Ref) MarshalJSON() ([]byte, error) { return json.Marshal(ref.Encode()) }
 
 func tmuxAddress(value string, prefix byte) bool {
 	return len(value) > 1 && value[0] == prefix && strings.Trim(value[1:], "0123456789") == ""
-}
-
-func validInputText(text string) bool {
-	return text != "" && len(text) <= 32768 && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }

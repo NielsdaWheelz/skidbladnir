@@ -8,35 +8,35 @@ import (
 
 // current is where the session's work runs: this host, a resolved remote host,
 // or an unresolved remote connection.
-func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
-	if !row.available && row.session.Connection != nil {
+func (m *model) current(row *fleetclient.Row) fleetclient.ExecutionContext {
+	if !row.Available && row.Session.Connection != nil {
 		return fleetclient.ExecutionContext{Kind: "remoteUnknown"}
 	}
 	for _, peer := range m.peers {
-		if peer.Machine == row.machine {
-			return row.session.Current(peer)
+		if peer.Machine == row.Machine {
+			return row.Session.Current(peer)
 		}
 	}
-	return row.session.Current(fleetclient.Peer{Label: row.label, Machine: row.machine})
+	return row.Session.Current(fleetclient.Peer{Label: row.Label, Machine: row.Machine})
 }
 
 // rowFooter discloses observed text only for a fresh local agent. A known agent
 // without usable evidence keeps a dash; terminals and unknown remotes stay blank.
-func (m *model) rowFooter(row listedRow) string {
+func (m *model) rowFooter(row fleetclient.Row) string {
 	current := m.current(&row)
 	if current.Agent == nil {
 		return ""
 	}
-	if current.Kind == "local" && row.available && row.session.TerminalFooter != nil {
-		return string(*row.session.TerminalFooter)
+	if current.Kind == "local" && row.Available && row.Session.TerminalFooter != nil {
+		return string(*row.Session.TerminalFooter)
 	}
 	return "—"
 }
 
-func (m *model) details(row *listedRow) [][2]string {
-	value := row.session
+func (m *model) details(row *fleetclient.Row) [][2]string {
+	value := row.Session
 	current := m.current(row)
-	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetclient.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}}
+	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetclient.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine}, {"terminal handle", value.TerminalHandle}}
 	switch current.Kind {
 	case "remote":
 		facts = append(facts, [2]string{"running on", current.Label})
@@ -70,7 +70,7 @@ func (m *model) details(row *listedRow) [][2]string {
 			explanation = "remote terminal text is not observed"
 		} else {
 			prefix := "text from the sampled terminal. — means no usable observation is available."
-			if row.available && value.TerminalFooter == nil {
+			if row.Available && value.TerminalFooter == nil {
 				prefix += " the footer may be hidden, clipped, ambiguous or unsupported."
 			}
 			explanation = prefix + " " + explanation
@@ -83,8 +83,8 @@ func (m *model) details(row *listedRow) [][2]string {
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
-	facts = append(facts, [2]string{"observed", row.observedAt}, [2]string{"reference", value.Ref})
-	if !row.available {
+	facts = append(facts, [2]string{"observed", row.ObservedAt}, [2]string{"reference", value.Ref.Encode()})
+	if !row.Available {
 		availability := "unavailable"
 		if m.hostChecking(*row) {
 			availability = "checking"
@@ -94,13 +94,12 @@ func (m *model) details(row *listedRow) [][2]string {
 	return facts
 }
 
-func (m *model) rowForReference(encoded string) *listedRow {
-	target, _ := fleetclient.DecodeReference(encoded)
+func (m *model) rowForReference(ref fleetclient.Reference) *fleetclient.Row {
 	for _, peer := range m.peers {
 		for _, session := range peer.Sessions {
-			ref, _ := fleetclient.DecodeReference(session.Ref)
-			if ref.SessionEqual(target) {
-				return &listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
+			if session.Ref.SessionEqual(ref) {
+				row := peer.Row(session)
+				return &row
 			}
 		}
 	}
@@ -111,9 +110,9 @@ func (m *model) rowForReference(encoded string) *listedRow {
 // leaves inventory keeps its last observed facts and their time,
 // labelled unavailable.
 func (m *model) refreshInfo() {
-	if row := m.rowForReference(m.pageRow.session.Ref); row != nil {
+	if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil {
 		m.pageRow = *row
 		return
 	}
-	m.pageRow.available = false
+	m.pageRow.Available = false
 }

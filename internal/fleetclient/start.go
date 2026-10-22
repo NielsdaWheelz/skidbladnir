@@ -63,15 +63,14 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		value.Failure = &Failure{Code: "input_limit", Dispatch: "not_sent"}
 		return finish()
 	}
-	created := client.call(ctx, selected, "start", "/v1/sessions", body)
+	created := client.call(ctx, selected, "start", "", body)
 	if !created.OK {
 		failure := *created.Error
-		value.Target, failure.Target = failure.Target, ""
+		value.Target, failure.Target = failure.Target, Ref{}
 		value.Failure = &failure
-		if value.Target != "" {
+		if !value.Target.IsZero() {
 			value.Creation = "created"
-			ref, _ := DecodeReference(value.Target)
-			value.Handle = ref.Handle()
+			value.Handle = value.Target.Handle()
 		} else if failure.Dispatch == "unknown" {
 			value.Creation = "unknown"
 		}
@@ -82,7 +81,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 	if request.Text == "" {
 		return finish()
 	}
-	ref, _ := DecodeReference(value.Target)
+	ref := value.Target.Reference
 	inputTarget.IdentityToken, inputTarget.PaneID = ref.IdentityToken, ref.PaneID
 	input, _ := json.Marshal(inputTarget)
 	if len(input) > MaximumInputBytes {
@@ -91,7 +90,6 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 	}
 	target := map[string]any{"identityToken": ref.IdentityToken, "paneId": ref.PaneID}
 	inspectBody, _ := json.Marshal(target)
-	path := "/v1/sessions/" + ref.TmuxID + "/terminal/"
 	// justify-polling: one start observes only its captured terminal, every
 	// 500 ms after the previous request, until the original 15-second deadline.
 	for {
@@ -99,7 +97,11 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 			value.Failure = &Failure{Code: "readiness_timeout", Dispatch: "not_sent"}
 			return finish()
 		}
-		inspected := client.call(ctx, selected, "terminal_inspect", path+"inspect", inspectBody)
+		inspected := client.call(ctx, selected, "terminal_inspect", ref.TmuxID, inspectBody)
+		if !inspected.OK && ctx.Err() != nil {
+			value.Failure = &Failure{Code: "readiness_timeout", Dispatch: "not_sent"}
+			return finish()
+		}
 		if !inspected.OK {
 			value.Failure = inspected.Error
 			return finish()
@@ -117,7 +119,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 			return finish()
 		}
 		if status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone {
-			sent := client.call(ctx, selected, "terminal_send", path+"send", input)
+			sent := client.call(ctx, selected, "terminal_send", ref.TmuxID, input)
 			if !sent.OK {
 				value.Failure = sent.Error
 				if sent.Error.Dispatch == "unknown" {

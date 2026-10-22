@@ -16,6 +16,10 @@ type Row struct {
 	Available                  bool
 }
 
+func (peer Peer) Row(session Session) Row {
+	return Row{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
+}
+
 type Group struct {
 	Label group.Label
 	Rows  []Row
@@ -27,7 +31,7 @@ func Groups(peers []Peer, filter group.Filter) []Group {
 	indices := map[group.Label]int{}
 	for _, peer := range peers {
 		sessions := slices.Clone(peer.Sessions)
-		slices.SortStableFunc(sessions, compareSessions)
+		slices.SortStableFunc(sessions, CompareSessions)
 		for _, session := range sessions {
 			if !filter.Matches(session.Group) {
 				continue
@@ -38,7 +42,7 @@ func Groups(peers []Peer, filter group.Filter) []Group {
 				indices[session.Group] = index
 				groups = append(groups, Group{Label: session.Group})
 			}
-			groups[index].Rows = append(groups[index].Rows, Row{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK})
+			groups[index].Rows = append(groups[index].Rows, peer.Row(session))
 		}
 	}
 	slices.SortFunc(groups, func(a, b Group) int { return group.Compare(a.Label, b.Label) })
@@ -62,11 +66,10 @@ func GroupHeading(label group.Label) string {
 	return label.String()
 }
 
-func compareSessions(a, b Session) int {
-	left, _ := DecodeReference(a.Ref)
-	right, _ := DecodeReference(b.Ref)
-	l := strings.TrimLeft(strings.TrimPrefix(left.TmuxID, "$"), "0")
-	r := strings.TrimLeft(strings.TrimPrefix(right.TmuxID, "$"), "0")
+// CompareSessions orders sessions by numeric tmux id.
+func CompareSessions(a, b Session) int {
+	l := strings.TrimLeft(strings.TrimPrefix(a.Ref.TmuxID, "$"), "0")
+	r := strings.TrimLeft(strings.TrimPrefix(b.Ref.TmuxID, "$"), "0")
 	if order := cmp.Compare(len(l), len(r)); order != 0 {
 		return order
 	}

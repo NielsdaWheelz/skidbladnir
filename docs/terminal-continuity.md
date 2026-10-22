@@ -270,8 +270,8 @@ missing, ambiguous or exhausted resolution is `remote context
 unknown`. never present an intermediate transport cwd as the final location.
 publish base inventory before optional display context. under
 [the latency contract](session-latency.md), each source has one two-second context
-pass, coalescing identical lookups within the pass; desktop runs at most three
-passes at once, the phone one per machine. retire and join obsolete work before
+pass, coalescing identical lookups within the pass; desktop and phone run one pass
+per source machine at a time. retire and join obsolete work before
 its successor; never list sessions solely for a profile label. late overlays
 require the same source session, sampled connection, refresh generation and
 credential/runtime; on the phone, cancelling the machine's pass or poll is that

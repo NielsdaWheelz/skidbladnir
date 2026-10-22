@@ -29,10 +29,8 @@ type Result struct {
 }
 
 // Run owns one exact terminal visit. Notification failures remain secondary.
-func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, input, output *os.File) (result Result) {
-	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
-		return Result{Err: errors.New("enter requires stdin and stdout ttys")}
-	}
+// The caller holds input and output as ttys.
+func Run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Reference, input, output *os.File) (result Result) {
 	resized := make(chan os.Signal, 1)
 	signal.Notify(resized, syscall.SIGWINCH)
 	defer signal.Stop(resized)
@@ -47,12 +45,12 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, inp
 	defer cancel()
 	presented := make(chan struct{})
 	acknowledged := make(chan error, 1)
-	go func() { acknowledged <- acknowledgeVisit(ctx, client, encodedRef, presented) }()
+	go func() { acknowledged <- acknowledgeVisit(ctx, client, ref.Encode(), presented) }()
 	defer func() {
 		cancel()
 		result.NotificationErr = <-acknowledged
 	}()
-	connection, failure := client.OpenTerminal(ctx, fleetclient.Request{Operation: "enter", Ref: encodedRef})
+	connection, failure := client.OpenTerminal(ctx, ref)
 	if failure != nil {
 		return Result{Err: errors.New(failure.Code)}
 	}

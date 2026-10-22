@@ -75,8 +75,8 @@ the entire existing `fleetclient.Request` once on opening:
 
 configuration uniquely maps the label to its pinned machine handle and stays
 fixed for the client lifetime. no second selection index, readiness cache,
-draft struct or persisted preference. add private `quickCreatePeer()` in
-`create.go` to resolve the draft's selected peer for admission and rendering;
+draft struct or persisted preference. `peerLabeled(m.pending.Machine)` resolves
+the draft's selected peer for admission and rendering;
 missing/unavailable peers cannot authorize submission. reuse `targetChecking`.
 
 handle quick-page keys before generic modal navigation. on accepted enter,
@@ -106,8 +106,8 @@ guarantee is added.
 
 ## scope and ownership
 
-freeze the page name, draft contract, `quickCreatePeer()` signature
-(`*fleetclient.Peer`), content table and acceptance before parallel edits.
+freeze the page name, draft contract, content table and acceptance before
+parallel edits.
 
 | role | exclusive write paths and responsibility |
 | --- | --- |

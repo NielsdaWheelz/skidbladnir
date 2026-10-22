@@ -1,11 +1,7 @@
 package sessions
 
 import (
-	"errors"
-	"fmt"
-	"os"
 	"regexp"
-	"syscall"
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -35,20 +31,6 @@ func validateObjective(objective string) error {
 		if isC0OrC1(value) || value == '\u2028' || value == '\u2029' || value >= '\u202a' && value <= '\u202e' || value >= '\u2066' && value <= '\u2069' {
 			return newSessionError(ErrorObjectiveInvalid, "Use 1–240 characters without terminal controls.")
 		}
-	}
-	return nil
-}
-
-func requireExecutable(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("is not a regular file")
-	}
-	if err := syscall.Access(path, 1); err != nil {
-		return fmt.Errorf("is not executable: %w", err)
 	}
 	return nil
 }

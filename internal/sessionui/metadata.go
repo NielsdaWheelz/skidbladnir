@@ -26,15 +26,13 @@ func (m *model) openMetadata(operation string) {
 		m.inform("checking previous metadata change; refresh before editing")
 		return
 	}
-	row := m.rowForReference(m.pageRow.session.Ref)
-	if row == nil || !row.available {
+	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
+	if row == nil || !row.Available {
 		m.inform("session unavailable; refresh before editing")
 		return
 	}
 	if m.metadata != nil && m.metadata.request.Operation == operation {
-		target, _ := fleetclient.DecodeReference(m.metadata.request.Ref)
-		current, _ := fleetclient.DecodeReference(row.session.Ref)
-		if target.SessionEqual(current) {
+		if m.metadata.request.Ref.SessionEqual(row.Session.Ref.Reference) {
 			m.page = "group-edit"
 			if operation == "rename" {
 				m.page = "name-edit"
@@ -47,12 +45,12 @@ func (m *model) openMetadata(operation string) {
 			return
 		}
 	}
-	editor := &metadataEditor{request: fleetclient.Request{Operation: operation, Ref: row.session.Ref}, draft: row.session.Group.String()}
+	editor := &metadataEditor{request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference}, draft: row.Session.Group.String()}
 	m.page = "group-edit"
 	if operation == "rename" {
-		naming := row.session.Naming()
+		naming := row.Session.Naming()
 		editor.request.ExpectedNaming = &naming
-		editor.draft = row.session.Name
+		editor.draft = row.Session.Name
 		m.page = "name-edit"
 	} else {
 		editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
@@ -118,18 +116,18 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 			editor.request.Group = label
 		}
 		current := m.rowForReference(editor.request.Ref)
-		if current == nil || !current.available {
+		if current == nil || !current.Available {
 			m.inform("session unavailable; refresh before saving")
 			return nil
 		}
 		if editor.request.Operation == "group" {
-			if current.session.Group == editor.request.Group {
+			if current.Session.Group == editor.request.Group {
 				return nil
 			}
 		} else {
 			naming := fleetclient.Naming{Mode: "manual", Name: editor.draft}
 			if key.String() == "ctrl+a" {
-				if current.session.NameMode != "manual" {
+				if current.Session.NameMode != "manual" {
 					return nil
 				}
 				naming = fleetclient.Naming{Mode: "automatic"}
@@ -137,7 +135,7 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 				m.fail(fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request))
 				return nil
 			}
-			if current.session.Naming() == naming {
+			if current.Session.Naming() == naming {
 				return nil
 			}
 			editor.request.Naming = &naming
@@ -171,12 +169,10 @@ func (m *model) reconcileMetadata() {
 		return
 	}
 	row := m.rowForReference(editor.request.Ref)
-	ref, _ := fleetclient.DecodeReference(editor.request.Ref)
-	pageRef, _ := fleetclient.DecodeReference(m.pageRow.session.Ref)
-	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && ref.SessionEqual(pageRef)
+	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && editor.request.Ref.SessionEqual(m.pageRow.Session.Ref.Reference)
 	if row == nil {
 		for _, peer := range m.peers {
-			if peer.Machine == ref.Machine && peer.OK {
+			if peer.Machine == editor.request.Ref.Machine && peer.OK {
 				if m.page == "name-edit" || m.page == "group-edit" {
 					m.page = "details"
 				}
@@ -189,14 +185,14 @@ func (m *model) reconcileMetadata() {
 		}
 		return
 	}
-	if !row.available {
+	if !row.Available {
 		return
 	}
 	if editor.checking {
 		editor.checking = false
-		matches := row.session.Group == editor.request.Group
+		matches := row.Session.Group == editor.request.Group
 		if editor.request.Operation == "rename" {
-			matches = row.session.Naming() == *editor.request.Naming
+			matches = row.Session.Naming() == *editor.request.Naming
 		}
 		uncertain := editor.failure != nil && editor.failure.Dispatch == "unknown"
 		if matches && (editor.acknowledged || uncertain) {
@@ -226,7 +222,7 @@ func (m *model) reconcileMetadata() {
 		}
 	}
 	if editor.request.Operation == "rename" {
-		naming := row.session.Naming()
+		naming := row.Session.Naming()
 		if naming != *editor.request.ExpectedNaming {
 			editor.request.ExpectedNaming = &naming
 			if editor.failure == nil && visible {

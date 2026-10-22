@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
-	"sync"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -14,12 +14,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 )
 
-// listedRow is a session as its peer's inventory listed it at observedAt.
-type listedRow struct {
-	label, machine, observedAt string
-	session                    fleetclient.Session
-	available                  bool
-}
 type inventoryMsg struct {
 	machine    string
 	generation uint64
@@ -28,7 +22,7 @@ type inventoryMsg struct {
 type contextMsg struct {
 	machine    string
 	generation uint64
-	values     []fleetclient.ContextObservation
+	peer       fleetclient.Peer
 }
 type notificationMsg struct {
 	generation uint64
@@ -56,7 +50,7 @@ type model struct {
 	fleetPending              bool
 	input, output             *os.File
 	peers                     []fleetclient.Peer
-	rows                      []listedRow
+	rows                      []fleetclient.Row
 	cursor                    int
 	busy                      bool
 	width, height             int
@@ -73,7 +67,7 @@ type model struct {
 	top                       int
 	// pageRow is info's captured lifetime as last observed; refresh follows it
 	// without retargeting.
-	pageRow               listedRow
+	pageRow               fleetclient.Row
 	searchRevision        int
 	searchCancel          context.CancelFunc
 	searchState           directorySearchState
@@ -85,34 +79,22 @@ type model struct {
 	notifications         attention.State
 	notificationFailed    bool
 	notificationQualified bool
-	inventoryLanes        []inventoryLane
-	contextLanes          []contextLane
-	notificationLane      notificationLane
-	observationWorkers    sync.WaitGroup
-	observationsStopped   bool
-	usagePeers            []usagePeer
-	usageNext             time.Time
-	usageGeneration       uint64
-	usageCancel           context.CancelFunc
-	usagePending          bool
-	usageAttached         bool
-	usageStopped          bool
-	usageWorkers          sync.WaitGroup
+	// attached: a terminal owns the screen, so no lane reads.
+	attached         bool
+	inventoryLanes   []inventoryLane
+	contextLanes     []lane
+	notificationLane lane
+	usageLane        lane
+	usagePeers       []usagePeer
+	usageNext        time.Time
 }
 
+// Run browses until quit. Its cancel aborts every read and search still in
+// flight; bubble tea joins no commands.
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
 	browserContext, cancel := context.WithCancel(ctx)
+	defer cancel()
 	m := newModel(browserContext, client, input, output)
-	defer func() {
-		cancel()
-		m.clearDirectorySearch()
-		m.observationsStopped = true
-		m.cancelObservations()
-		m.usageStopped = true
-		m.cancelUsage()
-		m.observationWorkers.Wait()
-		m.usageWorkers.Wait()
-	}()
 	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output)).Run()
 	return err
 }
@@ -123,10 +105,10 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 		usagePeers = append(usagePeers, usagePeer{machine: machine})
 	}
-	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, inventoryLanes: make([]inventoryLane, len(peers)), contextLanes: make([]contextLane, len(peers))}
+	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, inventoryLanes: make([]inventoryLane, len(peers)), contextLanes: make([]lane, len(peers))}
 }
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(false), m.refreshUsage(time.Now(), false), tick())
+	return tea.Batch(m.refresh(false), m.refreshUsage(false), tick())
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
@@ -150,431 +132,236 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 		m.peers[index].OK, m.peers[index].Error = false, nil
 		m.rebuild()
 	}
+	ctx, client := m.ctx, m.client
 	return func() tea.Msg {
-		message := actionMsg{operation: request.Operation}
-		message.result = m.client.Execute(m.ctx, request)
-		return message
+		return actionMsg{operation: request.Operation, result: client.Execute(ctx, request)}
 	}
 }
 
-func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
-	wasVisible := m.usageVisible()
-	previousPage := m.page
-	defer func() {
-		if previousPage != m.page || wasVisible != m.usageVisible() {
-			m.cancelUsage()
-			// disclosure changes read immediately. a hidden form or
-			// fullscreen visit retires work while preserving the attempt cadence.
-			if previousPage == "usage" || m.page == "usage" {
-				m.usageNext = time.Time{}
-			}
-			command = tea.Batch(command, m.refreshUsage(time.Now(), false))
-		}
-		if m.page == "usage" && m.width >= 80 && m.height >= 24 {
-			m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity()))
-		}
-		if m.page == "confirm" && m.width >= 80 && m.height >= 24 {
-			_, facts := m.confirmationContent()
-			m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity()))
-		}
-		m.fitViewports()
-	}()
+func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	wasVisible, previousPage := m.usageVisible(), m.page
+	var command tea.Cmd
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
-		m.width = message.Width
-		m.height = message.Height
+		m.width, m.height = message.Width, message.Height
 	case tea.BlurMsg:
 		m.blurred = true
 		m.clearDirectorySearch()
 	case tea.FocusMsg:
 		m.blurred = false
 	case tickMsg:
-		return m, tea.Batch(m.refresh(false), m.refreshUsage(time.Now(), false), tick())
+		command = tea.Batch(m.refresh(false), m.refreshUsage(false), tick())
 	case fleetMsg:
-		m.fleetPending = false
-		m.reconcileFleet()
-		commands := []tea.Cmd{m.refreshUsage(time.Now(), false)}
-		for index := range m.peers {
-			commands = append(commands, m.refreshInventory(index, false))
-		}
-		return m, tea.Batch(commands...)
+		command = m.onFleet()
 	case usageMsg:
-		m.acceptUsage(message)
-		return m, nil
+		command = m.acceptUsage(message)
 	case inventoryMsg:
-		return m, m.acceptInventory(message)
+		command = m.acceptInventory(message)
 	case contextMsg:
-		return m, m.acceptContext(message)
+		command = m.acceptContext(message)
 	case notificationMsg:
-		return m, m.acceptNotifications(message)
+		command = m.acceptNotifications(message)
 	case actionMsg:
-		if message.operation == "start" || message.operation == "shell" {
-			if m.ctx.Err() != nil {
-				return m, nil
-			}
-			// Keyboard navigation is blocked while busy, so this pending request
-			// and page identify the only interaction allowed to adopt creation:
-			// n and T from the table, N from its form.
-			if !m.busy || m.pending.Operation != message.operation || m.page != "" && !(message.operation == "start" && m.page == "create") {
-				return m, m.refresh(true)
-			}
-		}
-		m.busy = false
-		if index := m.mutationPeer(m.pending); index >= 0 {
-			m.inventoryLanes[index].writing = false
-		}
-		if message.operation == "start" && message.result.OK {
-			created := message.result.Value.(fleetclient.StartResult)
-			if created.Failure != nil {
-				failure := *created.Failure
-				failure.Target = created.Target
-				message.result = fleetclient.Result{Error: &failure}
-			} else {
-				message.result.Value = *created.Terminal
-			}
-		}
-		if !message.result.OK {
-			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending)
-			failure := message.result.Error
-			if message.operation == "start" {
-				failureText = m.pending.Machine + ": " + failureText
-				m.invalidateAccess(m.pending.Machine, failure)
-				if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
-					m.focusForm(3)
-				}
-			}
-			m.fail(failureText)
-			if message.operation == "group" || message.operation == "rename" {
-				m.metadata.failure = failure
-				if failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch" || failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged" {
-					m.metadata.checking = true
-					m.metadata.acknowledged = false
-					m.invalidatePendingPeer()
-					return m, m.refreshMutation()
-				}
-			}
-			return m, m.refreshMutation()
-		}
-		switch message.operation {
-		case "start", "shell":
-			value := message.result.Value.(fleetclient.ObservedSession)
-			// Creation is a separate sample. Do not attach its observation metadata
-			// to this peer's earlier inventory receipt.
-			value.Session.TerminalUsage = nil
-			value.Session.TerminalFooter = nil
-			// Confirmed creation reveals the new session in its group.
-			m.page = ""
-			if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
-				m.view = selectedView{kind: viewGroup, label: value.Session.Group}
-			}
-			created, _ := fleetclient.DecodeReference(value.Session.Ref)
-			found := false
-			for index := range m.peers {
-				if m.peers[index].Machine == value.Machine {
-					rows := m.peers[index].Sessions
-					present := false
-					for rowIndex, row := range rows {
-						ref, _ := fleetclient.DecodeReference(row.Ref)
-						if ref.SessionEqual(created) {
-							rows[rowIndex] = value.Session
-							present = true
-							break
-						}
-					}
-					if !present {
-						rows = append(rows, value.Session)
-					}
-					m.peers[index].Sessions = rows
-					found = true
-					break
-				}
-			}
-			if !found {
-				panic("creation returned an unconfigured machine") // justify-defect: fleetclient binds every creation result to its configured peer.
-			}
-			m.rebuild()
-			for index, row := range m.rows {
-				ref, _ := fleetclient.DecodeReference(row.session.Ref)
-				if ref.SessionEqual(created) {
-					m.cursor = index
-					break
-				}
-			}
-			m.inform("opening terminal on " + value.Label + "…")
-			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
-			return m, m.enter(request)
-		case "group", "rename":
-			m.metadata.checking = true
-			m.metadata.acknowledged = true
-			m.invalidatePendingPeer()
-			m.inform("metadata saved; checking inventory")
-
-		case "close":
-			text := fleetclient.CloseText(message.result.Value.(fleetclient.CloseResult))
-			if message.result.ExitCode("close") != 0 {
-				m.fail(text)
-			} else {
-				m.inform(text)
-			}
-		default:
-			receipt := message.result.Value.(fleetclient.WriteResult)
-			text := fleetclient.WriteText(message.operation, receipt)
-			if receipt.Outcome == "unknown" {
-				m.fail(text)
-			} else {
-				m.inform(text)
-			}
-		}
-
-		return m, m.refreshMutation()
+		command = m.onAction(message)
 	case searchMsg:
-		if m.page != "create" || m.form[0] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
-			return m, nil
-		}
-		initial := m.searchState == directorySearchLoading
-		if m.searchCancel != nil {
-			m.searchCancel()
-			m.searchCancel = nil
-		}
-		if !message.result.OK {
-			m.searchState, m.searchDirectories, m.directorySelection.choice = directorySearchFailed, nil, nil
-			problem := "directory search unavailable on " + message.machine
-			if message.result.Error != nil {
-				switch message.result.Error.Code {
-				case "DirectorySearchTooLarge":
-					problem = "too many results; narrow your search"
-				case "invalid_input":
-					problem = "enter 1–8 search words, at most 256 bytes"
-				case "Unauthenticated", "MachineIdentityMismatch":
-					problem = fleetclient.ErrorMessage(*message.result.Error, fleetclient.Request{})
-				}
-			}
-			m.searchProblem = problem
-			m.invalidateAccess(message.machine, message.result.Error)
-			m.fail(problem)
-			return m, nil
-		}
-		value := message.result.Value.(fleetclient.DirectorySearchResult)
-		m.searchState, m.searchDirectories, m.searchOmitted = directorySearchReady, value.Directories, value.Omitted
-		m.directorySelection.retain(value.Directories)
-		if initial && len(value.Directories) > 0 {
-			m.directorySelection.choice = &value.Directories[0]
-		}
-		m.inform("")
-		if len(value.Directories) == 0 {
-			m.inform("no matching directories")
-		} else if value.Omitted {
-			m.inform("some directories are not shown")
-		}
-		return m, nil
-
+		command = m.onSearch(message)
 	case attachedMsg:
-		m.usageAttached = false
-		m.notificationFailed = m.notificationFailed || message.notificationErr != nil
-		m.rebuild()
-		if message.err != nil {
-			m.fail(message.err.Error())
-		} else {
-			m.inform("detached; work continues")
-		}
-		return m, m.refresh(true)
+		command = m.onAttached(message)
 	case tea.PasteMsg:
-		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking && !m.metadata.saveFocused {
-				m.metadata.draft += message.Content
-				if m.page == "group-edit" {
-					m.metadata.selection.reset(m.metadata.draft, m.groupChoices(m.metadata.draft))
-				}
-			}
-			if m.page == "create" && m.field >= 2 && m.field < len(m.form) {
-				if m.field == 3 || m.field == 4 {
-					m.form[m.field] += message.Content
-				} else {
-					m.form[m.field] += attention.SingleLine(message.Content)
-				}
-				if m.field == 3 {
-					return m, m.searchDirectory()
-				}
-				if m.field == 4 {
-					m.groupSelection.reset(m.form[4], m.groupChoices(m.form[4]))
-				}
-			}
-		}
+		command = m.onPaste(message)
 	case tea.KeyPressMsg:
-		key := message.String()
-		if m.busy {
-			m.inform("operation in flight; delivery will be reported")
-			return m, nil
+		command = m.onKey(message)
+	}
+	return m, tea.Batch(command, m.settle(previousPage, wasVisible))
+}
+
+// settle follows every message: a change of page or usage disclosure retires
+// the usage read and asks for a prompt successor; pages clamp their scroll;
+// the table keeps its cursor in view.
+func (m *model) settle(previousPage string, wasVisible bool) tea.Cmd {
+	var command tea.Cmd
+	if previousPage != m.page || wasVisible != m.usageVisible() {
+		m.usageLane.fence()
+		m.usageLane.trailing = true
+		// disclosure changes read immediately. a hidden form or
+		// fullscreen visit retires work while preserving the attempt cadence.
+		if previousPage == "usage" || m.page == "usage" {
+			m.usageNext = time.Time{}
 		}
-		if key == "ctrl+c" {
-			m.clearDirectorySearch()
-			m.observationsStopped = true
-			m.cancelObservations()
-			m.usageStopped = true
-			m.cancelUsage()
-			return m, tea.Quit
-		}
-		if m.width < 80 || m.height < 24 {
-			cancel := key == "esc"
-			switch m.page {
-			case "", "details", "usage", "quick-create":
-				cancel = cancel || key == "q"
-			case "confirm":
-				cancel = cancel || key == "q" || key == "n"
-			}
-			if !cancel {
-				return m, nil
-			}
-		}
-		if m.page == "usage" {
-			m.usageKey(key)
-			return m, nil
-		}
-		if key == "ctrl+r" {
-			if m.page == "" {
-				return m, tea.Batch(m.refresh(true), m.refreshUsage(time.Now(), true))
-			}
-			return m, m.refresh(true)
-		}
-		if m.page == "group-edit" || m.page == "name-edit" {
-			return m, m.editMetadata(message)
-		}
-		if m.page == "confirm" {
-			switch key {
-			case "up", "k":
-				m.offset--
-			case "down", "j":
-				m.offset++
-			case "pgup":
-				m.offset -= m.pageCapacity()
-			case "pgdown":
-				m.offset += m.pageCapacity()
-			case "y", "enter":
-				current := m.rowForReference(m.pending.Ref)
-				if current == nil || !current.available {
-					m.inform("session unavailable; refresh before confirming")
-					return m, nil
-				}
-				request := m.pending
-				m.page = ""
-				m.inform(request.Operation + " in progress")
-				return m, m.execute(request)
-			case "n", "q", "esc":
-				m.page = ""
-				m.pending = fleetclient.Request{}
-			}
-			return m, nil
-		}
-		if m.page == "create" {
-			return m, m.editForm(message)
-		}
-		if m.page == "quick-create" {
-			return m, m.editQuickCreate(message)
-		}
-		if m.page == "details" && (key == "r" || key == "g") {
-			operation := "group"
-			if key == "r" {
-				operation = "rename"
-			}
-			m.openMetadata(operation)
-			return m, nil
-		}
-		if m.page != "" {
-			switch key {
-			case "q", "esc":
-				m.page = ""
-			case "up", "k":
-				m.offset = max(0, m.offset-1)
-			case "down", "j":
-				m.offset = min(max(0, len(m.detailLines())-m.pageCapacity()), m.offset+1)
-			case "pgup":
-				m.offset = max(0, m.offset-m.pageCapacity())
-			case "pgdown":
-				m.offset = min(max(0, len(m.detailLines())-m.pageCapacity()), m.offset+m.pageCapacity())
-			}
-			return m, nil
-		}
-		switch key {
-		case "q":
-			m.observationsStopped = true
-			m.cancelObservations()
-			m.usageStopped = true
-			m.cancelUsage()
-			return m, tea.Quit
-		case "u":
-			m.page, m.offset = "usage", 0
-			m.pending = fleetclient.Request{}
-			return m, nil
-		case "esc":
-			// escape closes pages; the table is its floor, never an exit.
-			return m, nil
-		case "up", "k":
-			m.move(-1)
-			return m, nil
-		case "down", "j":
-			m.move(1)
-			return m, nil
-		case "left", "h":
-			m.step(-1)
-			return m, nil
-		case "right", "l":
-			m.step(1)
-			return m, nil
-		case "n":
-			m.page = "quick-create"
-			m.pending = fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: m.client.DefaultMachine().Label, CWD: "~", Group: m.view.label}
-			m.inform("")
-			return m, nil
-		case "N":
-			peer := m.creationPeer()
-			if peer == nil {
-				m.inform("target unavailable; refresh before creating")
-				return m, nil
-			}
-			m.page, m.field = "create", 0
-			m.clearDirectorySearch()
-			m.form = [5]string{peer.Label, "terminal", "", "", m.view.label.String()}
-			m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
-			m.inform("")
-			return m, nil
-		}
-		row := m.selectedRow()
-		if row == nil {
-			return m, nil
-		}
-		if key == "space" || key == " " {
-			m.page, m.offset = "details", 0
-			m.pageRow = *row
-			return m, nil
-		}
-		if !row.available {
-			return m, nil
-		}
-		request := fleetclient.Request{Ref: row.session.Ref}
-		switch key {
-		case "T":
-			if row.session.Connection != nil {
-				m.inform("terminal here unavailable for a remote connection; use n to choose a machine")
-				return m, nil
-			}
-			request.Operation = "shell"
-			m.inform("opening terminal on " + row.label + "…")
-			return m, m.execute(request)
-		case "enter":
-			request.Operation = "enter"
-			return m, m.enter(request)
-		case "x":
-			request.Operation = "close"
-		case "s":
-			request.Operation = "stop"
-		}
-		if request.Operation == "stop" || request.Operation == "close" {
-			m.pending = request
-			m.pendingName, m.pendingLabel = row.session.Name, row.label
-			m.page, m.offset = "confirm", 0
+		command = m.refreshUsage(false)
+	}
+	if m.page == "usage" && !m.tooSmall() {
+		m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity()))
+	}
+	if m.page == "confirm" && !m.tooSmall() {
+		_, facts := m.confirmationContent()
+		m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity()))
+	}
+	m.fitViewports()
+	return command
+}
+
+func (m *model) onFleet() tea.Cmd {
+	m.fleetPending = false
+	m.reconcileFleet()
+	commands := []tea.Cmd{m.refreshUsage(false)}
+	for index := range m.peers {
+		commands = append(commands, m.refreshInventory(index, false))
+	}
+	return tea.Batch(commands...)
+}
+
+// onAction reports a finished action. Keys and paste are refused while busy,
+// so the action's pending request and page are still the ones that sent it.
+func (m *model) onAction(message actionMsg) tea.Cmd {
+	operation, result := message.operation, message.result
+	if (operation == "start" || operation == "shell") && m.ctx.Err() != nil {
+		return nil // the browser is closing: never enter what it created
+	}
+	m.busy = false
+	if index := m.mutationPeer(m.pending); index >= 0 {
+		m.inventoryLanes[index].writing = false
+	}
+	if operation == "start" && result.OK {
+		created := result.Value.(fleetclient.StartResult)
+		if created.Failure != nil {
+			failure := *created.Failure
+			failure.Target = created.Target
+			result = fleetclient.Result{Error: &failure}
+		} else {
+			result.Value = *created.Terminal
 		}
 	}
-	return m, nil
+	if !result.OK {
+		return m.onActionFailure(operation, result.Error)
+	}
+	switch operation {
+	case "start", "shell":
+		return m.adoptCreated(result.Value.(fleetclient.ObservedSession))
+	case "group", "rename":
+		m.metadata.checking = true
+		m.metadata.acknowledged = true
+		m.invalidatePendingPeer()
+		m.inform("metadata saved; checking inventory")
+	case "close":
+		text := fleetclient.CloseText(result.Value.(fleetclient.CloseResult))
+		if result.ExitCode("close") != 0 {
+			m.fail(text)
+		} else {
+			m.inform(text)
+		}
+	default:
+		receipt := result.Value.(fleetclient.WriteResult)
+		text := fleetclient.WriteText(operation, receipt)
+		if receipt.Outcome == "unknown" {
+			m.fail(text)
+		} else {
+			m.inform(text)
+		}
+	}
+	return m.refreshMutation()
+}
+
+func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) tea.Cmd {
+	text := fleetclient.ErrorMessage(*failure, m.pending)
+	if operation == "start" {
+		text = m.pending.Machine + ": " + text
+		m.invalidateAccess(m.pending.Machine, failure)
+		if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
+			m.focusForm(formDirectory)
+		}
+	}
+	m.fail(text)
+	if operation == "group" || operation == "rename" {
+		m.metadata.failure = failure
+		if failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || accessRejected(failure) || failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged" {
+			m.metadata.checking = true
+			m.metadata.acknowledged = false
+			m.invalidatePendingPeer()
+		}
+	}
+	return m.refreshMutation()
+}
+
+// adoptCreated reveals a confirmed creation in its group, selects it and
+// enters it. A peer the roster dropped meanwhile leaves the row to inventory.
+func (m *model) adoptCreated(value fleetclient.ObservedSession) tea.Cmd {
+	// Creation is a separate sample. Do not attach its observation metadata
+	// to this peer's earlier inventory receipt.
+	value.Session.TerminalUsage = nil
+	value.Session.TerminalFooter = nil
+	m.page = ""
+	index := m.peerIndex(value.Machine)
+	if index < 0 {
+		return m.refreshMutation()
+	}
+	if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
+		m.view = selectedView{kind: viewGroup, label: value.Session.Group}
+	}
+	created := value.Session.Ref.Reference
+	isCreated := func(session fleetclient.Session) bool { return session.Ref.SessionEqual(created) }
+	if row := slices.IndexFunc(m.peers[index].Sessions, isCreated); row >= 0 {
+		m.peers[index].Sessions[row] = value.Session
+	} else {
+		m.peers[index].Sessions = append(m.peers[index].Sessions, value.Session)
+	}
+	m.rebuild()
+	if row := slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return isCreated(row.Session) }); row >= 0 {
+		m.cursor = row
+	}
+	m.inform("opening terminal on " + value.Label + "…")
+	return m.enter(created)
+}
+
+func (m *model) onSearch(message searchMsg) tea.Cmd {
+	if m.page != "create" || m.form[formMachine] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
+		return nil
+	}
+	initial := m.searchState == directorySearchLoading
+	if m.searchCancel != nil {
+		m.searchCancel()
+		m.searchCancel = nil
+	}
+	if !message.result.OK {
+		failure := message.result.Error
+		m.searchState, m.searchDirectories, m.directorySelection.choice = directorySearchFailed, nil, nil
+		problem := "directory search unavailable on " + message.machine
+		switch {
+		case failure != nil && failure.Code == "DirectorySearchTooLarge":
+			problem = "too many results; narrow your search"
+		case accessRejected(failure):
+			problem = fleetclient.ErrorMessage(*failure, fleetclient.Request{})
+		}
+		m.searchProblem = problem
+		m.invalidateAccess(message.machine, failure)
+		m.fail(problem)
+		return nil
+	}
+	value := message.result.Value.(fleetclient.DirectorySearchResult)
+	m.searchState, m.searchDirectories, m.searchOmitted = directorySearchReady, value.Directories, value.Omitted
+	m.directorySelection.retain(value.Directories)
+	if initial && len(value.Directories) > 0 {
+		m.directorySelection.choice = &value.Directories[0]
+	}
+	m.inform("")
+	if len(value.Directories) == 0 {
+		m.inform("no matching directories")
+	} else if value.Omitted {
+		m.inform("some directories are not shown")
+	}
+	return nil
+}
+
+func (m *model) onAttached(message attachedMsg) tea.Cmd {
+	m.attached = false
+	m.notificationFailed = m.notificationFailed || message.notificationErr != nil
+	m.rebuild()
+	if message.err != nil {
+		m.fail(message.err.Error())
+	} else {
+		m.inform("detached; work continues")
+	}
+	return m.refresh(true)
 }
 
 // A notice's tone travels with its text: failures read as ember, all else plain.
@@ -582,33 +369,37 @@ func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
 func (m *model) invalidatePendingPeer() {
-	target, _ := fleetclient.DecodeReference(m.pending.Ref)
 	for index := range m.peers {
-		if m.peers[index].Machine == target.Machine {
+		if m.peers[index].Machine == m.pending.Ref.Machine {
 			m.peers[index].OK = false
 		}
 	}
 	m.rebuild()
 }
 
+// accessRejected reports a failure that holds for its whole host until the next inventory.
+func accessRejected(failure *fleetclient.Failure) bool {
+	return failure != nil && (failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch")
+}
+
 // Auth and identity failures are authoritative even before the next inventory.
 func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
-	if failure == nil || failure.Code != "Unauthenticated" && failure.Code != "MachineIdentityMismatch" && failure.Code != "DeviceRemoved" {
+	if !accessRejected(failure) {
 		return
 	}
 	for index := range m.peers {
 		if m.peers[index].Label == label {
 			m.fenceInventory(index)
-			m.inventoryLanes[index].trailingRead = true
+			m.inventoryLanes[index].trailing = true
 			m.peers[index].OK, m.peers[index].Error = false, failure
 		}
 	}
-	if m.page == "create" && m.form[0] == label {
+	if m.page == "create" && m.form[formMachine] == label {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()
 }
-func (m *model) selectedRow() *listedRow {
+func (m *model) selectedRow() *fleetclient.Row {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return nil
 	}
@@ -616,25 +407,25 @@ func (m *model) selectedRow() *listedRow {
 }
 
 // enter pauses the browser while this exact terminal owns input and output.
-func (m *model) enter(request fleetclient.Request) tea.Cmd {
-	m.usageAttached = true
-	m.cancelUsage()
+func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
+	m.attached = true
+	m.usageLane.fence()
 	m.cancelObservations()
 	m.clearDirectorySearch()
-	a := &attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}
+	a := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output}
 	return tea.Exec(a, func(err error) tea.Msg { return attachedMsg{err: err, notificationErr: a.notificationErr} })
 }
 
 type attachment struct {
 	ctx             context.Context
 	client          *fleetclient.Client
-	request         fleetclient.Request
+	ref             fleetclient.Reference
 	input, output   *os.File
 	notificationErr error
 }
 
 func (a *attachment) Run() error {
-	result := terminalclient.Run(a.ctx, a.client, a.request.Ref, a.input, a.output)
+	result := terminalclient.Run(a.ctx, a.client, a.ref, a.input, a.output)
 	a.notificationErr = result.NotificationErr
 	return result.Err
 }
