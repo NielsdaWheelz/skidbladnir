@@ -2,8 +2,8 @@
 
 status: implemented, released as `v0.11.0` and deployed. qualified on darwin,
 linux and a physical phone within the limits the
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-records ([remaining phone rows](issues/terminal-observation-phone-acceptance.md)),
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
+records ([remaining phone rows](issues/unrun-acceptance.md)),
 and the [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
 indexes every open item. the [codex](terminal-observation-codex.md) and
 [claude](terminal-observation-claude.md) grammars own the frozen capability
@@ -405,9 +405,8 @@ qualification; do not relabel historical passes or `NOT_RUN` results.
 this matrix is the acceptance contract for qualification and for every
 requalification after a provider or tmux upgrade
 ([codex §7](terminal-observation-codex.md#7-requalification),
-[claude §6](terminal-observation-claude.md#6-requalification)); the
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-records each run. isolated tmux, integration and live runs need current-turn
+[claude §6](terminal-observation-claude.md#6-requalification)); each run
+updates the grammar's §1 `qualified` column. isolated tmux, integration and live runs need current-turn
 explicit approval; physical android/adb needs its own under `AGENTS.md`. use only
 the exact sessions on the isolated socket the probes created.
 

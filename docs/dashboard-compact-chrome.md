@@ -76,8 +76,7 @@ these styles locally.
 every other health retains its existing message, `NoticeTone.Degraded` and
 only `set up notifications`. remove the duplicate settings action and its
 unnecessary action `Column`. keep `notificationHealthMessage`, the setup dialog
-and its `open notification settings` action unchanged. the existing
-[enrollment issue](issues/notification-enrollment-ux.md) remains unresolved.
+and its `open notification settings` action unchanged.
 
 ## contracts, composition and internal api
 

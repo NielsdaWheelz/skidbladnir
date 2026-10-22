@@ -4,11 +4,11 @@
 hierarchy and omission. [browser simplification](desktop-browser-simplification.md)
 owns the fleet-wide roster and footer; [quick terminal](desktop-quick-terminal.md)
 owns the machine-only `n` chooser.
-[session rows](desktop-session-rows.md) records the preceding layouts.
+[session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) records the preceding layouts.
 installed usability remains a separate acceptance boundary.
 [displayed footer](terminal-model-effort.md)
 owns observed text and adds only its optional session field to this document's
-api/state limit. preceding source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
+api/state limit. preceding source `6974851` passes its [scoped qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification);
 the broader historical gaps retain their recorded scope.
 
 [terminal usage](terminal-usage.md) owns quota acquisition and source selection;
@@ -36,7 +36,7 @@ replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
 and the strict request predicate; [terminal control](terminal-agent-control.md) owns
 ordinary read/send/wait/stop/close. [terminal attention](reply-notifications.md)
 owns notices and visits. native history/control remains explicitly addressed.
-[remaining live and installed acceptance](issues/desktop-browser-runtime-acceptance.md)
+[remaining live and installed acceptance](issues/unrun-acceptance.md)
 keeps its feature-specific boundaries. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
 owns visual values. this spec replaces the desktop table/picker layout and affected
@@ -123,9 +123,8 @@ quiet idle, plain working/unknown, menus alone, remote agents and stale rows
 stay outside it. all/groups retain those rows for inspection. readiness is
 device-local and inferred; no state proves successful task completion.
 
-named tabs and details retain authored labels. [session rows](desktop-session-rows.md)
-owns heading punctuation and queue membership presentation; unassigned rows
-have a blank membership cell. current hidden
+named tabs and details retain authored labels. [single-line rows](desktop-single-line-rows.md#target-and-content-contract)
+owns row headings and queue membership presentation. current hidden
 menu notices appear in queue status/detail so inclusion has a visible reason.
 
 session actions require a selected row and target exactly the session named by
@@ -329,7 +328,7 @@ and ctrl-u mean home; literal paths containing spaces or `z` remain literal.
 typing/paste must discard old matches immediately. delayed replies after another
 query, machine change or cancellation cannot supply a cwd. no matches and search
 failure keep the query editable; no pending or unresolved query can create a
-session. the [directory qualification issue](issues/terminal-continuity-directory-qualification.md)
+session. the [directory qualification issue](issues/unrun-acceptance.md)
 records the boundary of current evidence.
 
 | criterion | proof |
@@ -344,7 +343,7 @@ records the boundary of current evidence.
 2026-09-27: a1–a3 were shown with temporary out-of-tree fixture renders and
 model checks, removed afterwards; they provide no retained regression protection.
 a5 passed `scripts/check verify`. attachment and return code is unchanged, and a4
-remains with [the runtime acceptance issue](issues/desktop-browser-runtime-acceptance.md).
+remains with [the runtime acceptance issue](issues/unrun-acceptance.md).
 
 2026-09-29, view strip and keys: temporary model checks (the strip's order,
 unassigned and collisions, the current view under refresh, overflow at 80 and
@@ -367,7 +366,7 @@ read fences, regrouping/return, replacement rejection, dismissed-draft recovery,
 machine-scope retention, and long fields at 80×24. independent review found and
 resolved dismissal and cross-host-creation traps. temporary tests were removed;
 `scripts/check verify` passed. actual browser/gateway/tmux editing remains
-`NOT_RUN` under the [runtime acceptance issue](issues/desktop-browser-runtime-acceptance.md).
+`NOT_RUN` under the [runtime acceptance issue](issues/unrun-acceptance.md).
 
 accepted costs:
 - attached: chrome/status disappear; navigation requires detach.

@@ -6,7 +6,7 @@ application database or execution coordinator. the configured hub owns fleet con
 observer. terminals remain direct host capabilities; the hub is never an
 execution proxy. [standalone generalization](generalization-plan.md) owns the
 configuration, signed fleet, handoff, installer and optional direct-fcm contracts;
-[isolated qualification](generalization-qualification.md) records source proof;
+[isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md) records source proof;
 [v0.20.0 qualification](v0.20.0-installed-qualification.md) records the installed
 fleet rollout and its remaining live boundaries.
 
@@ -20,15 +20,15 @@ its device-local reducer and visit clauses: the active hub owns readiness, each 
 owns acknowledgement and native presentation. [terminal-only control](terminal-only-control.md)
 owns the terminal capability boundary and read-only account quota. stop retains
 the terminal; close reports interruption and terminal closure separately.
-[qualification](terminal-only-control-qualification.md) records current source
-evidence and remaining acceptance. preceding
-[native qualification](native-agent-qualification.md) remains historical.
-[terminal qualification](terminal-agent-control-qualification.md) records the
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records its source
+evidence; [live cells](issues/terminal-only-live-qualification.md) remain open. preceding
+[native qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-agent-qualification.md) remains historical.
+[terminal qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md) records the
 terminal cutover separately from current-main release composition, and then the
 terminal observation cutover.
 
 2026-09-29: skid v0.10.6 runs on macbook, devbox, arch and android. herdr and
-herdr-mobile are retired. [the deployment handoff](dev-server-handoff.md) owns
+herdr-mobile are retired. [the deployment handoff](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/dev-server-handoff.md) owns
 installation, existing provider accounts, scoped shell setup and helper pins.
 jarvis consumes the current skid cli for workers; its shared codex cognition
 remains separate and may stay down. provider accounts/history, skid pairings
@@ -45,7 +45,7 @@ desktop cutover, footer and ordinary creation shortcuts.
 priority-based omission, deployed in v0.17.3; owner readability review is pending.
 [session name presentation](session-name-presentation.md) owns the implemented
 end-ellipsis and complete-confirmation correction and its isolated qualification.
-[desktop session rows](desktop-session-rows.md) owns the preceding compact layout
+[desktop session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) owns the preceding compact layout
 and readability revision; its source and isolated runtime are qualified.
 [terminal model and effort](terminal-model-effort.md) owns its optional displayed
 footer evidence. [preceding installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
@@ -56,8 +56,8 @@ and compact current-location display.
 qualification; [native usage](profile-usage.md) owns codex account reads.
 [native notifications](native-notifications.md) owns needs-input alerts,
 background observation and device acknowledgement. source is implemented;
-[qualification](native-notifications-qualification.md) records verified boundaries
-and remaining release, sleep and deployment work.
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md) records verified boundaries;
+[remaining device acceptance](issues/unrun-acceptance.md) stays open.
 [jarvis orchestration](jarvis-orchestration.md) owns profile selection,
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost
@@ -603,7 +603,7 @@ complete status, faint metadata/location and ordered whole-field omission. full
 machine/path details remain in info; the resting footer holds notices, quota,
 pagination and ordinary action hints under [browser simplification](desktop-browser-simplification.md).
 source and isolated darwin/linux runtime pass; installed owner review remains
-pending. [preceding row qualification](desktop-session-rows.md#qualification) and
+pending. [preceding row qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification) and
 [v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
 apply to their recorded renderers. the optional
 [displayed footer](terminal-model-effort.md) comes from the existing terminal
@@ -1030,7 +1030,7 @@ i/o. uncertain entry acknowledgement preserves ready. phone notification-click
 and reconnect metadata lookups remain deferred with the target-model split;
 interaction and visual redesign are separate issues. source is implemented in
 an isolated worktree; v4 reset identity is approved. isolated host and real-phone
-behavioral [qualification](session-latency-qualification.md) passes; the preexisting
+behavioral [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md) passes; the preexisting
 canceled-input dependency race is explicitly deferred. installation and coordinated
 release remain unperformed. the plan owns the explicit cutover.
 
@@ -1078,7 +1078,7 @@ records and usage-page key removal. acquisition, source selection, external
 schemas and cadence stay unchanged. [isolated desktop acceptance](desktop-usage.md#qualification)
 passes; deployment remains separate.
 
-2026-10-15 preceding readability revision: [desktop rows](desktop-session-rows.md)
+2026-10-15 preceding readability revision: [desktop rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md)
 owns section/record hierarchy, complete-entry viewport admission and selected
 directory presentation. this is a client presentation hard cut with no public
 api, wire schema, stored state or execution change. source, isolated runtime and
@@ -1086,7 +1086,7 @@ separate installed usability acceptance are required. source and isolated runtim
 passed; the successor's [v0.17.2 qualification](desktop-browser-simplification.md#location-refinement-installed-release)
 records the later installed usability acceptance.
 
-2026-10-15 preceding design: [compact desktop rows](desktop-session-rows.md) keeps
+2026-10-15 preceding design: [compact desktop rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) keeps
 identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).
 claude supplied its delimited model/effort phrase; codex initially supplied its
 whole native status line. the accepted refinement above replaces the latter with
@@ -1121,7 +1121,7 @@ and current-state endpoints, and platform packaging with the mac app and private
 ntfy origin. each device owns ready acknowledgement and alert handling; no shared
 unread, execution coordinator or historical replay. the spec supersedes affected
 device-local readiness/visit clauses, defines schemas, disjoint implementation
-paths and temporary end-to-end/live acceptance. source is implemented; [qualification](native-notifications-qualification.md)
+paths and temporary end-to-end/live acceptance. source is implemented; [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md)
 records tested boundaries. release and fleet deployment remain separate actions.
 
 2026-10-02 accepted native mechanism: [codex profile usage](profile-usage.md)
@@ -1191,7 +1191,7 @@ the manual claude recognition prerequisite. obscured state may be unknown.
 no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
 contracts. source implements it, and its
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
 passes on darwin, and on linux for capture, recognition, classification and cost,
 within recorded limits. current-artifact linux gateway/public-cli launch, input,
 read, wait, refusal, stop and close also pass the narrow

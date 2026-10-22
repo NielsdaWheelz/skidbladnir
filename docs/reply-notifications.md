@@ -511,7 +511,7 @@ host composition and TLS/HTTP desktop selector/browser/attention checks pass;
 independent reviews found no runtime merge blocker. the cli example’s wrong
 native-handle assumption produced RED assertions, then passed using terminal
 handles. the additional merged phone probe compiled but was skipped by explicit
-user direction after adb found no device: [NOT_RUN](issues/reply-notifications-phone-composition.md),
+user direction after adb found no device: [NOT_RUN](issues/unrun-acceptance.md),
 not a pass or an invalidation of earlier source-attributed live evidence.
 
 2026-10-01 arming/clearing/ready qualification, on the
@@ -536,10 +536,9 @@ the live never-ready check on stale rows ran only on the old faint `unavailable`
 cell, which cannot show ready, so it proved nothing. the projected stale cell
 (`5c59996`) and the checking cell (`131c1df`) are proven by temporary
 desktop-model probes; their live run is `NOT_RUN`
-([stale and checking cells](issues/terminal-observation-stale-live.md)).
+([stale and checking cells](issues/unrun-acceptance.md)).
 both clients' stores and projections passed temporary model-level
 probes (go: 15 sequences and visits; android: robolectric). on the physical
 phone, work → idle raised ready and a visit consumed it, and a visit kept an
 unanswered request; its delayed-response row and linux attention runs are `NOT_RUN`
-([phone](issues/terminal-observation-phone-acceptance.md),
-[linux](issues/terminal-observation-linux-coverage.md)).
+([unrun acceptance](issues/unrun-acceptance.md)).

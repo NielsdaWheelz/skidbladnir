@@ -3,7 +3,7 @@
 [terminal-only control](terminal-only-control.md) owns the capability boundary,
 schemas and cross-system removal. [terminal control](terminal-agent-control.md)
 owns exact targets and terminal operations; [terminal observation](terminal-observation.md)
-owns screen classification and guarded input. [qualification](terminal-only-control-qualification.md)
+owns screen classification and guarded input. [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md)
 records actual proof, not promises from a build.
 
 ## targets and ownership

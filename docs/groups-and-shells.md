@@ -1,7 +1,7 @@
 # groups, shells, and client composition
 
 [groups](groups.md) and [terminal creation](shells.md) are implemented.
-[the roadmap](roadmap.md) indexes delivery; [hands-on acceptance](issues/groups-shells-hands-on.md)
+[the roadmap](roadmap.md) indexes delivery; [hands-on acceptance](issues/unrun-acceptance.md)
 remains open. this document owns the delivery boundary.
 
 2026-09-17: approved navigation direction, split into two further prs: pr 3

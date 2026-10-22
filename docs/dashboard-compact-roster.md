@@ -153,7 +153,7 @@ bare production filenames below are relative to
 after chrome integration and baseline red, the two builders may work in parallel.
 root alone runs shared builds/device checks. root aligns architecture, roadmap,
 session card, session views, groups, refresh boundary, design language and dwarf
-seals; update the existing `issues/session-card-hands-on.md`, not a duplicate.
+seals; update its line in `issues/unrun-acceptance.md`, not a duplicate.
 
 hard cut: replace the old composition in place. delete separate who/where rows,
 the full-card overflow gutter, obsolete fixed-height assumptions and redundant
@@ -277,4 +277,4 @@ found no blocking findings. no behavioral test suite is retained.
 
 terminal attachment/owner-operated return and destructive confirmation journeys
 are unchanged and were not exercised against real sessions. the existing
-[card qualification issue](issues/session-card-hands-on.md) retains those limits.
+[card qualification issue](issues/unrun-acceptance.md) retains those limits.

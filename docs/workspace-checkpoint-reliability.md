@@ -308,7 +308,7 @@ coordinated hard cut: host, go clients and android ship the required new union
 together through the existing release process. mixed versions are unsupported;
 no deployment/service/config redesign. implementation, qualification and fleet
 deployment remain separate. update/delete the incident only after its required
-behavior is qualified; [actual reboot qualification](issues/session-recovery-reboot.md)
+behavior is qualified; [actual reboot qualification](issues/unrun-acceptance.md)
 remains separate.
 
 ## explicit costs
@@ -431,6 +431,6 @@ terminal attachment/actions, pairing/reset, notifications or production failures
 temporary rollout probes, downloads and copied apks were removed.
 
 actual reboot, physical power loss, full-disk exhaustion and cloud inference
-were not performed. [actual reboot](issues/session-recovery-reboot.md) and
+were not performed. [actual reboot](issues/unrun-acceptance.md) and
 [retained regression coverage](issues/test-system-reset.md) remain open;
 this rollout does not close unrelated feature acceptance.

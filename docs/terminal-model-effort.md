@@ -175,7 +175,7 @@ behavior. current source passes:
   sizes and attachments reject. raw invalid utf-8 also rejects on all three go
   routes. normal info retains metadata; explained inspection and desktop
   creation insertion clear both footer and usage.
-- [desktop qualification](desktop-session-rows.md#qualification), including
+- [desktop qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification), including
   stale/checking suppression, present-to-absent replacement and full info text.
 - installed native codex 0.162.1 and claude 2.1.300 on macos 26.4.1 arm64/tmux
   3.8 and ubuntu 24.04 arm64 in a disposable container. linux used packaged

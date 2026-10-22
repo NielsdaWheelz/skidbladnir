@@ -43,5 +43,5 @@ use the matching dev-server runbook's `restore-instant-prompt` operation.
 resolved when: with current-turn approval, qualify the corrected installed
 startup stack on an owned isolated tmux socket with the host's existing warm
 cache. verify input/job control, same-shell survival and one-shot launch, then
-remove this issue. broader [shell qualification](terminal-continuity-shell-qualification.md)
+remove this issue. broader [shell qualification](unrun-acceptance.md)
 and native interaction qualification remain separate.

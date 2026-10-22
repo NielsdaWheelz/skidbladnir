@@ -231,7 +231,7 @@ source/render checks do not prove keyboard or touch behavior on the device. tmux
 require explicit approval in their execution turn; a spec is not that approval.
 unexecuted live boundaries remain `NOT_RUN`; engineering checks are not product
 acceptance. the older
-[directory qualification issue](issues/terminal-continuity-directory-qualification.md)
+[directory qualification issue](issues/unrun-acceptance.md)
 retains host-search cases beyond this focused change.
 
 ## qualification

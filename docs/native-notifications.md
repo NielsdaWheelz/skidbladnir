@@ -10,10 +10,10 @@ legacy runtime path.
 accepted design, 2026-10-02. source is implemented and merged into main
 ([skid #66](https://github.com/NielsdaWheelz/skidbladnir/pull/66),
 [dev-server #163](https://github.com/NielsdaWheelz/dev-server/pull/163)).
-[qualification](native-notifications-qualification.md)
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md)
 records that cutover's evidence. the subsequent
 [latency cutover](session-latency.md) changes entry and go device-memory contracts;
-its [isolated qualification](session-latency-qualification.md) does not install
+its [isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md) does not install
 those changes or reset the running owner.
 
 this owns background observation, native alerts and the coordinated attention
@@ -658,7 +658,7 @@ no provider hooks/status api, agent-exit detection, shared read receipts,
 presence routing, priority tiers, custom sounds/quiet hours, notification history,
 public ingress, firebase, linux popups, arbitrary receivers, execution coordinator,
 database/outbox, generalized notification framework or unrelated cleanup.
-[implementation and qualification](issues/native-notifications.md) remain open.
+[remaining device acceptance](issues/unrun-acceptance.md) remains open.
 
 ## environment contract
 

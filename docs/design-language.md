@@ -15,7 +15,7 @@ action (since 2026-10-02 the first row of the card's
 [overflow](session-card.md#actions)), and a shared editor/forge field. no new palette, icon family, ornament,
 animation, or terminal chrome. group labels retain authored case and use the
 existing body/data typography, never display-face capitalisation. this target's
-source is implemented; [hands-on acceptance](issues/groups-shells-hands-on.md)
+source is implemented; [hands-on acceptance](issues/unrun-acceptance.md)
 remains `NOT_RUN`. historical design
 proofs do not establish it. groups owns its interaction and accessibility
 acceptance, with current delivery evidence in the roadmap.
@@ -609,9 +609,9 @@ the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
 [browser simplification](desktop-browser-simplification.md) owns fleet/footer
-and creation behavior; [session rows](desktop-session-rows.md)
+and creation behavior; [session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md)
 records the preceding readability revision. installed usability remains separate. prior source `6974851` is
-[qualified](desktop-session-rows.md#qualification) only for its preceding layout. observed footer
+[qualified](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification) only for its preceding layout. observed footer
 text uses the existing faint metadata register, with full text and source meaning
 in info. earlier row qualification applies only to its recorded source.
 

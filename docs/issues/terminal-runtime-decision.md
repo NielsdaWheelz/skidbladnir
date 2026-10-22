@@ -9,7 +9,7 @@ impact: choosing from the shared symptom could create a new process lifetime
 owner without solving conversation identity/history, or retain a bridge whose
 state-restoration complexity exceeds the runtime it avoids.
 
-evidence: the [2026-09-29 research](../terminal-runtime-research.md) records current
+evidence: the [2026-09-29 research](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-runtime-research.md) records current
 source, product precedents, specialist disagreement, explicit trade-offs and
 candidate experiments. ordinary attachment currently reads tmux's rendered
 output; control mode exposes pane output. an owned pty still does not establish

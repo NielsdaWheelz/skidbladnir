@@ -10,7 +10,7 @@ the cutover belongs to session views; earlier evidence retains its source bounda
 2026-09-15 historical amendment: [groups](groups.md) extended this retained-entry
 contract with independent group selection, heading-aware viewport keys, and the
 then-current task capsule. source was implemented at that boundary;
-[groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
+[groups/shells hands-on acceptance](issues/unrun-acceptance.md)
 remains open. the delivery evidence
 immediately below is historical.
 

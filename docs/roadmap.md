@@ -11,9 +11,7 @@ the [cleanup campaign](cleanup.md) tracks the 2026-10-21 code-reduction prs.
 [the approved contract](terminal-only-control.md) removes native conversation
 control and association from skid and jarvis workers, keeps read-only codex quota
 with terminal fallback, and restores ordinary personal launch commands.
-[isolated qualification](terminal-only-control-qualification.md) records
-cross-repository source, reviewed/deleted red/green checks and
-[remaining live cells](issues/terminal-only-live-qualification.md).
+[remaining live cells](issues/terminal-only-live-qualification.md) stay open.
 [installed qualification](v0.20.0-installed-qualification.md) owns the subsequent
 three-host/phone rollout. jarvis remains disabled and stopped; its service-state
 access issue blocks its own activation, not skid deployment.
@@ -34,10 +32,9 @@ cancellable admission, independent desktop/phone publication, strict greeting
 identity and asynchronous notification presentation. it assigns exclusive slices,
 content review and disposable red/green integration/live acceptance. source is
 merged and released; v4 reset identity is approved. isolated host
-and real-phone behavioral [qualification](session-latency-qualification.md) passes;
+and real-phone behavioral qualification passes;
 the preexisting canceled-input dependency race is explicitly deferred.
-[installed qualification](v0.18.0-installed-qualification.md) records the coordinated
-rollout and its production-entry limits. phone
+installed [production entry](issues/unrun-acceptance.md) remains unrun. phone
 [entry metadata](issues/phone-entry-metadata-latency.md),
 [interaction redesign](issues/phone-interaction-redesign.md) and
 [visual redesign](issues/visual-redesign.md) are explicitly deferred.
@@ -49,7 +46,7 @@ faint machine/path, the owner's field priorities and explicit whole-field
 omission. rendered integration and isolated darwin/linux browser journeys pass.
 [installed qualification](desktop-single-line-rows.md#installed-qualification) records
 three-host/phone deployment, fleet and desktop smokes, and sampled continuity.
-[owner readability review](issues/desktop-single-line-rows.md) remains `NOT_RUN`.
+[owner readability review](issues/unrun-acceptance.md) remains `NOT_RUN`.
 
 ## session name presentation — implemented and isolated-qualified
 
@@ -81,10 +78,9 @@ two-project registration/background delivery and ordinary process-death proof.
 the production adapter/parser also passed actual isolated delivery, disabled
 startup and malformed-option isolation. installed round-trip/doze qualification
 remains separate.
-the public relay/domain deployment is cancelled. [qualification](generalization-qualification.md)
-tracks historical isolated proof; [v0.20.0 installed qualification](v0.20.0-installed-qualification.md)
-records the subsequent fleet rollout. broader installed parity and jarvis
-service-state access remain separately recorded integration work.
+the public relay/domain deployment is cancelled. [v0.20.0 installed qualification](v0.20.0-installed-qualification.md)
+records the fleet rollout. [broader installed parity](issues/unrun-acceptance.md)
+and jarvis service-state access remain separately recorded integration work.
 
 ## claude update recognition — qualified and deployed in v0.17.0
 
@@ -114,13 +110,13 @@ passes rendered rows, isolated darwin transport/cwd, 452 retained frames and
 installed native codex effort changes. [v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
 records three-host and phone deployment, fleet checks, continuity evidence and
 the owner's readability acceptance. the row/cwd records are resolved and removed.
-the [preceding readability qualification](desktop-session-rows.md#readability-revision)
+the [preceding readability qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#readability-revision)
 and compact-row evidence remain source-attributed. [usage composition](desktop-browser-simplification.md#merge-composition)
 passes focused model/view checks; prior live evidence retains its recorded source.
 
 ## preceding compact desktop rows and terminal footer — shipped in v0.16.0
 
-2026-10-15: the [preceding row implementation](desktop-session-rows.md#qualification) implements compact
+2026-10-15: the [preceding row implementation](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification) implements compact
 columns, uniform narrow entries and complete scrolling. [terminal model and
 effort](terminal-model-effort.md) carries claude's native phrase and codex's whole
 native status line through one optional strict session field and go/android
@@ -131,7 +127,7 @@ content and adversarial review pass; disposable tests are removed and
 `scripts/check verify all` passes. the model-observation source issue is resolved.
 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 records the v0.16.0 fleet and android cutover. cloud inference and
-[broader desktop gaps](issues/desktop-browser-runtime-acceptance.md) remain separate.
+[broader desktop gaps](issues/unrun-acceptance.md) remain separate.
 
 ## compact dashboard chrome — implemented and qualified
 
@@ -152,7 +148,7 @@ content rules and temporary red/green/device acceptance. recognition uses crest
 plus names; readability outranks fixed height.
 [qualification](dashboard-compact-roster.md#verification) records passing phone
 probes, owner-confirmed talkback/readability and engineering checks. unchanged
-[real-session card qualification](issues/session-card-hands-on.md) remains open.
+[real-session card qualification](issues/unrun-acceptance.md) remains open.
 
 ## tmux workspace recovery — reliability correction deployed
 
@@ -174,7 +170,7 @@ gets a passive failure notice; repair and conversation resume remain manual.
 dev-server must retire resurrect/continuum before skid becomes the recovery owner.
 [qualification](session-recovery.md#qualification) covers isolated native
 darwin/linux, gateway/desktop and physical-phone boundaries. actual linux and mac
-reboots are owner-deferred; [remaining acceptance](issues/session-recovery-reboot.md)
+reboots are owner-deferred; [unrun acceptance](issues/unrun-acceptance.md)
 records the check. the 2026-10-09 v0.14.0 activation left each host with a workspace
 checkpoint; retired plugins were absent before activation. installation
 does not qualify the deferred reboots.
@@ -185,9 +181,7 @@ does not qualify the deferred reboots.
 alerts on macbook/android, exact-session clicks, device-local acknowledgement
 and current-only catchup. devbox owns retained readiness observations; android
 uses private encrypted ntfy/unifiedpush hints and mac an authenticated revision
-stream. source is implemented.
-[qualification](native-notifications-qualification.md) separates source checks
-from required native-device acceptance. [remaining work](issues/native-notifications.md)
+stream. source is implemented. [remaining device acceptance](issues/unrun-acceptance.md)
 is open. the 2026-10-09 v0.14.0 cutover installed the signed mac app, devbox
 observer/private ntfy services, notification-enabled desktop configs and android
 update. those installed versions use the former v2 qr/ntfy enrollment. the
@@ -201,8 +195,7 @@ real push qualification remains pending.
 disagreement vetoes while retaining one deterministic pane snapshot and latest
 host receipt selection. [qualification](claude-usage-selection.md#qualification)
 passes disposable integration and real darwin browser/gateway/isolated-tmux journeys;
-the probes are retired. [installed qualification](v0.18.0-installed-qualification.md)
-owns the subsequent coordinated rollout. the
+the probes are retired. the
 [persistent live symptom](issues/claude-usage-persistent-conflict.md) and
 [help mismatch](issues/claude-usage-help.md) remain separate.
 
@@ -213,8 +206,7 @@ weekly/short records, one-hour staleness, day-based countdowns and usage-page ke
 removal. [qualification](desktop-usage.md#qualification) records baseline red,
 darwin live acceptance, the linux/amd64 short journey under emulation, content
 and adversarial review, probe retirement and host engineering checks. acquisition
-and wire schemas stay unchanged; [installed qualification](v0.18.0-installed-qualification.md)
-records the subsequent rollout and its bounded browser smoke.
+and wire schemas stay unchanged.
 
 ## terminal usage acquisition — deployed
 
@@ -256,10 +248,8 @@ and actual cognitive wait integration pass. installed paired fleet, external
 Discord delivery and production activation remain separate.
 open qualification:
 [partial launch evidence](issues/jarvis-launch-receipts.md),
-[readiness](issues/jarvis-launch-readiness.md),
-the [v9 qualification](terminal-only-control-qualification.md). earlier
-[cli compatibility](jarvis-cli-contract-qualification.md) and
-[option ownership](jarvis-launch-options-qualification.md) evidence is historical.
+[readiness](issues/jarvis-launch-readiness.md) and the
+[terminal-only live cells](issues/terminal-only-live-qualification.md).
 jarvis owns durable asynchronous observations and decides when to notify the
 owner. after the original owner turn closes, worker events confer read/integrate/
 notify authority only; further writes require new current owner authority.
@@ -307,7 +297,7 @@ grammars, interruption and error notices, guarded composer reuse, diagnostics an
 desktop/phone needs-input filtering, with manual claude executable recognition.
 screen ambiguity remains unknown; titles/progress are excluded. source is
 released as `v0.11.0` and applied to devbox, arch, the macbook and the phone.
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification),
 within its recorded limits, passes capture, recognition, classification and cost
 on darwin and linux. composition, controls (guarded send and wait), the
 gateway→cli/desktop product and attention pass on darwin only; on linux
@@ -317,20 +307,12 @@ composition covers the managed create path and inspect, and the rest is
 adds current-source arch gateway/public-cli launch/input/read/wait/refusal/stop/close
 for stock codex 0.160.0 and claude 2.1.288. it does not close the desktop/attention,
 all-family or installed-artifact gaps. the phone and a darwin live-provider smoke
-passed at cutover. open:
-[remaining phone rows](issues/terminal-observation-phone-acceptance.md),
-[linux live provider smoke](issues/terminal-observation-provider-smoke.md),
-required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),
-[claude on darwin](issues/claude-observation-darwin-coverage.md) and
-[linux](issues/terminal-observation-linux-coverage.md),
-[claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md),
-[codex server-driven families](issues/codex-server-driven-families.md) and the desktop's
-[live stale and checking cells](issues/terminal-observation-stale-live.md).
-[status detection](issues/terminal-status-detection.md) closes with the coverage
-and smoke records, and [needs input](issues/agent-needs-input.md) with the phone
-run and an attention run through cancellation. list latency was a preexisting
-cost found during qualification, subsequently [corrected](session-latency-qualification.md).
-[hook tmux waits](issues/agenthook-tmux-wait-delay.md) remain separate.
+passed at cutover. open: the phone rows, linux provider smoke, `NOT_RUN`
+required families, the desktop's live stale and checking cells and an attention
+run through cancellation ([unrun acceptance](issues/unrun-acceptance.md)), and
+[claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md).
+list latency was a preexisting cost found during qualification, subsequently
+corrected by [session latency](session-latency.md).
 
 ## automatic session names — source cutover
 
@@ -370,81 +352,21 @@ observation/control with exact terminal operations. explicit native targets stay
 separate; stock launch, provider-owned names and existing bindings are preserved.
 [terminal attention](reply-notifications.md) owns exclusive inferred ready and
 presentation-owned visits; its historical results remain source-attributed.
-[merged phone naming composition](issues/reply-notifications-phone-composition.md)
+[merged phone naming composition](issues/unrun-acceptance.md)
 retains its unperformed naming rows; the new attention/visit portions passed.
-[claude history completeness](claude-history-completeness-qualification.md) is
-historical; skid no longer reads provider history. [terminal qualification](terminal-agent-control-qualification.md)
-records the remaining detector/input/deletion and fleet boundaries.
-
-## skid-only cutover
-
-2026-09-29: captured-target inspection is published in v0.10.6 and installed on
-macbook, devbox, arch and android. herdr/mobile servers, hooks, gates, units,
-owned ingress/state and phone package are removed. jarvis's worker adapter and
-archive cut are delivered in [pr 43](https://github.com/NielsdaWheelz/jarvis/pull/43);
-its actual service uid reads all three production gateways. jarvis stays disabled
-and paused until its separate shared-cognition repair. installed native lifecycle
-and owner phone attachment pass on all three hosts. [qualification](native-agent-qualification.md)
-separates those checks from remaining phone-native interaction acceptance.
-
-## native interaction source delivery
-
-[native conversations](native-agent-observation.md): source implemented and
-isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, existing recorded bindings and native
-operations. the selected-view fork/build and human unread/viewer paths are retired.
-ordinary status/input is terminal-based; explicit native history/control remains separate.
-experimental queueing is unavailable; Claude native input remains unavailable
-following [failed recipient qualification](native-message-recipient-qualification.md).
-
-manual conversation association is removed from source: no mobile/browser form,
-cli track/untrack command or host mutation route remains. normal remote-new
-codex startup creates no card binding; all new codex terminals remain unassociated.
-existing bindings and direct native conversation commands remain available.
-existing valid metadata is retained because earlier manual and creation bindings
-have the same representation. this source change does not assert deployment.
-
-v0.10.4 is published historical output under the former selected-view contract.
-the coordinated stock helper/gateway/client generation was released as v0.10.5;
-v0.10.6 adds captured conversation inspection.
-[qualification](native-agent-qualification.md) records stock evidence;
-temporary behavioral tests are deleted after verification. human native-output
-viewer qualification is retired with that feature; native-provider limitations
-remain with their independent issue owners.
-
-## original-product restoration
-
-2026-09-25: [the dev-server handoff](dev-server-handoff.md) specifies independent
-coexistence with herdr-mobile. source isolates original-skid launches and marked
-terminals while reusing existing provider accounts, histories and memories.
-skid's unused codex hook is retired; the explicitly loaded claude plugin is
-launch-scoped. skid apply owns shell setup independently of shared provider
-maintenance. deployed hook interaction is qualified at the integration boundary.
-source adds a read-only host-config
-validator and shell templates, pins the original native helper, and guards
-releases by numeric github repository
-identity. the obsolete `v0.6.0` pin was removed; its artifacts belong to the other
-repository. immutable `v0.9.0` is published from `580e099` and pinned upstream
-and in dev-server; [the handoff](dev-server-handoff.md#release-and-namespace)
-records source, signer and publication verification. the root operator completed
-three-host coexistence and the recorded fleet/phone cutover checks, including
-arch prior-generation rollback/restore, opposite-product repeat-apply, both apk
-reinstalls and exact probe cleanup. [live qualification](dev-server-handoff.md#qualification-and-remaining-work)
-states the evidence and its limits; prior-conversation resumption is not claimed.
-[installed-fleet native background-job stop](restoration-native-control-qualification.md)
-was not qualified on that source and is now outside skid capabilities. broader ux waivers below remain.
+skid no longer reads provider history.
 
 ## implemented scope
 
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal observation](terminal-observation.md), [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
+| inferred terminal status, exact terminal controls, device-local attention and read-only account quota | [terminal observation](terminal-observation.md), [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [terminal-only control](terminal-only-control.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md), [directory/group entry](directory-group-entry.md) |
 | desktop browser (needs-input, all and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
-| phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
+| phone fleet connect/reconnect, encrypted pairings and quarantine | [standalone generalization](generalization-plan.md#3-application-enrollment-and-access), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, session card, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [session card](session-card.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |
 | terminal chrome, sizing, keys, touch, selection and input composition | [chrome](terminal-chrome.md), [sizing](terminal-readable-sizing.md), [key deck](terminal-key-deck.md), [touch](terminal-touch-scroll.md), [selection](terminal-selection-copy.md) |
 | visual language and generated assets | [design language](design-language.md) |
@@ -458,11 +380,6 @@ criterion. feature specs retain their detailed acceptance requirements.
 source and artifact digests. it pins immutable `v0.18.0` from
 `c7d4c9e949322ca5f8edda2589b4322637db6983`; it does not assert the
 installed version of any host or phone.
-
-2026-10-20 [current installed qualification](v0.18.0-installed-qualification.md)
-records v0.18.0 on macbook, devbox, arch and android, sampled continuity, fresh
-desktop/phone smokes and the remaining runtime boundaries. owner readability
-review remains pending.
 
 2026-10-15 [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 independently verifies v0.16.0 on macbook, devbox, arch and the attached android
@@ -486,14 +403,10 @@ original launch policy.
 
 - [sequential cleanup](codebase-map.md): verified findings live in [issues](issues),
   one per issue. finish one reviewed pr before starting the next.
-- [desktop browser](issues/desktop-browser-runtime-acceptance.md): the full
-  naming/control/creation journey remains unqualified; the new darwin attention
-  attachment and return boundary passed.
-- [groups and shells hands-on](issues/groups-shells-hands-on.md): human workflow
-  and usability acceptance remains unperformed; automated phone results do not
-  supply it.
-- [groups cutover runtime acceptance](issues/groups-cutover-acceptance.md):
-  android restore/interaction and darwin isolated-host journeys remain `NOT_RUN`.
+- [unrun acceptance](issues/unrun-acceptance.md): checks of shipped releases
+  never observed: terminal continuity, desktop closure/editing and production
+  entry, groups/shells hands-on, phone chrome/cards/naming, terminal-observation
+  families and linux rows, reboot recovery, notifications and push.
 - [readable terminal sizing](terminal-readable-sizing.md#red--green--refactor-and-acceptance): the named
   fitting-grid/handback and human readability criteria remain unclaimed by the
   generic later release-suite result.
@@ -501,25 +414,12 @@ original launch policy.
   tests are removed before commit. no retained suite protects the important
   behavior automatically. [testing policy](rules.md#testing) owns the workflow;
   `scripts/check verify` runs engineering checks and builds only.
-- [terminal continuity](terminal-continuity.md): `v0.10.3` is published and
-  deployed on the three hosts. isolated mac zsh/bash, ssh/mosh, and the named
-  physical-phone journey passed. open qualification: [shell](issues/terminal-continuity-shell-qualification.md),
-  [observation](issues/terminal-continuity-observation-qualification.md),
-  [directory](issues/terminal-continuity-directory-qualification.md),
-  [desktop](issues/desktop-browser-runtime-acceptance.md),
-  [remote](issues/terminal-continuity-remote-qualification.md), and
-  [phone controls](issues/terminal-continuity-phone-controls-qualification.md).
-  [phone preservation](issues/terminal-continuity-phone-qualification.md)
-  retains one unexplained missing baseline session lifetime.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 - [terminal chrome](terminal-chrome.md): source implemented 2026-10-02; open:
-  [physical-phone acceptance](issues/terminal-chrome-hands-on.md),
+  [frozen announcement](issues/terminal-frozen-announcement.md),
   [keyboard resize churn](issues/terminal-resize-churn.md) and
   [landscape with the keyboard](issues/terminal-landscape-keyboard.md).
-- [terminal observation](terminal-observation.md): the blockers listed in its
-  section above remain open; the physical-phone rows wait for an approved device
-  run.
 
 other unperformed visual/device checks and explicitly waived shipment checks
 remain with their feature owners. a waiver is not a pass. unavailable or
@@ -529,6 +429,7 @@ unexecuted boundaries remain `NOT_RUN` and require their applicable approval.
 
 [source-attributed release and acceptance records through this cleanup](https://github.com/NielsdaWheelz/skidbladnir/blob/5986a650d02106a2c10415a81a6ad956fe198665/docs/roadmap.md)
 remain in git. they include the v0.5.0 failures, corrected v0.6.0 phone results,
-and shipment waivers. removing their duplicate active-document tables neither
+and shipment waivers. [qualification logs, research and superseded records](https://github.com/NielsdaWheelz/skidbladnir/tree/12b15163d9faf529416d486e0156b8b83821fa4a/docs)
+retired on 2026-10-21 also remain in git. removing their duplicate active-document tables neither
 erases failures nor proves current acceptance. retired commands are historical
 recipes, not executable gates or instructions to rebuild a harness.

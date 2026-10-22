@@ -15,7 +15,7 @@ list, info, start, read, send, text, keys, wait, stop and close. jarvis deployme
 requires live installed-state access, which remains separately blocked. cognition retains its existing shared codex process;
 its availability is separate from worker control and herdr retirement. older
 jarvis routing, rollout and acceptance below remain historical. see the current
-[deployment boundary](dev-server-handoff.md#owned-installation-and-runtime).
+[deployment boundary](generalization-plan.md#7-installer-cutover-and-removal).
 
 2026-09-13 spec · shipped in v0.4.1; a1–a9 verified on 2026-09-14.
 baseline: skid `919e3d2`, dev-server `453d72c`, jarvis `1dbeee3`.
@@ -26,7 +26,7 @@ evidence remains historical. no compatibility path survives the cutover.
 
 2026-09-15 accepted target amendment: [groups](groups.md) adds optional session
 labels, one exact membership route, grouped human collections, machine/group
-filters, and group-aware creation/return. source is implemented; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
+filters, and group-aware creation/return. source is implemented; [groups/shells hands-on acceptance](issues/unrun-acceptance.md)
 remains open. the shipped a1–a9 evidence below does
 not prove that amendment.
 its detailed contracts supersede only the affected collection/create surfaces.
@@ -45,7 +45,7 @@ uses isolated source builds; installed paired fleet qualification remains `NOT_R
 terminal creation and source-session create/attach. it owns the hard-cut launch
 schema, session-level source operation, and completion guards. source is
 implemented; [the roadmap](roadmap.md) indexes delivery and
-[groups/shells hands-on acceptance](issues/groups-shells-hands-on.md) remains open. provider controls and
+[groups/shells hands-on acceptance](issues/unrun-acceptance.md) remains open. provider controls and
 attachment transport retain their contracts.
 
 ## outcome and limits
@@ -267,7 +267,7 @@ stop retains the terminal and sends one interruption key. close reports input
 and terminal closure separately; closure never proves halt. provider pending input
 may remain and saved history is retained. terminal-only close requests no halt.
 
-[native interaction](native-agent-observation.md) owns explicit provider capabilities.
+[terminal-only control](terminal-only-control.md) owns the provider capability boundary.
 browser `s` sends an interrupt; `x` sends one interrupt, then independently closes
 the entire session on all fresh terminals. capture exact pane/session/
 machine effects. the human reply viewer and `r` shortcut are removed.
