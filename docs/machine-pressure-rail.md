@@ -200,17 +200,18 @@ Ownership is fixed:
 | --- | --- | --- |
 | Sampling, thresholds, hysteresis, recovery, reasons | Host pressure package | Sole pressure-meaning owner; unchanged |
 | Wire shape | Host pressure package (`Snapshot` json); the gateway serves it | Existing single `GET /v1/pressure` shape; unchanged |
-| Decode | `Pressure.kt` | Types and enums only; no platform, level, reason, missing or history re-derivation (the header's choice of which missing metric to name is presentation) |
+| Decode | `Pressure.kt` | Types and enums only, decoded tolerantly ([rules](rules.md#trust-boundaries)); no platform, level, reason, missing or history re-derivation (the header's choice of which missing metric to name is presentation) |
 | Text, precision, order, marks, colours | `MachinePressureRail.kt` (private helpers) | Pure and total over every decoded snapshot; no I/O |
 | Rail geometry, spans, scrolling, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
 | placement and disclosure | `DashboardScreen.kt` | every accepted machine rail is reachable through machines; detail selection never filters cards |
 | History geometry | `PressureHistoryBand` | Frozen pixel contract |
 
-The external API remains exactly one strict shape:
+The external API remains exactly one shape:
 `{ unsupported, current, history }`. Existing signal states are
-`Informational | Normal | Warm | Hot`; supported absence remains the existing
-missing variant. Add no endpoint, field, version, nullable fallback, tolerant
-decoder, feature negotiation, or legacy payload path.
+`Informational | Normal | Warm | Hot`; a supported metric without a signal is
+missing. Android reads only what it renders and re-checks none of the host's
+policy. Add no endpoint, field, version, nullable fallback, feature negotiation, or
+legacy payload path.
 
 Android decodes types and enums; presentation is total. A snapshot the host
 should never send (recovering at `Normal`, `Unknown` with no missing metric, an

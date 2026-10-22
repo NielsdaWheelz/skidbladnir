@@ -1,23 +1,26 @@
-# phone entry still waits for rich session metadata
+# phone notification entry still waits for rich session metadata
 
-problem: phone notification-click and reconnect paths obtain full inventory to
-populate the existing `SessionTarget.session`. that model supplies pane-scoped
-controls, agent/status/footer and display metadata. a captured lifetime and the
-new greeting's pane/foreground cannot honestly replace all those facts.
+problem: the phone's notification-click path reads the machine's full inventory
+to populate `SessionTarget.session`. that model supplies pane-scoped controls,
+agent/status/footer and display metadata. a captured lifetime and the new
+greeting's pane/foreground cannot honestly replace all those facts.
 
-impact: these two paths retain a host inventory dependency after the
-[latency cutover](../session-latency.md). ordinary card entry is already direct;
-created-terminal post-write verification also retains its existing contract.
+impact: notification entry keeps a host inventory read after the
+[latency cutover](../session-latency.md). it is the only entry path that does.
+card entry is direct, reconnect adopts the machine's latest observed session, a
+created terminal attaches on the create response's session, and the gateway
+checks the lifetime at attach.
 
-evidence: `SkidbladnirController.kt` notification-click/reconnect paths and
-`TerminalControl.kt` derive controls from the rich target. 2026-10-20 source
-review identified the dependency; the owner explicitly deferred the model split
-and retained both lookups. no phone timing or model-change acceptance is claimed.
+evidence: `SkidbladnirController.kt` `openNotificationReference` reads the
+machine's inventory through its lane before entry, and `TerminalControl.kt`
+derives controls from the rich target. the 2026-10-20 source review found the
+dependency and the owner deferred the model split. on 2026-10-22 the owner
+accepted the android-core cut of the reconnect read and created-terminal
+verification. no phone timing or model-change acceptance is claimed.
 
 resolved when: approve a focused transport-lifetime versus display/control-model
-contract, remove these whole-host reads without fabricating a session or
-reattributing old pane facts, and verify cold notification clicks, reconnect,
-pane/process replacement, controls and return through the real phone. keep exact
-targets, unknown metadata and post-write admission explicit. broader
-[interaction redesign](phone-interaction-redesign.md) remains separate. device
-work needs current-turn approval.
+contract, remove this read without fabricating a session or reattributing old
+pane facts, and verify cold notification clicks, pane/process replacement,
+controls and return through the real phone. keep exact targets and unknown
+metadata explicit. broader [interaction redesign](phone-interaction-redesign.md)
+remains separate. device work needs current-turn approval.

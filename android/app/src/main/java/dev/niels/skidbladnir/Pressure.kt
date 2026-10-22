@@ -1,11 +1,15 @@
 package dev.niels.skidbladnir
 
-import java.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.double
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable internal enum class PressureLevel { Normal, Warm, Hot, Unknown }
 @Serializable internal enum class PressurePhase { Steady, Recovering }
@@ -52,19 +56,15 @@ private data class WirePressureSignal(val value: JsonPrimitive, val state: Press
 
 @Serializable
 private data class WirePressureSample(
-    @Serializable(with = IsoInstantSerializer::class) val sampledAt: Instant,
     val level: PressureLevel,
     val phase: PressurePhase,
     val reasons: List<PressureReason>,
-    val signals: Map<PressureMetric, WirePressureSignal>,
+    val signals: JsonObject,
     val missing: List<PressureMetric>,
 )
 
 @Serializable
-private data class WirePressureHistorySample(
-    @Serializable(with = IsoInstantSerializer::class) val sampledAt: Instant,
-    val level: PressureLevel,
-)
+private data class WirePressureHistorySample(val level: PressureLevel)
 
 @Serializable
 private data class WirePressureResponse(
@@ -93,23 +93,27 @@ internal fun PressureState.downgraded(cause: GatewayFailure): PressureState = wh
 }
 
 // The host owns pressure policy; the phone decodes types and enums only.
-internal fun decodePressureResponse(encoded: String): PressureResponse = decodeProtocol {
-    val wire = productJson.decodeFromJsonElement<WirePressureResponse>(strictJsonObject(encoded))
+internal fun decodePressureResponse(encoded: String): PressureResponse {
+    val wire = productJson.decodeFromString<WirePressureResponse>(encoded)
     val current = wire.current
-    PressureResponse(
+    return PressureResponse(
         unsupported = wire.unsupported,
         current = PressureSample(
             level = current.level,
             phase = current.phase,
             reasons = current.reasons,
-            signals = current.signals.mapValues { (metric, signal) ->
+            // A metric this release does not know is an unknown key, and a null signal is absent.
+            signals = PressureMetric.entries.mapNotNull { metric ->
+                val element = current.signals[productJson.encodeToJsonElement(metric).jsonPrimitive.content]
+                if (element == null || element == JsonNull) return@mapNotNull null
+                val signal = productJson.decodeFromJsonElement<WirePressureSignal>(element)
                 val value = when (metric) {
                     PressureMetric.MemoryPressure ->
                         PressureValue.Memory(SystemMemoryPressure.valueOf(signal.value.content))
                     else -> PressureValue.Number(signal.value.double)
                 }
-                PressureSignal(value, signal.state)
-            },
+                metric to PressureSignal(value, signal.state)
+            }.toMap(),
             missing = current.missing,
         ),
         history = wire.history.map { it.level },

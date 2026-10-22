@@ -1,34 +1,22 @@
 package dev.niels.skidbladnir
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import java.time.Duration
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.RejectedExecutionException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-
-private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
+import kotlinx.coroutines.withContext
 
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
-
-    sealed interface Workspace : SkidbladnirUiState
 
     data class FleetConnect(
         val mode: FleetConnectMode,
@@ -45,7 +33,7 @@ internal sealed interface SkidbladnirUiState {
         val groupEditor: GroupEditor? = null,
         val needsInputSettled: Boolean = true,
         val terminalControlPending: Boolean = false,
-    ) : Workspace
+    ) : SkidbladnirUiState
 
     data class Terminal(
         val machine: MachineState,
@@ -59,7 +47,7 @@ internal sealed interface SkidbladnirUiState {
         val rename: RenameState? = null,
         val terminalControlPending: Boolean = false,
         val shellPending: Boolean = false,
-    ) : Workspace
+    ) : SkidbladnirUiState
 }
 
 internal fun fleetReconnectCanCancel(state: SkidbladnirUiState.FleetConnect): Boolean =
@@ -89,51 +77,6 @@ internal data class CloseState(
     val pending: Boolean,
     val terminalOnly: Boolean = false,
 )
-internal sealed interface TerminalUiStatus {
-    data object Preparing : TerminalUiStatus
-    data object Verifying : TerminalUiStatus
-    data object Connecting : TerminalUiStatus
-    data class Connected(val attachedClients: Int) : TerminalUiStatus
-    data class ReconnectRequired(val message: String) : TerminalUiStatus
-}
-
-/** The page's last fitted grid, retained independently of the connection. */
-internal sealed interface TerminalViewport {
-    data object Pending : TerminalViewport
-    data class Fitted(val columns: Int, val rows: Int) : TerminalViewport
-    data object TooSmall : TerminalViewport
-}
-
-internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: TerminalUiStatus): Boolean =
-    machineCanMutate && when (connection) {
-        is TerminalUiStatus.Connected, is TerminalUiStatus.ReconnectRequired -> true
-        TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> false
-    }
-
-/** User ingress (touch, focus, typing, accessories) needs both an attachment and a fitted grid. */
-internal fun terminalInputAdmissible(connection: TerminalUiStatus, viewport: TerminalViewport): Boolean =
-    connection is TerminalUiStatus.Connected && viewport is TerminalViewport.Fitted
-
-/** The page exists and is still attachable, so its font and recovery surfaces are live. */
-internal fun terminalPageLive(connection: TerminalUiStatus): Boolean = when (connection) {
-    TerminalUiStatus.Connecting, is TerminalUiStatus.Connected -> true
-    TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, is TerminalUiStatus.ReconnectRequired -> false
-}
-
-/** One admission for the sheet's three controls and for the write they order: page live, no write in flight, a real step in range. */
-internal fun terminalTextSizeStepAdmissible(
-    textSize: TerminalTextSizeState.Ready,
-    connection: TerminalUiStatus,
-    nominalSp: Int,
-): Boolean = terminalPageLive(connection) && textSize.write != TerminalTextSizeWrite.Pending &&
-    nominalSp != textSize.nominalSp && nominalSp in TERMINAL_TEXT_SIZE_RANGE_SP
-
-/** The sheet shows only over a live page, so a lost attachment closes it. */
-internal fun terminalTextSizeSheet(
-    textSize: TerminalTextSizeState,
-    connection: TerminalUiStatus,
-): TerminalTextSizeState.Ready? =
-    (textSize as? TerminalTextSizeState.Ready)?.takeIf { it.sheetOpen && terminalPageLive(connection) }
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
 internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
@@ -150,184 +93,6 @@ internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
     else ForgeCarry(forge, dashboard.forgeRecovery)
 }
 
-internal fun resumeForgeRecovery(
-    dashboard: SkidbladnirUiState.Dashboard,
-): SkidbladnirUiState.Dashboard {
-    val recovery = dashboard.forgeRecovery as? ForgeRecovery.ReviewReady ?: return dashboard
-    val target = dashboard.machines.singleOrNull {
-        it.machine.handle == recovery.draft.machineHandle
-    } ?: return dashboard
-    if (!target.canMutate) return dashboard
-    return dashboard.copy(
-        forge = ForgeState(
-            ForgeForm(recovery.draft),
-            pending = false,
-            failure = ForgeFailure.None,
-            surface = ForgeSurface.Form,
-        ),
-        forgeRecovery = null,
-    )
-}
-
-internal fun advanceForgeRecovery(
-    recovery: ForgeRecovery?,
-    machines: Collection<MachineState>,
-): ForgeRecovery? {
-    if (recovery !is ForgeRecovery.RefreshRequired) return recovery
-    val machine = machines.singleOrNull { it.machine.handle == recovery.draft.machineHandle }
-    return if (machine?.inventory is InventoryState.Fresh) {
-        ForgeRecovery.ReviewReady(recovery.draft)
-    } else {
-        recovery
-    }
-}
-
-internal fun createdTerminalAdmissionStatus(
-    terminal: SkidbladnirUiState.Terminal,
-    completedMutationFence: Long,
-    requiredMutationFence: Long,
-): TerminalUiStatus {
-    require(terminal.connection == TerminalUiStatus.Verifying)
-    require(completedMutationFence >= 0 && requiredMutationFence > 0)
-    if (completedMutationFence < requiredMutationFence) return TerminalUiStatus.Verifying
-    return availableTerminalStatus(terminal, TerminalUiStatus.Preparing)
-}
-
-internal fun terminalPageAdmissionStatus(terminal: SkidbladnirUiState.Terminal): TerminalUiStatus {
-    require(terminal.connection == TerminalUiStatus.Preparing)
-    return availableTerminalStatus(terminal, TerminalUiStatus.Connecting)
-}
-
-internal fun terminalReadAdmissionStatus(
-    terminal: SkidbladnirUiState.Terminal,
-    exactLifetimeAvailable: Boolean,
-): TerminalUiStatus {
-    require(terminal.connection == TerminalUiStatus.Verifying)
-    unavailableTerminalStatus(terminal)?.let { return it }
-    return if (exactLifetimeAvailable) TerminalUiStatus.Preparing else TerminalUiStatus.ReconnectRequired(
-        "${terminal.machine.machine.label.text}: that session lifetime is no longer available.",
-    )
-}
-
-private fun availableTerminalStatus(
-    terminal: SkidbladnirUiState.Terminal,
-    available: TerminalUiStatus,
-): TerminalUiStatus {
-    unavailableTerminalStatus(terminal)?.let { return it }
-    val inventory = terminal.machine.inventory
-    // justify-service-invariant-check: canMutate is a derived property, so the compiler cannot
-    // narrow the Fresh inventory variant that an admitted machine already guarantees.
-    check(inventory is InventoryState.Fresh)
-    val response = inventory.snapshot.inventory
-    val exact = terminal.machine.machine.handle == terminal.target.machineHandle &&
-        response.machine.handle == terminal.target.machineHandle &&
-        response.sessions.any { it.sameLifetime(terminal.target.session) }
-    return if (exact) available else TerminalUiStatus.ReconnectRequired(
-        "${terminal.machine.machine.label.text}: that session lifetime is no longer available.",
-    )
-}
-
-private fun unavailableTerminalStatus(
-    terminal: SkidbladnirUiState.Terminal,
-): TerminalUiStatus.ReconnectRequired? {
-    if (terminal.close?.pending != true && terminal.machine.canMutate) return null
-    return TerminalUiStatus.ReconnectRequired(machineAccessMessage(terminal.machine))
-}
-
-internal fun dashboardAfterTerminalAccessLoss(
-    terminal: SkidbladnirUiState.Terminal,
-    machines: List<MachineState>,
-    refreshing: Boolean,
-    dashboardEntry: DashboardEntryState,
-    needsInputSettled: Boolean,
-): SkidbladnirUiState.Dashboard {
-    val machine = machines.single { it.machine.handle == terminal.target.machineHandle }
-    require(machine.access != MachineAccess.Ready)
-    dashboardEntry.resetViewportAfterAccessLoss()
-    return SkidbladnirUiState.Dashboard(
-        machines = machines,
-        refreshing = refreshing,
-        notice = machineAccessMessage(machine),
-        needsInputSettled = needsInputSettled,
-        forge = null,
-        forgeRecovery = null,
-        close = null,
-    )
-}
-
-internal fun dashboardAfterMachineAccessLoss(
-    dashboard: SkidbladnirUiState.Dashboard,
-    machines: List<MachineState>,
-    handle: MachineHandle,
-    refreshing: Boolean,
-    failure: GatewayFailure.Api,
-): SkidbladnirUiState.Dashboard {
-    val machine = machines.single { it.machine.handle == handle }
-    require(machine.access != MachineAccess.Ready)
-    require(
-        (machine.access == MachineAccess.AuthRequired && failure.code == ApiErrorCode.Unauthenticated) ||
-            (machine.access == MachineAccess.IdentityChanged &&
-                failure.code == ApiErrorCode.MachineIdentityMismatch),
-    )
-    val message = machineAccessMessage(machine)
-    val affectedForge = dashboard.forge?.takeIf { it.form.machineHandle == handle }
-    return dashboard.copy(
-        machines = machines,
-        refreshing = refreshing,
-        notice = message,
-        forge = if (affectedForge != null) {
-            affectedForge.copy(
-                pending = false,
-                failure = ForgeFailure.Definite(failure),
-                surface = ForgeSurface.Form,
-                directorySearch = DirectorySearchState.Idle,
-            )
-        } else {
-            dashboard.forge
-        },
-        close = dashboard.close?.takeUnless { it.target.machineHandle == handle },
-        groupEditor = dashboard.groupEditor?.takeUnless { it.target.machineHandle == handle },
-    )
-}
-
-private fun machineAccessMessage(machine: MachineState): String = when (machine.access) {
-    MachineAccess.Ready -> "${machine.machine.label.text}: reconnect required."
-    MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required."
-    MachineAccess.IdentityChanged ->
-        "${machine.machine.label.text}: machine identity changed. Fleet reset is required."
-}
-
-private data class PollRuntime(
-    val inventory: CoalescingPollLane = CoalescingPollLane(),
-    val pressure: CoalescingPollLane = CoalescingPollLane(),
-    val inventoryOperation: InventoryOperationLane,
-    var inventoryFuture: ScheduledFuture<*>? = null,
-    var pressureFuture: ScheduledFuture<*>? = null,
-    var contextGeneration: Long = 0,
-    var pendingContext: ContextSource? = null,
-)
-
-private data class ContextSource(
-    val credential: MachineCredential,
-    val generation: Long,
-    val sourceGeneration: Long,
-    val inventory: SessionsResponse,
-    val peers: List<MachineCredential>,
-)
-private class ContextFlight(val source: ContextSource, val runtime: PollRuntime) {
-    @Volatile var canceled = false
-}
-
-private data class CreatedTerminalAdmission(
-    val attempt: Int,
-    val requiredMutationFence: Long,
-)
-
-internal data class ReconciledStoredMachine(
-    val credential: MachineCredential,
-    val machine: MachineState,
-)
-
 private fun forgeAuthoritySurvives(
     carry: ForgeCarry,
     currentCredentials: Collection<MachineCredential>,
@@ -337,228 +102,162 @@ private fun forgeAuthoritySurvives(
         carry.forge?.form?.machineHandle,
         carry.recovery?.draft?.machineHandle,
     ).distinct()
-    if (handles.isEmpty()) return false
-    val currentByHandle = currentCredentials.associateBy { it.machine.handle }
-    val storedByHandle = storedCredentials.associateBy { it.machine.handle }
-    return handles.all { handle ->
-        val current = currentByHandle[handle]
-        val stored = storedByHandle[handle]
-        current != null && stored != null &&
-            current.machine.origin == stored.machine.origin &&
-            current.bearer == stored.bearer
-    }
-}
-
-internal fun reconcileStoredMachines(
-    currentCredentials: Collection<MachineCredential>,
-    currentMachines: Collection<MachineState>,
-    storedCredentials: List<MachineCredential>,
-): List<ReconciledStoredMachine> {
-    require(storedCredentials.distinctBy { it.machine.handle }.size == storedCredentials.size)
-    val currentCredentialsByHandle = currentCredentials.associateBy { it.machine.handle }
-    val currentMachinesByHandle = currentMachines.associateBy { it.machine.handle }
-    return storedCredentials.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }.map { stored ->
-        val currentCredential = currentCredentialsByHandle[stored.machine.handle]
-        val currentMachine = currentMachinesByHandle[stored.machine.handle]
-        val unchangedAuthority = currentCredential != null &&
-            currentCredential.bearer == stored.bearer &&
-            currentCredential.machine.origin == stored.machine.origin &&
-            currentMachine != null
-        ReconciledStoredMachine(
-            credential = stored,
-            machine = if (unchangedAuthority) {
-                checkNotNull(currentMachine).copy(machine = stored.machine)
-            } else {
-                MachineState(
-                    machine = stored.machine,
-                    access = MachineAccess.Ready,
-                    inventory = InventoryState.Reading,
-                    pressure = PressureState.Reading,
-                )
-            },
+    return handles.isNotEmpty() && handles.all { handle ->
+        sameAuthority(
+            currentCredentials.singleOrNull { it.machine.handle == handle },
+            storedCredentials.singleOrNull { it.machine.handle == handle },
         )
     }
 }
 
+private fun machineAccessMessage(machine: MachineState): String = when (machine.access) {
+    MachineAccess.Ready -> "${machine.machine.label.text}: reconnect required."
+    MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required."
+    MachineAccess.IdentityChanged ->
+        "${machine.machine.label.text}: machine identity changed. Fleet reset is required."
+}
+
+/**
+ * The ui state machine over [Machines]: lifecycle, fleet connect and watch, dashboard and terminal
+ * actions, access-loss routing and one derivation of machine facts into ui state ([publish]).
+ * Main-confined. Every step does its machine operations first, then re-reads [state].
+ */
 internal class SkidbladnirController(
     context: Context,
     private val dashboardEntry: DashboardEntryState,
 ) {
-    private val client = GatewayClient()
-
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
-
-    private val applicationContext = context.applicationContext
-    private val main = Handler(Looper.getMainLooper())
-    private val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
-        Thread(task, "skidbladnir-poll-ticks").apply { isDaemon = true }
-    }
-    private val network = Executors.newCachedThreadPool { task ->
-        Thread(task, "skidbladnir-machine-client").apply { isDaemon = true }
-    }
-    private val credentialOperations = Executors.newSingleThreadExecutor { task ->
-        Thread(task, "skidbladnir-machine-store").apply { isDaemon = true }
-    }
-    private val store = MachineStore(context.applicationContext)
-    private val textSizeStore = TerminalTextSizeStore(context)
-    internal val notifications = context.notificationOwner()
-    private val notificationObservation = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var notificationSnapshot = notifications.view.value
-    private var notificationsUnavailable = false
     internal var notificationHealth by mutableStateOf(NotificationHealth.SetupRequired)
         private set
-    private var pendingNotificationReference: String? = null
-    // This connection's capture at entry, acknowledged once its first output is presented.
-    private var notificationVisit: Deferred<NotificationRow?>? = null
-    private var notificationPresented = false
-    private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
-    private val machineStates = linkedMapOf<MachineHandle, MachineState>()
-    private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
-    private val inventoryOperations = ConcurrentHashMap<MachineHandle, InventoryOperationLane>()
-    private val pendingMetadataFences = mutableMapOf<MachineHandle, Long>()
-    private val contextFlights = mutableMapOf<MachineHandle, ContextFlight>()
 
-    /** Main-thread owner of the app-wide inventory-read indicator. */
-    private val awaitedInventoryReads = AwaitedInventoryReads()
-    private var pendingDashboardNotice: String? = null
-    private var retainedStoredMachineForgeCarry: ForgeCarry? = null
-    @Volatile private var foreground = false
-    @Volatile private var generation = 0L
-    private var terminalConnection: TerminalConnection? = null
-    private var terminalPage: TerminalPage? = null
-    @Volatile private var terminalOwner: Any? = null
-    private var createdTerminalAdmission: CreatedTerminalAdmission? = null
-    @Volatile private var nextTerminalAttempt = 1
-    private var nextWorkingDirectoryPickerInstance = 1L
-    private var directorySearchDebounce: ScheduledFuture<*>? = null
-    private var directorySearchRequest: Future<*>? = null
-    private var pendingFleetScan: String? = null
+    /** Whether any machine is installed; MainActivity reads this instead of decrypting the store on main. */
+    val paired: Boolean get() = machines.all.isNotEmpty()
+
+    private val applicationContext = context.applicationContext
+    /** Controller lifetime: dispatched mutations, store operations and text size. */
+    private val app = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** Serial store and hub work: a staged join and a connect never interleave. */
+    private val fleetIO = Dispatchers.IO.limitedParallelism(1)
+    /** One per foreground span, a child of [app]: observations, polls and the fleet watch die with it. */
+    private var foreground: CoroutineScope? = null
+    private val store = MachineStore(applicationContext)
     private val fleetClient = FleetClient(store)
-    private var fleetWatch: java.util.concurrent.Future<*>? = null
+    private val notifications = applicationContext.notificationOwner()
+    private var notificationView = notifications.view.value
+    private val machines: Machines = Machines(app, object : Machines.Listener {
+        override fun changed() = publish()
+        override fun inventoryReadStarting() = notifications.refresh()
+        override fun inventoryRead(handle: MachineHandle) {
+            advanceTerminalRename(handle)
+            advanceGroupEditor(handle)
+            dashboardEntry.resolveGroup(observedGroups(machines.all))
+        }
+        override fun accessLost(handle: MachineHandle, failure: GatewayFailure.Api) = machineAccessLost(handle, failure)
+    })
+    private val textSize = TerminalTextSize(applicationContext, app, ::publish)
+    private var attachment: TerminalAttachment? = null
+    /** The machine a dashboard stop is in flight on: that machine's access loss drops the stop's completion. */
+    private var dashboardStop: MachineHandle? = null
+    private var nextAttempt = 1
+    private var nextPickerInstance = 1L
+    private var directorySearch: Job? = null
+    private var fleetWatch: Job? = null
+    private var pendingFleetScan: String? = null
+    private var pendingNotificationReference: String? = null
+    private var pendingDashboardNotice: String? = null
+    private var retainedForgeCarry: ForgeCarry? = null
 
     init {
-        notificationObservation.launch {
-            notifications.view.collect { snapshot ->
-                notificationSnapshot = snapshot
-                notificationHealth = snapshot.health
-                notificationsUnavailable = snapshot.state == null
-                publishNotifications()
+        app.launch {
+            notifications.view.collect { view ->
+                notificationView = view
+                notificationHealth = view.health
+                publish()
             }
         }
+        textSize.read()
     }
 
     fun start() {
-        if (foreground) return
-        foreground = true
-        ++generation
-        val activeGeneration = generation
+        if (foreground != null) return
+        val span = CoroutineScope(app.coroutineContext + Job(app.coroutineContext.job))
+        foreground = span
         notifications.refresh()
         val connectState = state as? SkidbladnirUiState.FleetConnect
         if (connectState?.phase == FleetConnectPhase.Scanning) {
-            machineStates.values.filter { it.access == MachineAccess.Ready }.forEach {
-                startPolling(it.machine.handle, generation)
-            }
+            machines.start(span)
             pendingFleetScan?.let { encoded ->
                 pendingFleetScan = null
                 acceptFleetScan(encoded)
             }
             return
         }
-        awaitedInventoryReads.clear()
-        val currentCredentials = credentials.values.toList()
-        val currentMachines = machineStates.values.toList()
-        val retainedForgeCarry = when (val current = state) {
+        val currentCredentials = machines.credentials()
+        val carry = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> forgeCarry(current).takeUnless { it == ForgeCarry(null, null) }
-            SkidbladnirUiState.Booting -> retainedStoredMachineForgeCarry
+            SkidbladnirUiState.Booting -> retainedForgeCarry
             is SkidbladnirUiState.FleetConnect, is SkidbladnirUiState.Terminal -> null
         }
-        retainedStoredMachineForgeCarry = retainedForgeCarry
+        retainedForgeCarry = carry
         state = SkidbladnirUiState.Booting
-        executeCredentialOperation {
-            try { if (store.association()?.joined == false) fleetClient.resume() }
-            catch (_: java.io.IOException) { }
-            catch (_: IllegalArgumentException) { }
-            catch (_: java.security.GeneralSecurityException) { }
-            catch (_: kotlinx.serialization.SerializationException) { }
-            val stored = store.read()
-            main.post {
-                if (!isActiveGeneration(activeGeneration)) return@post
-                val reconciled = reconcileStoredMachines(
-                    currentCredentials = currentCredentials,
-                    currentMachines = currentMachines,
-                    storedCredentials = stored.credentials,
-                )
-                val carry = retainedForgeCarry?.takeIf {
-                    forgeAuthoritySurvives(it, currentCredentials, stored.credentials)
-                } ?: ForgeCarry(null, null)
-                retainedStoredMachineForgeCarry = null
-                credentials.clear()
-                machineStates.clear()
-                reconciled.forEach { entry ->
-                    credentials[entry.credential.machine.handle] = entry.credential
-                    machineStates[entry.machine.machine.handle] = entry.machine
-                }
-                notifications.fleetChanged()
-                if (stored.unreadable) {
-                    state = SkidbladnirUiState.FleetConnect(
-                        mode = connectState?.mode ?: FleetConnectMode.Install,
-                        phase = FleetConnectPhase.ResetRequired,
-                    )
-                    return@post
-                }
-                if (machineStates.isEmpty()) {
-                    state = SkidbladnirUiState.FleetConnect(
-                        mode = FleetConnectMode.Install,
-                        phase = if (
-                            connectState?.phase == FleetConnectPhase.Connecting ||
-                            connectState?.phase == FleetConnectPhase.Failed
-                        ) {
-                            FleetConnectPhase.Failed
-                        } else {
-                            FleetConnectPhase.Ready
-                        },
-                    )
-                    return@post
-                }
-                reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
-                    startPolling(it.credential.machine.handle, activeGeneration)
-                }
-                if (connectState?.mode == FleetConnectMode.Reconnect) {
-                    state = connectState.copy(
-                        phase = if (connectState.phase == FleetConnectPhase.Connecting) {
-                            FleetConnectPhase.Failed
-                        } else {
-                            connectState.phase
-                        },
-                    )
-                    return@post
-                }
-                publishDashboard(carry = carry)
-                watchFleet(activeGeneration)
+        span.launch {
+            val stored = withContext(fleetIO) {
+                fleetAttempt { if (store.association()?.joined == false) fleetClient.resume() }
+                store.read()
             }
+            retainedForgeCarry = null
+            machines.install(stored.credentials)
+            machines.start(span)
+            notifications.fleetChanged()
+            if (stored.unreadable) {
+                state = SkidbladnirUiState.FleetConnect(
+                    mode = connectState?.mode ?: FleetConnectMode.Install,
+                    phase = FleetConnectPhase.ResetRequired,
+                )
+                return@launch
+            }
+            if (stored.credentials.isEmpty()) {
+                state = SkidbladnirUiState.FleetConnect(
+                    mode = FleetConnectMode.Install,
+                    phase = if (
+                        connectState?.phase == FleetConnectPhase.Connecting ||
+                        connectState?.phase == FleetConnectPhase.Failed
+                    ) {
+                        FleetConnectPhase.Failed
+                    } else {
+                        FleetConnectPhase.Ready
+                    },
+                )
+                return@launch
+            }
+            if (connectState?.mode == FleetConnectMode.Reconnect) {
+                state = connectState.copy(
+                    phase = if (connectState.phase == FleetConnectPhase.Connecting) {
+                        FleetConnectPhase.Failed
+                    } else {
+                        connectState.phase
+                    },
+                )
+                return@launch
+            }
+            publishDashboard(carry = carry?.takeIf {
+                forgeAuthoritySurvives(it, currentCredentials, stored.credentials)
+            } ?: ForgeCarry(null, null))
+            watchFleet()
         }
     }
 
     fun stopForBackground() {
-        if (!foreground) return
-        cancelDirectorySearch()
-        foreground = false
+        val span = foreground ?: return
+        foreground = null
+        span.cancel()
         fleetClient.stopWatching()
-        fleetWatch?.cancel(true)
-        fleetWatch = null
-        generation += 1
-        polling.values.forEach { runtime ->
-            runtime.inventoryFuture?.cancel(false)
-            runtime.pressureFuture?.cancel(false)
-            retireContext(runtime)
-        }
-        polling.clear()
-        awaitedInventoryReads.clear()
+        machines.stop()
         leaveTerminal()
         when (val current = state) {
             is SkidbladnirUiState.Dashboard -> state = current.copy(
-                refreshing = awaitedInventoryReads.isActive,
+                refreshing = false,
                 forge = current.forge?.let(::workingDirectoryPickerAfterForegroundInvalidation),
             )
             is SkidbladnirUiState.Terminal -> publishDashboard()
@@ -569,12 +268,7 @@ internal class SkidbladnirController(
     fun close() {
         stopForBackground()
         pendingFleetScan = null
-        textSizeStore.close()
-        notificationObservation.cancel()
-        scheduler.shutdownNow()
-        credentialOperations.shutdownNow()
-        network.shutdownNow()
-        client.closeAsync()
+        app.cancel()
     }
 
     fun requestFleetScan() {
@@ -607,7 +301,8 @@ internal class SkidbladnirController(
     fun acceptFleetScan(encoded: String) {
         val current = state as? SkidbladnirUiState.FleetConnect ?: return
         if (current.phase != FleetConnectPhase.Scanning) return
-        if (!foreground) {
+        val span = foreground
+        if (span == null) {
             pendingFleetScan = encoded
             return
         }
@@ -616,140 +311,95 @@ internal class SkidbladnirController(
             state = current.copy(phase = FleetConnectPhase.Failed)
             return
         }
-        val activeGeneration = generation
         val mode = current.mode
         state = current.copy(phase = FleetConnectPhase.Connecting)
-        executeCredentialOperation {
-            val connected = try { fleetClient.connect(invite) }
-                catch (_: java.io.IOException) { null }
-                catch (_: IllegalArgumentException) { null }
-                catch (_: java.security.GeneralSecurityException) { null }
-                catch (_: kotlinx.serialization.SerializationException) { null }
-            main.post {
-                if (!isActiveGeneration(activeGeneration)) return@post
-                val active = state as? SkidbladnirUiState.FleetConnect ?: return@post
-                if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
-                if (connected == null) failFleetConnectionIfCurrent(activeGeneration, mode)
-                else { acceptConnectedFleet(connected, activeGeneration); watchFleet(activeGeneration) }
+        span.launch {
+            val connected = withContext(fleetIO) { fleetAttempt { fleetClient.connect(invite) } }
+            val active = state as? SkidbladnirUiState.FleetConnect ?: return@launch
+            if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@launch
+            if (connected == null) {
+                state = active.copy(phase = FleetConnectPhase.Failed)
+                return@launch
             }
+            machines.replace(connected)
+            notifications.fleetChanged()
+            publishDashboard()
+            watchFleet()
         }
     }
 
-    private fun watchFleet(activeGeneration: Long) {
+    /** Hub membership revisions arrive on the event stream; each wake-up re-reads the committed store. */
+    private fun watchFleet() {
+        val span = foreground ?: return
+        fleetWatch?.cancel()
         fleetClient.stopWatching()
-        fleetWatch?.cancel(true)
-        var notificationView = store.read().view
-        fleetWatch = network.submit {
-            while (isActiveGeneration(activeGeneration) && !Thread.currentThread().isInterrupted) {
+        fleetWatch = span.launch(Dispatchers.IO) {
+            var view = store.read().view
+            while (isActive) {
                 fleetClient.watch {
                     val stored = store.read()
-                    main.post {
-                        if (!isActiveGeneration(activeGeneration)) return@post
-                        if (stored.unreadable) return@post
-                        val next = stored.credentials
-                        val notificationChanged = stored.view != notificationView
-                        notificationView = stored.view
-                        if (next.toSet() == credentials.values.toSet()) {
-                            if (notificationChanged) notifications.fleetChanged()
-                            return@post
-                        }
-                        val prior = credentials.values.toList()
-                        val nextByHandle = next.associateBy { it.machine.handle }
-                        val terminal = state as? SkidbladnirUiState.Terminal
-                        val previousTerminal = terminal?.let { credentials[it.target.machineHandle] }
-                        val nextTerminal = terminal?.let { nextByHandle[it.target.machineHandle] }
-                        val terminalSurvives = previousTerminal != null && nextTerminal != null &&
-                            previousTerminal.bearer == nextTerminal.bearer && previousTerminal.machine.origin == nextTerminal.machine.origin
-                        if (terminal != null && !terminalSurvives) leaveTerminal()
-                        val reconciled = reconcileStoredMachines(prior, machineStates.values.toList(), next)
-                        prior.filter { nextByHandle[it.machine.handle] != it }.forEach { stopPolling(it.machine.handle) }
-                        credentials.clear()
-                        machineStates.clear()
-                        reconciled.forEach { entry ->
-                            credentials[entry.credential.machine.handle] = entry.credential
-                            machineStates[entry.machine.machine.handle] = entry.machine
-                            if (entry.credential !in prior) startPolling(entry.credential.machine.handle, activeGeneration)
-                        }
-                        notifications.fleetChanged()
-                        when {
-                            next.isEmpty() -> state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Install, FleetConnectPhase.Ready)
-                            terminal != null && terminalSurvives -> state = terminal.copy(
-                                machine = checkNotNull(machineStates[terminal.target.machineHandle]), machines = sortedMachineStates())
-                            terminal != null -> publishDashboard()
-                            else -> {
-                                val dashboard = state as? SkidbladnirUiState.Dashboard
-                                if (dashboard != null && !forgeAuthoritySurvives(forgeCarry(dashboard), prior, next))
-                                    state = dashboard.copy(forge = null, forgeRecovery = null)
-                                publishDashboardIfVisible()
-                            }
-                        }
-                    }
+                    val notificationChanged = stored.view != view
+                    view = stored.view
+                    span.launch { fleetChanged(stored, notificationChanged) }
                 }
-                if (isActiveGeneration(activeGeneration)) try { Thread.sleep(2_000) }
-                    catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+                delay(2_000)
             }
         }
     }
 
-    private fun failFleetConnectionIfCurrent(activeGeneration: Long, mode: FleetConnectMode) {
-        if (!isActiveGeneration(activeGeneration)) return
-        val current = state as? SkidbladnirUiState.FleetConnect ?: return
-        if (current.mode == mode && current.phase == FleetConnectPhase.Connecting) {
-            state = current.copy(phase = FleetConnectPhase.Failed)
+    private fun fleetChanged(stored: MachineStoreRead, notificationChanged: Boolean) {
+        if (stored.unreadable) return
+        val prior = machines.credentials()
+        val next = stored.credentials
+        if (next.toSet() == prior.toSet()) {
+            if (notificationChanged) notifications.fleetChanged()
+            return
         }
-    }
-
-    private fun acceptConnectedFleet(connected: List<MachineCredential>, activeGeneration: Long) {
-        polling.keys.toList().forEach(::stopPolling)
-        credentials.clear()
-        machineStates.clear()
-        connected.forEach { credential ->
-            credentials[credential.machine.handle] = credential
-            machineStates[credential.machine.handle] = MachineState(
-                credential.machine,
-                MachineAccess.Ready,
-                InventoryState.Reading,
-                PressureState.Reading,
-            )
-            startPolling(credential.machine.handle, activeGeneration)
-        }
+        val terminal = state as? SkidbladnirUiState.Terminal
+        val terminalSurvives = terminal != null && sameAuthority(
+            prior.singleOrNull { it.machine.handle == terminal.target.machineHandle },
+            next.singleOrNull { it.machine.handle == terminal.target.machineHandle },
+        )
+        if (terminal != null && !terminalSurvives) leaveTerminal()
+        machines.install(next)
         notifications.fleetChanged()
-        publishDashboard()
+        val current = state
+        when {
+            next.isEmpty() -> state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Install, FleetConnectPhase.Ready)
+            terminal != null && !terminalSurvives -> publishDashboard()
+            current is SkidbladnirUiState.Dashboard && !forgeAuthoritySurvives(forgeCarry(current), prior, next) ->
+                state = current.copy(forge = null, forgeRecovery = null)
+        }
     }
 
     fun verifyVisibleInventory() {
         notifications.refresh()
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val activeGeneration = generation
-        // Only machines that still own live polling work can be refreshed; a machine whose access
+        if (state !is SkidbladnirUiState.Dashboard) return
+        // Only machines that still own live polling can be refreshed; a machine whose access
         // failed says so instead of silently dropping the request.
-        val targets = polling.keys.toList()
-        var requested = false
-        targets.forEach { handle -> if (awaitInventory(handle, activeGeneration)) requested = true }
+        val requested = machines.refreshAll()
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
         state = current.copy(
-            refreshing = awaitedInventoryReads.isActive,
-            notice = if (requested) {
-                null
-            } else {
-                unrefreshableNotice()
-            },
+            refreshing = machines.refreshing,
+            notice = if (requested) null else unrefreshableNotice(),
         )
     }
 
     fun restoreDashboardOnce(keys: List<DashboardItemKey>, noticeCount: Int) {
-        if (dashboardEntry.restorationPending && foreground && needsInputSettled()) {
+        if (dashboardEntry.restorationPending && foreground != null && machines.settled) {
             dashboardEntry.restoreOnce(keys, noticeCount)
         }
     }
 
     private fun unrefreshableNotice(): String {
-        if (machineStates.isEmpty()) return "No fleet is connected."
-        return machineStates.values.joinToString(" ", transform = ::machineAccessMessage)
+        val all = machines.all
+        if (all.isEmpty()) return "No fleet is connected."
+        return all.joinToString(" ", transform = ::machineAccessMessage)
     }
 
     fun openForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        if (machineStates.values.none { it.canMutate } || current.groupEditor != null) return
+        if (machines.all.none { it.canMutate } || current.groupEditor != null) return
         cancelDirectorySearch()
         state = current.copy(
             forge = ForgeState(
@@ -764,10 +414,10 @@ internal class SkidbladnirController(
     fun browseWorkingDirectoryHome() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
-        val machine = machineStates[forge.form.machineHandle] ?: return
-        if (!foreground) return
-        val start = browseWorkingDirectoryHome(forge, machine, nextWorkingDirectoryPickerInstance, generation) ?: return
-        nextWorkingDirectoryPickerInstance += 1
+        val machine = forge.form.machineHandle?.let { machines[it] } ?: return
+        if (foreground == null) return
+        val start = browseWorkingDirectoryHome(forge, machine, nextPickerInstance) ?: return
+        nextPickerInstance += 1
         cancelDirectorySearch()
         state = current.copy(forge = forge.copy(directorySearch = DirectorySearchState.Idle))
         startWorkingDirectoryRequest(start)
@@ -775,23 +425,17 @@ internal class SkidbladnirController(
 
     fun openWorkingDirectoryChild(directory: HomeDirectory) {
         val picker = activeWorkingDirectoryPicker() ?: return
-        startWorkingDirectoryRequest(
-            openWorkingDirectoryChild(picker, directory, generation) ?: return,
-        )
+        startWorkingDirectoryRequest(openWorkingDirectoryChild(picker, directory) ?: return)
     }
 
     fun openWorkingDirectoryParent() {
         val picker = activeWorkingDirectoryPicker() ?: return
-        startWorkingDirectoryRequest(
-            openWorkingDirectoryParent(picker, generation) ?: return,
-        )
+        startWorkingDirectoryRequest(openWorkingDirectoryParent(picker) ?: return)
     }
 
     fun retryWorkingDirectory() {
         val picker = activeWorkingDirectoryPicker() ?: return
-        startWorkingDirectoryRequest(
-            retryWorkingDirectory(picker, generation) ?: return,
-        )
+        startWorkingDirectoryRequest(retryWorkingDirectory(picker) ?: return)
     }
 
     fun updateWorkingDirectoryFilter(filter: String) {
@@ -815,57 +459,46 @@ internal class SkidbladnirController(
     private fun scheduleDirectorySearch() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
-        if (!foreground || forge.pending || forge.surface != ForgeSurface.Form) return
+        val span = foreground ?: return
+        if (forge.pending || forge.surface != ForgeSurface.Form) return
         val input = classifyWorkingDirectory(forge.form.cwd) as? WorkingDirectoryInput.Query ?: return
-        val machine = machineStates[forge.form.machineHandle] ?: return
-        if (!machine.canMutate) return
-        val credential = credentials[machine.machine.handle] ?: return
-        val activeGeneration = generation
+        val handle = forge.form.machineHandle ?: return
+        if (!machines.canMutate(handle)) return
+        // Each edit gets a distinct snapshot; reference equality binds the debounce and the reply to it.
         val loading = DirectorySearchState.Loading()
         state = current.copy(forge = forge.copy(directorySearch = loading))
-        directorySearchDebounce = scheduler.schedule({
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential)) return@post
-                val active = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return@post
-                if (active.directorySearch !== loading || active.form.machineHandle != machine.machine.handle) return@post
-                directorySearchDebounce = null
-                if (!machineStates.getValue(machine.machine.handle).canMutate) {
-                    updateForge { it.copy(directorySearch = DirectorySearchState.Idle) }
-                    return@post
-                }
-                directorySearchRequest = executeNetwork {
-                    val result = client.searchDirectories(credential, input.terms)
-                    main.post {
-                        if (!isCredentialActive(activeGeneration, credential)) return@post
-                        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
-                        val currentForge = dashboard.forge ?: return@post
-                        if (currentForge.directorySearch !== loading || currentForge.form.machineHandle != machine.machine.handle) return@post
-                        directorySearchRequest = null
-                        if (result is GatewayResult.Failure && acceptAccessFailure(machine.machine.handle, result.failure)) return@post
-                        state = dashboard.copy(forge = currentForge.copy(directorySearch = if (!machineStates.getValue(machine.machine.handle).canMutate) {
-                            DirectorySearchState.Idle
-                        } else when (result) {
-                            is GatewayResult.Success -> DirectorySearchState.Ready(result.value)
-                            is GatewayResult.Failure -> DirectorySearchState.Failed(result.failure)
-                        }))
-                    }
-                }
+        directorySearch = span.launch {
+            delay(150)
+            val active = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return@launch
+            if (active.directorySearch !== loading || active.form.machineHandle != handle) return@launch
+            if (!machines.canMutate(handle)) {
+                updateForge { it.copy(directorySearch = DirectorySearchState.Idle) }
+                return@launch
             }
-        }, 150, TimeUnit.MILLISECONDS)
+            machines.request(handle, { GatewayClient.searchDirectories(it, input.terms) }) { result ->
+                val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@request
+                val currentForge = dashboard.forge ?: return@request
+                if (currentForge.directorySearch !== loading || currentForge.form.machineHandle != handle) return@request
+                state = dashboard.copy(forge = currentForge.copy(directorySearch = if (!machines.canMutate(handle)) {
+                    DirectorySearchState.Idle
+                } else when (result) {
+                    is GatewayResult.Success -> DirectorySearchState.Ready(result.value)
+                    is GatewayResult.Failure -> DirectorySearchState.Failed(result.failure)
+                }))
+            }
+        }
     }
 
     private fun cancelDirectorySearch() {
-        directorySearchDebounce?.cancel(false)
-        directorySearchDebounce = null
-        directorySearchRequest?.cancel(true)
-        directorySearchRequest = null
+        directorySearch?.cancel()
+        directorySearch = null
     }
 
     fun chooseWorkingDirectory(directory: WorkingDirectoryPath): Boolean {
         val current = state as? SkidbladnirUiState.Dashboard ?: return false
         val forge = current.forge ?: return false
-        val machine = machineStates[forge.form.machineHandle] ?: return false
-        if (!foreground || !machine.canMutate || forge.pending || forge.surface != ForgeSurface.Form) return false
+        val machine = forge.form.machineHandle?.let { machines[it] } ?: return false
+        if (foreground == null || !machine.canMutate || forge.pending || forge.surface != ForgeSurface.Form) return false
         val literal = when (val input = classifyWorkingDirectory(forge.form.cwd)) {
             WorkingDirectoryInput.Home -> directory.encoded == "~"
             is WorkingDirectoryInput.Literal -> directory == input.path
@@ -883,7 +516,7 @@ internal class SkidbladnirController(
 
     fun useCurrentWorkingDirectory(): Boolean {
         val picker = activeWorkingDirectoryPicker() ?: return false
-        if (!foreground || machineStates[picker.machine.handle]?.canMutate != true) return false
+        if (foreground == null || machines[picker.machine.handle]?.canMutate != true) return false
         return updateForge(::useCurrentWorkingDirectory)?.surface == ForgeSurface.Form
     }
 
@@ -925,47 +558,34 @@ internal class SkidbladnirController(
     private fun startWorkingDirectoryRequest(start: WorkingDirectoryRequestStart) {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
+        val handle = start.picker.machine.handle
         val active = forge.surface as? ForgeSurface.DirectoryPicker
-        if (!foreground || forge.pending || forge.form.machineHandle != start.request.machine.handle ||
-            machineStates[start.request.machine.handle]?.canMutate != true ||
+        if (foreground == null || forge.pending || forge.form.machineHandle != handle || !machines.canMutate(handle) ||
             active != null && active.picker.instance != start.request.pickerInstance) return
-        val credential = credentials[start.request.machine.handle] ?: return
         state = current.copy(forge = forge.copy(surface = ForgeSurface.DirectoryPicker(start.picker)))
-        executeNetwork {
-            val result = client.listDirectory(
-                credential,
-                start.request.directory,
-                start.request.machine,
-            )
-            main.post {
-                if (credentials[start.request.machine.handle] != credential) return@post
-                val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
-                val currentForge = dashboard.forge ?: return@post
-                val surface = currentForge.surface as? ForgeSurface.DirectoryPicker ?: return@post
-                when (val completion = completeWorkingDirectoryRequest(
-                    picker = surface.picker,
-                    request = start.request,
-                    foregroundGeneration = generation.takeIf {
-                        isActiveGeneration(start.request.generation)
-                    },
-                    result = result,
-                )) {
-                    WorkingDirectoryCompletion.Ignored -> Unit
-                    is WorkingDirectoryCompletion.Updated -> state = dashboard.copy(
-                        forge = currentForge.copy(
-                            surface = surface.copy(picker = completion.picker),
-                        ),
-                    )
-                    is WorkingDirectoryCompletion.AccessLost ->
-                        acceptAccessFailure(start.request.machine.handle, completion.failure)
-                }
-            }
+        machines.request(handle, { GatewayClient.listDirectory(it, start.request.directory) }) { result ->
+            val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@request
+            val currentForge = dashboard.forge ?: return@request
+            val surface = currentForge.surface as? ForgeSurface.DirectoryPicker ?: return@request
+            val picker = completeWorkingDirectoryRequest(surface.picker, start.request, result) ?: return@request
+            state = dashboard.copy(forge = currentForge.copy(surface = surface.copy(picker = picker)))
         }
     }
 
     fun resumeForgeRecovery() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        state = dev.niels.skidbladnir.resumeForgeRecovery(current)
+        val recovery = current.forgeRecovery as? ForgeRecovery.ReviewReady ?: return
+        val target = current.machines.singleOrNull { it.machine.handle == recovery.draft.machineHandle } ?: return
+        if (!target.canMutate) return
+        state = current.copy(
+            forge = ForgeState(
+                ForgeForm(recovery.draft),
+                pending = false,
+                failure = ForgeFailure.None,
+                surface = ForgeSurface.Form,
+            ),
+            forgeRecovery = null,
+        )
     }
 
     fun dismissForge() {
@@ -986,7 +606,7 @@ internal class SkidbladnirController(
         val forge = current.forge ?: return
         if (forge.pending) return
         val proposed = transform(forge.form)
-        if (proposed.machineHandle != null && machineStates[proposed.machineHandle] == null) return
+        if (proposed.machineHandle != null && machines[proposed.machineHandle] == null) return
         val updated = updateForgeState(forge, proposed)
         val directoryChanged = updated.form.machineHandle != forge.form.machineHandle || updated.form.cwd != forge.form.cwd
         if (directoryChanged) cancelDirectorySearch()
@@ -998,10 +618,8 @@ internal class SkidbladnirController(
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
         val draft = forge.admissibleSubmission() ?: return
-        val credential = credentials[draft.machineHandle] ?: return
-        val machine = machineStates[draft.machineHandle] ?: return
-        val runtime = polling[draft.machineHandle] ?: return
-        if (!machine.canMutate) return
+        val handle = draft.machineHandle
+        if (!machines.canMutate(handle)) return
         state = current.copy(
             forge = forge.copy(
                 pending = true,
@@ -1009,64 +627,23 @@ internal class SkidbladnirController(
                 surface = ForgeSurface.Form,
             ),
         )
-        val activeGeneration = generation
-        runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireInventoryRefresh(credential.machine.handle, fence) },
-        ) { mutationFence ->
-            when (val result = client.createSession(credential, draft)) {
-                is GatewayResult.Success -> main.post {
-                    if (!isCredentialActive(activeGeneration, credential)) return@post
-                    if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready ||
-                        polling[credential.machine.handle] !== runtime) return@post
-                    val activeForge = (state as? SkidbladnirUiState.Dashboard)?.forge
-                    if (activeForge?.pending != true || activeForge.form !== forge.form) {
-                        awaitInventory(credential.machine.handle, activeGeneration)
-                        return@post
-                    }
-                    val valid = {
-                        val form = (state as? SkidbladnirUiState.Dashboard)?.forge
-                        isCredentialActive(activeGeneration, credential) && polling[credential.machine.handle] === runtime &&
-                            machineStates[credential.machine.handle]?.access == MachineAccess.Ready &&
-                            form?.pending == true && form.form === forge.form
-                    }
-                    awaitInventory(credential.machine.handle, activeGeneration)
-                    if (valid()) enterCreatedTerminal(SessionTarget(credential.machine.handle, result.value), mutationFence)
-                }
-                is GatewayResult.Failure -> main.post {
-                    if (!isCredentialActive(activeGeneration, credential)) return@post
-                    if (acceptAccessFailure(credential.machine.handle, result.failure)) return@post
-                    if (polling[credential.machine.handle] !== runtime) return@post
-                    awaitInventory(credential.machine.handle, activeGeneration)
-                    val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
-                    val activeForge = dashboard.forge ?: return@post
-                    if (!activeForge.pending || activeForge.form !== forge.form) return@post
-                    if (createFailureIsDefinitive(result.failure)) {
-                        val definiteFailure = when (val failure = result.failure) {
-                            GatewayFailure.Transport ->
-                                error("transport failure cannot be a definite Create rejection")
-                            is GatewayFailure.Api -> ForgeFailure.Definite(failure)
-                        }
-                        clearInventoryRefresh(credential.machine.handle)
-                        state = dashboard.copy(
-                            machines = sortedMachineStates(),
-                            refreshing = awaitedInventoryReads.isActive,
-                            needsInputSettled = needsInputSettled(),
-                            forge = activeForge.copy(
-                                pending = false,
-                                failure = definiteFailure,
-                                surface = ForgeSurface.Form,
-                            ),
-                        )
+        machines.mutate(handle, Reservation.Inventory, { GatewayClient.createSession(it, draft) }) { _, result ->
+            machines.refresh(handle)
+            val active = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return@mutate
+            if (!active.pending || active.form !== forge.form) return@mutate
+            when (result) {
+                is GatewayResult.Success -> enterCreatedTerminal(SessionTarget(handle, result.value))
+                is GatewayResult.Failure -> {
+                    val failure = result.failure
+                    if (failure is GatewayFailure.Api && createFailureIsDefinitive(failure)) {
+                        machines.settle(handle)
+                        updateForge { it.copy(pending = false, failure = ForgeFailure.Definite(failure), surface = ForgeSurface.Form) }
                     } else {
-                        markInventoryFailed(credential.machine.handle, result.failure)
+                        machines.fail(handle, failure)
+                        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@mutate
                         state = dashboard.copy(
-                            machines = sortedMachineStates(),
-                            refreshing = awaitedInventoryReads.isActive,
-                            needsInputSettled = needsInputSettled(),
                             forge = null,
-                            forgeRecovery = ForgeRecovery.RefreshRequired(
-                                checkNotNull(activeForge.form.submission()),
-                            ),
+                            forgeRecovery = ForgeRecovery.RefreshRequired(checkNotNull(active.form.submission())),
                         )
                     }
                 }
@@ -1080,7 +657,7 @@ internal class SkidbladnirController(
             source.close != null || source.rename != null ||
             !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
         val handle = source.target.machineHandle
-        if (machineStates[handle]?.canMutate != true) return
+        if (machines[handle]?.canMutate != true) return
         leaveTerminal()
         publishDashboard(carry = ForgeCarry(
             ForgeState(
@@ -1100,45 +677,23 @@ internal class SkidbladnirController(
         if (source.shellPending || source.close != null || source.rename != null ||
             !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
         val handle = source.target.machineHandle
-        val credential = credentials[handle] ?: return
-        val runtime = polling[handle] ?: return
-        val activeGeneration = generation
+        if (!machines.canMutate(handle)) return
         state = source.copy(shellPending = true)
-        runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireInventoryRefresh(handle, fence) },
-        ) { fence ->
-            val result = client.createShell(credential, source.target)
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
-                if (result is GatewayResult.Failure && acceptAccessFailure(handle, result.failure)) return@post
-                val current = state as? SkidbladnirUiState.Terminal
-                if (current?.attempt != source.attempt || !current.shellPending ||
-                    machineStates[handle]?.access != MachineAccess.Ready) {
-                    awaitInventory(handle, activeGeneration)
-                    return@post
-                }
-                when (result) {
-                    is GatewayResult.Success -> {
-                        val valid = {
-                            val terminal = state as? SkidbladnirUiState.Terminal
-                            isCredentialActive(activeGeneration, credential) && polling[handle] === runtime &&
-                                machineStates[handle]?.access == MachineAccess.Ready && terminal?.attempt == source.attempt &&
-                                terminal.shellPending
-                        }
-                        awaitInventory(handle, activeGeneration)
-                        if (valid()) enterCreatedTerminal(SessionTarget(handle, result.value), fence)
-                    }
-                    is GatewayResult.Failure -> {
-                        awaitInventory(handle, activeGeneration)
-                        if (createFailureIsDefinitive(result.failure)) clearInventoryRefresh(handle)
-                        else markInventoryFailed(handle, result.failure)
-                        val active = state as? SkidbladnirUiState.Terminal ?: return@post
-                        state = active.copy(shellPending = false)
-                        val message = if (createFailureIsDefinitive(result.failure)) {
-                            gatewayFailureMessage(result.failure)
-                        } else "Terminal creation outcome unknown. Inspect the session collection before creating another."
-                        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
-                    }
+        machines.mutate(handle, Reservation.Inventory, { GatewayClient.createShell(it, source.target) }) { _, result ->
+            machines.refresh(handle)
+            val current = state as? SkidbladnirUiState.Terminal ?: return@mutate
+            if (current.attempt != source.attempt || !current.shellPending) return@mutate
+            when (result) {
+                is GatewayResult.Success -> enterCreatedTerminal(SessionTarget(handle, result.value))
+                is GatewayResult.Failure -> {
+                    val definite = createFailureIsDefinitive(result.failure)
+                    if (definite) machines.settle(handle) else machines.fail(handle, result.failure)
+                    val active = state as? SkidbladnirUiState.Terminal ?: return@mutate
+                    state = active.copy(shellPending = false)
+                    val message = if (definite) {
+                        gatewayFailureMessage(result.failure)
+                    } else "Terminal creation outcome unknown. Inspect the session collection before creating another."
+                    android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -1147,7 +702,7 @@ internal class SkidbladnirController(
     fun openGroupEditor(target: SessionTarget) {
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
         if (dashboard.forge != null || dashboard.close != null || dashboard.groupEditor != null) return
-        val machine = machineStates[target.machineHandle] ?: return
+        val machine = machines[target.machineHandle] ?: return
         if (!machine.canMutate) return
         val observed = machine.inventory.observedSession(target.session) ?: return
         state = dashboard.copy(groupEditor = GroupEditor(target.copy(session = observed), observed.group?.text.orEmpty()))
@@ -1170,27 +725,17 @@ internal class SkidbladnirController(
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
         val editor = dashboard.groupEditor ?: return
         val handle = editor.target.machineHandle
-        val machine = machineStates[handle] ?: return
-        if (!groupSubmissionAdmissible(editor, machine)) return
+        val machine = machines[handle] ?: return
+        if (!groupSubmissionAdmissible(editor, machine) || !machines.canMutate(handle)) return
         val label = if (editor.draft.isEmpty()) null else checkNotNull(GroupLabel.fromDraft(editor.draft))
-        val credential = credentials[handle] ?: return
-        val runtime = polling[handle] ?: return
-        val activeGeneration = generation
         val sending = editor.copy(phase = GroupPhase.Sending, error = null)
         state = dashboard.copy(groupEditor = sending)
-        runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireMetadataInventoryRefresh(handle, fence) },
-        ) { fence ->
-            val result = client.setSessionGroup(credential, editor.target, label)
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
-                if (result is GatewayResult.Failure && acceptAccessFailure(handle, result.failure)) return@post
-                val completed = completeGroupHttp(sending, result)
-                if (completed.phase == GroupPhase.Editing) clearMetadataInventoryRefresh(handle, fence)
-                val current = state as? SkidbladnirUiState.Dashboard
-                if (current?.groupEditor == sending) state = current.copy(groupEditor = completed)
-                if (completed.phase is GroupPhase.Checking) awaitInventory(handle, activeGeneration)
-            }
+        machines.mutate(handle, Reservation.Metadata, { GatewayClient.setSessionGroup(it, editor.target, label) }) { fence, result ->
+            val completed = completeGroupHttp(sending, result)
+            if (completed.phase == GroupPhase.Editing) machines.settleMetadata(handle, fence)
+            val current = state as? SkidbladnirUiState.Dashboard
+            if (current?.groupEditor == sending) state = current.copy(groupEditor = completed)
+            if (completed.phase is GroupPhase.Checking) machines.refresh(handle)
         }
     }
 
@@ -1198,7 +743,7 @@ internal class SkidbladnirController(
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
         val editor = dashboard.groupEditor ?: return
         if (editor.target.machineHandle != handle) return
-        val machine = machineStates.getValue(handle)
+        val machine = machines[handle] ?: return
         val updated = reconcileGroupEditor(editor, machine)
         val missing = machine.inventory.lastSnapshot()?.inventory?.sessions?.none {
             it.sameLifetime(editor.target.session)
@@ -1211,195 +756,104 @@ internal class SkidbladnirController(
 
     fun openTerminal(target: SessionTarget) {
         if ((state as? SkidbladnirUiState.Dashboard)?.groupEditor != null) return
-        val machine = machineStates[target.machineHandle] ?: return
-        if (!machine.canMutate) return
-        enterTerminal(machine, target)
+        if (machines[target.machineHandle]?.canMutate != true) return
+        enterTerminal(target.machineHandle, target.session)
     }
 
+    /** The click names a lifetime; one lane read supplies the rich session the terminal's controls need. */
     fun openNotificationReference(ref: String) {
-        if (state == SkidbladnirUiState.Booting || !foreground) {
+        if (state == SkidbladnirUiState.Booting || foreground == null) {
             pendingNotificationReference = ref
             return
         }
         val key = notificationReference(ref) ?: return
-        val handle = MachineHandle.parse(key.machine) ?: return
-        val credential = credentials[handle]
-        val runtime = polling[handle]
-        if (credential == null || runtime == null) {
+        val handle = MachineHandle(key.machine)
+        val machine = machines[handle]?.machine
+        if (machine == null || !machines.polled(handle)) {
             publishDashboard(notice = "that session's machine is unavailable.")
             return
         }
-        val activeGeneration = generation
-        val attempt = nextTerminalAttempt
-        runtime.inventoryOperation.submitRead {
-            val result = client.listSessions(credential)
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential) || nextTerminalAttempt != attempt) return@post
-                when (result) {
-                    is GatewayResult.Failure -> {
-                        acceptAccessFailure(handle, result.failure)
-                        publishDashboard(notice = machineError(credential.machine, result.failure))
-                    }
-                    is GatewayResult.Success -> {
-                        if (!acceptMachineIdentity(credential, result.value)) return@post
-                        val session = result.value.sessions.singleOrNull { it.tmuxId == key.tmuxId && it.identityToken == key.identityToken }
-                        if (session == null) {
-                            publishDashboard(notice = "that session lifetime is no longer available.")
-                            return@post
-                        }
-                        updateMachine(handle) { it.copy(inventory = InventoryState.Fresh(InventorySnapshot(result.value, SystemClock.elapsedRealtime()))) }
-                        enterTerminal(machineStates.getValue(handle), SessionTarget(handle, session))
-                    }
+        val attempt = nextAttempt
+        machines.read(handle) { result ->
+            if (nextAttempt != attempt) return@read
+            when (result) {
+                is GatewayResult.Failure -> publishDashboard(notice = machineError(machine, result.failure))
+                is GatewayResult.Success -> {
+                    val session = result.value.sessions.singleOrNull { it.tmuxId == key.tmuxId && it.identityToken == key.identityToken }
+                    if (session == null) publishDashboard(notice = "that session lifetime is no longer available.")
+                    else enterTerminal(handle, session)
                 }
             }
         }
     }
 
-    private fun enterTerminal(machine: MachineState, target: SessionTarget) {
+    /** Every entry starts Preparing; the gateway checks the session lifetime at attach. */
+    private fun enterTerminal(handle: MachineHandle, session: TmuxSession) {
+        val machine = machines[handle] ?: return
         leaveTerminal()
-        val attempt = nextTerminalAttempt++
+        textSize.sheet(open = false)
         state = SkidbladnirUiState.Terminal(
             machine = machine,
-            machines = sortedMachineStates(),
-            target = target,
-            attempt = attempt,
+            machines = machines.all,
+            target = SessionTarget(handle, session),
+            attempt = nextAttempt++,
             connection = TerminalUiStatus.Preparing,
             viewport = TerminalViewport.Pending,
-            textSize = TerminalTextSizeState.Reading,
+            textSize = textSize.state,
             close = null,
         )
-        readTextSize(attempt)
+        publish()
+        // The saved size is loaded before the page exists; the page is created only once it is Ready.
+        if (textSize.state == TerminalTextSizeState.Unavailable) textSize.read()
     }
 
-    private fun enterCreatedTerminal(target: SessionTarget, requiredMutationFence: Long) {
-        val machine = machineStates[target.machineHandle] ?: return
+    private fun enterCreatedTerminal(target: SessionTarget) {
         dashboardEntry.followCreatedMembership(target.session.group)
-        leaveTerminal()
-        val attempt = nextTerminalAttempt++
-        state = SkidbladnirUiState.Terminal(
-            machine = machine,
-            machines = sortedMachineStates(),
-            target = target,
-            attempt = attempt,
-            connection = TerminalUiStatus.Verifying,
-            viewport = TerminalViewport.Pending,
-            textSize = TerminalTextSizeState.Reading,
-            close = null,
-        )
-        createdTerminalAdmission = CreatedTerminalAdmission(attempt, requiredMutationFence)
-        readTextSize(attempt)
-    }
-
-    /** The saved size is loaded before the page exists; the page is created only once it is Ready. */
-    private fun readTextSize(attempt: Int) {
-        textSizeStore.read(
-            onReady = { nominalSp ->
-                updateTextSize(
-                    attempt,
-                    TerminalTextSizeState.Ready(nominalSp, TerminalTextSizeWrite.Idle, sheetOpen = false),
-                )
-            },
-            onUnavailable = { updateTextSize(attempt, TerminalTextSizeState.Unavailable) },
-        )
-    }
-
-    private fun updateTextSize(attempt: Int, textSize: TerminalTextSizeState) {
-        val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.attempt != attempt) return
-        state = current.copy(textSize = textSize)
-    }
-
-    /** A write outlives the sheet, so the committed value is folded into whatever it is showing. */
-    private fun updateReadyTextSize(
-        attempt: Int,
-        transform: (TerminalTextSizeState.Ready) -> TerminalTextSizeState.Ready,
-    ): Boolean {
-        val current = state as? SkidbladnirUiState.Terminal ?: return false
-        if (current.attempt != attempt) return false
-        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return false
-        state = current.copy(textSize = transform(textSize))
-        return true
+        enterTerminal(target.machineHandle, target.session)
     }
 
     fun terminalPageReady(attempt: Int, page: TerminalPage) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt || current.connection != TerminalUiStatus.Preparing) return
-        when (val admission = terminalPageAdmissionStatus(current)) {
-            TerminalUiStatus.Connecting -> Unit
-            is TerminalUiStatus.ReconnectRequired -> {
-                leaveTerminal()
-                state = current.copy(connection = admission)
-                return
-            }
-            TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, is TerminalUiStatus.Connected ->
-                // justify-defect: terminalPageAdmissionStatus answers a Preparing terminal with
-                // exactly Connecting or ReconnectRequired, so any other value is a same-system
-                // contract violation in owned code.
-                error("terminal page admission produced an impossible state")
-        }
-        val credential = credentials[current.target.machineHandle]
-        if (credential == null) {
-            leaveTerminal()
-            publishDashboard(
-                notice = "${current.machine.machine.label.text}: the machine pairing is no longer available.",
-            )
-            return
-        }
-        terminalPage = page
+        attachment = TerminalAttachment(page, notifications)
         state = current.copy(connection = TerminalUiStatus.Connecting)
         connectTerminalIfReady()
     }
 
-    // WSS starts only with page Ready and a fitted grid, whichever lands last; the
-    // connection carries that grid, so it is the first client frame the gateway sees.
+    // WSS starts only with page Ready and a fitted grid, whichever lands last.
     private fun connectTerminalIfReady() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.connection != TerminalUiStatus.Connecting || terminalConnection != null) return
+        val owned = attachment ?: return
+        if (current.connection != TerminalUiStatus.Connecting || owned.connection != null) return
         val viewport = current.viewport as? TerminalViewport.Fitted ?: return
-        // justify-defect: terminalPageReady stores the page and admits Connecting only with a live
-        // pairing, and every credential change leaves the terminal before it lands.
-        val page = checkNotNull(terminalPage)
-        val credential = checkNotNull(credentials[current.target.machineHandle])
-        val attempt = current.attempt
-        val owner = Any()
-        terminalOwner = owner
-        notificationVisit = notifications.beginVisit(NotificationKey(current.target))
-        val connection = TerminalConnection(
-            client,
-            credential,
-            current.target,
-            viewport,
-            page,
-            object : TerminalConnectionObserver {
-                override fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?) {
-                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
-                    if (terminal.attempt != attempt || terminalOwner !== owner) return
-                    state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
-                }
-                override fun onPresence(attachedClients: Int) {
-                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
-                    if (terminal.attempt == attempt && terminalOwner === owner) {
-                        state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
-                    }
-                }
-                override fun onFailure(code: ApiErrorCode) {
-                    val terminal = state as? SkidbladnirUiState.Terminal ?: return
-                    if (terminal.attempt != attempt || terminalOwner !== owner) return
-                    if (acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(code))) return
-                    leaveTerminal()
-                    state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
-                }
-            },
-        )
-        terminalConnection = connection
-        connection.start()
+        val handle = current.target.machineHandle
+        // A fleet change that removes or re-authorizes this machine leaves the terminal first.
+        val credential = checkNotNull(machines.credential(handle))
+        owned.connect(credential, current.target, viewport, object : TerminalConnectionObserver {
+            override fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?) =
+                connected(attachedClients)
+            override fun onPresence(attachedClients: Int) = connected(attachedClients)
+            override fun onFailure(code: ApiErrorCode) {
+                if (attachment !== owned) return
+                val failure = GatewayFailure.Api(code = code, message = apiErrorMessage(code))
+                if (machines.accessFailure(handle, failure)) return
+                val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                leaveTerminal()
+                state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
+            }
+            private fun connected(attachedClients: Int) {
+                if (attachment !== owned) return
+                val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
+            }
+        })
     }
 
     fun resizeTerminal(attempt: Int, columns: Int, rows: Int) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt) return
         state = current.copy(viewport = TerminalViewport.Fitted(columns, rows))
-        val connection = terminalConnection
+        val connection = attachment?.connection
         if (connection == null) connectTerminalIfReady() else connection.resize(columns, rows)
     }
 
@@ -1411,43 +865,46 @@ internal class SkidbladnirController(
     fun terminalPageFailed(attempt: Int) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt) return
-        terminalConnection?.terminalUnavailable()
+        attachment?.connection?.terminalUnavailable()
         leaveTerminal()
         state = current.copy(connection = TerminalUiStatus.ReconnectRequired("Reconnect required."))
     }
     fun terminalPageDisposed(attempt: Int, page: TerminalPage) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.attempt != attempt || terminalPage !== page) return
+        if (current.attempt != attempt || attachment?.page !== page) return
         leaveTerminal()
     }
     fun sendTerminal(attempt: Int, bytes: ByteArray) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt || current.connection !is TerminalUiStatus.Connected) return
-        terminalConnection?.send(bytes)
-        terminalPage?.focus()
+        attachment?.connection?.send(bytes)
+        attachment?.page?.focus()
     }
     fun sendTerminalAccessory(attempt: Int, accessory: TerminalAccessory) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt == attempt && terminalInputAdmissible(current.connection, current.viewport)) {
-            terminalPage?.sendAccessory(accessory)
+            attachment?.page?.sendAccessory(accessory)
         }
+    }
+
+    fun terminalOutputPresented(attempt: Int, page: TerminalPage) {
+        val terminal = state as? SkidbladnirUiState.Terminal ?: return
+        val owned = attachment ?: return
+        if (foreground == null || terminal.attempt != attempt || owned.page !== page) return
+        owned.present()
     }
 
     fun openTextSize() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.rename != null || current.close != null || terminalTextSizeSheet(current.textSize, current.connection) != null) return
-        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return
-        if (!terminalPageLive(current.connection)) return
-        terminalPage?.resetInputState()
-        // A failed write is reported for that write only, so a new sheet session opens clean.
-        val write = if (textSize.write == TerminalTextSizeWrite.Failed) TerminalTextSizeWrite.Idle else textSize.write
-        state = current.copy(textSize = textSize.copy(write = write, sheetOpen = true))
+        if (current.rename != null || current.close != null || terminalTextSizeSheet(textSize.state, current.connection) != null) return
+        if (textSize.state !is TerminalTextSizeState.Ready || !terminalPageLive(current.connection)) return
+        attachment?.page?.resetInputState()
+        textSize.sheet(open = true)
     }
 
     fun dismissTextSize() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        val textSize = terminalTextSizeSheet(current.textSize, current.connection) ?: return
-        state = current.copy(textSize = textSize.copy(sheetOpen = false))
+        if (terminalTextSizeSheet(textSize.state, current.connection) != null) textSize.sheet(open = false)
     }
 
     fun decreaseTextSize() = writeTextSize { it - 1 }
@@ -1457,29 +914,15 @@ internal class SkidbladnirController(
     fun resetTextSize() = writeTextSize { TERMINAL_TEXT_SIZE_DEFAULT_SP }
 
     fun retryTextSizeRead() {
-        val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.textSize != TerminalTextSizeState.Unavailable) return
-        state = current.copy(textSize = TerminalTextSizeState.Reading)
-        readTextSize(current.attempt)
+        if (state is SkidbladnirUiState.Terminal && textSize.state == TerminalTextSizeState.Unavailable) textSize.read()
     }
 
-    // Only committed state is displayed and applied; a failed write keeps the prior value.
     private fun writeTextSize(next: (committedSp: Int) -> Int) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return
-        val nominalSp = next(textSize.nominalSp)
-        if (!terminalTextSizeStepAdmissible(textSize, current.connection, nominalSp)) return
-        val attempt = current.attempt
-        state = current.copy(textSize = textSize.copy(write = TerminalTextSizeWrite.Pending))
-        textSizeStore.write(
-            nominalSp,
-            onCommitted = {
-                if (updateReadyTextSize(attempt) { it.copy(nominalSp = nominalSp, write = TerminalTextSizeWrite.Idle) }) {
-                    terminalPage?.setTextSize(nominalSp)
-                }
-            },
-            onFailed = { updateReadyTextSize(attempt) { it.copy(write = TerminalTextSizeWrite.Failed) } },
-        )
+        val ready = textSize.state as? TerminalTextSizeState.Ready ?: return
+        val nominalSp = next(ready.nominalSp)
+        if (!terminalTextSizeStepAdmissible(ready, current.connection, nominalSp)) return
+        textSize.write(nominalSp) { attachment?.page?.setTextSize(it) }
     }
 
     fun openRename() {
@@ -1487,7 +930,7 @@ internal class SkidbladnirController(
         if (current.rename != null || current.close != null || terminalTextSizeSheet(current.textSize, current.connection) != null ||
             !terminalActionAdmissible(current.machine.canMutate, current.connection)
         ) return
-        terminalPage?.resetInputState()
+        attachment?.page?.resetInputState()
         state = current.copy(rename = beginRename(current.target))
     }
 
@@ -1518,150 +961,77 @@ internal class SkidbladnirController(
             terminalTarget = current.target,
             terminalActionsAdmissible = terminalActionAdmissible(current.machine.canMutate, current.connection),
         ) ?: return
-        val credential = credentials[current.target.machineHandle] ?: return
-        val runtime = polling[current.target.machineHandle] ?: return
+        val handle = current.target.machineHandle
+        if (!machines.canMutate(handle)) return
         val attempt = current.attempt
-        val activeGeneration = generation
         state = current.copy(rename = sending)
-        runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireMetadataInventoryRefresh(current.target.machineHandle, fence) },
-        ) { mutationFence ->
-            val result = client.renameSession(credential, sending.target, sending.expectedNaming, requireNotNull(sending.submittedNaming))
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential)) return@post
-                if (result is GatewayResult.Failure &&
-                    acceptAccessFailure(sending.target.machineHandle, result.failure)
-                ) return@post
-                val transition = completeRenameHttp(sending, result)
-                if (transition.clearMutationFence) {
-                    clearMetadataInventoryRefresh(sending.target.machineHandle, mutationFence)
-                }
-                val terminal = state as? SkidbladnirUiState.Terminal
-                val activeRename = terminal?.rename
-                if (terminal?.attempt == attempt && activeRename?.phase == RenamePhase.Sending &&
-                    activeRename.target == sending.target && activeRename.draft == sending.draft
-                ) {
-                    state = terminal.copy(rename = transition.state)
-                }
-                if (transition.requireInventoryRead) {
-                    awaitInventory(sending.target.machineHandle, activeGeneration)
-                }
+        machines.mutate(handle, Reservation.Metadata, {
+            GatewayClient.renameSession(it, sending.target, sending.expectedNaming, requireNotNull(sending.submittedNaming))
+        }) { fence, result ->
+            val transition = completeRenameHttp(sending, result)
+            if (transition.clearMutationFence) machines.settleMetadata(handle, fence)
+            val terminal = state as? SkidbladnirUiState.Terminal
+            val activeRename = terminal?.rename
+            if (terminal?.attempt == attempt && activeRename?.phase == RenamePhase.Sending &&
+                activeRename.target == sending.target && activeRename.draft == sending.draft
+            ) {
+                state = terminal.copy(rename = transition.state)
             }
+            if (transition.requireInventoryRead) machines.refresh(handle)
         }
     }
 
+    /** No inventory read: the gateway checks the lifetime at attach, and the adopted session is the latest observed one. */
     fun reattachTerminal() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        val handle = current.target.machineHandle
-        if (!terminalActionAdmissible(current.machine.canMutate, current.connection)) return
-        unavailableTerminalStatus(current)?.let { unavailable ->
-            leaveTerminal()
-            state = current.copy(connection = unavailable)
-            return
-        }
-        val credential = credentials[handle]
-        val runtime = polling[handle]
-        if (credential == null || runtime == null) {
-            leaveTerminal()
-            publishDashboard(
-                notice = "${current.machine.machine.label.text}: the machine pairing is no longer available.",
-            )
-            return
-        }
-        leaveTerminal()
-        val attempt = nextTerminalAttempt++
-        state = current.copy(
-            attempt = attempt,
-            connection = TerminalUiStatus.Verifying,
-            viewport = TerminalViewport.Pending,
-            textSize = TerminalTextSizeState.Reading,
-            close = null,
+        if (current.close?.pending == true || !terminalActionAdmissible(current.machine.canMutate, current.connection)) return
+        enterTerminal(
+            current.target.machineHandle,
+            current.machine.inventory.observedSession(current.target.session) ?: current.target.session,
         )
-        readTextSize(attempt)
-        val activeGeneration = generation
-        runtime.inventoryOperation.submitRead {
-            val result = client.listSessions(credential)
-            main.post {
-                val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                if (!isCredentialActive(activeGeneration, credential) || terminal.attempt != attempt) return@post
-                when (result) {
-                    is GatewayResult.Failure -> {
-                        if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
-                            updateMachine(credential.machine.handle) { it.inventoryFailed(result.failure) }
-                        }
-                        val active = state as? SkidbladnirUiState.Terminal ?: return@post
-                        state = active.copy(connection = TerminalUiStatus.ReconnectRequired(machineError(credential.machine, result.failure)))
-                    }
-                    is GatewayResult.Success -> {
-                        if (!acceptMachineIdentity(credential, result.value)) return@post
-                        val observed = result.value.sessions.singleOrNull { it.sameLifetime(current.target.session) }
-                        val valid = {
-                            val active = state as? SkidbladnirUiState.Terminal
-                            isCredentialActive(activeGeneration, credential) && polling[handle] === runtime &&
-                                active?.attempt == attempt && active.connection == TerminalUiStatus.Verifying
-                        }
-                        val complete = {
-                            if (valid()) {
-                                val active = state as SkidbladnirUiState.Terminal
-                                val connection = terminalReadAdmissionStatus(active, observed != null)
-                                if (connection is TerminalUiStatus.ReconnectRequired) leaveTerminal()
-                                state = active.copy(target = observed?.let { active.target.copy(session = it) } ?: active.target, connection = connection)
-                            }
-                        }
-                        complete()
-                    }
-                }
-            }
-        }
     }
 
     fun detachToSessions() {
-        val presented = notificationPresented
+        val presented = attachment?.presented == true
         leaveTerminal()
         publishDashboard()
         if (!presented) verifyVisibleInventory()
     }
 
     fun stopTerminal(target: SessionTarget) {
-        val machine = machineStates[target.machineHandle] ?: return
-        if (!machine.canMutate) return
+        val handle = target.machineHandle
+        val machine = machines[handle] ?: return
+        if (!machines.canMutate(handle)) return
         val current = state
         state = when (current) {
             is SkidbladnirUiState.Dashboard -> {
                 if (current.terminalControlPending || current.close != null || current.groupEditor != null || current.forge != null) return
+                dashboardStop = handle
                 current.copy(terminalControlPending = true)
             }
             is SkidbladnirUiState.Terminal -> {
                 if (current.terminalControlPending || current.close != null || current.rename != null ||
                     !terminalActionAdmissible(machine.canMutate, current.connection) || current.target.machineHandle != target.machineHandle ||
                     current.target.session.identityToken != target.session.identityToken) return
-                terminalPage?.resetInputState()
+                attachment?.page?.resetInputState()
                 current.copy(terminalControlPending = true)
             }
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
         }
-        val credential = checkNotNull(credentials[target.machineHandle]) // justify-defect: a ready machine owns its credential and poller.
-        val runtime = checkNotNull(polling[target.machineHandle])
-        val activeGeneration = generation
-        runtime.inventoryOperation.submitMutation(onReserved = {}) {
-            val result = client.stopTerminal(credential, target)
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential)) return@post
-                if (result is GatewayResult.Failure && acceptAccessFailure(target.machineHandle, result.failure)) return@post
-                state = when (val latest = state) {
-                    is SkidbladnirUiState.Dashboard -> latest.copy(terminalControlPending = false)
-                    is SkidbladnirUiState.Terminal -> if (current is SkidbladnirUiState.Terminal && latest.attempt == current.attempt) latest.copy(terminalControlPending = false) else latest
-                    SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> latest
-                }
-                val message = when (result) {
-                    is GatewayResult.Success -> terminalStopMessage(result.value)
-                    is GatewayResult.Failure -> if (result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent) {
-                        machineError(machine.machine, result.failure)
-                    } else TERMINAL_INPUT_UNKNOWN
-                }
-                android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
-                awaitInventory(target.machineHandle, activeGeneration)
+        machines.mutate(handle, Reservation.None, { GatewayClient.stopTerminal(it, target) }) { _, result ->
+            state = when (val latest = state) {
+                is SkidbladnirUiState.Dashboard -> latest.copy(terminalControlPending = false)
+                is SkidbladnirUiState.Terminal -> if (current is SkidbladnirUiState.Terminal && latest.attempt == current.attempt) latest.copy(terminalControlPending = false) else latest
+                SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> latest
             }
+            val message = when (result) {
+                is GatewayResult.Success -> terminalStopMessage(result.value)
+                is GatewayResult.Failure -> if (result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent) {
+                    machineError(machine.machine, result.failure)
+                } else TERMINAL_INPUT_UNKNOWN
+            }
+            android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+            machines.refresh(handle)
         }
     }
 
@@ -1670,7 +1040,7 @@ internal class SkidbladnirController(
     fun requestTerminalClose(target: SessionTarget) = prepareClose(target, terminalOnly = true)
 
     private fun prepareClose(target: SessionTarget, terminalOnly: Boolean) {
-        val machine = machineStates[target.machineHandle] ?: return
+        val machine = machines[target.machineHandle] ?: return
         val close = CloseState(machine.machine, target, false, terminalOnly)
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate && current.groupEditor == null && current.close == null && !current.terminalControlPending) current.copy(close = close) else return
@@ -1678,7 +1048,7 @@ internal class SkidbladnirController(
                 if (current.close == null && !current.terminalControlPending && current.rename == null && terminalTextSizeSheet(current.textSize, current.connection) == null &&
                     terminalActionAdmissible(machine.canMutate, current.connection)
                 ) {
-                    terminalPage?.resetInputState()
+                    attachment?.page?.resetInputState()
                     current.copy(close = close)
                 } else {
                     return
@@ -1703,12 +1073,12 @@ internal class SkidbladnirController(
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> null
         } ?: return
         if (close.pending) return
-        val machine = machineStates[close.target.machineHandle] ?: return
-        val credential = credentials[close.target.machineHandle] ?: return
-        val runtime = polling[close.target.machineHandle] ?: return
+        val handle = close.target.machineHandle
+        val machine = machines[handle] ?: return
+        if (!machines.canMutate(handle)) return
         val pending = close.copy(pending = true)
         state = when (current) {
-            is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(close = pending) else return
+            is SkidbladnirUiState.Dashboard -> current.copy(close = pending)
             is SkidbladnirUiState.Terminal ->
                 if (terminalActionAdmissible(machine.canMutate, current.connection)) {
                     leaveTerminal()
@@ -1718,380 +1088,45 @@ internal class SkidbladnirController(
                 }
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
         }
-        val activeGeneration = generation
-        runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireInventoryRefresh(close.target.machineHandle, fence) },
-        ) { _ ->
-            val (result, interrupt) = if (close.terminalOnly) {
-                client.closeTerminal(credential, close.target) to null
-            } else {
-                when (val closed = client.interruptAndCloseTerminal(credential, close.target)) {
-                    is GatewayResult.Success -> GatewayResult.Success(closed.value.terminal) to closed.value.interrupt
-                    is GatewayResult.Failure -> closed to null
+        // Terminal-only closure has no interrupt half, so its success carries no result.
+        machines.mutate<TerminalCloseResult?>(handle, Reservation.Inventory, { credential ->
+            if (close.terminalOnly) {
+                when (val closed = GatewayClient.closeTerminal(credential, close.target)) {
+                    is GatewayResult.Success -> GatewayResult.Success(null)
+                    is GatewayResult.Failure -> closed
                 }
-            }
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential)) return@post
-                when (result) {
-                    is GatewayResult.Success -> {
-                        leaveTerminal()
-                        if (result.value == TerminalClosure.Closed) removeTargetFromSnapshot(close.target)
-                        awaitInventory(close.target.machineHandle, activeGeneration)
-                        val message = if (interrupt != null) terminalCloseMessage(TerminalCloseResult(interrupt, result.value))
-                            else "terminal closed. $TERMINAL_SHARED_WORK"
-                        val partial = result.value != TerminalClosure.Closed || interrupt != null && interrupt != TerminalInterrupt.Written
-                        publishDashboard(notice = if (partial) message else null)
-                        if (!partial) {
-                            android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    is GatewayResult.Failure -> {
-                        if (acceptAccessFailure(close.target.machineHandle, result.failure)) return@post
-                        leaveTerminal()
-                        val message = when {
-                            closeFailureIsDefinitive(result.failure) || result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent -> machineError(close.machine, result.failure)
-                            else -> TERMINAL_CLOSE_UNKNOWN
-                        }
-                        markInventoryFailed(close.target.machineHandle, result.failure)
-                        awaitInventory(close.target.machineHandle, activeGeneration)
-                        publishDashboard(notice = message)
+            } else GatewayClient.interruptAndCloseTerminal(credential, close.target)
+        }) { _, result ->
+            leaveTerminal()
+            when (result) {
+                is GatewayResult.Success -> {
+                    val closed = result.value?.terminal ?: TerminalClosure.Closed
+                    val interrupt = result.value?.interrupt
+                    if (closed == TerminalClosure.Closed) machines.forget(close.target)
+                    machines.refresh(handle)
+                    val message = result.value?.let(::terminalCloseMessage) ?: "terminal closed. $TERMINAL_SHARED_WORK"
+                    val partial = closed != TerminalClosure.Closed || interrupt != null && interrupt != TerminalInterrupt.Written
+                    publishDashboard(notice = if (partial) message else null)
+                    if (!partial) {
+                        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
-            }
-        }
-    }
-
-    private fun startPolling(handle: MachineHandle, activeGeneration: Long) {
-        stopPolling(handle)
-        val runtime = PollRuntime(
-            inventoryOperation = inventoryOperations.computeIfAbsent(handle) {
-                InventoryOperationLane(network, ::surfaceDefect)
-            },
-        )
-        polling[handle] = runtime
-        updateMachine(handle) { it }
-        awaitInventory(handle, activeGeneration)
-        // justify-polling: tmux and host pressure expose no push inventory; the product fixes a five-second
-        // foreground cadence, coalesces overlaps, and stopPolling cancels both schedules on loss/background.
-        runtime.inventoryFuture = scheduler.scheduleAtFixedRate(
-            { requestInventory(handle, activeGeneration) },
-            MACHINE_POLL_CADENCE.toMillis(),
-            MACHINE_POLL_CADENCE.toMillis(),
-            TimeUnit.MILLISECONDS,
-        )
-        runtime.pressureFuture = scheduler.scheduleAtFixedRate(
-            { requestPressure(handle, activeGeneration) },
-            0,
-            MACHINE_POLL_CADENCE.toMillis(),
-            TimeUnit.MILLISECONDS,
-        )
-    }
-
-    private fun stopPolling(handle: MachineHandle) {
-        awaitedInventoryReads.stop(handle)
-        pendingMetadataFences.remove(handle)
-        polling.remove(handle)?.let { runtime ->
-            runtime.inventoryFuture?.cancel(false)
-            runtime.pressureFuture?.cancel(false)
-            retireContext(runtime)
-        }
-    }
-
-    /** Requests an inventory read and keeps its post-request sequence visible until it lands. */
-    private fun awaitInventory(handle: MachineHandle, activeGeneration: Long): Boolean {
-        val requiredSequence = requestInventory(handle, activeGeneration, requireTrailing = true) ?: return false
-        awaitedInventoryReads.requireRead(handle, requiredSequence)
-        return true
-    }
-
-    /** Returns the admitted or coalesced sequence that will publish a result for this machine. */
-    private fun requestInventory(
-        handle: MachineHandle,
-        activeGeneration: Long,
-        requireTrailing: Boolean = false,
-    ): Long? {
-        val runtime = polling[handle] ?: return null
-        val credential = credentials[handle] ?: return null
-        if (!isCredentialActive(activeGeneration, credential)) return null
-        val requested = runtime.inventory.request(requireTrailing) ?: return null
-        if (requested.startsNow) {
-            submitCoalescedInventoryRead(runtime.inventoryOperation, runtime.inventory, requested) { run, completedMutationFence, completeRead ->
-                pollInventory(
-                    credential,
-                    activeGeneration,
-                    completedMutationFence,
-                    runtime,
-                    run.sequence,
-                    onCompleted = {
-                        if (isCredentialActive(activeGeneration, credential) && polling[handle] === runtime) completeRead()
-                        else runtime.inventory.abort()
-                    },
-                )
-            }
-        }
-        return requested.sequence
-    }
-
-    private fun requestPressure(handle: MachineHandle, activeGeneration: Long) {
-        val runtime = polling[handle] ?: return
-        val credential = credentials[handle] ?: return
-        val run = runtime.pressure.request() ?: return
-        executeNetwork {
-            try {
-                pollPressure(credential, activeGeneration)
-            } finally {
-                runtime.pressure.finish(run.sequence)
-            }
-        }
-    }
-
-    private fun pollInventory(
-        credential: MachineCredential,
-        activeGeneration: Long,
-        completedMutationFence: Long,
-        runtime: PollRuntime,
-        completedReadSequence: Long,
-        onCompleted: () -> Unit,
-    ) {
-        if (!isCredentialActive(activeGeneration, credential)) {
-            runtime.inventory.abort()
-            return
-        }
-        try {
-            notifications.refresh()
-            val result = client.listSessions(credential)
-            val receivedAt = SystemClock.elapsedRealtime()
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential) || polling[credential.machine.handle] !== runtime) {
-                    runtime.inventory.abort()
-                    return@post
-                }
-                val handle = credential.machine.handle
-                fun finishRead() {
-                    if (isCredentialActive(activeGeneration, credential) && polling[handle] === runtime) {
-                        awaitedInventoryReads.readLanded(handle, completedReadSequence)
-                        publishDashboardIfVisible()
-                    }
-                    onCompleted()
-                }
-                val machine = machineStates[handle]
-                if (machine == null || machine.access != MachineAccess.Ready ||
-                    !mutationFenceSatisfied(machine.inventory, completedMutationFence)
-                ) {
-                    finishRead()
-                    return@post
-                }
-                val inventory = when (result) {
-                    is GatewayResult.Failure -> {
-                        retireContext(runtime)
-                        if (!acceptAccessFailure(handle, result.failure) &&
-                            pendingMetadataFences[handle]?.let { completedMutationFence >= it } != true
-                        ) markInventoryFailed(handle, result.failure)
-                        advanceCreatedTerminalAdmission(handle, completedMutationFence)
-                        finishRead()
-                        return@post
-                    }
-                    is GatewayResult.Success -> result.value
-                }
-                if (!acceptMachineIdentity(credential, inventory)) {
-                    finishRead()
-                    return@post
-                }
-                updateMachine(handle) {
-                    it.copy(
-                        access = MachineAccess.Ready,
-                        inventory = InventoryState.Fresh(InventorySnapshot(inventory, receivedAt)),
-                        remoteContexts = emptyMap(),
-                    )
-                }
-                pendingMetadataFences[handle]?.let { fence ->
-                    if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
-                }
-                advanceTerminalRename(handle)
-                advanceGroupEditor(handle)
-                dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
-                advanceCreatedTerminalAdmission(handle, completedMutationFence)
-                finishRead()
-                requestContext(credential, activeGeneration, runtime, inventory)
-            }
-        } catch (_: InterruptedException) {
-            // justify-ignore-error: shutdown interrupts worker reads; preserve cancellation and release the read lane.
-            Thread.currentThread().interrupt()
-            main.post {
-                if (isCredentialActive(activeGeneration, credential) && polling[credential.machine.handle] === runtime) {
-                    awaitedInventoryReads.readLanded(credential.machine.handle, completedReadSequence)
-                    markInventoryFailed(credential.machine.handle, GatewayFailure.Transport)
-                    publishDashboardIfVisible()
-                }
-                onCompleted()
-            }
-        }
-    }
-
-    private fun projectNotifications(machine: MachineState): Map<NotificationKey, NotificationPresentation> {
-        val handle = machine.machine.handle
-        val unavailable = notificationsUnavailable
-        return machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
-            val key = NotificationKey(SessionTarget(handle, session))
-            key to NotificationPresentation(
-                ready = !unavailable && machine.canMutate &&
-                    notificationSnapshot.presentsReady(key, session),
-                unavailable = session.agent != null && unavailable,
-            )
-        }
-    }
-
-    private fun publishNotifications() {
-        for (handle in machineStates.keys) updateMachine(handle) { it }
-        publishDashboardIfVisible()
-    }
-
-    fun terminalOutputPresented(attempt: Int, page: TerminalPage) {
-        val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (!foreground || terminal.attempt != attempt || terminalPage !== page || terminalOwner == null || notificationPresented) return
-        val visit = notificationVisit ?: return
-        notificationPresented = true
-        notifications.presented(visit)
-    }
-
-    private fun retireContext(runtime: PollRuntime) {
-        runtime.contextGeneration += 1
-        contextFlights.values.singleOrNull { it.runtime === runtime }?.canceled = true
-        runtime.pendingContext = null
-    }
-
-    private fun requestContext(
-        credential: MachineCredential, activeGeneration: Long, runtime: PollRuntime, inventory: SessionsResponse,
-    ) {
-        retireContext(runtime)
-        if (inventory.sessions.none { it.connection != null }) return
-        runtime.pendingContext = ContextSource(credential, activeGeneration, runtime.contextGeneration, inventory, credentials.values.toList())
-        startContextPasses()
-    }
-
-    /** The main owner admits at most three passes, with one current pass per source. */
-    private fun startContextPasses() {
-        if (!foreground) return
-        for (runtime in polling.values) {
-            if (contextFlights.size >= 3) return
-            val source = runtime.pendingContext ?: continue
-            if (source.credential.machine.handle in contextFlights) continue
-            runtime.pendingContext = null
-            val flight = ContextFlight(source, runtime)
-            contextFlights[source.credential.machine.handle] = flight
-            executeNetwork {
-                var contexts = emptyMap<String, ExecutionContext.Remote>()
-                try {
-                    contexts = resolveRemoteContexts(flight)
-                } finally {
-                    val completed = contexts
-                    main.post {
-                        val handle = source.credential.machine.handle
-                        contextFlights.remove(handle)
-                        if (!flight.canceled && isCredentialActive(source.generation, source.credential) &&
-                            polling[handle] === runtime && runtime.contextGeneration == source.sourceGeneration &&
-                            source.peers.all { credentials[it.machine.handle] == it }
-                        ) {
-                            updateMachine(handle) { machine ->
-                                val current = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory
-                                val admitted = completed.filterKeys { identity ->
-                                    val old = source.inventory.sessions.singleOrNull { it.identityToken == identity }
-                                    val now = current?.sessions?.singleOrNull {
-                                        it.identityToken == identity && it.tmuxId == old?.tmuxId
-                                    }
-                                    old != null && now != null && old.connection == now.connection
-                                }
-                                machine.copy(remoteContexts = admitted)
-                            }
-                            publishDashboardIfVisible()
-                        }
-                        startContextPasses()
-                    }
+                is GatewayResult.Failure -> {
+                    val failure = result.failure
+                    // Definite: never dispatched, or rejected before any effect. Access codes never reach here.
+                    val definite = failure is GatewayFailure.Api && (failure.dispatch == MutationDispatch.NotSent ||
+                        failure.code in setOf(
+                            ApiErrorCode.InvalidRequest,
+                            ApiErrorCode.RequestTooLarge,
+                            ApiErrorCode.SessionNotFound,
+                            ApiErrorCode.SessionIdentityMismatch,
+                        ))
+                    machines.fail(handle, failure)
+                    machines.refresh(handle)
+                    publishDashboard(notice = if (definite) machineError(close.machine, failure) else TERMINAL_CLOSE_UNKNOWN)
                 }
             }
         }
-    }
-
-    private fun resolveRemoteContexts(flight: ContextFlight): Map<String, ExecutionContext.Remote> {
-        val inventory = flight.source.inventory
-        val deadline = SystemClock.elapsedRealtime() + 2_000
-        val peers = flight.source.peers
-        val lookups = mutableMapOf<String, Pair<PairedMachine, TerminalContext>?>()
-        fun lookup(id: String): Pair<PairedMachine, TerminalContext>? {
-            if (flight.canceled || Thread.currentThread().isInterrupted) return null
-            if (id in lookups) return lookups[id]
-            val remaining = deadline - SystemClock.elapsedRealtime()
-            if (remaining <= 0) return null
-            val calls = mutableListOf<CompletableFuture<Pair<PairedMachine, TerminalContext>?>>()
-            try {
-                for (peer in peers) {
-                    if (flight.canceled || Thread.currentThread().isInterrupted) break
-                    calls += CompletableFuture.supplyAsync(
-                        {
-                            val budget = deadline - SystemClock.elapsedRealtime()
-                            if (flight.canceled || budget <= 0 || Thread.currentThread().isInterrupted) null
-                            else when (val result = client.readTerminalContext(peer, id, budget)) {
-                                is GatewayResult.Success -> if (SystemClock.elapsedRealtime() < deadline) peer.machine to result.value else null
-                                is GatewayResult.Failure -> null
-                            }
-                        }, network,
-                    )
-                }
-            } catch (failure: RejectedExecutionException) {
-                // justify-ignore-error: shutdown may reject the next child; already
-                // submitted children still belong to this pass and are joined below.
-                if (!network.isShutdown) throw failure
-            } finally {
-                // Each real call keeps its original remaining HTTP budget. Joining
-                // every supplier (also after interruption or partial submission) keeps
-                // its source/global slot owned until actual child work has ended.
-                CompletableFuture.allOf(*calls.toTypedArray()).join()
-            }
-            val match = calls.mapNotNull { it.getNow(null) }.singleOrNull()
-            lookups[id] = match
-            return match
-        }
-        return buildMap {
-            inventory.sessions.forEach { session ->
-                var connection = session.connection ?: return@forEach
-                val seen = mutableSetOf<String>()
-                repeat(8) {
-                    val id = connection.id ?: return@forEach
-                    if (!seen.add(id)) return@forEach
-                    val (machine, context) = lookup(id) ?: return@forEach
-                    if (context.connection == null) {
-                        put(session.identityToken, ExecutionContext.Remote(machine, context.cwd, context.agent))
-                        return@forEach
-                    }
-                    connection = context.connection
-                }
-            }
-        }
-    }
-
-    private fun mutationFenceSatisfied(inventory: InventoryState, completedMutationFence: Long): Boolean =
-        inventory !is InventoryState.Superseded || completedMutationFence >= inventory.requiredMutationFence
-
-    private fun advanceCreatedTerminalAdmission(handle: MachineHandle, completedMutationFence: Long) {
-        val admission = createdTerminalAdmission ?: return
-        val terminal = state as? SkidbladnirUiState.Terminal ?: run {
-            createdTerminalAdmission = null
-            return
-        }
-        if (terminal.target.machineHandle != handle) return
-        if (terminal.attempt != admission.attempt) {
-            createdTerminalAdmission = null
-            return
-        }
-        val connection = createdTerminalAdmissionStatus(
-            terminal,
-            completedMutationFence,
-            admission.requiredMutationFence,
-        )
-        if (connection == TerminalUiStatus.Verifying) return
-        createdTerminalAdmission = null
-        if (connection is TerminalUiStatus.ReconnectRequired) leaveTerminal()
-        state = terminal.copy(connection = connection)
     }
 
     private fun advanceTerminalRename(handle: MachineHandle) {
@@ -2102,173 +1137,89 @@ internal class SkidbladnirController(
         state = reconciled.terminal
     }
 
-    private fun pollPressure(credential: MachineCredential, activeGeneration: Long) {
-        val result = client.readPressure(credential)
-        main.post {
-            if (!isCredentialActive(activeGeneration, credential)) return@post
-            if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready) return@post
-            when (result) {
-                is GatewayResult.Success -> updateMachine(credential.machine.handle) {
-                    it.copy(pressure = PressureState.Fresh(result.value))
-                }
-                is GatewayResult.Failure -> if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
-                    updateMachine(credential.machine.handle) {
-                        it.copy(pressure = it.pressure.downgraded(result.failure))
-                    }
-                }
-            }
-            publishDashboardIfVisible()
-        }
-    }
-
-    private fun acceptMachineIdentity(credential: MachineCredential, inventory: SessionsResponse): Boolean {
-        if (inventory.machine.handle == credential.machine.handle) return true
-        acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch))
-        return false
-    }
-
-    private fun acceptAccessFailure(handle: MachineHandle, failure: GatewayFailure): Boolean {
-        val apiFailure = failure as? GatewayFailure.Api ?: return false
-        val access = when (apiFailure.code) {
-            ApiErrorCode.Unauthenticated -> MachineAccess.AuthRequired
-            ApiErrorCode.MachineIdentityMismatch -> MachineAccess.IdentityChanged
-            else -> return false
-        }
-        if ((state as? SkidbladnirUiState.Dashboard)?.forge?.form?.machineHandle == handle) cancelDirectorySearch()
-        stopPolling(handle)
-        updateMachine(handle) { machine ->
-            machine.copy(
-                access = access,
-                inventory = machine.inventory.downgraded(failure),
-                pressure = machine.pressure.downgraded(failure),
-            )
-        }
-        val machines = sortedMachineStates()
+    /** The machine is already downgraded and unpolled; this routes the ui away from it. */
+    private fun machineAccessLost(handle: MachineHandle, failure: GatewayFailure.Api) {
+        val machine = machines[handle] ?: return
+        val message = machineAccessMessage(machine)
         when (val current = state) {
-            is SkidbladnirUiState.Dashboard -> state = dashboardAfterMachineAccessLoss(
-                current,
-                machines,
-                handle,
-                refreshing = awaitedInventoryReads.isActive,
-                failure = apiFailure,
-            ).copy(needsInputSettled = needsInputSettled())
+            is SkidbladnirUiState.Dashboard -> {
+                val affectedForge = current.forge?.takeIf { it.form.machineHandle == handle }
+                if (affectedForge != null) cancelDirectorySearch()
+                state = current.copy(
+                    notice = message,
+                    forge = affectedForge?.copy(
+                        pending = false,
+                        failure = ForgeFailure.Definite(failure),
+                        surface = ForgeSurface.Form,
+                        directorySearch = DirectorySearchState.Idle,
+                    ) ?: current.forge,
+                    close = current.close?.takeUnless { it.target.machineHandle == handle },
+                    groupEditor = current.groupEditor?.takeUnless { it.target.machineHandle == handle },
+                    terminalControlPending = current.terminalControlPending && dashboardStop != handle,
+                )
+            }
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()
-                state = dashboardAfterTerminalAccessLoss(
-                    current,
-                    machines,
-                    refreshing = awaitedInventoryReads.isActive,
-                    dashboardEntry = dashboardEntry,
-                    needsInputSettled = needsInputSettled(),
+                dashboardEntry.resetViewportAfterAccessLoss()
+                state = SkidbladnirUiState.Dashboard(
+                    machines = machines.all.map(::projected),
+                    refreshing = machines.refreshing,
+                    notice = message,
+                    needsInputSettled = machines.settled,
+                    forge = null,
+                    forgeRecovery = null,
+                    close = null,
                 )
             } else {
-                pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
+                pendingDashboardNotice = message
             }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect ->
-                pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
-        }
-        return true
-    }
-
-    private fun markInventoryFailed(handle: MachineHandle, failure: GatewayFailure) {
-        polling[handle]?.let(::retireContext)
-        updateMachine(handle) { it.inventoryFailed(failure).copy(remoteContexts = emptyMap()) }
-    }
-
-    private fun requireInventoryRefresh(handle: MachineHandle, fence: Long) {
-        polling[handle]?.let(::retireContext)
-        updateMachine(handle) { machine ->
-            when (val inventory = machine.inventory) {
-                is InventoryState.Fresh ->
-                    machine.copy(inventory = InventoryState.Superseded(inventory.snapshot, fence))
-                is InventoryState.Superseded, is InventoryState.Stale,
-                is InventoryState.Unreachable, InventoryState.Reading,
-                -> machine
-            }
-        }
-        publishDashboardIfVisible()
-    }
-
-    private fun requireMetadataInventoryRefresh(handle: MachineHandle, fence: Long) {
-        check(pendingMetadataFences.put(handle, fence) == null)
-        requireInventoryRefresh(handle, fence)
-    }
-
-    private fun clearMetadataInventoryRefresh(handle: MachineHandle, fence: Long) {
-        if (pendingMetadataFences[handle] != fence) return
-        pendingMetadataFences.remove(handle)
-        updateMachine(handle) { machine ->
-            val inventory = machine.inventory
-            if (inventory is InventoryState.Superseded && inventory.requiredMutationFence == fence) {
-                machine.copy(inventory = InventoryState.Fresh(inventory.snapshot))
-            } else machine
-        }
-        publishDashboardIfVisible()
-    }
-
-    private fun clearInventoryRefresh(handle: MachineHandle) {
-        updateMachine(handle) { machine ->
-            when (val inventory = machine.inventory) {
-                is InventoryState.Superseded ->
-                    machine.copy(inventory = InventoryState.Fresh(inventory.snapshot))
-                is InventoryState.Fresh, is InventoryState.Stale,
-                is InventoryState.Unreachable, InventoryState.Reading,
-                -> machine
-            }
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> pendingDashboardNotice = message
         }
     }
 
-    private fun removeTargetFromSnapshot(target: SessionTarget) {
-        updateMachine(target.machineHandle) { machine ->
-            val trimmed = machine.inventory.lastSnapshot()?.let { snapshot ->
-                snapshot.copy(
-                    inventory = snapshot.inventory.copy(
-                        sessions = snapshot.inventory.sessions.filterNot { it.sameLifetime(target.session) },
-                    ),
+    /** The one derivation of machine facts, notification projections and text size into the visible state. */
+    private fun publish() {
+        val all = machines.all.map(::projected)
+        state = when (val current = state) {
+            is SkidbladnirUiState.Dashboard -> {
+                // A draft whose outcome was unknown becomes reviewable once its machine reads fresh.
+                val recovery = current.forgeRecovery
+                val recoveryMachine = recovery?.let { r -> all.singleOrNull { it.machine.handle == r.draft.machineHandle } }
+                current.copy(
+                    machines = all,
+                    refreshing = machines.refreshing,
+                    needsInputSettled = machines.settled,
+                    forgeRecovery = if (recovery is ForgeRecovery.RefreshRequired && recoveryMachine?.inventory is InventoryState.Fresh) {
+                        ForgeRecovery.ReviewReady(recovery.draft)
+                    } else recovery,
                 )
-            } ?: return@updateMachine machine
-            machine.copy(inventory = when (val inventory = machine.inventory) {
-                is InventoryState.Fresh -> InventoryState.Fresh(trimmed)
-                is InventoryState.Superseded -> InventoryState.Superseded(trimmed, inventory.requiredMutationFence)
-                is InventoryState.Stale -> InventoryState.Stale(trimmed, inventory.cause)
-                InventoryState.Reading, is InventoryState.Unreachable -> inventory
-            })
+            }
+            is SkidbladnirUiState.Terminal -> all.firstOrNull { it.machine.handle == current.target.machineHandle }?.let { machine ->
+                // Never retarget a pane: only the same lifetime on the same pane adopts the fresh session.
+                val session = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
+                    it.sameLifetime(current.target.session) && it.activePaneId == current.target.session.activePaneId
+                }
+                current.copy(
+                    machine = machine,
+                    machines = all,
+                    target = session?.let { current.target.copy(session = it) } ?: current.target,
+                    textSize = textSize.state,
+                )
+            } ?: current
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> current
         }
     }
 
     /** Every installed machine projection pairs its current facts with its admitted attention outcome. */
-    private fun updateMachine(handle: MachineHandle, transform: (MachineState) -> MachineState) {
-        val machine = machineStates[handle] ?: return
-        val transformed = transform(machine)
-        val updated = transformed.copy(notifications = projectNotifications(transformed))
-        machineStates[handle] = updated
-        val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (terminal.target.machineHandle == handle) {
-            val currentSession = if (updated.inventory.lastSnapshot() !== machine.inventory.lastSnapshot()) {
-                (updated.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
-                    it.sameLifetime(terminal.target.session) && it.activePaneId == terminal.target.session.activePaneId
-                }
-            } else null
-            val target = if (currentSession != null) {
-                terminal.target.copy(session = currentSession)
-            } else terminal.target
-            state = terminal.copy(machine = updated, machines = sortedMachineStates(), target = target)
-        } else state = terminal.copy(machines = sortedMachineStates())
-    }
-
-    /** Direct inventory and producer readiness are independent; an unavailable producer does not block navigation. */
-    private fun needsInputSettled(): Boolean = machineStates.values.none {
-        it.access == MachineAccess.Ready && it.inventory == InventoryState.Reading
-    }
-
-    private fun publishDashboardIfVisible() {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        state = current.copy(
-            machines = sortedMachineStates(),
-            refreshing = awaitedInventoryReads.isActive,
-            needsInputSettled = needsInputSettled(),
-            forgeRecovery = advanceForgeRecovery(current.forgeRecovery, machineStates.values),
-        )
+    private fun projected(machine: MachineState): MachineState {
+        val unavailable = notificationView.state == null
+        return machine.copy(notifications = machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
+            val key = NotificationKey(SessionTarget(machine.machine.handle, session))
+            key to NotificationPresentation(
+                ready = !unavailable && machine.canMutate && notificationView.presentsReady(key, session),
+                unavailable = session.agent != null && unavailable,
+            )
+        })
     }
 
     private fun publishDashboard(
@@ -2278,9 +1229,9 @@ internal class SkidbladnirController(
         val dashboardNotice = notice ?: pendingDashboardNotice
         pendingDashboardNotice = null
         state = SkidbladnirUiState.Dashboard(
-            machines = sortedMachineStates(),
-            refreshing = awaitedInventoryReads.isActive,
-            needsInputSettled = needsInputSettled(),
+            machines = machines.all.map(::projected),
+            refreshing = machines.refreshing,
+            needsInputSettled = machines.settled,
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
@@ -2292,44 +1243,11 @@ internal class SkidbladnirController(
         }
     }
 
-    private fun sortedMachineStates(): List<MachineState> = machineStates.values.sortedBy {
-        it.machine.label.text.lowercase(Locale.ROOT)
-    }
-
     private fun leaveTerminal() {
-        if (!notificationPresented) notificationVisit?.cancel()
-        notificationVisit = null
-        notificationPresented = false
-        terminalOwner = null
-        createdTerminalAdmission = null
-        val connection = terminalConnection
-        val page = terminalPage
-        terminalConnection = null
-        terminalPage = null
-        page?.resetInputState()
-        connection?.detach()
+        attachment?.detach()
+        attachment = null
     }
 
     private fun machineError(machine: PairedMachine, failure: GatewayFailure): String =
         "${machine.label.text}: ${gatewayFailureMessage(failure)}"
-
-    // justify-defect: worker executors and the inventory lanes otherwise swallow same-system
-    // invariant failures; rethrowing on the main looper makes them fatal where they are visible.
-    private fun surfaceDefect(defect: Throwable) {
-        main.post { throw defect }
-    }
-
-    private fun executeNetwork(action: () -> Unit): Future<*> = network.submit {
-        try { action() } catch (defect: Throwable) { surfaceDefect(defect) }
-    }
-
-    private fun executeCredentialOperation(action: () -> Unit) {
-        credentialOperations.execute {
-            try { action() } catch (defect: RuntimeException) { surfaceDefect(defect) }
-        }
-    }
-
-    private fun isActiveGeneration(activeGeneration: Long): Boolean = foreground && generation == activeGeneration
-    private fun isCredentialActive(activeGeneration: Long, credential: MachineCredential): Boolean =
-        isActiveGeneration(activeGeneration) && credentials[credential.machine.handle] == credential
 }

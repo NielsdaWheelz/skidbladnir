@@ -5,8 +5,11 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import java.io.IOException
+import java.net.URI
+import java.net.URISyntaxException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -15,6 +18,42 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
+@JvmInline @Serializable internal value class MachineHandle(val encoded: String)
+@JvmInline internal value class MachineLabel(val text: String)
+
+@JvmInline internal value class MachineOrigin private constructor(val encoded: String) {
+    companion object {
+        fun parse(candidate: String): MachineOrigin? {
+            val uri = try {
+                URI(candidate)
+            } catch (_: URISyntaxException) {
+                // justify-ignore-error: an origin that is not even a URI is simply not an origin; the
+                // only classification this parser owns is accepted or rejected.
+                return null
+            }
+            if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.port != 8443 ||
+                !uri.host.lowercase(Locale.ROOT).endsWith(".ts.net") || uri.host == ".ts.net") return null
+            if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
+            if (uri.rawPath !in setOf("", "/") || candidate.any(Char::isWhitespace)) return null
+            // URI.getHost() already returns the RFC 2732 bracketed form for an IPv6 literal, so the
+            // canonical authority is the lowercased host verbatim. Re-bracketing it would produce a
+            // value that neither this parser nor OkHttp can read back.
+            return MachineOrigin("https://${uri.host.lowercase(Locale.ROOT)}:8443/")
+        }
+    }
+}
+
+internal data class PairedMachine(val handle: MachineHandle, val label: MachineLabel, val origin: MachineOrigin?)
+
+@JvmInline internal value class GatewayBearer(val encoded: String) {
+    override fun toString(): String = "GatewayBearer(redacted)"
+}
+
+internal data class MachineCredential(
+    val machine: PairedMachine,
+    val bearer: GatewayBearer,
+)
+
 internal data class MachineStoreRead(val credentials: List<MachineCredential>, val unreadable: Boolean, val view: PublicFleet?)
 /** The phone's one membership: its bearer, the invitation it joined with, and the hub's last view. */
 @Serializable internal data class PhoneFleet(
@@ -22,11 +61,11 @@ internal data class MachineStoreRead(val credentials: List<MachineCredential>, v
     val view: PublicFleet? = null, val joined: Boolean = false,
 ) {
     fun androidPush(): AndroidPush? = if (joined) view?.androidPush else null
-    fun credential(machine: PairedMachine): MachineCredential = MachineCredential(machine, checkNotNull(GatewayBearer.parse(bearer)))
+    fun credential(machine: PairedMachine): MachineCredential = MachineCredential(machine, GatewayBearer(bearer))
     fun credentials(): List<MachineCredential> = if (joined) view?.machines.orEmpty().map { credential(it.paired()) } else emptyList()
     fun hubCredential(): MachineCredential? {
-        val hub = view?.let { value -> value.machines.firstOrNull { it.machine == value.hub } } ?: invitation.hub
-        return if (hub.origin == null) null else credential(hub.paired())
+        val hub = (view?.let { value -> value.machines.firstOrNull { it.machine == value.hub } } ?: invitation.hub).paired()
+        return if (hub.origin == null) null else credential(hub)
     }
 }
 /** One encrypted atomic record owns the phone credential, staged join and cached hub view. */
@@ -48,21 +87,12 @@ internal class MachineStore(private val context: Context) {
         MachineStoreRead(value?.credentials().orEmpty(), false, value?.view)
     } catch (_: IOException) { MachineStoreRead(emptyList(), true, null) }
       catch (_: GeneralSecurityException) { MachineStoreRead(emptyList(), true, null) }
-      catch (_: IllegalArgumentException) { MachineStoreRead(emptyList(), true, null) }
-      catch (_: kotlinx.serialization.SerializationException) { MachineStoreRead(emptyList(), true, null) }
+      catch (_: IllegalArgumentException) { MachineStoreRead(emptyList(), true, null) } // includes SerializationException
     fun save(value: PhoneFleet) = synchronized(lock) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         cipher.updateAAD("skidbladnir.phone-fleet.v1".encodeToByteArray())
-        val bytes = cipher.iv + cipher.doFinal(productJson.encodeToString(value).encodeToByteArray())
-        val stream = file.startWrite()
-        try {
-            stream.write(bytes)
-            stream.fd.sync()
-            file.finishWrite(stream)
-            if (!file.openRead().use { it.readNBytes(bytes.size + 1) }.contentEquals(bytes)) throw IOException("fleet commit unavailable")
-        }
-        catch (failure: IOException) { file.failWrite(stream); throw failure }
+        file.writeAtomically(cipher.iv + cipher.doFinal(productJson.encodeToString(value).encodeToByteArray()))
     }
     /** Commits a hub view only for the identity that requested it; a concurrent re-stage wins. */
     fun accept(view: PublicFleet, expected: PhoneFleet): List<MachineCredential> = synchronized(lock) {

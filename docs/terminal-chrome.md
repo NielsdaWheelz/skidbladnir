@@ -69,10 +69,10 @@ place names where typed input runs, host first, so truncation keeps it:
 `macbook` for a local pane, `devbox via macbook` for a resolved ssh/mosh pane,
 `remote via macbook` when the destination is unknown.
 
-presence: `verifying`, `preparing`, `connecting`, `input frozen`, `1 client` or
-`N clients`. only frozen input is coloured (Ember); the resting and transit
-states are Muted, because transit is absence, not an armed recovery. the
-terminal area's own overlays carry the full sentences.
+presence: `preparing`, `connecting`, `input frozen`, `1 client` or `N clients`.
+only frozen input is coloured (Ember); the resting and transit states are
+Muted, because transit is absence, not an armed recovery. the terminal area's
+own overlays carry the full sentences.
 
 `Detach` is the literal word, as design language §13 asks: the control names
 what happens to the session, which keeps running, and voice access can say it.

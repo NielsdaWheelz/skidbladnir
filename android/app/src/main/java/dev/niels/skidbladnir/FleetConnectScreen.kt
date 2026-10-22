@@ -23,55 +23,6 @@ import androidx.compose.ui.unit.dp
 internal enum class FleetConnectMode { Install, Reconnect }
 internal enum class FleetConnectPhase { Ready, Scanning, Connecting, Failed, ResetRequired }
 
-internal data class FleetConnectContent(
-    val title: String,
-    val body: String,
-    val primaryAction: String?,
-    val externalBoundary: String?,
-    val progress: String?,
-    val failure: String?,
-    val primaryEnabled: Boolean,
-    val tailscaleActionVisible: Boolean,
-)
-
-internal fun fleetConnectContent(state: SkidbladnirUiState.FleetConnect): FleetConnectContent =
-    FleetConnectContent(
-        title = if (state.phase == FleetConnectPhase.ResetRequired) {
-            "Fleet reset required"
-        } else when (state.mode) {
-            FleetConnectMode.Install -> "Connect your fleet"
-            FleetConnectMode.Reconnect -> "Reconnect fleet"
-        },
-        body = if (state.phase == FleetConnectPhase.ResetRequired) {
-            "Saved pairing details are unreadable. Reset the app’s data, then connect again."
-        } else when (state.mode) {
-            FleetConnectMode.Install ->
-                "Sign in to Tailscale, then scan a fresh fleet invite from a connected computer."
-            FleetConnectMode.Reconnect ->
-                "Scan a fresh invite from a computer in the same fleet to reconnect this phone."
-        },
-        primaryAction = if (state.phase == FleetConnectPhase.ResetRequired) null else when (state.mode) {
-            FleetConnectMode.Install -> "Connect"
-            FleetConnectMode.Reconnect -> "Reconnect fleet"
-        },
-        externalBoundary = if (state.phase == FleetConnectPhase.ResetRequired) null else
-            "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
-        progress = when (state.phase) {
-            FleetConnectPhase.Scanning -> "Scanning a fresh fleet invite…"
-            FleetConnectPhase.Connecting -> "Connecting to your fleet…"
-            FleetConnectPhase.Ready, FleetConnectPhase.Failed, FleetConnectPhase.ResetRequired -> null
-        },
-        failure = when (state.phase) {
-            FleetConnectPhase.Failed ->
-                "Couldn’t connect this phone. Scan a fresh fleet invite to retry."
-            FleetConnectPhase.Ready, FleetConnectPhase.Scanning, FleetConnectPhase.Connecting,
-            FleetConnectPhase.ResetRequired,
-            -> null
-        },
-        primaryEnabled = state.phase == FleetConnectPhase.Ready || state.phase == FleetConnectPhase.Failed,
-        tailscaleActionVisible = state.phase != FleetConnectPhase.ResetRequired,
-    )
-
 @Composable
 internal fun FleetConnectScreen(
     state: SkidbladnirUiState.FleetConnect,
@@ -79,8 +30,29 @@ internal fun FleetConnectScreen(
     onConnect: () -> Unit,
     onTailscale: () -> Unit,
 ) {
-    val content = fleetConnectContent(state)
+    val resetRequired = state.phase == FleetConnectPhase.ResetRequired
     val pending = state.phase == FleetConnectPhase.Scanning || state.phase == FleetConnectPhase.Connecting
+    val title = if (resetRequired) "Fleet reset required" else when (state.mode) {
+        FleetConnectMode.Install -> "Connect your fleet"
+        FleetConnectMode.Reconnect -> "Reconnect fleet"
+    }
+    val body = if (resetRequired) {
+        "Saved pairing details are unreadable. Reset the app’s data, then connect again."
+    } else when (state.mode) {
+        FleetConnectMode.Install ->
+            "Sign in to Tailscale, then scan a fresh fleet invite from a connected computer."
+        FleetConnectMode.Reconnect ->
+            "Scan a fresh invite from a computer in the same fleet to reconnect this phone."
+    }
+    val primaryAction = if (resetRequired) null else when (state.mode) {
+        FleetConnectMode.Install -> "Connect"
+        FleetConnectMode.Reconnect -> "Reconnect fleet"
+    }
+    val progress = when (state.phase) {
+        FleetConnectPhase.Scanning -> "Scanning a fresh fleet invite…"
+        FleetConnectPhase.Connecting -> "Connecting to your fleet…"
+        FleetConnectPhase.Ready, FleetConnectPhase.Failed, FleetConnectPhase.ResetRequired -> null
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -95,36 +67,36 @@ internal fun FleetConnectScreen(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = content.title,
+            text = title,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(top = 32.dp),
         )
         Text(
-            text = content.body,
+            text = body,
             color = Muted,
             modifier = Modifier.padding(top = 8.dp),
         )
-        if (content.progress != null) {
+        if (progress != null) {
             CircularProgressIndicator(
                 modifier = Modifier.padding(top = 24.dp),
                 strokeWidth = 2.dp,
             )
-            Text(content.progress, modifier = Modifier.padding(top = 12.dp))
+            Text(progress, modifier = Modifier.padding(top = 12.dp))
         }
-        if (content.failure != null) {
+        if (state.phase == FleetConnectPhase.Failed) {
             Spacer(Modifier.height(16.dp))
-            NoticePanel(tone = NoticeTone.Failure, body = content.failure)
+            NoticePanel(tone = NoticeTone.Failure, body = "Couldn’t connect this phone. Scan a fresh fleet invite to retry.")
         }
         Spacer(Modifier.height(20.dp))
-        content.primaryAction?.let { action ->
+        primaryAction?.let { action ->
             Button(
                 onClick = onConnect,
-                enabled = content.primaryEnabled,
+                enabled = state.phase == FleetConnectPhase.Ready || state.phase == FleetConnectPhase.Failed,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(action) }
         }
-        if (content.tailscaleActionVisible) {
+        if (!resetRequired) {
             OutlinedButton(
                 onClick = onTailscale,
                 enabled = !pending,
@@ -133,7 +105,7 @@ internal fun FleetConnectScreen(
                     .padding(top = 8.dp),
             ) { Text(if (tailscaleInstalled) "Open Tailscale" else "Install Tailscale") }
             Text(
-                text = checkNotNull(content.externalBoundary),
+                text = "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
                 color = Muted,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 12.dp),

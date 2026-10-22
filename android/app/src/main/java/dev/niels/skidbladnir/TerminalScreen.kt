@@ -54,6 +54,51 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
+internal sealed interface TerminalUiStatus {
+    data object Preparing : TerminalUiStatus
+    data object Connecting : TerminalUiStatus
+    data class Connected(val attachedClients: Int) : TerminalUiStatus
+    data class ReconnectRequired(val message: String) : TerminalUiStatus
+}
+
+/** The page's last fitted grid, retained independently of the connection. */
+internal sealed interface TerminalViewport {
+    data object Pending : TerminalViewport
+    data class Fitted(val columns: Int, val rows: Int) : TerminalViewport
+    data object TooSmall : TerminalViewport
+}
+
+internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: TerminalUiStatus): Boolean =
+    machineCanMutate && when (connection) {
+        is TerminalUiStatus.Connected, is TerminalUiStatus.ReconnectRequired -> true
+        TerminalUiStatus.Preparing, TerminalUiStatus.Connecting -> false
+    }
+
+/** User ingress (touch, focus, typing, accessories) needs both an attachment and a fitted grid. */
+internal fun terminalInputAdmissible(connection: TerminalUiStatus, viewport: TerminalViewport): Boolean =
+    connection is TerminalUiStatus.Connected && viewport is TerminalViewport.Fitted
+
+/** The page exists and is still attachable, so its font and recovery surfaces are live. */
+internal fun terminalPageLive(connection: TerminalUiStatus): Boolean = when (connection) {
+    TerminalUiStatus.Connecting, is TerminalUiStatus.Connected -> true
+    TerminalUiStatus.Preparing, is TerminalUiStatus.ReconnectRequired -> false
+}
+
+/** One admission for the sheet's three controls and for the write they order: page live, no write in flight, a real step in range. */
+internal fun terminalTextSizeStepAdmissible(
+    textSize: TerminalTextSizeState.Ready,
+    connection: TerminalUiStatus,
+    nominalSp: Int,
+): Boolean = terminalPageLive(connection) && textSize.write != TerminalTextSizeWrite.Pending &&
+    nominalSp != textSize.nominalSp && nominalSp in TERMINAL_TEXT_SIZE_RANGE_SP
+
+/** The sheet shows only over a live page, so a lost attachment closes it. */
+internal fun terminalTextSizeSheet(
+    textSize: TerminalTextSizeState,
+    connection: TerminalUiStatus,
+): TerminalTextSizeState.Ready? =
+    (textSize as? TerminalTextSizeState.Ready)?.takeIf { it.sheetOpen && terminalPageLive(connection) }
+
 @Composable
 internal fun TerminalScreen(
     state: SkidbladnirUiState.Terminal,
@@ -117,7 +162,7 @@ internal fun TerminalScreen(
                         .weight(1f),
                 ) {
                     val textSize = state.textSize
-                    if (state.connection != TerminalUiStatus.Verifying && textSize is TerminalTextSizeState.Ready) {
+                    if (textSize is TerminalTextSizeState.Ready) {
                         key(state.attempt) {
                             AndroidView(
                                 modifier = Modifier.fillMaxSize(),
@@ -174,7 +219,6 @@ internal fun TerminalScreen(
                     ) {
                         TextSizeUnavailable(onRetry = controller::retryTextSizeRead)
                     } else when (val connection = state.connection) {
-                        TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.machine.label.text} and session lifetime…")
                         TerminalUiStatus.Preparing -> TerminalWaiting("Preparing terminal…")
                         TerminalUiStatus.Connecting -> if (!recovering) TerminalWaiting("Connecting…")
                         is TerminalUiStatus.Connected -> Unit
@@ -654,7 +698,6 @@ private fun ReconnectPanel(
 
 // Terse because the terminal area's own overlays carry the full sentences.
 private fun terminalPresence(connection: TerminalUiStatus): String = when (connection) {
-    TerminalUiStatus.Verifying -> "verifying"
     TerminalUiStatus.Preparing -> "preparing"
     TerminalUiStatus.Connecting -> "connecting"
     is TerminalUiStatus.ReconnectRequired -> "input frozen"
@@ -667,8 +710,7 @@ private fun terminalPresence(connection: TerminalUiStatus): String = when (conne
 // Transit is absence, not an armed recovery, so only frozen input is coloured.
 private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (connection) {
     is TerminalUiStatus.ReconnectRequired -> noticeToneColor(NoticeTone.Failure)
-    is TerminalUiStatus.Connected, TerminalUiStatus.Preparing, TerminalUiStatus.Verifying,
-    TerminalUiStatus.Connecting -> Muted
+    is TerminalUiStatus.Connected, TerminalUiStatus.Preparing, TerminalUiStatus.Connecting -> Muted
 }
 
 internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =

@@ -791,8 +791,9 @@ Clients decode responses tolerantly, ignoring keys they do not read; an undecoda
 response is a lost response, so observations show that machine unavailable and a
 possibly dispatched mutation is `unknown`, never a defect or crash. There is no
 protocol branch or compatibility state; [rules](rules.md#trust-boundaries) own decode
-policy. Today `internal/fleetclient` and android `productJson` still decode strictly
-and treat a mismatch as a defect; their cleanup slices convert them.
+policy. Today `internal/fleetclient` and the phone's terminal frames
+(`TerminalConnection.kt`) still decode strictly and treat a mismatch as a defect;
+their cleanup slices convert them.
 
 - WSS: text frames `Hello | Presence | Resize | Detach | Error`; Presence
   contains kind and attached-client count. strict Hello also requires the final
@@ -949,7 +950,7 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   depends on state; [terminal chrome](terminal-chrome.md) owns the contract.
   At most one active phone terminal exists, and its connection owns one exact
   `SessionTarget`;
-  reconnect re-reads that machine before opening WSS.
+  the gateway checks the session lifetime at attach.
   a mismatched machine identity closes the active terminal and refuses that
   endpoint. membership updates from the hub own routing.
   Rotation, IME resize, Activity/process recreation, and app backgrounding

@@ -1,5 +1,10 @@
 package dev.niels.skidbladnir
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+
+internal const val MAXIMUM_WORKING_DIRECTORY_BYTES = 4_096
+
 internal class WorkingDirectoryPath private constructor(val encoded: String) {
     companion object {
         fun parse(candidate: String): WorkingDirectoryPath? {
@@ -13,6 +18,56 @@ internal class WorkingDirectoryPath private constructor(val encoded: String) {
     override fun equals(other: Any?): Boolean = other is WorkingDirectoryPath && encoded == other.encoded
     override fun hashCode(): Int = encoded.hashCode()
     override fun toString(): String = encoded
+}
+
+/** A directory under the host's home as its listing names it: `~` or `~/a/b`. */
+@JvmInline @Serializable internal value class HomeDirectory(val encoded: String) {
+    val basename: String get() = if (this == Home) "~" else encoded.substringAfterLast('/')
+    val hidden: Boolean get() = this != Home && basename.startsWith('.')
+
+    companion object {
+        val Home = HomeDirectory("~")
+    }
+}
+
+internal sealed interface ParentDirectory {
+    data object Absent : ParentDirectory
+    data class Available(val directory: HomeDirectory) : ParentDirectory
+}
+internal enum class DirectoryOmissions { None, Present }
+@Serializable internal data class DirectoryEntry(val directory: HomeDirectory)
+internal data class DirectoryListing(
+    val directory: HomeDirectory,
+    val parent: ParentDirectory,
+    val children: List<DirectoryEntry>,
+    val omissions: DirectoryOmissions,
+)
+
+internal data class DirectorySearchResult(val directories: List<WorkingDirectoryPath>, val omitted: Boolean)
+
+@Serializable private data class WireDirectoryListing(
+    val directory: HomeDirectory,
+    val parentDirectory: HomeDirectory? = null,
+    val children: List<DirectoryEntry>,
+    val omitted: Boolean,
+)
+
+@Serializable private data class WireDirectorySearch(val directories: List<String>, val omitted: Boolean)
+
+internal fun decodeDirectoryListing(encoded: String): DirectoryListing {
+    val wire = productJson.decodeFromString<WireDirectoryListing>(encoded)
+    return DirectoryListing(
+        wire.directory,
+        wire.parentDirectory?.let(ParentDirectory::Available) ?: ParentDirectory.Absent,
+        wire.children,
+        if (wire.omitted) DirectoryOmissions.Present else DirectoryOmissions.None,
+    )
+}
+
+/** A result the forge could not submit as typed is dropped, not shown. */
+internal fun decodeDirectorySearch(encoded: String): DirectorySearchResult {
+    val wire = productJson.decodeFromString<WireDirectorySearch>(encoded)
+    return DirectorySearchResult(wire.directories.mapNotNull(WorkingDirectoryPath::parse), wire.omitted)
 }
 
 internal sealed interface WorkingDirectoryInput {
@@ -67,10 +122,7 @@ internal fun workingDirectoryChoices(forge: ForgeState, machine: MachineState?):
             listOf(home) + inventory.sessions.asSequence()
                 .filter { it.connection == null }
                 .mapNotNull(TmuxSession::cwd)
-                .map { cwd ->
-                    WorkingDirectoryPath.parse(cwd)
-                        ?: throw ProtocolDecodeException("inventory working-directory value")
-                }
+                .mapNotNull(WorkingDirectoryPath::parse)
                 .filter { it != home }
                 .distinct()
                 .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.encoded, second.encoded) }

@@ -18,7 +18,6 @@ internal sealed interface ForgeSurface {
 internal data class WorkingDirectoryPickerState(
     val instance: Long,
     val machine: PairedMachine,
-    val machineSummary: MachineSummary,
     val load: DirectoryLoad,
     val history: List<DirectoryView>,
     val nextSequence: Long,
@@ -64,8 +63,6 @@ internal sealed interface DirectoryLoad {
 internal enum class DirectoryBrowseFailure { Transport, Unavailable, TooLarge, Internal }
 
 internal data class WorkingDirectoryRequest(
-    val generation: Long,
-    val machine: MachineSummary,
     val pickerInstance: Long,
     val sequence: Long,
     val directory: HomeDirectory,
@@ -76,200 +73,92 @@ internal data class WorkingDirectoryRequestStart(
     val request: WorkingDirectoryRequest,
 )
 
-internal sealed interface WorkingDirectoryCompletion {
-    data object Ignored : WorkingDirectoryCompletion
-    data class Updated(val picker: WorkingDirectoryPickerState) : WorkingDirectoryCompletion
-    data class AccessLost(val failure: GatewayFailure.Api) : WorkingDirectoryCompletion
-}
-
 internal fun browseWorkingDirectoryHome(
     forge: ForgeState,
     machine: MachineState,
     pickerInstance: Long,
-    generation: Long,
 ): WorkingDirectoryRequestStart? {
     if (forge.pending || forge.surface != ForgeSurface.Form || !machine.canMutate ||
         forge.form.machineHandle != machine.machine.handle) return null
-    // canMutate guarantees Fresh; Kotlin cannot narrow through the derived property.
-    val inventory = (machine.inventory as InventoryState.Fresh).snapshot.inventory
     return WorkingDirectoryRequestStart(
         picker = WorkingDirectoryPickerState(
             instance = pickerInstance,
             machine = machine.machine,
-            machineSummary = inventory.machine,
             load = DirectoryLoad.Loading(1, HomeDirectory.Home, RetainedDirectoryView.None),
             history = emptyList(),
             nextSequence = 2,
         ),
-        request = WorkingDirectoryRequest(
-            generation = generation,
-            machine = inventory.machine,
-            pickerInstance = pickerInstance,
-            sequence = 1,
-            directory = HomeDirectory.Home,
-        ),
+        request = WorkingDirectoryRequest(pickerInstance, sequence = 1, directory = HomeDirectory.Home),
     )
 }
 
 internal fun openWorkingDirectoryChild(
     picker: WorkingDirectoryPickerState,
     directory: HomeDirectory,
-    generation: Long,
 ): WorkingDirectoryRequestStart? {
     val view = picker.actionableDirectoryView() ?: return null
     if (view.listing.children.none { entry -> entry.directory == directory }) return null
-    return beginWorkingDirectoryRequest(
-        picker,
-        directory,
-        RetainedDirectoryView.Present(view),
-        generation,
-    )
+    return beginWorkingDirectoryRequest(picker, directory, RetainedDirectoryView.Present(view))
 }
 
-internal fun openWorkingDirectoryParent(
-    picker: WorkingDirectoryPickerState,
-    generation: Long,
-): WorkingDirectoryRequestStart? {
+internal fun openWorkingDirectoryParent(picker: WorkingDirectoryPickerState): WorkingDirectoryRequestStart? {
     val view = picker.actionableDirectoryView() ?: return null
     val parent = view.listing.parent as? ParentDirectory.Available ?: return null
-    return beginWorkingDirectoryRequest(
-        picker,
-        parent.directory,
-        RetainedDirectoryView.Present(view),
-        generation,
-    )
+    return beginWorkingDirectoryRequest(picker, parent.directory, RetainedDirectoryView.Present(view))
 }
 
-internal fun retryWorkingDirectory(
-    picker: WorkingDirectoryPickerState,
-    generation: Long,
-): WorkingDirectoryRequestStart? {
-    val failed = picker.load as? DirectoryLoad.Failed
-        ?: return null
-    return beginWorkingDirectoryRequest(picker, failed.candidate, failed.retained, generation)
+internal fun retryWorkingDirectory(picker: WorkingDirectoryPickerState): WorkingDirectoryRequestStart? {
+    val failed = picker.load as? DirectoryLoad.Failed ?: return null
+    return beginWorkingDirectoryRequest(picker, failed.candidate, failed.retained)
 }
 
 private fun beginWorkingDirectoryRequest(
     picker: WorkingDirectoryPickerState,
     directory: HomeDirectory,
     retained: RetainedDirectoryView,
-    generation: Long,
 ): WorkingDirectoryRequestStart {
-    check(picker.nextSequence < Long.MAX_VALUE)
     val sequence = picker.nextSequence
     return WorkingDirectoryRequestStart(
         picker = picker.copy(
             load = DirectoryLoad.Loading(sequence, directory, retained),
             nextSequence = sequence + 1,
         ),
-        request = WorkingDirectoryRequest(
-            generation = generation,
-            machine = picker.machineSummary,
-            pickerInstance = picker.instance,
-            sequence = sequence,
-            directory = directory,
-        ),
+        request = WorkingDirectoryRequest(picker.instance, sequence, directory),
     )
 }
 
+/** null: the reply is stale (another request or picker instance owns the load). */
 internal fun completeWorkingDirectoryRequest(
     picker: WorkingDirectoryPickerState,
     request: WorkingDirectoryRequest,
-    foregroundGeneration: Long?,
     result: GatewayResult<DirectoryListing>,
-): WorkingDirectoryCompletion {
-    val loading = picker.load as? DirectoryLoad.Loading
-    if (
-        foregroundGeneration != request.generation ||
-        picker.machineSummary != request.machine ||
-        picker.instance != request.pickerInstance ||
-        picker.nextSequence != request.sequence + 1 ||
-        loading?.sequence != request.sequence ||
-        loading.candidate != request.directory
-    ) {
-        return WorkingDirectoryCompletion.Ignored
-    }
+): WorkingDirectoryPickerState? {
+    val loading = picker.load as? DirectoryLoad.Loading ?: return null
+    if (picker.instance != request.pickerInstance || loading.sequence != request.sequence) return null
     return when (result) {
-        is GatewayResult.Success -> {
-            val listing = result.value
-            if (listing.machine != request.machine || listing.directory != request.directory) {
-                throw ProtocolDecodeException("directory-listing response identity")
-            }
-            val history = when (val retained = loading.retained) {
+        is GatewayResult.Success -> picker.copy(
+            load = DirectoryLoad.Loaded(
+                DirectoryView(listing = result.value, filter = "", showHidden = false, viewport = DirectoryViewport.Top),
+            ),
+            history = when (val retained = loading.retained) {
                 RetainedDirectoryView.None -> picker.history
                 is RetainedDirectoryView.Present ->
                     (picker.history + retained.view).takeLast(MAXIMUM_WORKING_DIRECTORY_HISTORY)
+            },
+        )
+        is GatewayResult.Failure -> {
+            val browse = when (val failure = result.failure) {
+                GatewayFailure.Transport -> DirectoryBrowseFailure.Transport
+                is GatewayFailure.Api -> when (failure.code) {
+                    ApiErrorCode.DirectoryListingUnavailable -> DirectoryBrowseFailure.Unavailable
+                    ApiErrorCode.DirectoryListingTooLarge -> DirectoryBrowseFailure.TooLarge
+                    else -> DirectoryBrowseFailure.Internal
+                }
             }
-            WorkingDirectoryCompletion.Updated(
-                picker.copy(
-                    load = DirectoryLoad.Loaded(
-                        DirectoryView(
-                            listing = listing,
-                            filter = "",
-                            showHidden = false,
-                            viewport = DirectoryViewport.Top,
-                        ),
-                    ),
-                    history = history,
-                ),
-            )
-        }
-        is GatewayResult.Failure -> when (val failure = result.failure) {
-            GatewayFailure.Transport -> failedWorkingDirectoryCompletion(
-                picker,
-                loading,
-                DirectoryBrowseFailure.Transport,
-            )
-            is GatewayFailure.Api -> when (failure.code) {
-                ApiErrorCode.Unauthenticated,
-                ApiErrorCode.MachineIdentityMismatch,
-                -> WorkingDirectoryCompletion.AccessLost(failure)
-                ApiErrorCode.DirectoryListingUnavailable -> failedWorkingDirectoryCompletion(
-                    picker,
-                    loading,
-                    DirectoryBrowseFailure.Unavailable,
-                )
-                ApiErrorCode.DirectoryListingTooLarge -> failedWorkingDirectoryCompletion(
-                    picker,
-                    loading,
-                    DirectoryBrowseFailure.TooLarge,
-                )
-                ApiErrorCode.InternalError -> failedWorkingDirectoryCompletion(
-                    picker,
-                    loading,
-                    DirectoryBrowseFailure.Internal,
-                )
-                ApiErrorCode.InvalidRequest,
-                ApiErrorCode.RequestTooLarge,
-                ApiErrorCode.WorkingDirectoryInvalid,
-                ApiErrorCode.WorkingDirectoryUnavailable,
-                ApiErrorCode.DirectorySearchUnavailable,
-                ApiErrorCode.DirectorySearchTooLarge,
-                ApiErrorCode.TerminalContextUnavailable,
-        ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked,
-                ApiErrorCode.ProfileUnknown,
-                ApiErrorCode.SessionNameInvalid,
-                ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
-                ApiErrorCode.SessionNameConflict, ApiErrorCode.SessionNameChanged,
-                ApiErrorCode.SessionNotFound,
-                ApiErrorCode.SessionIdentityMismatch,
-                ApiErrorCode.ReconnectRequired,
-                ApiErrorCode.TerminalConfigurationUnsupported,
-                -> throw ProtocolDecodeException("directory-listing completion error set")
-            }
+            picker.copy(load = DirectoryLoad.Failed(loading.candidate, loading.retained, browse))
         }
     }
 }
-
-private fun failedWorkingDirectoryCompletion(
-    picker: WorkingDirectoryPickerState,
-    loading: DirectoryLoad.Loading,
-    failure: DirectoryBrowseFailure,
-): WorkingDirectoryCompletion = WorkingDirectoryCompletion.Updated(
-    picker.copy(
-        load = DirectoryLoad.Failed(loading.candidate, loading.retained, failure),
-    ),
-)
 
 internal fun updateWorkingDirectoryFilter(
     picker: WorkingDirectoryPickerState,
@@ -426,44 +315,17 @@ internal fun cancelWorkingDirectoryPicker(forge: ForgeState): ForgeState =
 internal fun useCurrentWorkingDirectory(forge: ForgeState): ForgeState {
     val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
     val view = surface.picker.actionableDirectoryView() ?: return forge
-    val path = checkNotNull(WorkingDirectoryPath.parse(view.listing.directory.encoded))
-    if (forge.form.machineHandle != surface.picker.machine.handle) return forge
     return forge.copy(
-        form = forge.form.copy(cwd = path.encoded),
+        form = forge.form.copy(cwd = view.listing.directory.encoded),
         failure = forge.failure.afterWorkingDirectoryChoice(),
         surface = ForgeSurface.Form,
         directorySearch = DirectorySearchState.Idle,
     )
 }
 
-internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean = when (this) {
-    ForgeFailure.None -> false
-    is ForgeFailure.Definite -> when (rejection.code) {
-        ApiErrorCode.WorkingDirectoryInvalid,
-        ApiErrorCode.WorkingDirectoryUnavailable,
-        -> true
-        ApiErrorCode.Unauthenticated,
-        ApiErrorCode.InvalidRequest,
-        ApiErrorCode.RequestTooLarge,
-        ApiErrorCode.DirectoryListingUnavailable,
-        ApiErrorCode.DirectoryListingTooLarge,
-        ApiErrorCode.DirectorySearchUnavailable,
-        ApiErrorCode.DirectorySearchTooLarge,
-        ApiErrorCode.TerminalContextUnavailable,
-        ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked,
-        ApiErrorCode.ProfileUnknown,
-        ApiErrorCode.SessionNameInvalid,
-        ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
-        ApiErrorCode.SessionNameConflict, ApiErrorCode.SessionNameChanged,
-        ApiErrorCode.SessionNotFound,
-        ApiErrorCode.SessionIdentityMismatch,
-        ApiErrorCode.MachineIdentityMismatch,
-        ApiErrorCode.InternalError,
-        ApiErrorCode.ReconnectRequired,
-        ApiErrorCode.TerminalConfigurationUnsupported,
-        -> false
-    }
-}
+internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean =
+    this is ForgeFailure.Definite &&
+        rejection.code in setOf(ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable)
 
 internal fun ForgeFailure.afterWorkingDirectoryChoice(): ForgeFailure =
     if (isWorkingDirectoryRejection()) ForgeFailure.None else this

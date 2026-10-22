@@ -371,7 +371,7 @@ and enough deterministic MacBook cards to overflow the grid. Select MacBook
 through UI, scroll, record stable-card bounds, open a card through the host, and
 return once through the actual top Detach control and once through Android Back.
 Use an actual non-started controller only for unused screen actions and close it
-in `finally`. The Terminal fixture is exactly `Verifying`, `kill = null`, and
+in `finally`. The Terminal fixture has text size `Reading`, `kill = null`, and
 `rename = null`, so no WebView is constructed. Route events drive the fixture,
 not a fake navigator. After settling—and before test scroll/click—assert
 selected semantics and the same card top within `1dp`. A fitting selected chip

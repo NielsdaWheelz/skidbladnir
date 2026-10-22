@@ -2,7 +2,6 @@ package dev.niels.skidbladnir
 
 import android.content.Context
 import android.util.AtomicFile
-import java.io.IOException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -21,13 +20,7 @@ internal class PushStore(context: Context) {
     private val file = AtomicFile(java.io.File(context.filesDir, "push-v3.json"))
     private fun state(): PushState =
         if (!file.baseFile.exists()) PushState() else productJson.decodeFromString(file.readFully().decodeToString())
-    private fun write(value: PushState) {
-        val output = file.startWrite()
-        try {
-            output.write(productJson.encodeToString(value).encodeToByteArray())
-            file.finishWrite(output)
-        } catch (failure: IOException) { file.failWrite(output); throw failure }
-    }
+    private fun write(value: PushState) = file.writeAtomically(productJson.encodeToString(value).encodeToByteArray())
     fun read(): PushRegistration? = synchronized(lock) { state().registration }
     fun reconcile(target: PushTarget?) = synchronized(lock) {
         val old = state()

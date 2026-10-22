@@ -46,27 +46,26 @@ change's page-port version 4.
 ## Architecture and capability contract
 
 ```text
-phone DataStore -> native SP conversion -> packaged xterm font
+phone text-size file -> native SP conversion -> packaged xterm font
 native available bounds -> FitAddon -> Resize -> existing ordered WSS
                                               -> PTY -> tmux latest -> TUI
 ```
 
-**Text preference.** One application-scoped `TerminalTextSize` owner stores an
-integer nominal size: default `16sp`, range `12..24sp`, step `1sp`. Reset writes
-16. The setting is phone-wide and survives reconnect/recreation; orientation,
-keyboard, machine, and session never rewrite it.
+**Text preference.** The phone stores one integer nominal size: default
+`16sp`, range `12..24sp`, step `1sp`. Reset writes 16. The setting is
+phone-wide and survives reconnect/recreation; orientation, keyboard, machine,
+and session never rewrite it.
 
-Use one `Context.dataStore` delegate and pinned
-`androidx.datastore:datastore:1.2.1`. `Serializer<Int>` owns
-`filesDir/datastore/terminal-text-size`: exactly two ASCII digits encoding
-12–24, followed by EOF. Missing file means the initial default; invalid bytes
-raise `CorruptionException`. No migration, corruption replacement, or pairing
-storage access. Load before creating the terminal page. Serialize updates
-through `updateData`; display/apply only committed state. Disable mutation
+`TerminalTextSize` owns `filesDir/datastore/terminal-text-size` through
+`android.util.AtomicFile`, the phone's one persistence primitive: exactly two
+ASCII digits encoding 12–24, followed by EOF, the path and bytes the former
+DataStore store wrote. Missing file means the initial default; invalid bytes
+are a read failure. No migration, corruption replacement, or pairing storage
+access. Load before creating the terminal page. Each write replaces the file
+atomically and syncs it; display/apply only committed state. Disable mutation
 controls before page Ready and while a write is pending. Read failure blocks
 initialization with an explicit reread action; write failure retains the prior value. No automatic
-retry. [DataStore durability](https://developer.android.com/reference/kotlin/androidx/datastore/core/DataStore),
-[release pin](https://developer.android.com/jetpack/androidx/releases/datastore).
+retry.
 
 Native computes effective CSS size once:
 `TypedValue.applyDimension(COMPLEX_UNIT_SP, nominalSp, displayMetrics) / displayMetrics.density`.
@@ -200,7 +199,7 @@ identify case/dimensions/counts, never terminal bytes or credentials.
 | --- | --- |
 | Strict transport | Existing Go encoding and Kotlin decoding tables own count-only presence, geometry bounds, and exact shapes; extend the existing packaged-page decoder matrix for v4. No separate tests solely preserving dead formats. |
 | Gateway + tmux | One real gateway/WSS/isolated-tmux scenario: small first Resize → phone-sized shared window → desktop input → desktop-sized window → phone input/resize → phone-sized window. Account for tmux status rows; preserve pane/PID/draft, independent selection, unrelated sessions, and detach lifetime. Same owner covers invalid startup, policy mismatch, and zero created resources. Run the same proof on Linux/Darwin; remove duplicate sizing claims from the live fixture. |
-| Android storage | One real DataStore adapter case inside the component suite: change/reset, reopen/recreate, durable value, and a real storage failure with truthful error/unchanged committed value. No fake DataStore, credential transaction, or separate persistence framework. |
+| Android storage | One real `TerminalTextSize` case inside the component suite: change/reset, reopen/recreate, durable value, and a real storage failure with truthful error/unchanged committed value. No fake store, credential transaction, or separate persistence framework. |
 | Android presentation | One real production-layout Compose/locked-WebView matrix: 16sp default; smaller/larger/reset; final full row/column including bold/wide glyphs; keyboard/rotation with unchanged nominal size; system scaling; Ready/Resize ordering; TooSmall/recovery at unchanged last-valid geometry; continued automatic replies and blocked user ingress. Reuse existing IME, selection, modifiers, and touch owners for collateral behavior. |
 
 Green implements only the contracted paths. Refactor removes the deletion set
@@ -229,9 +228,9 @@ gates are separate scope. No required unrun proof is a pass.
   larger viewport or chosen smaller size, never hidden shrinking.
 - 16sp and 12–24sp are bounded starting product choices, not scientific optima.
   Maximum system scaling can require the recovery surface.
-- One DataStore dependency buys serialized durable writes and surfaced failure;
-  it avoids inventing file transactions or involving pairing storage. Applying
-  after commit trades a brief disk wait for truthful saved state.
+- The shared `AtomicFile` primitive buys durable atomic writes and surfaced
+  failure without a dependency or pairing storage. Applying after commit trades
+  a brief disk wait for truthful saved state.
 - Text size sits one tap behind the rail's session sheet. Explicit buttons cost taps;
   the unchanged key deck retains its height. Initial attach waits for usable
   geometry, and custom tmux policy overrides require operator correction.
