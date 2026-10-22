@@ -376,8 +376,8 @@ deterministic part (the seal overlaps no rendered card, on a card count that mus
 be non-zero); the scrolled case is the acceptance glance below.
 
 Closed decision 6's **zero-machine** case is also unproven. `DashboardScreen`
-takes a `SkidbladnirController`, whose constructor spawns three executors, a
-`MachineStore` over real storage, and a `GatewayClient`, and starts polling — so
+takes a `SkidbladnirController`, which builds a `MachineStore` over real
+storage and a `GatewayClient`, and whose `start` polls — so
 no component test can render it, and the device journeys all require provisioned
 pairings. The nearest gate is the physical product outage journey, which
 requires the failed MacBook filter's `New dwarf` control to remain cold and

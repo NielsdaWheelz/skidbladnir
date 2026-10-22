@@ -5,8 +5,9 @@ import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Call
@@ -14,8 +15,13 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-/** Hub responses are skid's own output: decode what the phone reads and ignore the rest. */
-private val fleetJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
+/** The expected failures of hub and fleet-store work: null, so the caller shows its failure state. Anything else is a defect. */
+internal inline fun <T> fleetAttempt(block: () -> T): T? = try {
+    block()
+} catch (_: IOException) { null }
+  catch (_: IllegalArgumentException) { null } // includes SerializationException
+  catch (_: IllegalStateException) { null }
+  catch (_: GeneralSecurityException) { null }
 
 internal sealed interface Fetch {
     data class Fetched(val credentials: List<MachineCredential>) : Fetch
@@ -25,7 +31,6 @@ internal sealed interface Fetch {
 
 /** The phone talks to one fixed hub. A staged identity is saved before any request, so a lost join reply recovers. */
 internal class FleetClient(private val store: MachineStore) {
-    private val gateway = GatewayClient()
     @Volatile private var stream: Call? = null
     fun connect(invite: FleetInvite): List<MachineCredential>? {
         val saved = store.association()
@@ -50,46 +55,46 @@ internal class FleetClient(private val store: MachineStore) {
         return if (result is Fetch.Fetched) result.credentials else join(value)
     }
     fun refresh(timeoutMillis: Long = 15_000): List<MachineCredential>? {
-        val value = store.association() ?: return null
+        val value = fleetAttempt { store.association() } ?: return null
         val hub = value.hubCredential() ?: return null
         return (fetch(value, hub.machine, timeoutMillis) as? Fetch.Fetched)?.credentials
     }
     internal fun fetch(value: PhoneFleet, hub: PairedMachine, timeoutMillis: Long = 15_000): Fetch =
-        exchange(value, gateway.authorizedRequest(value.credential(hub), listOf("v1", "fleet")).get().build(), 200, timeoutMillis)
+        exchange(value, GatewayClient.authorizedRequest(value.credential(hub), listOf("v1", "fleet")).get().build(), 200, timeoutMillis)
     private fun join(value: PhoneFleet): List<MachineCredential>? {
         val verifier = fleetBase64(MessageDigest.getInstance("SHA-256").digest(fleetBytes(value.bearer, 32)))
         val body = JsonObject(mapOf("token" to JsonPrimitive(value.invitation.token), "deviceId" to JsonPrimitive(value.deviceId),
             "kind" to JsonPrimitive("phone"), "name" to JsonPrimitive("Phone"), "verifier" to JsonPrimitive(verifier)))
-        val request = gateway.authorizedRequest(value.credential(value.invitation.hub.paired()), listOf("v1", "fleet", "join"))
+        val request = GatewayClient.authorizedRequest(value.credential(value.invitation.hub.paired()), listOf("v1", "fleet", "join"))
             .removeHeader("Authorization").post(body.toString().toRequestBody("application/json".toMediaType())).build()
         return (exchange(value, request, 201, 15_000) as? Fetch.Fetched)?.credentials
     }
     /** One hub round trip whose success is a fleet view committed for exactly this identity. */
-    private fun exchange(value: PhoneFleet, request: Request, success: Int, timeoutMillis: Long): Fetch = try {
-        val call = gateway.http.newCall(request).apply { timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS) }
+    private fun exchange(value: PhoneFleet, request: Request, success: Int, timeoutMillis: Long): Fetch = fleetAttempt {
+        val call = GatewayClient.http.newCall(request).apply { timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS) }
         call.execute().use { response ->
             when (response.code) {
                 success -> {
                     val bytes = checkNotNull(response.body).byteStream().readNBytes(1_048_577)
                     require(bytes.size <= 1_048_576)
-                    Fetch.Fetched(store.accept(fleetJson.decodeFromString<PublicFleet>(bytes.decodeToString()), value))
+                    Fetch.Fetched(store.accept(productJson.decodeFromString<PublicFleet>(bytes.decodeToString()), value))
                 }
                 401 -> Fetch.Unauthorized
                 else -> Fetch.Failed
             }
         }
-    } catch (_: IOException) { Fetch.Failed }
-      catch (_: IllegalArgumentException) { Fetch.Failed } // includes SerializationException
-      catch (_: IllegalStateException) { Fetch.Failed }
-      catch (_: GeneralSecurityException) { Fetch.Failed }
-    /** A revision event is only a wake-up; the refetched view is the state. */
-    fun watch(changed: () -> Unit) {
-        val hub = store.association()?.hubCredential() ?: return
-        val request = gateway.authorizedRequest(hub, listOf("v1", "fleet", "events"))
+    } ?: Fetch.Failed
+    /** A revision event is only a wake-up; the refetched view is the state. Returns when the stream ends; the caller retries. */
+    suspend fun watch(changed: () -> Unit) {
+        val hub = fleetAttempt { store.association()?.hubCredential() } ?: return
+        val request = GatewayClient.authorizedRequest(hub, listOf("v1", "fleet", "events"))
             .header("Accept", "text/event-stream").get().build()
-        val call = gateway.http.newBuilder().readTimeout(0, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS).build().newCall(request)
+        val call = GatewayClient.http.newBuilder().readTimeout(0, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS).build().newCall(request)
         stream = call
         try {
+            // The blocking reads ignore coroutine cancellation: a cancel that came before this registration
+            // stops here, and one after it reaches the call through stopWatching.
+            currentCoroutineContext().ensureActive()
             refresh()?.let { changed() }
             call.execute().use { response ->
                 if (response.code != 200) return

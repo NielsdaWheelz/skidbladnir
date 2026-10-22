@@ -1,99 +1,13 @@
 package dev.niels.skidbladnir
 
-import java.net.URI
-import java.net.URISyntaxException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.time.DateTimeException
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonArray
-
-internal val productJson = Json { explicitNulls = false; ignoreUnknownKeys = false }
-
-// justify-defect: the app and the gateway own one closed wire schema, so an undecodable protocol
-// payload is a same-system contract violation. The reason is content-free by construction — a fixed
-// literal or a failure class name, never the offending payload or a cause that embeds it — so the
-// architecture §7 credential-free/content-free log guarantee holds even when the platform prints
-// this fatal defect.
-internal class ProtocolDecodeException(reason: String) :
-    RuntimeException("Protocol payload could not be decoded: $reason.")
-
-internal inline fun <Value> decodeProtocol(block: () -> Value): Value = try {
-    block()
-} catch (failure: ProtocolDecodeException) {
-    throw failure
-} catch (failure: SerializationException) {
-    throw ProtocolDecodeException(failure.javaClass.simpleName)
-} catch (failure: DateTimeException) {
-    throw ProtocolDecodeException(failure.javaClass.simpleName)
-} catch (failure: NoSuchElementException) {
-    throw ProtocolDecodeException(failure.javaClass.simpleName)
-} catch (failure: IllegalArgumentException) {
-    throw ProtocolDecodeException(failure.javaClass.simpleName)
-}
-
-// The gateway encodes every protocol instant with Go's RFC3339Nano against a
-// UTC clock, so exactly one shape is legal. ISO_INSTANT would also accept an
-// offset form and a lower-case designator, which would let two encodings of the
-// same moment cross a boundary the hard cut declares closed.
-private val wireInstantPattern = Regex(
-    """[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{0,8}[1-9])?Z""",
-)
-internal fun acceptWireInstant(text: String): Instant {
-    if (!wireInstantPattern.matches(text)) throw SerializationException("instant is not the canonical UTC wire form")
-    return Instant.parse(text)
-}
-
-// Decode-only: every type carrying a protocol instant is a private Wire* response.
-internal object IsoInstantSerializer : KSerializer<Instant> {
-    override val descriptor =
-        PrimitiveSerialDescriptor("dev.niels.skidbladnir.IsoInstant", PrimitiveKind.STRING)
-    override fun deserialize(decoder: Decoder): Instant = acceptWireInstant(decoder.decodeString())
-    override fun serialize(encoder: Encoder, value: Instant) {
-        throw SerializationException("protocol instants are decode-only")
-    }
-}
-
-// Go's zero time is syntactically valid RFC 3339, but it cannot represent a captured projection.
-private val unsetProjectionInstant = Instant.parse("0001-01-01T00:00:00Z")
-
-internal class MachineHandle private constructor(val encoded: String) {
-    companion object {
-        private val pattern = Regex("mh-[0-9a-f]{32}")
-        fun parse(candidate: String): MachineHandle? = candidate.takeIf(pattern::matches)?.let(::MachineHandle)
-    }
-    override fun equals(other: Any?): Boolean = other is MachineHandle && encoded == other.encoded
-    override fun hashCode(): Int = encoded.hashCode()
-    override fun toString(): String = encoded
-}
-
-internal class MachineLabel private constructor(val text: String) {
-    companion object {
-        fun parse(candidate: String): MachineLabel? {
-            if (candidate.isEmpty() || candidate != candidate.trim()) return null
-            if (candidate.hasDisplayUnsafeCodePoint()) return null
-            return MachineLabel(candidate)
-        }
-    }
-    override fun equals(other: Any?): Boolean = other is MachineLabel && text == other.text
-    override fun hashCode(): Int = text.hashCode()
-    override fun toString(): String = text
-}
 
 internal fun String.hasDisplayUnsafeCodePoint(): Boolean = codePoints().anyMatch { codePoint ->
     Character.isISOControl(codePoint) ||
@@ -129,256 +43,6 @@ internal fun String.utf8ByteCountWithin(maximum: Int): Int? {
     return byteCount
 }
 
-internal class MachineOrigin private constructor(val encoded: String) {
-    companion object {
-        fun parse(candidate: String): MachineOrigin? {
-            val uri = try {
-                URI(candidate)
-            } catch (_: URISyntaxException) {
-                // justify-ignore-error: an origin that is not even a URI is simply not an origin; the
-                // only classification this parser owns is accepted or rejected.
-                return null
-            }
-            if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.port != 8443 ||
-                !uri.host.lowercase(Locale.ROOT).endsWith(".ts.net") || uri.host == ".ts.net") return null
-            if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
-            if (uri.rawPath !in setOf("", "/") || candidate.any(Char::isWhitespace)) return null
-            // URI.getHost() already returns the RFC 2732 bracketed form for an IPv6 literal, so the
-            // canonical authority is the lowercased host verbatim. Re-bracketing it would produce a
-            // value that neither this parser nor OkHttp can read back.
-            return MachineOrigin("https://${uri.host.lowercase(Locale.ROOT)}:8443/")
-        }
-    }
-    override fun equals(other: Any?): Boolean = other is MachineOrigin && encoded == other.encoded
-    override fun hashCode(): Int = encoded.hashCode()
-    override fun toString(): String = encoded
-}
-
-internal class ProfileKey private constructor(val encoded: String) {
-    companion object {
-        private val pattern = Regex("[a-z][a-z0-9_-]{0,31}")
-        fun parse(candidate: String): ProfileKey? =
-            candidate.takeIf(pattern::matches)?.let(::ProfileKey)
-    }
-    override fun equals(other: Any?): Boolean = other is ProfileKey && encoded == other.encoded
-    override fun hashCode(): Int = encoded.hashCode()
-    override fun toString(): String = encoded
-}
-
-internal data class PairedMachine(val handle: MachineHandle, val label: MachineLabel, val origin: MachineOrigin?)
-internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession) {
-    fun sameLifetime(other: SessionTarget): Boolean =
-        machineHandle == other.machineHandle && session.sameLifetime(other.session)
-}
-internal enum class MachinePlatform { Linux, Darwin }
-internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
-@Serializable internal enum class AgentProvider { Codex, Claude }
-internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider?, val accountScope: String? = null)
-
-@Serializable private data class WireMachineSummary(val handle: String, val platform: WireMachinePlatform)
-@Serializable private enum class WireMachinePlatform { Linux, Darwin }
-@Serializable private data class WireProfileChoice(
-    val key: String,
-    val label: String,
-    val provider: AgentProvider? = null,
-    val accountScope: String? = null,
-)
-@Serializable internal data class CharacterSummary(val key: String, val displayName: String)
-
-internal data class ForegroundObservation(
-    val provider: AgentProvider,
-    val pid: Long,
-    val startIdentity: String,
-)
-
-internal data class AgentRuntime(
-    val provider: AgentProvider,
-    val pid: Long,
-    val paneId: String,
-    val startIdentity: String,
-    val profile: ProfileKey? = null,
-    /** The host's configured label for [profile]; absent when unset or unconfigured. */
-    val label: String?,
-) {
-    init {
-        require(pid > 0)
-        require(paneId.matches(Regex("%[0-9]+")))
-        require(startIdentity.isNotEmpty())
-    }
-}
-
-@Serializable internal enum class NameMode {
-    @kotlinx.serialization.SerialName("automatic") Automatic,
-    @kotlinx.serialization.SerialName("manual") Manual,
-}
-
-internal sealed interface SessionNaming {
-    data object Automatic : SessionNaming
-    data class Manual(val name: String) : SessionNaming
-}
-
-internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
-    NameMode.Automatic -> SessionNaming.Automatic
-    NameMode.Manual -> SessionNaming.Manual(tmuxName)
-}
-
-/** Literal displayed usage; the provider's data age and reset times are unknown. */
-@Serializable internal data class TerminalUsage(
-    val fiveHourUsedPercent: Int? = null,
-    val sevenDayUsedPercent: Int? = null,
-) {
-    init {
-        require(fiveHourUsedPercent != null || sevenDayUsedPercent != null)
-        require(fiveHourUsedPercent == null || fiveHourUsedPercent in 0..100)
-        require(sevenDayUsedPercent == null || sevenDayUsedPercent in 0..100)
-    }
-}
-
-/** An [agent] is always the local foreground: ingress rejects one beside a [connection]. */
-internal data class TmuxSession(
-    val tmuxId: String,
-    val activePaneId: String,
-    val tmuxName: String,
-    val nameMode: NameMode,
-    val identityToken: String,
-    val character: CharacterSummary,
-    val launchProfile: ProfileKey? = null,
-    val objective: String? = null,
-    val group: GroupLabel? = null,
-    val cwd: String? = null,
-    val activeCommand: String? = null,
-    val attachedClients: Int,
-    val agent: AgentRuntime? = null,
-    val terminalStatus: TerminalStatus,
-    val status: StatusPresentation,
-    val terminalUsage: TerminalUsage? = null,
-    val terminalFooter: String? = null,
-    val connection: RemoteConnection? = null,
-) {
-    /** tmux reuses session ids, so one lifetime is the id plus the gateway's identity token. */
-    fun sameLifetime(other: TmuxSession): Boolean =
-        tmuxId == other.tmuxId && identityToken == other.identityToken
-}
-
-@Serializable internal enum class RemoteTransport { @kotlinx.serialization.SerialName("ssh") Ssh, @kotlinx.serialization.SerialName("mosh") Mosh }
-internal data class RemoteConnection(val transport: RemoteTransport, val id: String? = null) {
-    init { require(id == null || id.matches(Regex("[0-9a-f]{32}"))) }
-}
-internal data class RemoteAgent(val provider: AgentProvider, val profile: ProfileKey?, val label: String?)
-internal data class TerminalContext(
-    val observedAt: Instant,
-    val cwd: String?,
-    val agent: RemoteAgent?,
-    val connection: RemoteConnection?,
-)
-
-internal sealed interface ExecutionContext {
-    data class Local(val cwd: String?, val agent: AgentRuntime?) : ExecutionContext
-    data class Remote(val machine: PairedMachine, val cwd: String?, val agent: RemoteAgent?) : ExecutionContext
-    data object RemoteUnknown : ExecutionContext
-}
-
-@Serializable private data class WireRemoteConnection(val transport: RemoteTransport, val id: String? = null)
-@Serializable private data class WireRemoteAgent(val provider: AgentProvider, val profile: String? = null, val label: String? = null)
-@Serializable private data class WireTerminalContext(
-    @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
-    val cwd: String? = null,
-    val agent: WireRemoteAgent? = null,
-    val connection: WireRemoteConnection? = null,
-)
-
-internal fun decodeTerminalContext(encoded: String): TerminalContext = decodeProtocol {
-    val element = strictJsonObject(encoded)
-    element.requireAbsentOrNonNull(setOf("cwd", "agent", "connection"))
-    (element["agent"] as? JsonObject)?.requireAbsentOrNonNull(setOf("profile", "label"))
-    (element["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
-    val wire = productJson.decodeFromJsonElement<WireTerminalContext>(element)
-    require(wire.agent == null || wire.connection == null)
-    require(wire.cwd == null || WorkingDirectoryPath.parse(wire.cwd) != null)
-    TerminalContext(
-        acceptProjectionInstant(wire.observedAt),
-        wire.cwd,
-        wire.agent?.let { RemoteAgent(it.provider, it.profile?.let { key -> requireNotNull(ProfileKey.parse(key)) }, it.label) },
-        wire.connection?.let { RemoteConnection(it.transport, it.id) },
-    )
-}
-
-internal data class SessionsResponse(
-    val machine: MachineSummary,
-    val observedAt: Instant,
-    val recovery: WorkspaceRecovery,
-    val profiles: List<ProfileChoice>,
-    val sessions: List<TmuxSession>,
-)
-
-@Serializable internal enum class WorkspaceRecoveryState {
-    @kotlinx.serialization.SerialName("tracking") Tracking,
-    @kotlinx.serialization.SerialName("recovered") Recovered,
-    @kotlinx.serialization.SerialName("delayed") Delayed,
-    @kotlinx.serialization.SerialName("broken") Broken,
-}
-
-/** The host's recovery copy without the machine label and the save time, which the phone renders in its own zone. */
-@Serializable internal data class RecoveryNotice(val summary: String, val action: String? = null)
-
-/** [notice] is absent exactly while the host is tracking. */
-internal data class WorkspaceRecovery(val state: WorkspaceRecoveryState, val savedAt: Instant?, val notice: RecoveryNotice?)
-
-// `failure` is declared for the strict decode and ignored: the phone shows the host's `notice`.
-@Serializable private data class WireWorkspaceRecovery(
-    val state: WorkspaceRecoveryState,
-    @Serializable(with = IsoInstantSerializer::class) val savedAt: Instant? = null,
-    val failure: JsonObject? = null,
-    val notice: RecoveryNotice? = null,
-)
-
-@Serializable
-private data class WireSessionsResponse(
-    val machine: WireMachineSummary,
-    @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
-    val recovery: WireWorkspaceRecovery,
-    val profiles: List<WireProfileChoice>,
-    val sessions: List<WireTmuxSession>,
-)
-
-@Serializable
-private data class WireCreatedSessionResponse(
-    @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
-    val session: WireTmuxSession,
-)
-
-@Serializable
-private data class WireAgentRuntime(
-    val provider: AgentProvider,
-    val pid: Long,
-    val paneId: String,
-    val startIdentity: String,
-    val profile: String? = null,
-    val label: String? = null,
-)
-
-@Serializable
-private data class WireTmuxSession(
-    val tmuxId: String,
-    val activePaneId: String,
-    val tmuxName: String,
-    val nameMode: NameMode,
-    val identityToken: String,
-    val character: CharacterSummary,
-    val launchProfile: String? = null,
-    val objective: String? = null,
-    val group: String? = null,
-    val cwd: String? = null,
-    val activeCommand: String? = null,
-    val attachedClients: Int,
-    val agent: WireAgentRuntime? = null,
-    val terminalStatus: TerminalStatus,
-    val status: StatusPresentation,
-    val terminalUsage: TerminalUsage? = null,
-    val terminalFooter: String? = null,
-    val connection: WireRemoteConnection? = null,
-)
-
 internal sealed interface LaunchChoice {
     data class Agent(val profile: ProfileKey) : LaunchChoice
     data object Terminal : LaunchChoice
@@ -392,146 +56,6 @@ internal data class ForgeDraft(
     val objective: String,
     val group: GroupLabel? = null,
 )
-
-internal const val MAXIMUM_WORKING_DIRECTORY_BYTES = 4_096
-internal const val MAXIMUM_DIRECTORY_LISTING_CHILDREN = 256
-internal const val MAXIMUM_DIRECTORY_LISTING_PATH_TEXT_BYTES = 32 * 1_024
-
-internal class HomeDirectory private constructor(val encoded: String) {
-    companion object {
-        val Home = HomeDirectory("~")
-
-        fun parse(candidate: String): HomeDirectory? {
-            if (candidate == "~") return Home
-            if (!candidate.startsWith("~/") || candidate.endsWith('/')) return null
-            if (candidate.utf8ByteCountWithin(MAXIMUM_WORKING_DIRECTORY_BYTES) == null) return null
-            if (candidate.hasDisplayUnsafeCodePoint()) return null
-            val components = candidate.substring(2).split('/')
-            if (components.any { component -> component.isEmpty() || component == "." || component == ".." }) {
-                return null
-            }
-            return HomeDirectory(candidate)
-        }
-    }
-
-    val basename: String get() = if (this == Home) "~" else encoded.substringAfterLast('/')
-    val hidden: Boolean get() = this != Home && basename.startsWith('.')
-
-    internal fun parent(): ParentDirectory = if (this == Home) {
-        ParentDirectory.Absent
-    } else {
-        ParentDirectory.Available(
-            checkNotNull(parse(encoded.substringBeforeLast('/').ifEmpty { "~" })),
-        )
-    }
-
-    internal fun isDirectChildOf(parent: HomeDirectory): Boolean =
-        parent() == ParentDirectory.Available(parent)
-
-    override fun equals(other: Any?): Boolean = other is HomeDirectory && encoded == other.encoded
-    override fun hashCode(): Int = encoded.hashCode()
-    override fun toString(): String = encoded
-}
-
-internal enum class DirectoryEntryKind { Directory, SymbolicLink }
-internal sealed interface ParentDirectory {
-    data object Absent : ParentDirectory
-    data class Available(val directory: HomeDirectory) : ParentDirectory
-}
-internal enum class DirectoryOmissions { None, Present }
-internal data class DirectoryEntry(val directory: HomeDirectory, val kind: DirectoryEntryKind)
-internal data class DirectoryListing(
-    val machine: MachineSummary,
-    val directory: HomeDirectory,
-    val parent: ParentDirectory,
-    val children: List<DirectoryEntry>,
-    val omissions: DirectoryOmissions,
-)
-
-internal data class DirectorySearchResult(val directories: List<WorkingDirectoryPath>, val omitted: Boolean)
-
-@Serializable private data class WireDirectorySearchResult(val directories: List<String>, val omitted: Boolean)
-
-internal fun decodeDirectorySearchResult(encoded: String): DirectorySearchResult = decodeProtocol {
-    val wire = productJson.decodeFromJsonElement<WireDirectorySearchResult>(strictJsonObject(encoded))
-    require(wire.directories.size <= 64)
-    val directories = wire.directories.map { path ->
-        require(path.startsWith('/'))
-        requireNotNull(WorkingDirectoryPath.parse(path))
-    }
-    require(directories.distinct().size == directories.size)
-    require(directories.sumOf { it.encoded.toByteArray(StandardCharsets.UTF_8).size } <= 32 * 1024)
-    DirectorySearchResult(directories, wire.omitted)
-}
-
-@Serializable
-private data class WireDirectoryListingResponse(
-    val machine: WireMachineSummary,
-    val directory: String,
-    val parentDirectory: String? = null,
-    val children: List<WireDirectoryEntry>,
-    val omitted: Boolean,
-)
-
-@Serializable
-private data class WireDirectoryEntry(
-    val directory: String,
-    val kind: WireDirectoryEntryKind,
-)
-
-@Serializable
-private enum class WireDirectoryEntryKind { Directory, SymbolicLink }
-
-internal fun decodeDirectoryListingResponse(
-    encoded: String,
-    expectedMachine: MachineSummary,
-): DirectoryListing = decodeProtocol {
-    val element = strictJsonObject(encoded)
-    element.requireAbsentOrNonNull(setOf("parentDirectory"))
-    val wire = productJson.decodeFromJsonElement<WireDirectoryListingResponse>(element)
-    val machineHandle = requireNotNull(MachineHandle.parse(wire.machine.handle))
-    val machine = MachineSummary(machineHandle, acceptMachinePlatform(wire.machine.platform))
-    require(machine == expectedMachine)
-    val directory = requireNotNull(HomeDirectory.parse(wire.directory))
-    val parent = wire.parentDirectory?.let { encodedParent ->
-        ParentDirectory.Available(requireNotNull(HomeDirectory.parse(encodedParent)))
-    } ?: ParentDirectory.Absent
-    require(parent == directory.parent())
-    require(wire.children.size <= MAXIMUM_DIRECTORY_LISTING_CHILDREN)
-    val children = wire.children.map { child ->
-        val childDirectory = requireNotNull(HomeDirectory.parse(child.directory))
-        require(childDirectory.isDirectChildOf(directory))
-        DirectoryEntry(
-            directory = childDirectory,
-            kind = when (child.kind) {
-                WireDirectoryEntryKind.Directory -> DirectoryEntryKind.Directory
-                WireDirectoryEntryKind.SymbolicLink -> DirectoryEntryKind.SymbolicLink
-            },
-        )
-    }
-    require(children.map(DirectoryEntry::directory).allUnique())
-    require(
-        children == children.sortedWith { first, second ->
-            compareCaseInsensitiveUtf8(first.directory.basename, second.directory.basename)
-        },
-    )
-    val pathTextBytes = sequenceOf(directory) +
-        when (parent) {
-            ParentDirectory.Absent -> emptySequence()
-            is ParentDirectory.Available -> sequenceOf(parent.directory)
-        } + children.asSequence().map(DirectoryEntry::directory)
-    require(
-        pathTextBytes.sumOf { path -> path.encoded.toByteArray(StandardCharsets.UTF_8).size } <=
-            MAXIMUM_DIRECTORY_LISTING_PATH_TEXT_BYTES,
-    )
-    DirectoryListing(
-        machine = machine,
-        directory = directory,
-        parent = parent,
-        children = children,
-        omissions = if (wire.omitted) DirectoryOmissions.Present else DirectoryOmissions.None,
-    )
-}
 
 internal fun compareCaseInsensitiveUtf8(first: String, second: String): Int {
     val folded = compareAsciiFoldedUtf8(first, second)
@@ -609,169 +133,6 @@ internal fun closeActionLabel(label: MachineLabel, target: SessionTarget, termin
     "${if (terminalOnly) TERMINAL_ONLY_CLOSE_ACTION else TERMINAL_CLOSE_ACTION}: ${target.session.tmuxName} on ${label.text}"
 internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
     closeActionLabel(label, target, terminalOnly) + "?"
-
-@Serializable private data class CreateSessionRequest(
-    val kind: String,
-    val cwd: String,
-    val profile: String? = null,
-    val optionalTmuxName: String? = null,
-    val objective: String? = null,
-    val group: String? = null,
-)
-@Serializable private data class DirectoryListingRequest(val directory: String)
-@Serializable private data class CloseTerminalRequest(val identityToken: String)
-@Serializable private data class WireSessionNaming(val mode: NameMode, val name: String? = null)
-@Serializable private data class RenameSessionRequest(
-    val identityToken: String,
-    val expectedNaming: WireSessionNaming,
-    val naming: WireSessionNaming,
-)
-
-private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
-    SessionNaming.Automatic -> WireSessionNaming(NameMode.Automatic)
-    is SessionNaming.Manual -> WireSessionNaming(NameMode.Manual, name)
-}
-
-internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
-    val element = strictJsonObject(encoded)
-    val recovery = element.requiredObject("recovery")
-    recovery.requireAbsentOrNonNull(setOf("savedAt", "failure", "notice"))
-    (recovery["notice"] as? JsonObject)?.requireAbsentOrNonNull(setOf("action"))
-    element.getValue("sessions").jsonArray.forEach { encodedSession ->
-        (encodedSession as? JsonObject ?: throw SerializationException("session is not an object"))
-            .requireSessionOptionalFields()
-    }
-    element.getValue("profiles").jsonArray.forEach { profile ->
-        (profile as? JsonObject ?: throw SerializationException("profile is not an object"))
-            .requireAbsentOrNonNull(setOf("provider", "accountScope"))
-    }
-    val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
-    val observedAt = acceptProjectionInstant(wire.observedAt)
-    val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
-    val profiles = wire.profiles.map { profile ->
-        require(profile.label.isNotEmpty())
-        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label, profile.provider, profile.accountScope).also {
-            require(it.accountScope == null || it.accountScope.matches(Regex("[0-9a-f]{64}")))
-        }
-    }
-    require(profiles.map(ProfileChoice::key).allUnique())
-    require(profiles.map(ProfileChoice::label).allUnique())
-    val sessions = wire.sessions.map(::acceptSession)
-    require(sessions.map(TmuxSession::tmuxId).allUnique())
-    require(sessions.map(TmuxSession::identityToken).allUnique())
-    sessions.forEach { session ->
-        session.launchProfile?.let { launchProfile ->
-            profiles.single { choice -> choice.key == launchProfile }
-        }
-    }
-    SessionsResponse(
-        MachineSummary(handle, acceptMachinePlatform(wire.machine.platform)),
-        observedAt,
-        WorkspaceRecovery(wire.recovery.state, wire.recovery.savedAt?.let(::acceptProjectionInstant), wire.recovery.notice),
-        profiles,
-        sessions,
-    )
-}
-
-internal fun decodeCreatedSessionResponse(encoded: String): TmuxSession = decodeProtocol {
-    val element = strictJsonObject(encoded)
-    element.requireExactKeys(setOf("observedAt", "session"))
-    element.requiredObject("session").requireSessionOptionalFields()
-    val wire = productJson.decodeFromJsonElement<WireCreatedSessionResponse>(element)
-    acceptProjectionInstant(wire.observedAt)
-    acceptSession(wire.session)
-}
-
-internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson.encodeToString(
-    CreateSessionRequest(
-        when (draft.launch) {
-            is LaunchChoice.Agent -> "agent"
-            LaunchChoice.Terminal -> "terminal"
-        },
-        draft.cwd,
-        (draft.launch as? LaunchChoice.Agent)?.profile?.encoded,
-        draft.optionalTmuxName.ifEmpty { null },
-        draft.objective.ifEmpty { null },
-        draft.group?.text,
-    ),
-)
-internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
-    productJson.encodeToString(DirectoryListingRequest(directory.encoded))
-internal fun encodeCloseTerminalRequest(session: TmuxSession): String =
-    productJson.encodeToString(CloseTerminalRequest(session.identityToken))
-internal fun encodeRenameSessionRequest(
-    target: SessionTarget,
-    expectedNaming: SessionNaming,
-    naming: SessionNaming,
-): String = productJson.encodeToString(
-    RenameSessionRequest(target.session.identityToken, expectedNaming.toWire(), naming.toWire()),
-)
-
-internal data class InventorySnapshot(val inventory: SessionsResponse, val receivedAtElapsedMillis: Long)
-
-internal sealed interface InventoryState {
-    data object Reading : InventoryState
-    data class Fresh(val snapshot: InventorySnapshot) : InventoryState
-    /** A mutation landed on this machine and the snapshot has not caught up with it yet. */
-    data class Superseded(val snapshot: InventorySnapshot, val requiredMutationFence: Long) : InventoryState
-    data class Stale(val snapshot: InventorySnapshot, val cause: GatewayFailure) : InventoryState
-    data class Unreachable(val cause: GatewayFailure) : InventoryState
-}
-
-internal sealed interface MachineAccess {
-    data object Ready : MachineAccess
-    data object AuthRequired : MachineAccess
-    data object IdentityChanged : MachineAccess
-}
-
-internal fun InventoryState.lastSnapshot(): InventorySnapshot? = when (this) {
-    is InventoryState.Fresh -> snapshot
-    is InventoryState.Superseded -> snapshot
-    is InventoryState.Stale -> snapshot
-    InventoryState.Reading, is InventoryState.Unreachable -> null
-}
-
-/** The last observed state of [session]'s lifetime, if a snapshot holds it. */
-internal fun InventoryState.observedSession(session: TmuxSession): TmuxSession? =
-    lastSnapshot()?.inventory?.sessions?.singleOrNull { it.sameLifetime(session) }
-
-/** Single owner of the read-failure downgrade: a failed read never discards another machine's facts. */
-internal fun InventoryState.downgraded(cause: GatewayFailure): InventoryState = when (this) {
-    is InventoryState.Fresh -> InventoryState.Stale(snapshot, cause)
-    is InventoryState.Superseded -> InventoryState.Stale(snapshot, cause)
-    is InventoryState.Stale -> InventoryState.Stale(snapshot, cause)
-    InventoryState.Reading, is InventoryState.Unreachable -> InventoryState.Unreachable(cause)
-}
-
-internal data class MachineState(
-    val machine: PairedMachine,
-    val access: MachineAccess,
-    val inventory: InventoryState,
-    val pressure: PressureState,
-    val remoteContexts: Map<String, ExecutionContext.Remote> = emptyMap(),
-    val notifications: Map<NotificationKey, NotificationPresentation> = emptyMap(),
-) {
-    val canMutate: Boolean get() = when (access) {
-        MachineAccess.Ready -> inventory is InventoryState.Fresh
-        MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
-    }
-
-    fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
-}
-
-internal fun MachineState.executionContext(session: TmuxSession): ExecutionContext {
-    val current = (inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
-        it.sameLifetime(session)
-    }
-    val observed = current ?: session
-    return if (observed.connection == null) ExecutionContext.Local(observed.cwd, observed.agent)
-    else if (access == MachineAccess.Ready && current != null)
-        remoteContexts[session.identityToken] ?: ExecutionContext.RemoteUnknown
-    else ExecutionContext.RemoteUnknown
-}
-
-/** An agent's profile as the owner reads it: the host's configured [label], else its provider. */
-internal fun agentLabel(provider: AgentProvider, label: String?): String = label ?: "${provider.name} · profile unknown"
 
 /**
  * Single classifier for what a machine can currently do. Every machine-state message, colour,
@@ -927,20 +288,19 @@ internal fun dashboardCardKey(target: SessionTarget): DashboardCardKey {
     })
 }
 
-
-internal enum class ApiErrorCode(val wireName: String) {
-    Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
-    WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
-    DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
-    DirectorySearchUnavailable("DirectorySearchUnavailable"), DirectorySearchTooLarge("DirectorySearchTooLarge"),
-    TerminalContextUnavailable("TerminalContextUnavailable"),
-    TerminalTargetChanged("TerminalTargetChanged"), TerminalUnavailable("TerminalUnavailable"), TerminalInputBlocked("TerminalInputBlocked"),
-    ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
-    SessionNameConflict("SessionNameConflict"), SessionNameChanged("SessionNameChanged"), SessionNotFound("SessionNotFound"),
-    SessionIdentityMismatch("SessionIdentityMismatch"),
-    MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
-    ReconnectRequired("ReconnectRequired"),
-    TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
+internal enum class ApiErrorCode {
+    Unauthenticated, InvalidRequest, RequestTooLarge,
+    WorkingDirectoryInvalid, WorkingDirectoryUnavailable,
+    DirectoryListingUnavailable, DirectoryListingTooLarge,
+    DirectorySearchUnavailable, DirectorySearchTooLarge,
+    TerminalContextUnavailable,
+    TerminalTargetChanged, TerminalUnavailable, TerminalInputBlocked,
+    ProfileUnknown, SessionNameInvalid, ObjectiveInvalid, GroupInvalid,
+    SessionNameConflict, SessionNameChanged, SessionNotFound,
+    SessionIdentityMismatch,
+    MachineIdentityMismatch, InternalError,
+    ReconnectRequired,
+    TerminalConfigurationUnsupported,
 }
 
 internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
@@ -975,13 +335,13 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
 }
 
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
-    ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
+    ApiErrorCode.entries.singleOrNull { it.name == value } ?: throw SerializationException("unknown API error code")
 
 @Serializable internal enum class SessionStatusTone {
-    @kotlinx.serialization.SerialName("working") Working,
-    @kotlinx.serialization.SerialName("ready") Ready,
-    @kotlinx.serialization.SerialName("attention") Attention,
-    @kotlinx.serialization.SerialName("muted") Muted,
+    @SerialName("working") Working,
+    @SerialName("ready") Ready,
+    @SerialName("attention") Attention,
+    @SerialName("muted") Muted,
 }
 
 /**
@@ -989,20 +349,10 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
  * the phone's overlays, where Ready means only eligible; in [SessionStatusContent] it is final.
  */
 @Serializable internal enum class SessionQueueCategory {
-    @kotlinx.serialization.SerialName("ready") Ready,
-    @kotlinx.serialization.SerialName("action") Action,
-    @kotlinx.serialization.SerialName("none") Excluded,
+    @SerialName("ready") Ready,
+    @SerialName("action") Action,
+    @SerialName("none") Excluded,
 }
-
-/** The host's status copy for one observation, rendered as if fresh and not ready (terminal-observation.md §6). */
-@Serializable internal data class StatusPresentation(
-    val label: String,
-    val tone: SessionStatusTone,
-    val queue: SessionQueueCategory,
-    val detail: String? = null,
-    val evidence: String? = null,
-    val queueNotice: String? = null,
-)
 
 // `detail` tells one session's state from another's; `evidence` names how status was
 // known. The card shows only the first, since the qualifier is the same on every agent card.
@@ -1041,89 +391,5 @@ internal fun sessionStatusContent(
     )
 }
 
-private fun JsonObject.requireSessionOptionalFields() {
-    if ("group" in this) requiredString("group")
-    if ("terminalFooter" in this) requiredString("terminalFooter")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection", "terminalUsage", "terminalFooter"))
-    requiredObject("status").requireAbsentOrNonNull(setOf("detail", "evidence", "queueNotice"))
-    if ("terminalUsage" in this) {
-        val usage = requiredObject("terminalUsage")
-        usage.requireAbsentOrNonNull(setOf("fiveHourUsedPercent", "sevenDayUsedPercent"))
-        require(usage.values.all { it is JsonPrimitive && !it.isString })
-    }
-    (this["agent"] as? JsonObject)?.let { agent ->
-        agent.requireNonNullValues()
-    }
-    (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
-}
-private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
-
-private fun acceptProjectionInstant(value: Instant): Instant {
-    require(value != unsetProjectionInstant)
-    return value
-}
-
-private fun acceptMachinePlatform(platform: WireMachinePlatform): MachinePlatform = when (platform) {
-    WireMachinePlatform.Linux -> MachinePlatform.Linux
-    WireMachinePlatform.Darwin -> MachinePlatform.Darwin
-}
-
-private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
-    tmuxId = session.tmuxId,
-    activePaneId = session.activePaneId,
-    tmuxName = session.tmuxName,
-    nameMode = session.nameMode,
-    identityToken = session.identityToken,
-    character = session.character,
-    launchProfile = session.launchProfile?.let { requireNotNull(ProfileKey.parse(it)) },
-    objective = session.objective,
-    group = session.group?.let { requireNotNull(GroupLabel.parse(it)) },
-    cwd = session.cwd,
-    activeCommand = session.activeCommand,
-    attachedClients = session.attachedClients,
-    agent = session.agent?.let(::acceptAgentRuntime),
-    terminalStatus = session.terminalStatus,
-    status = session.status,
-    terminalUsage = session.terminalUsage,
-    terminalFooter = session.terminalFooter,
-    connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
-).also(::acceptSession)
-
-private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentRuntime(
-    provider = runtime.provider,
-    pid = runtime.pid,
-    paneId = runtime.paneId,
-    startIdentity = runtime.startIdentity,
-    profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
-    label = runtime.label,
-)
-
-private fun acceptSession(session: TmuxSession) {
-    require(session.tmuxId.matches(Regex("\\$[0-9]+")) && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
-    require(session.activePaneId.matches(Regex("%[0-9]+")))
-    require(session.agent == null || session.agent.paneId == session.activePaneId)
-    require(session.attachedClients >= 0)
-    require(session.cwd?.let(WorkingDirectoryPath::parse) != null || session.cwd == null)
-    require(session.activeCommand?.isNotEmpty() != false)
-    require(session.objective?.isNotEmpty() != false)
-    require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
-    require(session.agent == null || session.connection == null)
-    if (session.terminalUsage != null || session.terminalFooter != null) {
-        require(session.agent != null && session.connection == null)
-        require(session.terminalStatus.source == TerminalStatusSource.Terminal)
-        require(session.terminalStatus.reason in setOf(
-            TerminalStatusReason.Recognized, TerminalStatusReason.Partial, TerminalStatusReason.LayoutUnknown,
-            TerminalStatusReason.EvidenceClipped, TerminalStatusReason.EvidenceConflict,
-        ))
-    }
-    session.terminalFooter?.let { footer ->
-        require(footer.isNotEmpty() && footer.utf8ByteCountWithin(1024) != null && footer == footer.trim())
-        require(footer.codePoints().noneMatch { codePoint ->
-            when (Character.getType(codePoint)) {
-                Character.CONTROL.toInt(), Character.FORMAT.toInt(),
-                Character.LINE_SEPARATOR.toInt(), Character.PARAGRAPH_SEPARATOR.toInt() -> true
-                else -> false
-            }
-        })
-    }
-}
+/** An agent's profile as the owner reads it: the host's configured [label], else its provider. */
+internal fun agentLabel(provider: AgentProvider, label: String?): String = label ?: "${provider.name} · profile unknown"

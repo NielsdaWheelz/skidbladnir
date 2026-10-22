@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
     internal fun notificationSetup() {
         val owner = applicationContext.notificationOwner()
         val view = owner.view.value
-        val unpaired = MachineStore(this).read().credentials.isEmpty()
+        val unpaired = !controller.paired
         val instruction = when {
             view.health == NotificationHealth.Disabled -> "background push is optional. session management works without firebase."
             view.health == NotificationHealth.RestartRequired -> "stop skid in android app settings, then reopen it. your sessions stay installed."
@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                 controller.requestFleetReconnect()
             }
             else -> dialog.setPositiveButton("set up notifications") { _, _ ->
-                if (MachineStore(this).read().credentials.isEmpty()) {
+                if (!controller.paired) {
                     controller.requestFleetReconnect()
                 } else {
                     NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.REPLACE)

@@ -96,10 +96,10 @@ before attaching the new session to an older peer receipt; the next inventory
 supplies them. actual create/shell responses still transport their own sample.
 
 gateway mapping, go host/session decoding and projection, and android
-`WireTmuxSession`/`TmuxSession`, `requireSessionOptionalFields` and `acceptSession`
-must agree for list/create/shell. malformed wire evidence fails the existing
-strict response boundary; it is not silently sanitized. keep unknown-field
-rejection. no new endpoint, native helper, execution-context field or phone view.
+`TmuxSession` (`Sessions.kt`) must agree for list/create/shell. go clients keep
+their strict response boundary; the phone decodes tolerantly
+([rules](rules.md)). no new endpoint, native helper, execution-context field or
+phone view.
 structured cli output carries the shared field; human cli formatting is unchanged.
 
 ## content contract

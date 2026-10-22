@@ -8,61 +8,18 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-private data class SigningMaterial(
-    val storeFile: File,
-    val password: String,
-    val keyAlias: String,
-)
-
-private fun loadSigningMaterial(path: String): SigningMaterial {
-    val configFile = File(path)
-    val properties = Properties().apply { configFile.inputStream().use(::load) }
-    val expectedKeys = setOf("storeFile", "passwordFile", "keyAlias")
-    require(properties.stringPropertyNames() == expectedKeys) {
-        "Android signing configuration must contain exactly storeFile, passwordFile, and keyAlias"
-    }
-    fun requiredAbsoluteFile(key: String): File {
-        val value = requireNotNull(properties.getProperty(key)) { "Missing Android signing property: $key" }
-        return File(value).also { require(it.isAbsolute) { "$key must be absolute" } }
-    }
-    val passwordLines = requiredAbsoluteFile("passwordFile").readLines()
-    require(passwordLines.size == 1 && passwordLines.single().matches(Regex("[A-Za-z0-9]{32,128}"))) {
-        "Android signing password file must contain one strong ASCII token"
-    }
-    return SigningMaterial(
-        storeFile = requiredAbsoluteFile("storeFile"),
-        password = passwordLines.single(),
-        keyAlias = requireNotNull(properties.getProperty("keyAlias")),
-    )
-}
-
-private val signingMaterial = providers.environmentVariable("SKIDBLADNIR_ANDROID_SIGNING_CONFIG")
-    .orNull
-    ?.let(::loadSigningMaterial)
-
+// scripts/release supplies these and scripts/check-release verifies the apk's signer and version; gradle only reads them.
+private val signing = providers.environmentVariable("SKIDBLADNIR_ANDROID_SIGNING_CONFIG").orNull
+    ?.let { path -> Properties().apply { File(path).inputStream().use(::load) } }
 private val configuredVersionName = providers.gradleProperty("skidbladnir.versionName").orNull
 private val configuredVersionCode = providers.gradleProperty("skidbladnir.versionCode").orNull
-require((configuredVersionName == null) == (configuredVersionCode == null)) {
-    "skidbladnir.versionName and skidbladnir.versionCode must be supplied together"
-}
-if (configuredVersionName != null) {
-    require(configuredVersionName.matches(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"))) {
-        "skidbladnir.versionName must be canonical MAJOR.MINOR.PATCH"
-    }
-}
-private val resolvedVersionCode = configuredVersionCode?.toIntOrNull() ?: 1
-require(configuredVersionCode == null || resolvedVersionCode in 2..2_100_000_000) {
-    "skidbladnir.versionCode must be a valid increasing Android version code"
-}
 gradle.taskGraph.whenReady {
-    require(
-        allTasks.none { task -> task.name.contains("release", ignoreCase = true) } ||
-            configuredVersionName != null
-    ) {
-        "Every release task requires explicit skidbladnir.versionName and skidbladnir.versionCode"
+    if (allTasks.any { task -> task.project == project && task.name.contains("Release") }) {
+        require(signing != null && configuredVersionName != null && configuredVersionCode != null) {
+            "Release builds require SKIDBLADNIR_ANDROID_SIGNING_CONFIG, skidbladnir.versionName and skidbladnir.versionCode"
+        }
     }
 }
-
 
 kotlin {
     compilerOptions {
@@ -78,7 +35,7 @@ android {
         applicationId = "dev.niels.skidbladnir"
         minSdk = 33
         targetSdk = 36
-        versionCode = resolvedVersionCode
+        versionCode = configuredVersionCode?.toInt() ?: 1
         versionName = configuredVersionName ?: "0.1.0"
     }
 
@@ -86,12 +43,13 @@ android {
         compose = true
     }
 
-    val skidbladnirSigning = signingMaterial?.let { material ->
+    val skidbladnirSigning = signing?.let { config ->
+        val password = File(config.getProperty("passwordFile")).readLines().single()
         signingConfigs.create("skidbladnir") {
-            storeFile = material.storeFile
-            storePassword = material.password
-            keyAlias = material.keyAlias
-            keyPassword = material.password
+            storeFile = File(config.getProperty("storeFile"))
+            storePassword = password
+            keyAlias = config.getProperty("keyAlias")
+            keyPassword = password
             storeType = "PKCS12"
         }
     }
@@ -109,15 +67,6 @@ android {
     }
 }
 
-gradle.taskGraph.whenReady {
-    val requestsProtectedArtifact = allTasks.any { task ->
-        task.project == project && task.name.contains("Release")
-    }
-    if (requestsProtectedArtifact && signingMaterial == null) {
-        throw GradleException("Protected Android artifacts require SKIDBLADNIR_ANDROID_SIGNING_CONFIG")
-    }
-}
-
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
@@ -125,7 +74,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.datastore:datastore:1.2.1")
     implementation("androidx.core:core:1.17.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("com.google.firebase:firebase-messaging:26.0.0")

@@ -172,7 +172,7 @@ look fresh or undo acknowledgement. ready stays unqualified until the new
 notification outcome.
 
 each successful admitted source inventory starts one optional context pass: two seconds
-total, at most one per source and three overall. cancel an obsolete pass and
+total, at most one per source and, on desktop, three overall. cancel an obsolete pass and
 coalesce its latest successor without overlap. deduplicate ids within each pass;
 use the destination context's `agent.label`, otherwise the existing profile-key label.
 never list sessions solely for a label. apply overlays only when source generation,
@@ -241,10 +241,12 @@ secondary and never determines terminal command exit. remove the old callback
 and synchronous post-detach notification read; the browser's independent return
 read owns fresh notification display.
 
-phone card entry remains direct. retain notification-click and reconnect inventory
-lookups, plus existing created-terminal post-write verification: they populate the
-rich session model used by pane controls. greeting identity qualifies nothing;
-never replace its pane inside old cwd/agent/status/footer metadata. the
+phone card entry remains direct. reconnect adopts the machine's latest observed
+session and a created terminal the create response's session, with no read; the
+gateway checks the lifetime at attach (an owner-accepted cut, 2026-10-22).
+notification click retains its inventory lookup: it populates the rich session
+model used by pane controls. greeting identity qualifies nothing; never replace
+its pane inside old cwd/agent/status/footer metadata. the
 [phone target/model split](issues/phone-entry-metadata-latency.md) is deferred.
 
 ## budgets and diagnostics
@@ -255,7 +257,7 @@ never replace its pane inside old cwd/agent/status/footer metadata. the
 | terminal status enrichment | existing shared 2 s, also capped by remaining inventory budget |
 | pre-upgrade lifetime validation | 5 s child of http request |
 | post-resize startup through greeting | 5 s child of attachment lifetime; includes admission/readiness |
-| display context | 2 s per source, at most three passes |
+| display context | 2 s per source pass; at most three concurrent passes on desktop, one per machine on the phone |
 | optional notification operations | existing 3 s; never on terminal pump |
 
 retain existing 15 s client, initial-resize, recovery, liveness and cleanup owners.
@@ -353,7 +355,7 @@ operation categories, never arguments/content. fixtures use dummy content.
 | a4 independent ui | real browser under pty with controlled TLS peers: healthy rows/status advance during another peer's 15 s stall or delayed notifications; selection/empty states and post-write/post-detach fences hold |
 | a5 optional overlays | desktop and phone base publication precedes delayed context; obsolete overlay cannot change source/credentials/fences; repeated staggered updates eventually enrich healthy sources |
 | a6 entry/acknowledgement | desktop browser/cli/create entry issues no inventory/context/producer read; greeting/current pane qualifies candidate; registration/surface/rpc stalls never block output/input, with bounded detach cleanup; empty/partial output, late candidate, newer generation, reset, replacement, reconnect and pre-greeting launch failure cannot misacknowledge/replay/leak; independent first store readers share the persisted reset id, and failed initialization supplies no seed |
-| a7 coordinated codecs/phone | old/null/unknown/malformed greeting rejected; process greeting before page output; missing foreground permits output without entry acknowledgement; direct card entry, retained reconnect/notification-click/post-create admissions, rotation/background/return and focus/reset fences preserve behavior |
+| a7 coordinated codecs/phone | old/null/unknown/malformed greeting rejected; process greeting before page output; missing foreground permits output without entry acknowledgement; direct card entry, reconnect and post-create entry without a read, retained notification-click admission, rotation/background/return and focus/reset fences preserve behavior |
 
 performance target: forty measured warm requests/entries after five warmups, on
 documented quiet reference hosts, sixteen unchanged sessions: p95 complete local

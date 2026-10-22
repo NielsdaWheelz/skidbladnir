@@ -1,19 +1,13 @@
 package dev.niels.skidbladnir
 
 import android.content.Context
-import androidx.datastore.core.CorruptionException
-import androidx.datastore.core.DataStore
-import androidx.datastore.core.Serializer
-import androidx.datastore.dataStore
+import android.util.AtomicFile
+import java.io.File
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal const val TERMINAL_TEXT_SIZE_DEFAULT_SP = 16
 internal val TERMINAL_TEXT_SIZE_RANGE_SP = 12..24
@@ -32,65 +26,64 @@ internal sealed interface TerminalTextSizeState {
     ) : TerminalTextSizeState
 }
 
-/** The at-rest format: exactly two ASCII digits in 12..24 followed by EOF. */
-private object TerminalTextSizeSerializer : Serializer<Int> {
-    override val defaultValue: Int = TERMINAL_TEXT_SIZE_DEFAULT_SP
+/**
+ * The phone-wide terminal text size. Only a committed value is shown or applied: the saved value is read once
+ * per owner and again only after a failed read, and a write shows once it is durable; a failed write keeps the
+ * prior value. The file holds exactly two ASCII digits in 12..24, at the path and in the format the earlier
+ * DataStore store used. Main-confined: [changed] runs after every transition.
+ */
+internal class TerminalTextSize(context: Context, private val scope: CoroutineScope, private val changed: () -> Unit) {
+    private val file = AtomicFile(File(context.filesDir, "datastore/terminal-text-size"))
 
-    override suspend fun readFrom(input: InputStream): Int {
-        val bytes = input.readNBytes(3)
+    var state: TerminalTextSizeState = TerminalTextSizeState.Reading
+        private set
+
+    fun read() {
+        set(TerminalTextSizeState.Reading)
+        scope.launch {
+            set(try {
+                TerminalTextSizeState.Ready(withContext(Dispatchers.IO) { load() }, TerminalTextSizeWrite.Idle, sheetOpen = false)
+            } catch (_: IOException) {
+                TerminalTextSizeState.Unavailable
+            })
+        }
+    }
+
+    /** A failed write is reported for that write only, so a new attempt or sheet session opens clean. */
+    fun sheet(open: Boolean) {
+        val ready = state as? TerminalTextSizeState.Ready ?: return
+        set(ready.copy(sheetOpen = open, write = if (ready.write == TerminalTextSizeWrite.Failed) TerminalTextSizeWrite.Idle else ready.write))
+    }
+
+    /** Callers admit the step; [apply] receives the value once it is committed. */
+    fun write(nominalSp: Int, apply: (Int) -> Unit) {
+        val ready = state as? TerminalTextSizeState.Ready ?: return
+        set(ready.copy(write = TerminalTextSizeWrite.Pending))
+        scope.launch {
+            // The sheet may open or close meanwhile; a pending write keeps the value Ready (only Unavailable is re-read).
+            set(try {
+                withContext(Dispatchers.IO) { file.writeAtomically(nominalSp.toString().toByteArray(Charsets.US_ASCII)) }
+                apply(nominalSp)
+                (state as TerminalTextSizeState.Ready).copy(nominalSp = nominalSp, write = TerminalTextSizeWrite.Idle)
+            } catch (_: IOException) {
+                (state as TerminalTextSizeState.Ready).copy(write = TerminalTextSizeWrite.Failed)
+            })
+        }
+    }
+
+    private fun load(): Int {
+        if (!file.baseFile.exists()) return TERMINAL_TEXT_SIZE_DEFAULT_SP
+        val bytes = file.openRead().use { it.readNBytes(3) }
         if (bytes.size != 2 || bytes.any { it !in '0'.code.toByte()..'9'.code.toByte() }) {
-            throw CorruptionException("terminal text size is not two ASCII digits")
+            throw IOException("terminal text size is not two ASCII digits")
         }
         val nominalSp = (bytes[0] - '0'.code.toByte()) * 10 + (bytes[1] - '0'.code.toByte())
-        if (nominalSp !in TERMINAL_TEXT_SIZE_RANGE_SP) throw CorruptionException("terminal text size is out of range")
+        if (nominalSp !in TERMINAL_TEXT_SIZE_RANGE_SP) throw IOException("terminal text size is out of range")
         return nominalSp
     }
 
-    override suspend fun writeTo(nominalSp: Int, output: OutputStream) {
-        // justify-service-invariant-check: Int cannot carry the two-digit at-rest range, and this
-        // serializer owns both ends of the format its readFrom enforces.
-        require(nominalSp in TERMINAL_TEXT_SIZE_RANGE_SP)
-        output.write(nominalSp.toString().toByteArray(Charsets.US_ASCII))
-    }
-}
-
-private val Context.terminalTextSizeDataStore: DataStore<Int> by dataStore(
-    fileName = "terminal-text-size",
-    serializer = TerminalTextSizeSerializer,
-)
-
-/** The app-scoped saved text size; callbacks land on the main looper. */
-internal class TerminalTextSizeStore(context: Context) {
-    private val dataStore = context.applicationContext.terminalTextSizeDataStore
-    private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
-
-    // DataStore reports every read and write failure, corruption included, as an
-    // IOException; the product models those as Unavailable and a failed write.
-    fun read(onReady: (nominalSp: Int) -> Unit, onUnavailable: () -> Unit) {
-        scope.launch {
-            val nominalSp = try {
-                dataStore.data.first()
-            } catch (_: IOException) { // justify-ignore-error: modeled as Unavailable with an explicit reread.
-                onUnavailable()
-                return@launch
-            }
-            onReady(nominalSp)
-        }
-    }
-
-    fun write(nominalSp: Int, onCommitted: () -> Unit, onFailed: () -> Unit) {
-        scope.launch {
-            try {
-                dataStore.updateData { nominalSp }
-            } catch (_: IOException) { // justify-ignore-error: modeled as a failed write; the prior value stays committed.
-                onFailed()
-                return@launch
-            }
-            onCommitted()
-        }
-    }
-
-    fun close() {
-        scope.cancel()
+    private fun set(next: TerminalTextSizeState) {
+        state = next
+        changed()
     }
 }

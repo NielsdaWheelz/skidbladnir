@@ -532,10 +532,9 @@ submit through the machine's existing `inventoryOperation.submitMutation`:
   a successful read or the existing access/reset lifecycle retires it. checking
   remains dismissible, rather than trapping the user in an offline modal.
 
-centralize rename-specific metadata fences into `pendingMetadataFences` and
-semantic require/clear helpers used by rename and group. retain
-the controller's per-machine `InventoryOperationLane` map, `AwaitedInventoryReads`,
-generations, and credentials as current owners. no copied lane logic, second fence map, or generic mutation
+rename and group share one metadata fence per machine (`Reservation.Metadata`,
+`settleMetadata`) in `Machines.kt`, which owns the per-machine serial lanes,
+awaited reads and poll scopes. no copied lane logic, second fence map, or generic mutation
 framework. rename retains its name-conflict reconciliation; group uses last-write
 semantics. recreation discards editor/network state and re-lists without sending.
 

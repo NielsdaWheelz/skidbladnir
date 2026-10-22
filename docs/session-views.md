@@ -215,8 +215,8 @@ settle the queue projection and anchor from those matched outcomes, using the
 existing read-sequence and completion callbacks. admit inventory and its attention
 projection together; retain the preceding admitted sample while its successor
 joins the store. do not consume restoration or show a settled empty queue in that
-intermediate state. completion callbacks may settle a pull only for their current
-credential generation and poll runtime; an old runtime still releases its own lane.
+intermediate state. completion callbacks may settle a pull only inside their
+machine's current poll scope; a cancelled poll still releases its own lane.
 this adds no poll or store and does not make failed hosts wait for recovery.
 
 the dashboard overflow's `machines` item opens one small machine sheet under

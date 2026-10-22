@@ -2,7 +2,6 @@ package dev.niels.skidbladnir
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable internal enum class TerminalActivity {
     @SerialName("starting") Starting, @SerialName("working") Working, @SerialName("idle") Idle, @SerialName("unknown") Unknown,
@@ -18,13 +17,6 @@ import kotlinx.serialization.json.decodeFromJsonElement
 @Serializable internal enum class TerminalStatusSource {
     @SerialName("terminal") Terminal, @SerialName("unavailable") Unavailable,
 }
-@Serializable internal enum class TerminalStatusReason {
-    @SerialName("recognized") Recognized, @SerialName("partial") Partial, @SerialName("layout_unknown") LayoutUnknown,
-    @SerialName("evidence_clipped") EvidenceClipped, @SerialName("evidence_conflict") EvidenceConflict,
-    @SerialName("provider_unrecognized") ProviderUnrecognized, @SerialName("remote_context") RemoteContext,
-    @SerialName("foreground_changed") ForegroundChanged, @SerialName("observation_timeout") ObservationTimeout,
-    @SerialName("capture_failed") CaptureFailed, @SerialName("process_failed") ProcessFailed,
-}
 
 /** One screen observation, as the host sent it; sessions.TerminalStatus owns the legal combinations. */
 @Serializable internal data class TerminalStatus(
@@ -32,14 +24,11 @@ import kotlinx.serialization.json.decodeFromJsonElement
     val interaction: TerminalInteraction,
     val notice: TerminalNotice,
     val source: TerminalStatusSource,
-    val reason: TerminalStatusReason,
 )
 @Serializable internal enum class TerminalWriteOutcome {
     @SerialName("written") Written, @SerialName("unknown") Unknown,
 }
-@Serializable internal data class TerminalWriteResult(val method: String, val outcome: TerminalWriteOutcome) {
-    init { require(method == "terminal") }
-}
+@Serializable internal data class TerminalWriteResult(val outcome: TerminalWriteOutcome)
 @Serializable internal enum class TerminalInterrupt {
     @SerialName("written") Written, @SerialName("not_sent") NotSent, @SerialName("unknown") Unknown,
 }
@@ -47,17 +36,6 @@ import kotlinx.serialization.json.decodeFromJsonElement
     @SerialName("closed") Closed, @SerialName("not_closed") NotClosed, @SerialName("unknown") Unknown,
 }
 @Serializable internal data class TerminalCloseResult(val interrupt: TerminalInterrupt, val terminal: TerminalClosure)
-@Serializable private data class TerminalControlRequest(val identityToken: String, val paneId: String)
-
-internal fun encodeTerminalControlRequest(target: SessionTarget): String = productJson.encodeToString(
-    TerminalControlRequest.serializer(), TerminalControlRequest(target.session.identityToken, target.session.activePaneId),
-)
-internal fun decodeTerminalWriteResult(encoded: String): TerminalWriteResult = decodeProtocol {
-    productJson.decodeFromJsonElement<TerminalWriteResult>(strictJsonObject(encoded))
-}
-internal fun decodeTerminalCloseResult(encoded: String): TerminalCloseResult = decodeProtocol {
-    productJson.decodeFromJsonElement<TerminalCloseResult>(strictJsonObject(encoded))
-}
 internal fun terminalStopMessage(result: TerminalWriteResult): String = when (result.outcome) {
     TerminalWriteOutcome.Written -> "interrupt key sent; stopping is unconfirmed."
     TerminalWriteOutcome.Unknown -> TERMINAL_INPUT_UNKNOWN
