@@ -156,7 +156,7 @@ One input, `canForge: Boolean`; pressed comes from the interaction source.
 Cold changes hue *and* field, not opacity alone — §12's required non-opacity
 cue. The perceptual work is done by the metal, not the field; see the rubric.
 Lit is the only appearance of `ForgeGlow` outside the Forge sheet, and it
-reports a fact the app holds (`MachineState.canForge`), never activity.
+reports a fact the app holds (`MachineState.canMutate`), never activity.
 
 ### Placement and semantics
 
@@ -419,9 +419,9 @@ Status as run on 2026-08-27, from the Linux devbox with the S22+ attached:
   instantly distinguishable from a struck seal; the last grid row is never
   occluded when the grid is full; the seal is reachable one-handed. The debug
   `SealGalleryActivity` — already the named instrument for pairwise seal
-  distinguishability (dwarf-seals.md) — now leads with the lit and cold seals,
-  so the struck/unstruck and lit/cold comparisons are real side-by-sides rather
-  than memory.
+  distinguishability (dwarf-seals.md) — then led with the lit and cold seals,
+  so the struck/unstruck and lit/cold comparisons were real side-by-sides rather
+  than memory. the gallery was deleted 2026-10-21 ([dwarf-seals](dwarf-seals.md#acceptance-and-gates)).
 - Integration, live, tmux, and host gates are not required — those boundaries
   are byte-identical. Do not invoke them.
 

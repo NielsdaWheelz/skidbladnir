@@ -44,21 +44,13 @@ internal fun fleetConnectContent(state: SkidbladnirUiState.FleetConnect): FleetC
             FleetConnectMode.Install -> "Connect your fleet"
             FleetConnectMode.Reconnect -> "Reconnect fleet"
         },
-        body = when (state.resetReason) {
-            FleetResetReason.StoredIndexUnreadable ->
-                "The saved machine list is unreadable. Reset the app’s data, then connect again."
-            FleetResetReason.StoredPairingsUnreadable ->
-                "Saved pairing details are unreadable. Reset the app’s data, then connect again."
-            FleetResetReason.InviteIdentityMismatch ->
-                "This invite names different machines. Go back to keep the installed fleet, or reset the app’s data to replace it."
-            FleetResetReason.StoredFleetUnusable ->
-                "Saved fleet credentials cannot be repaired in this app. Reset the app’s data, then connect again."
-            null -> when (state.mode) {
-                FleetConnectMode.Install ->
-                    "Sign in to Tailscale, then scan a fresh fleet invite from a connected computer."
-                FleetConnectMode.Reconnect ->
-                    "Scan a fresh invite from a computer in the same fleet to reconnect this phone."
-            }
+        body = if (state.phase == FleetConnectPhase.ResetRequired) {
+            "Saved pairing details are unreadable. Reset the app’s data, then connect again."
+        } else when (state.mode) {
+            FleetConnectMode.Install ->
+                "Sign in to Tailscale, then scan a fresh fleet invite from a connected computer."
+            FleetConnectMode.Reconnect ->
+                "Scan a fresh invite from a computer in the same fleet to reconnect this phone."
         },
         primaryAction = if (state.phase == FleetConnectPhase.ResetRequired) null else when (state.mode) {
             FleetConnectMode.Install -> "Connect"

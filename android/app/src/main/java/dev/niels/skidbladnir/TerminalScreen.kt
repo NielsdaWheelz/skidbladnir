@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import android.view.WindowInsets as PlatformWindowInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,8 +23,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -281,7 +282,7 @@ private fun TerminalRail(
             Box(
                 modifier = Modifier
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Chip),
                         role = Role.Button,
                         onClick = onDetach,
@@ -296,7 +297,7 @@ private fun TerminalRail(
                 modifier = Modifier
                     .weight(1f)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Chip),
                         role = Role.Button,
                         onClickLabel = "open session actions",
@@ -655,7 +656,14 @@ private fun ReconnectPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
             ) {
-                BackToDwarvesContent()
+                // LocalContentColor, not a fixed accent, so the drawn mark dims with the
+                // button when it is disabled (design-language.md §12).
+                HlidskjalfMark(
+                    color = LocalContentColor.current,
+                    markSize = 18.dp,
+                    modifier = Modifier.padding(end = ButtonDefaults.IconSpacing),
+                )
+                Text("Back to Dwarves")
             }
         }
     }

@@ -107,13 +107,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    sourceSets.getByName("debug") {
-        // The debug-only seal gallery shares the production renderer and reads the
-        // canonical catalogue straight from the repo — no copied snapshot.
-        assets.srcDir(rootProject.file("../catalog"))
-    }
-
 }
 
 gradle.taskGraph.whenReady {

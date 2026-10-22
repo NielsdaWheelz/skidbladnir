@@ -57,12 +57,12 @@ internal sealed interface DirectorySearchState {
 }
 
 internal fun workingDirectoryChoices(forge: ForgeState, machine: MachineState?): List<WorkingDirectoryPath> {
-    if (forge.pending || forge.surface != ForgeSurface.Form || machine?.canForge != true ||
+    if (forge.pending || forge.surface != ForgeSurface.Form || machine?.canMutate != true ||
         machine.machine.handle != forge.form.machineHandle) return emptyList()
     return when (classifyWorkingDirectory(forge.form.cwd)) {
         WorkingDirectoryInput.Home -> {
             val home = checkNotNull(WorkingDirectoryPath.parse("~"))
-            // canForge guarantees Fresh; Kotlin cannot narrow through the derived property.
+            // canMutate guarantees Fresh; Kotlin cannot narrow through the derived property.
             val inventory = (machine.inventory as InventoryState.Fresh).snapshot.inventory
             listOf(home) + inventory.sessions.asSequence()
                 .filter { it.connection == null }

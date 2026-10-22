@@ -168,8 +168,9 @@ delete the retired drawing helpers; no seal caching layer.
 
 the historical 48dp crest-only hands-on check was not performed. it is superseded
 by [compact roster](dashboard-compact-roster.md)'s recognition and scaling
-acceptance. the existing debug gallery shares the production renderer; no
-separate 48dp acceptance path remains in the target. current verification uses
+acceptance. the debug seal gallery was deleted 2026-10-21; restore it from git
+history for a seal redesign. no separate 48dp acceptance path remains in the
+target. current verification uses
 [testing policy](rules.md#testing), not the retired platform gate.
 
 ## Non-goals
