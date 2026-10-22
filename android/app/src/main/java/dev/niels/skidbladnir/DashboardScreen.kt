@@ -31,7 +31,6 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -65,13 +64,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.progressBarRangeInfo
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -348,10 +340,7 @@ private fun DwarfCollectionPullIndicator(
     when {
         isRefreshing && !motionEnabled -> LinearProgressIndicator(
             progress = { 1f },
-            modifier = indicatorModifier.semantics {
-                contentDescription = "Checking tmux sessions"
-                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
-            },
+            modifier = indicatorModifier,
             color = Gold,
             trackColor = Color.Transparent,
             strokeCap = StrokeCap.Butt,
@@ -359,9 +348,7 @@ private fun DwarfCollectionPullIndicator(
             drawStopIndicator = {},
         )
         isRefreshing -> LinearProgressIndicator(
-            modifier = indicatorModifier.semantics {
-                contentDescription = "Checking tmux sessions"
-            },
+            modifier = indicatorModifier,
             color = Gold,
             trackColor = Color.Transparent,
             strokeCap = StrokeCap.Butt,
@@ -469,10 +456,7 @@ private fun DashboardDwarfGrid(
                             val label = item.label?.text ?: "unassigned"
                             Text(label, fontFamily = NidavellirType.Data, color = Muted,
                                 style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.fillMaxWidth().semantics {
-                                    heading()
-                                    contentDescription = label
-                                }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                modifier = Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         is DashboardItem.Session -> {
                             val visible = item.visible
@@ -523,7 +507,7 @@ internal fun DashboardTopBar(
             overflow = TextOverflow.Ellipsis,
         )
         ActionMenuButton(
-            spokenName = "dashboard options",
+            description = "dashboard options",
             actions = listOf(
                 MenuAction("machines", enabled = true, destructive = false, onMachines),
                 MenuAction("notification settings", enabled = true, destructive = false, onNotificationSettings),
@@ -566,14 +550,12 @@ internal fun DashboardViewStrip(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .selectableGroup()
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 views.forEach { choice ->
                     key(choice.key) {
                         val selected = choice.key == view.key
-                        val named = choice is DashboardViewSelection.Named
                         val label = choice.displayLabel()
                         Box(
                             modifier = Modifier
@@ -582,20 +564,17 @@ internal fun DashboardViewStrip(
                                 .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier)
                                 .selectable(
                                     selected = selected,
-                                    role = Role.Tab,
                                     interactionSource = null,
                                     indication = AngularIndication(NidavellirShapes.Chip),
                                     onClick = { onSelect(choice) },
-                                )
-                                .semantics { contentDescription = if (named) "group: $label" else label },
+                                ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Surface(
                                 color = if (selected) RaisedSurface else Color.Transparent,
                                 shape = NidavellirShapes.Chip,
                                 border = if (selected) BorderStroke(1.dp, Gold) else null,
-                                modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 32.dp)
-                                    .clearAndSetSemantics {},
+                                modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 32.dp),
                             ) {
                                 Text(
                                     label, color = if (selected) Gold else Bone,
@@ -677,7 +656,6 @@ internal fun DashboardMachineSheet(
                 Text(
                     "machines", style = MaterialTheme.typography.headlineSmall,
                     fontFamily = NidavellirType.Display, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.semantics { heading() },
                 )
                 machines.forEach { machine ->
                     key(machine.machine.handle) {

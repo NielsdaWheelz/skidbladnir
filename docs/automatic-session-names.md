@@ -82,12 +82,12 @@ the content designer owns these literals and their phone/desktop placement:
 | uncertain write | `name change outcome unknown. checking tmux.` |
 
 good content states the effect and names the actual target. retain the existing
-two-line card name, ellipsis, full accessible label, literal machine context,
+two-line card name, ellipsis, literal machine context,
 48dp controls and inline errors. no second session name, success toast, new icon
 or announcement on every title tick. retain recorded native conversation-id
 disclosure; it describes a separate control target, not another session name.
-the terminal rail gives the name its weighted space and ellipsizes it visually
-while the spoken name stays complete; rename lives in the session sheet
+the terminal rail gives the name its weighted space and ellipsizes it; rename
+lives in the session sheet
 ([terminal chrome](terminal-chrome.md)). do not force a terminal size or shrink
 text.
 

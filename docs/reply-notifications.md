@@ -234,8 +234,8 @@ collection predicate/order referenced below, while preserving this document's
 ready transitions, identities, store and visit contract. source implements the
 queue; current errors/interruptions gain no acknowledgement state.
 
-retain one status projection per client for cards/table, detail, terminal session sheet
-and accessibility. show green `ready` only with committed state ready, an exact
+retain one status projection per client for cards/table, detail and terminal
+session sheet. show green `ready` only with committed state ready, an exact
 matching local foreground, fresh idle + interaction none, and no local visit.
 requests, menus and current error/interruption notices keep observation §6's
 priority. a notice can hide ready without consuming it. unknown, unavailable,
@@ -315,7 +315,7 @@ and real output acknowledgement. replay the default-footer codex work -> streami
 unknown -> settled idle sequence through attention. use both providers for the
 real terminal journey and record the actual host/device boundary. verify a visible
 ready, uncertainty hiding/restoration, request/notice priority and a consumed ready
-without losing the inferred accessibility label or no-color meaning.
+without losing the no-color meaning.
 
 live tmux/provider and physical-phone operations require explicit current-turn
 approval under `AGENTS.md`; this specification does not authorize them. tmux

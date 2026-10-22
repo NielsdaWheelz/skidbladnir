@@ -488,16 +488,15 @@ the initial has fixed artwork dimensions while meaningful text scales.
   [compact roster](dashboard-compact-roster.md). machine
   context appears in every view. its verbs sit behind a drawn three-stud overflow whose menu is
   RaisedSurface, Card cut, shadowless, with Ember destructive rows after a
-  hairline rule. [session card](session-card.md) retains actions and speech.
+  hairline rule. [session card](session-card.md) retains actions.
   Global grid order is architecture-owned.
 - **status line**: unboxed; a leading status facet, then the literal sampled
   status label, bold in the status tone, and an optional Muted detail, Data
   face ≥ 11sp. no transition age or unread signal. the terminal-inference
-  qualifier is spoken, not drawn. a plain pane reads `terminal`; stale
-  accessibility names the last observation.
+  qualifier is not drawn on cards. a plain pane reads `terminal`.
 - **status facet**: 12dp `Chip` shape, solid status color, no border, text or
   semantics, inline as the status line's first glyph. the §12 spinner requires
-  fresh working status; the named label owns meaning and accessibility.
+  fresh working status; the named label owns meaning.
 - **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
   ends, transparent track, horizontally inset 12dp at the collection's top
   edge. Determinate while pulling and indeterminate while checking; absent at
@@ -531,9 +530,9 @@ the initial has fixed artwork dimensions while meaningful text scales.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
   slice), keys 4dp cut, mono labels, equal 48dp-minimum cells with 2dp grid
-  gaps, and spoken Ctrl/Alt semantics owned by
+  gaps, and Ctrl/Alt behaviour owned by
   [terminal-key-deck.md](terminal-key-deck.md). Each armed modifier uses Gold
-  18% fill + Gold label + selected semantics.
+  18% fill + Gold label.
 - **Pressure rail**: RaisedSurface card, 10dp cuts, one split-colour header, one
   horizontally scrolling non-wrapping flat Data-face metric row, then the
   unchanged 16dp categorical history band with no title. The machine name is
@@ -552,7 +551,19 @@ deck's dense aligned grid uses its reviewed 2dp gaps without shrinking targets;
 11sp. Every text/surface pair in this document ≥ 4.5:1 except the two
 declared fill/de-emphasis slots (ANSI black, brightBlack), which never carry
 prose. Reduced-motion fallbacks per §12. Ornament is always
-`contentDescription`-silent decoration; semantics live on the literal labels.
+`contentDescription`-silent decoration.
+
+The phone has no screen-reader support (owner cut, 2026-10-21). It ships no
+curated narration, custom actions, roles, headings, live regions, traversal
+order, state descriptions or terminal wheel actions; TalkBack gets only
+Compose's merged visible text. xterm's `screenReaderMode` stays on only
+because it also selects the ime input path every phone qualification ran on.
+Labels carry no bidi isolates,
+so an rtl machine, group or folder name may reorder neighbouring punctuation;
+paths keep their explicit left-to-right direction. Drawn
+controls with no text keep a `contentDescription`: the overflow studs and the
+Forge seal. Spoken, TalkBack and Switch Access requirements in other specs no
+longer bind; their recorded verification is history.
 
 ## 15. The forbidden list
 

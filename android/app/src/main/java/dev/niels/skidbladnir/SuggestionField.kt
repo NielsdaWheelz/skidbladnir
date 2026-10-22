@@ -27,10 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -118,8 +114,7 @@ internal fun SuggestionField(
             },
         )
         message?.let {
-            Text(it, color = if (invalid) Ember else Muted,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            Text(it, color = if (invalid) Ember else Muted)
         }
         if (expanded && enabled) {
             LazyColumn(
@@ -134,23 +129,21 @@ internal fun SuggestionField(
 
 @Composable
 internal fun SuggestionChoice(
-    description: String,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     TextButton(
         onClick = onClick,
         shape = NidavellirShapes.Chip,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            .minimumInteractiveComponentSize().semantics { contentDescription = description },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).minimumInteractiveComponentSize(),
     ) {
         content()
     }
 }
 
 @Composable
-internal fun SuggestionTextChoice(label: String, description: String, onClick: () -> Unit) {
-    SuggestionChoice(description, onClick) {
+internal fun SuggestionTextChoice(label: String, onClick: () -> Unit) {
+    SuggestionChoice(onClick) {
         Text(label, color = Bone, fontFamily = NidavellirType.Data, maxLines = 1,
             overflow = TextOverflow.Ellipsis)
     }

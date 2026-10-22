@@ -417,7 +417,6 @@ original launch policy.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 - [terminal chrome](terminal-chrome.md): source implemented 2026-10-02; open:
-  [frozen announcement](issues/terminal-frozen-announcement.md),
   [keyboard resize churn](issues/terminal-resize-churn.md) and
   [landscape with the keyboard](issues/terminal-landscape-keyboard.md).
 

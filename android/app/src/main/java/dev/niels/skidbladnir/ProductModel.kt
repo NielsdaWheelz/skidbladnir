@@ -630,8 +630,6 @@ internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeFor
         launch = proposed.launch.takeIf { it == LaunchChoice.Terminal },
     )
 
-internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
-
 /**
  * Single owner of destructive copy: the close confirmation's title and body name the verb and its
  * exact target from this one string, so the dialog cannot name a different session from the one acted on.
@@ -1131,7 +1129,7 @@ internal enum class SessionQueueCategory { Ready, Action, Excluded }
 // `detail` tells one session's state from another's; `evidence` names how status was
 // known. The card shows only the first, since the qualifier is the same on every agent card.
 internal data class SessionStatusContent(
-    val label: String, val accessibilityLabel: String, val detail: String?, val evidence: String?,
+    val label: String, val detail: String?, val evidence: String?,
     val tone: SessionStatusTone, val secondary: String?, val queueCategory: SessionQueueCategory,
     val detailExplainsQueue: Boolean,
 )
@@ -1198,9 +1196,6 @@ internal fun sessionStatusContent(
     } else session.activeCommand.takeIf { !inferred && session.connection == null }
     return SessionStatusContent(
         label,
-        label + (queueNotice?.let { "; $it" } ?: "") + (if (workContinues) "; work continues" else "") +
-            (if (inferred) "; inferred from terminal" else detail?.let { "; $it" } ?: "") +
-            (secondary?.let { "; $it" } ?: ""),
         detail,
         if (inferred) "inferred from terminal" else null,
         if (fresh) tone else SessionStatusTone.Muted, secondary, queueCategory,

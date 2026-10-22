@@ -476,12 +476,11 @@ under [compact roster](dashboard-compact-roster.md), `all` retains nonempty full
 unassigned; selected named/unassigned views omit the repeated heading.
 the queue is flat so group headings cannot disrupt ready-first ordering.
 
-each card offers `change group` as the first row of its overflow menu and its
-first TalkBack custom action ([session card](session-card.md#actions)), not as a
-visible card button. never shrink text/touch targets. card-body tap still opens
-terminal. the action neither attaches nor invokes the card tap. it is spoken in
-the card's context, which names session and host; the heading, selected group
-tab or needs-input group line names membership. editing is dashboard-only;
+each card offers `change group` as the first row of its overflow menu
+([session card](session-card.md#actions)), not as a visible card button. never
+shrink text/touch targets. card-body tap still opens terminal. the action
+neither attaches nor invokes the card tap. the heading, selected group tab or
+needs-input group line names membership. editing is dashboard-only;
 terminal chrome gains no control.
 
 use controller-owned drafts and ordinary transient compose state, never
@@ -499,7 +498,7 @@ lengthening the form.
 
 follow [design-language.md](design-language.md): literal labels, existing body/data
 faces and surfaces, quiet headings, gold selection, 48dp actions, existing spacing,
-full spoken labels despite ellipsis, heading semantics, and no new animation.
+and no new animation.
 terminal sizing, input, back, detach, and provider presentation stay unchanged.
 
 controller owns one optional dashboard editor, mutually exclusive with forge and

@@ -40,8 +40,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDirection
@@ -168,16 +166,8 @@ private fun ForgeFormContent(
                                 actions.updateDraft { it.copy(machineHandle = machine.machine.handle) }
                             },
                             enabled = !state.pending && machine.canMutate,
-                            label = {
-                                Text(
-                                    bidiIsolate(forgeMachineChoiceLabel(machine)),
-                                    fontFamily = NidavellirType.Data,
-                                )
-                            },
+                            label = { Text(forgeMachineChoiceLabel(machine), fontFamily = NidavellirType.Data) },
                             shape = NidavellirShapes.Chip,
-                            modifier = Modifier.semantics {
-                                contentDescription = forgeMachineChoiceLabel(machine)
-                            },
                         )
                     }
                 }
@@ -188,7 +178,7 @@ private fun ForgeFormContent(
                     )
                 } else {
                     Text(
-                        "Launch on ${bidiIsolate(selected.machine.label.text)}",
+                        "Launch on ${selected.machine.label.text}",
                         color = Muted,
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -214,13 +204,7 @@ private fun ForgeFormContent(
                         )
                     }
                     forgeUnavailableCopy(selected)?.let { notice ->
-                        Text(
-                            bidiIsolate(notice.message),
-                            color = noticeToneColor(notice.tone),
-                            modifier = Modifier.semantics {
-                                contentDescription = notice.message
-                            },
-                        )
+                        Text(notice.message, color = noticeToneColor(notice.tone))
                     }
                 }
                 OutlinedTextField(
@@ -291,19 +275,13 @@ private fun ForgeFormContent(
         Button(
             onClick = actions.submit,
             enabled = state.admissibleSubmission() != null && selected?.canMutate == true,
-            modifier = Modifier.fillMaxWidth().semantics {
-                contentDescription = selected?.let { forgeActionLabel(it.machine.label) }
-                    ?: "Choose a machine"
-            },
+            modifier = Modifier.fillMaxWidth(),
         ) {
             if (state.pending) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
             }
-            Text(
-                selected?.let { "Create on ${bidiIsolate(it.machine.label.text)}" }
-                    ?: "Choose a machine",
-            )
+            Text(selected?.let { "Create on ${it.machine.label.text}" } ?: "Choose a machine")
         }
     }
 }
@@ -325,8 +303,7 @@ private fun DirectoryField(
     val paths = workingDirectoryChoices(state, machine)
     SuggestionField(
         text = state.form.cwd,
-        label = machine?.let { "directory on ${bidiIsolate(it.machine.label.text)}" }
-            ?: "directory",
+        label = machine?.let { "directory on ${it.machine.label.text}" } ?: "directory",
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = NidavellirType.Data,
             textDirection = TextDirection.Ltr),
         enabled = enabled,
@@ -366,18 +343,14 @@ private fun DirectoryField(
         }
         // Saveable viewport keys contain no paths; acceptance uses the exact domain value.
         itemsIndexed(paths, key = { ordinal, _ -> "path:$ordinal" }) { _, path ->
-            val description = if (path.encoded == "~") "home (~)" else path.encoded
-            val spoken = "$description on ${machine?.machine?.label?.text}. select working directory."
             if (path.encoded == "~") {
-                SuggestionTextChoice(description, spoken, { choose(path.encoded) })
+                SuggestionTextChoice("home (~)", { choose(path.encoded) })
             } else {
-                SuggestionChoice(spoken, { choose(path.encoded) }) {
-                    WorkingDirectoryPathLine(path.encoded, Modifier.fillMaxWidth(), contentDescription = null)
+                SuggestionChoice({ choose(path.encoded) }) {
+                    WorkingDirectoryPathLine(path.encoded, Modifier.fillMaxWidth())
                 }
             }
         }
-        item(key = "browse") {
-            SuggestionTextChoice("browse home", "browse home on ${machine?.machine?.label?.text}", onBrowse)
-        }
+        item(key = "browse") { SuggestionTextChoice("browse home", onBrowse) }
     }
 }

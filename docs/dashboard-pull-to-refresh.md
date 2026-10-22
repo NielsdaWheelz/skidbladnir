@@ -107,7 +107,7 @@ are consumed unchanged.
    pull gesture. horizontal view-strip scrolling cannot trigger it because
    the strip remains outside the pull owner.
 8. Programmatic and pulled verification use one progress surface. It is
-   visible and exposes indeterminate progress semantics, but no click action.
+   visible and has no click action.
 9. Success is quiet: no toast, snackbar, timestamp, haptic, or card-reorder
    animation is added.
 10. if the accepted fleet has no live polling target, no indicator starts and

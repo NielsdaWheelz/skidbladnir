@@ -37,11 +37,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
@@ -53,9 +48,8 @@ import androidx.compose.ui.unit.dp
 
 // The compact roster card (docs/dashboard-compact-roster.md): work and status
 // lead, the dwarf signature flows beside status, and context uses the full
-// footer width. Verbs live behind the overflow. The clickable body owns the
-// card's whole spoken account in one node; the
-// overflow is its only sibling. M3's `Card(onClick)` hardcodes its ripple, so
+// footer width. Verbs live behind the overflow, the clickable body's only
+// sibling. M3's `Card(onClick)` hardcodes its ripple, so
 // the body is a plain clickable with the angular press flash
 // (docs/chrome-tokens.md "Interaction states").
 @OptIn(ExperimentalLayoutApi::class)
@@ -102,22 +96,6 @@ internal fun SessionCard(
     val density = LocalDensity.current
     val facetSize = with(density) { 12.dp.toSp() }
     val nameLineHeight = with(density) { MaterialTheme.typography.titleSmall.lineHeight.toDp() }
-    val spoken = buildString {
-        append("${session.tmuxName}. ${status.accessibilityLabel}. ${session.character.displayName}. ")
-        append(
-            when (context) {
-                is ExecutionContext.Local -> "Machine $terminalMachine."
-                is ExecutionContext.Remote -> "Running on ${context.machine.label.text}. Terminal on $terminalMachine."
-                ExecutionContext.RemoteUnknown -> "Remote context unknown. Terminal on $terminalMachine."
-            },
-        )
-        profile?.let { append(" Profile $it.") }
-        directory?.let { append(" Directory $it.") }
-        if (directory == null && context is ExecutionContext.Remote) append(" Directory unavailable.")
-        if (needsInputView) append(" Group: ${session.group?.text ?: "unassigned"}.")
-        availability?.let { append(" ${it.label}.") }
-        session.objective?.let { append(" Objective: $it") }
-    }
     Surface(color = DeepSurface, shape = NidavellirShapes.Card) {
         Box(Modifier.drawBehind { drawRect(Gold.copy(alpha = 0.25f), size = size.copy(height = 1.dp.toPx())) }) {
             Column(
@@ -127,18 +105,8 @@ internal fun SessionCard(
                         interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Card),
                         enabled = machine.canMutate,
-                        onClickLabel = "open terminal",
                         onClick = onOpen,
                     )
-                    .clearAndSetSemantics {
-                        contentDescription = spoken
-                        customActions = actions.filter(MenuAction::enabled).map { action ->
-                            CustomAccessibilityAction(action.label) {
-                                action.perform()
-                                true
-                            }
-                        }
-                    }
                     .padding(horizontal = 8.dp, vertical = CardVerticalPadding),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -255,7 +223,7 @@ internal fun SessionCard(
                 }
             }
             ActionMenuButton(
-                spokenName = "session actions for ${session.tmuxName} on $terminalMachine",
+                description = "session actions for ${session.tmuxName} on $terminalMachine",
                 actions = actions,
                 modifier = Modifier.align(Alignment.TopEnd),
                 markCenterY = CardVerticalPadding + nameLineHeight / 2,
@@ -297,7 +265,7 @@ internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileCho
 }
 
 // The status line's leading facet: colour-only decoration beside the literal
-// label, which owns meaning and speech. Fresh working status alone turns its
+// label, which owns meaning. Fresh working status alone turns its
 // notch (design-language.md §12).
 @Composable
 private fun ActivityFacet(
@@ -358,10 +326,7 @@ internal fun DwarfPortrait(character: CharacterSummary) {
     Box(
         modifier = Modifier
             .size(36.dp)
-            .clip(NidavellirShapes.Octagon)
-            .semantics {
-                contentDescription = "Portrait of ${character.displayName}"
-            },
+            .clip(NidavellirShapes.Octagon),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {

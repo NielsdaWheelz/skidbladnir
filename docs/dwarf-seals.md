@@ -45,9 +45,8 @@ process recreation, reinstall, and gateway restart.
   identity, and requires reopening this document — never a silent tweak.
 - **Angular only**: monoline rune strokes with butt caps and miter joins;
   straight segments and 45° facets; no curve anywhere in the seal.
-- Runes are ornament, never text (design language §8): the bind-rune carries
-  no `contentDescription` of its own; the semantics stay
-  "Portrait of <displayName>" exactly as today.
+- Runes are ornament, never text (design language §8): the seal carries no
+  `contentDescription`; the dwarf name beside it is the text.
 - The catalogue stays frozen; this delta reads it, never edits it.
 
 ## Capability contract
@@ -125,7 +124,7 @@ zigzag teeth, depth from `beardDepthStep`) → bind-rune (shared stave y
 → octagon frame (base edge stroke in a neutral dark, Gold on the edges set
 in `facetMask`) → Bone initial (first character of `displayName`, Display
 face, bottom-right). The composable's size and card layout are unchanged
-from today; the existing `contentDescription` stays.
+from today.
 
 ## Hard cut
 
@@ -155,9 +154,8 @@ Red (each observed failing first):
    all catalogue keys yield pairwise-distinct `SealSpec` tuples — run in
    routine verification with the same formulas transcribed; a formula drift
    between script and Kotlin is caught by the golden vectors.
-4. Compose test: every card renders a seal for its required character and
-   keeps `contentDescription = "Portrait of <displayName>"`; no code path
-   renders the retired circle portrait.
+4. Compose test: every card renders a seal for its required character; no
+   code path renders the retired circle portrait.
 
 Green: implement only enough to pass; routine `scripts/test verify` stays
 green and device-free.

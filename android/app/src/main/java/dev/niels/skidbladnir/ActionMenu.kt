@@ -20,15 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// A surface lists its actions once. Menus and the session card's TalkBack
-// actions read that list, so order, label, enablement and tone cannot drift
-// between what is seen and what is spoken.
+// A surface lists its actions once, and its menu or sheet renders that list
+// through `ActionRows`, so order, label, enablement and tone have one source.
 internal class MenuAction(
     val label: String,
     val enabled: Boolean,
@@ -51,6 +49,7 @@ internal fun terminalLifetimeActions(
 )
 
 // The overflow: a 48dp target carrying a drawn mark, and the menu it anchors.
+// The mark has no text, so `description` names the control.
 // Enablement is derived, never passed: the trigger is live while any verb is.
 // An open menu follows its list as it recomposes, so a fence that lands while
 // it is open disables items in place rather than closing or retargeting them.
@@ -58,7 +57,7 @@ internal fun terminalLifetimeActions(
 // a full 48dp square from the anchor's top.
 @Composable
 internal fun ActionMenuButton(
-    spokenName: String,
+    description: String,
     actions: List<MenuAction>,
     markCenterY: Dp,
     modifier: Modifier = Modifier,
@@ -73,10 +72,9 @@ internal fun ActionMenuButton(
                     interactionSource = null,
                     indication = AngularIndication(NidavellirShapes.Chip),
                     enabled = enabled,
-                    role = Role.Button,
                     onClick = { expanded = true },
                 )
-                .semantics { contentDescription = spokenName },
+                .semantics { contentDescription = description },
         ) {
             val color = when {
                 expanded -> Gold
@@ -128,7 +126,6 @@ internal fun ActionRows(actions: List<MenuAction>, dismiss: () -> Unit) {
                     interactionSource = null,
                     indication = AngularIndication(NidavellirShapes.Chip),
                     enabled = action.enabled,
-                    role = Role.Button,
                     onClick = {
                         dismiss()
                         action.perform()

@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -342,16 +341,11 @@ internal fun DrawScope.drawValknut(color: Color) {
 }
 
 // Every rendering of the mark in the app. It is decoration wherever it appears:
-// it clears its own subtree semantics so the literal label beside it carries
-// the whole meaning (ornament-pipeline.md "Ornament is silent and
-// subordinate").
+// the literal label beside it carries the whole meaning (ornament-pipeline.md
+// "Ornament is silent and subordinate").
 @Composable
 internal fun HlidskjalfMark(color: Color, markSize: Dp, modifier: Modifier = Modifier) {
-    Canvas(
-        modifier = modifier
-            .size(markSize)
-            .clearAndSetSemantics {},
-    ) {
+    Canvas(modifier.size(markSize)) {
         drawValknut(color)
     }
 }

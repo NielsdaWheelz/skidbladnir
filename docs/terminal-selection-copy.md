@@ -94,8 +94,7 @@ change.
   only while the page is live, visible, enabled, attached, window-focused, and
   selection-idle, acquires WebView focus and requests `WindowInsets.Type.ime()`.
   xterm's negotiated mouse protocol remains the sole authority for resulting
-  terminal input. An accessibility-wheel action during any selection
-  generation clears that selection and emits no wheel or terminal input.
+  terminal input.
 - Track the sole `Touch.identifier` and resolve every move and final coordinate
   from the matching touch, including `changedTouches` on end. Never index
   `touches[0]`. A second contact cancels and drains all touches before a new

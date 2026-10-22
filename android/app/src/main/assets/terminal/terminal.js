@@ -2,7 +2,6 @@
     "use strict";
 
     var terminalHost = document.getElementById("terminal");
-    var terminalStatus = document.getElementById("terminal-status");
     var pagePort = null;
     var pageFailed = false;
     var fitScheduled = false;
@@ -24,7 +23,7 @@
     var terminalTouchInteraction = null;
 
     window.addEventListener("message", acceptPagePort);
-    if (!terminalHost || !terminalStatus) {
+    if (!terminalHost) {
         failPage();
         return;
     }
@@ -48,6 +47,9 @@
         minimumContrastRatio: 3,
         rows: 8,
         scrollback: 1000,
+        // Kept for its input path, not for screen readers: it also selects
+        // xterm's keydown and insertText handling, which every phone IME
+        // qualification ran with.
         screenReaderMode: true,
         theme: {
             background: "#0c0d0f",
@@ -861,30 +863,6 @@
             if (document.visibilityState === "hidden") cancelGesture(true);
         }
 
-        function scroll(direction) {
-            if (disposed) return;
-            if (selectionGeneration !== null && !selectionGeneration.clearAcknowledged) {
-                cancelGesture(true);
-                return;
-            }
-            if (ownerTerminal.hasSelection()) {
-                failPage();
-                return;
-            }
-            cancelGesture(true);
-            var bounds = ownerScreen.getBoundingClientRect();
-            var rows = ownerTerminal.rows;
-            if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) ||
-                bounds.width <= 0 || bounds.height <= 0 ||
-                !Number.isFinite(rows) || rows <= 0) return;
-            var magnitude = Math.max(1, rows - 1);
-            sendWheelLines(
-                direction === "Backward" ? -magnitude : magnitude,
-                bounds.left + bounds.width / 2,
-                bounds.top + bounds.height / 2
-            );
-        }
-
         function dispose() {
             if (disposed) return;
             cancelGesture(false);
@@ -915,7 +893,6 @@
         return {
             cancel: function () { cancelGesture(true); },
             clearSelection: clearSelectionFromNative,
-            scroll: scroll,
             dispose: dispose
         };
     }
@@ -1110,7 +1087,6 @@
                 return;
             }
             terminal.write(bytes, function () {
-                terminalStatus.textContent = "Terminal connected";
                 send({ kind: "OutputApplied", sequence: payload.sequence });
             });
             return;
@@ -1132,12 +1108,6 @@
             isFontSizeCssPx(payload.fontSizeCssPx)) {
             terminal.options.fontSize = payload.fontSizeCssPx;
             scheduleFit();
-            return;
-        }
-        if (payload.kind === "Scroll" && exactObject(payload, ["kind", "direction"]) &&
-            (payload.direction === "Backward" || payload.direction === "Forward")) {
-            clearProvenKey();
-            terminalTouchInteraction.scroll(payload.direction);
             return;
         }
         if (payload.kind === "ClearSelection" && exactObject(payload, ["kind", "generation"]) &&

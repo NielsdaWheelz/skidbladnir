@@ -24,13 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -55,18 +48,8 @@ internal fun MachinePressureRail(
             .clickable(
                 interactionSource = null,
                 indication = AngularIndication(NidavellirShapes.Card),
-                role = Role.Button,
-                onClickLabel = content.actionLabel,
                 onClick = onOpenDetails,
-            )
-            .clearAndSetSemantics {
-                this[SemanticsProperties.Role] = Role.Button
-                contentDescription = content.accessibilitySummary
-                onClick(label = content.actionLabel) {
-                    onOpenDetails()
-                    true
-                }
-            },
+            ),
     ) {
         Column(
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -143,8 +126,7 @@ internal fun PressureHistoryBand(history: List<PressureHistorySample>) {
         modifier = Modifier
             .fillMaxWidth()
             .height(16.dp)
-            .padding(top = 5.dp)
-            .clearAndSetSemantics {},
+            .padding(top = 5.dp),
     ) {
         if (history.isEmpty()) return@Canvas
         val barWidth = size.width / history.size
@@ -190,7 +172,6 @@ internal fun MachinePressureDetails(
             style = MaterialTheme.typography.headlineSmall,
             fontFamily = NidavellirType.Display,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.semantics { heading() },
         )
         Text(text = content.summary, color = Muted)
         content.rows.forEach { row ->
@@ -227,9 +208,7 @@ internal fun MachinePressureDetails(
         }
         TextButton(
             onClick = onDismiss,
-            modifier = Modifier.align(Alignment.End).semantics {
-                contentDescription = content.dismissLabel
-            },
+            modifier = Modifier.align(Alignment.End),
         ) {
             Text("Dismiss")
         }
