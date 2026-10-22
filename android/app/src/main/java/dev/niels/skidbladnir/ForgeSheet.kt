@@ -1,7 +1,5 @@
 package dev.niels.skidbladnir
 
-import android.window.OnBackInvokedCallback
-import android.window.OnBackInvokedDispatcher
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
@@ -32,19 +30,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -102,29 +97,12 @@ internal fun ForgeSheet(
                     actions = actions.workingDirectory,
                     enabled = machines.singleOrNull {
                         it.machine.handle == surface.picker.machine.handle
-                    }?.canForge == true,
+                    }?.canMutate == true,
                     onReturnToField = { focusDirectoryOnReturn = true },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 )
             }
         }
-    }
-}
-
-@Composable
-internal fun ModalBackHandler(onBack: () -> Unit) {
-    val currentOnBack by rememberUpdatedState(onBack)
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val dispatcher = checkNotNull(view.findOnBackInvokedDispatcher()) {
-            "modal must be attached to a Back dispatcher"
-        }
-        val callback = OnBackInvokedCallback { currentOnBack() }
-        dispatcher.registerOnBackInvokedCallback(
-            OnBackInvokedDispatcher.PRIORITY_OVERLAY,
-            callback,
-        )
-        onDispose { dispatcher.unregisterOnBackInvokedCallback(callback) }
     }
 }
 

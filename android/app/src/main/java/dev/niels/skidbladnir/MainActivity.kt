@@ -14,30 +14,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
-
-private val NidavellirTypography = Typography().let { base ->
-    base.copy(
-        displayLarge = base.displayLarge.copy(fontFamily = NidavellirType.Display),
-        headlineLarge = base.headlineLarge.copy(fontFamily = NidavellirType.Display),
-        titleLarge = base.titleLarge.copy(fontFamily = NidavellirType.Display),
-    )
-}
-
-private val NidavellirMaterialShapes = Shapes(
-    small = NidavellirShapes.Chip,
-    medium = NidavellirShapes.Card,
-    large = NidavellirShapes.Sheet,
-)
 
 class MainActivity : ComponentActivity() {
     private lateinit var dashboardEntry: DashboardEntryState
@@ -116,11 +99,12 @@ class MainActivity : ComponentActivity() {
     internal fun notificationSetup() {
         val owner = applicationContext.notificationOwner()
         val view = owner.view.value
+        val unpaired = MachineStore(this).read().credentials.isEmpty()
         val instruction = when {
             view.health == NotificationHealth.Disabled -> "background push is optional. session management works without firebase."
             view.health == NotificationHealth.RestartRequired -> "stop skid in android app settings, then reopen it. your sessions and notification memory stay installed."
             view.health == NotificationHealth.Unconfigured -> "install the matching private android-push-credentials.json on the hub, then apply."
-            MachineStore(this).read().credentials.isEmpty() -> "connect this phone to a fleet to receive notifications."
+            unpaired -> "connect this phone to a fleet to receive notifications."
             view.health == NotificationHealth.ResetRequired ->
                 "reset notification memory to adopt the current observer. fleet pairings stay installed."
             view.health == NotificationHealth.PermissionBlocked -> "open notification settings to allow needs-input alerts."
@@ -133,7 +117,7 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton("close", null)
         when {
             view.health in setOf(NotificationHealth.Disabled, NotificationHealth.RestartRequired, NotificationHealth.Unconfigured) -> Unit
-            MachineStore(this).read().credentials.isEmpty() -> dialog.setPositiveButton("reconnect fleet") { _, _ ->
+            unpaired -> dialog.setPositiveButton("reconnect fleet") { _, _ ->
                 controller.requestFleetReconnect()
             }
             view.health == NotificationHealth.ResetRequired -> dialog.setPositiveButton("reset notification memory") { _, _ ->
@@ -168,59 +152,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun DashboardTerminalHost(
-    state: SkidbladnirUiState.Workspace,
-    entry: DashboardEntryState,
-    controller: SkidbladnirController,
-    onOpenTerminal: (SessionTarget) -> Unit,
-    onDetach: () -> Unit,
-    onNotificationSetup: () -> Unit,
-) {
-    val terminalVisible = when (state) {
-        is SkidbladnirUiState.Dashboard -> false
-        is SkidbladnirUiState.Terminal -> true
-    }
-    BackHandler(enabled = terminalVisible, onBack = onDetach)
-    when (state) {
-        is SkidbladnirUiState.Dashboard -> DashboardScreen(
-            state = state,
-            entry = entry,
-            controller = controller,
-            onOpenTerminal = onOpenTerminal,
-            onNotificationSetup = onNotificationSetup,
-        )
-        is SkidbladnirUiState.Terminal -> TerminalScreen(
-            state = state,
-            controller = controller,
-            onDetach = onDetach,
-        )
-    }
-}
-
-@Composable
-internal fun NidavellirTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Gold,
-            onPrimary = Ink,
-            secondary = Frost,
-            background = Ink,
-            onBackground = Bone,
-            surface = DeepSurface,
-            onSurface = Bone,
-            surfaceVariant = RaisedSurface,
-            onSurfaceVariant = Muted,
-            // Unread by app code; the slot stays for M3-internal error
-            // state such as text fields (destructive-chrome.md).
-            error = noticeToneColor(NoticeTone.Failure),
-        ),
-        shapes = NidavellirMaterialShapes,
-        typography = NidavellirTypography,
-        content = content,
-    )
-}
-
-@Composable
 internal fun SkidbladnirApp(
     controller: SkidbladnirController,
     dashboardEntry: DashboardEntryState,
@@ -236,6 +167,7 @@ internal fun SkidbladnirApp(
     BackHandler(
         enabled = state is SkidbladnirUiState.FleetConnect && fleetReconnectCanCancel(state),
     ) { controller.cancelFleetReconnect() }
+    BackHandler(enabled = state is SkidbladnirUiState.Terminal, onBack = controller::detachToSessions)
     if (state is SkidbladnirUiState.FleetConnect && state.phase == FleetConnectPhase.Scanning) {
         LaunchedEffect(state) {
             scanner.scan(
@@ -260,13 +192,17 @@ internal fun SkidbladnirApp(
             onConnect = controller::requestFleetScan,
             onTailscale = onTailscale,
         )
-        is SkidbladnirUiState.Workspace -> DashboardTerminalHost(
+        is SkidbladnirUiState.Dashboard -> DashboardScreen(
             state = state,
             entry = dashboardEntry,
             controller = controller,
             onOpenTerminal = controller::openTerminal,
-            onDetach = controller::detachToSessions,
             onNotificationSetup = onNotificationSetup,
+        )
+        is SkidbladnirUiState.Terminal -> TerminalScreen(
+            state = state,
+            controller = controller,
+            onDetach = controller::detachToSessions,
         )
     }
 }

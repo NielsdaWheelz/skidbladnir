@@ -240,7 +240,8 @@ the accepted fleet is empty; reachability never changes the selected view.
   forge follows the groups spec's prefill/unresolved-choice rules.
 - The controller is the sole restoration-readiness oracle: background lifecycle
   stop leaves pending state untouched; a foreground Ready/Reading machine with
-  no owned poller is a defect; modeled non-live outcomes may resolve empty.
+  no owned poller is a defect, unchecked at runtime, that would leave
+  restoration pending; modeled non-live outcomes may resolve empty.
 - Dashboard supplies only its ordered safe keys from one `LaunchedEffect` keyed
   to pending state, fleet/attention outcomes and those keys. That effect calls
   one controller command; the controller checks readiness and invokes
@@ -267,11 +268,11 @@ the accepted fleet is empty; reachability never changes the selected view.
   session keys remain the existing `DashboardCardKey` strings; headings have
   the comparison-only keys defined in groups. test tags remain selectors, not
   another lifetime identity.
-- Extract one production `DashboardTerminalHost` in `MainActivity.kt`. It owns
-  the closed destination switch and Terminal Back, renders the actual screens,
-  and receives required `onOpenTerminal` and `onDetach` events. Production binds
-  both to the controller; the Compose proof binds only those route events to its
-  local destination fixture. There is no slot, screen factory, or navigator.
+- `SkidbladnirApp` in `MainActivity.kt` owns the closed destination switch and
+  Terminal Back, renders the actual screens, and binds `onOpenTerminal` and
+  `onDetach` to the controller. (the separate `DashboardTerminalHost` this
+  bullet once extracted for a Compose proof was inlined 2026-10-21.) There is
+  no slot, screen factory, or navigator.
 - `DashboardScreen` receives `entry` and required `onOpenTerminal` and threads
   the latter to cards. `TerminalScreen` receives required `onDetach`; top
   Detach and reconnect-panel Dwarves use it. Neither event has a default.
@@ -281,17 +282,6 @@ the accepted fleet is empty; reachability never changes the selected view.
 this navigation owner adds no public api, terminal protocol, credential store,
 or dependency. the groups feature owns its separate host membership operation;
 its presence does not make terminal navigation a host responsibility.
-
-```kotlin
-@Composable
-internal fun DashboardTerminalHost(
-    state: SkidbladnirUiState.Workspace,
-    entry: DashboardEntryState,
-    controller: SkidbladnirController,
-    onOpenTerminal: (SessionTarget) -> Unit,
-    onDetach: () -> Unit,
-)
-```
 
 `DashboardEntryState.install(savedStateRegistry)` is the sole construction path
 for an Activity owner and may be called exactly once per owner.

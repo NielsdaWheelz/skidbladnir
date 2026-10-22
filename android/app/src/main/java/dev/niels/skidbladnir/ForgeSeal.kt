@@ -2,10 +2,8 @@ package dev.niels.skidbladnir
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -48,7 +46,7 @@ internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .size(56.dp)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = null,
                 indication = AngularIndication(NidavellirShapes.Octagon),
                 enabled = canForge,
                 role = Role.Button,

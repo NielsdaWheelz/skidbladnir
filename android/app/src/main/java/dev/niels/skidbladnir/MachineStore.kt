@@ -15,9 +15,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.decodeFromJsonElement
 
-internal enum class FleetQuarantine { Index, Pairings }
 internal data class MachineStoreRead(
-    val credentials: List<MachineCredential>, val quarantine: FleetQuarantine?, val envelope: FleetEnvelope?,
+    val credentials: List<MachineCredential>, val unreadable: Boolean, val envelope: FleetEnvelope?,
 )
 @Serializable internal data class PhoneFleet(
     val schema: Int = 1, val fleetId: String, val publicKey: String, val deviceId: String,
@@ -60,11 +59,11 @@ internal class MachineStore(private val context: Context) {
     fun <T> withAssociation(block: (PhoneFleet?) -> T): T = synchronized(lock) { block(association()) }
     fun read(): MachineStoreRead = try {
         val value = association()
-        MachineStoreRead(value?.credentials().orEmpty(), null, value?.envelope)
-    } catch (_: IOException) { MachineStoreRead(emptyList(), FleetQuarantine.Pairings, null) }
-      catch (_: GeneralSecurityException) { MachineStoreRead(emptyList(), FleetQuarantine.Pairings, null) }
-      catch (_: IllegalArgumentException) { MachineStoreRead(emptyList(), FleetQuarantine.Pairings, null) }
-      catch (_: kotlinx.serialization.SerializationException) { MachineStoreRead(emptyList(), FleetQuarantine.Pairings, null) }
+        MachineStoreRead(value?.credentials().orEmpty(), false, value?.envelope)
+    } catch (_: IOException) { MachineStoreRead(emptyList(), true, null) }
+      catch (_: GeneralSecurityException) { MachineStoreRead(emptyList(), true, null) }
+      catch (_: IllegalArgumentException) { MachineStoreRead(emptyList(), true, null) }
+      catch (_: kotlinx.serialization.SerializationException) { MachineStoreRead(emptyList(), true, null) }
     fun save(value: PhoneFleet) = synchronized(lock) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())

@@ -87,7 +87,7 @@ internal fun renameSubmissionAdmissible(
 ): Boolean {
     val phase = state.phase as? RenamePhase.Editing ?: return false
     return terminalActionsAdmissible && !phase.stale &&
-        sameSessionAuthority(state.target, terminalTarget) &&
+        state.target.sameLifetime(terminalTarget) &&
         (state.expectedNaming == SessionNaming.Automatic || state.draft != state.target.session.tmuxName) &&
         isValidTmuxName(state.draft)
 }
@@ -97,7 +97,7 @@ internal fun automaticSubmissionAdmissible(
     terminalTarget: SessionTarget,
     terminalActionsAdmissible: Boolean,
 ): Boolean = state.phase is RenamePhase.Editing &&
-    terminalActionsAdmissible && sameSessionAuthority(state.target, terminalTarget) &&
+    terminalActionsAdmissible && state.target.sameLifetime(terminalTarget) &&
     state.expectedNaming is SessionNaming.Manual
 
 internal fun beginRenameSending(
@@ -191,22 +191,12 @@ private fun renameNeedsInventory(state: RenameState, error: String?): RenameHttp
         requireInventoryRead = true,
     )
 
-internal fun clearMetadataMutationFence(inventory: InventoryState, fence: Long): InventoryState =
-    if (inventory is InventoryState.Superseded && inventory.requiredMutationFence == fence) {
-        InventoryState.Fresh(inventory.snapshot)
-    } else {
-        inventory
-    }
-
 internal fun reconcileTerminalRename(
     terminal: SkidbladnirUiState.Terminal,
 ): TerminalRenameInventoryResult {
     val snapshot = terminal.machine.inventory.lastSnapshot()?.inventory
         ?: return TerminalRenameInventoryResult(terminal, detachTransport = false)
-    val authoritative = snapshot.sessions.singleOrNull {
-        it.tmuxId == terminal.target.session.tmuxId &&
-            it.identityToken == terminal.target.session.identityToken
-    }
+    val authoritative = snapshot.sessions.singleOrNull { it.sameLifetime(terminal.target.session) }
     val rename = terminal.rename
     if (authoritative == null) {
         if (rename == null) return TerminalRenameInventoryResult(terminal, detachTransport = false)
@@ -257,11 +247,6 @@ internal fun reconcileTerminalRename(
         detachTransport = false,
     )
 }
-
-private fun sameSessionAuthority(first: SessionTarget, second: SessionTarget): Boolean =
-    first.machineHandle == second.machineHandle &&
-        first.session.tmuxId == second.session.tmuxId &&
-        first.session.identityToken == second.session.identityToken
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

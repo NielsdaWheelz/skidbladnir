@@ -139,7 +139,7 @@ No second mark, no compact variant, and no second drawing path is introduced.
 | Slice | Owner | Paths | Owned proof |
 | --- | --- | --- | --- |
 | Gap derivation + regeneration | Root integrator | `scripts/gen-ornament` (`_VALKNUT_GAP`), `Ornament.kt` (generated) | Drift gate; both `OrnamentTest` proofs red first |
-| Stroke and the one renderer | Compose UI builder | `Theme.kt` (`ValknutStrokeRatio`, `drawValknut`, `HlidskjalfMark`, `BackToDwarvesContent`) | `OrnamentTest`; mark-silence instrumentation |
+| Stroke and the one renderer | Compose UI builder | `Theme.kt` (`ValknutStrokeRatio`, `drawValknut`, `HlidskjalfMark`) | `OrnamentTest`; mark-silence instrumentation |
 | Placement | Compose UI builder (same slice) | `DashboardScreen.kt`, `TerminalScreen.kt`, `MainActivity.kt` | Instrumented: silence, leading position, disabled dim |
 | Docs | Root integrator | `design-language.md` §8 §13 §17, `ornament-pipeline.md`, `roadmap.md` | Review only |
 | Verification | Read-only verifier | none | Review only |
@@ -183,9 +183,9 @@ the weave again.
 
 Green: the derived gap and the proportional stroke, nothing more.
 
-Refactor: the four render sites share `HlidskjalfMark`, and the two that are a
-mark leading `Back to Dwarves` inside a button share `BackToDwarvesContent`, so
-the label and its mark cannot drift apart between screens. `drawValknut` keeps
+Refactor: the render sites share `HlidskjalfMark`. the one remaining
+`Back to Dwarves` button, the terminal reconnect panel, composes the mark and
+label inline. `drawValknut` keeps
 its own drawing path rather than joining `drawOrnamentBand`, because the mark
 does not tile (ornament-pipeline.md's refactor note).
 

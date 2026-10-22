@@ -88,9 +88,9 @@ internal fun browseWorkingDirectoryHome(
     pickerInstance: Long,
     generation: Long,
 ): WorkingDirectoryRequestStart? {
-    if (forge.pending || forge.surface != ForgeSurface.Form || !machine.canForge ||
+    if (forge.pending || forge.surface != ForgeSurface.Form || !machine.canMutate ||
         forge.form.machineHandle != machine.machine.handle) return null
-    // canForge guarantees Fresh; Kotlin cannot narrow through the derived property.
+    // canMutate guarantees Fresh; Kotlin cannot narrow through the derived property.
     val inventory = (machine.inventory as InventoryState.Fresh).snapshot.inventory
     return WorkingDirectoryRequestStart(
         picker = WorkingDirectoryPickerState(

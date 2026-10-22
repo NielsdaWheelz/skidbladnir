@@ -214,16 +214,10 @@ internal data class GroupEditor(
     val error: String? = null,
 )
 
-internal fun sameSessionLifetime(first: SessionTarget, second: SessionTarget): Boolean =
-    first.machineHandle == second.machineHandle && first.session.tmuxId == second.session.tmuxId &&
-        first.session.identityToken == second.session.identityToken
-
 internal fun groupSubmissionAdmissible(editor: GroupEditor, machine: MachineState): Boolean {
     if (editor.phase != GroupPhase.Editing || !machine.canMutate ||
         machine.machine.handle != editor.target.machineHandle) return false
-    val current = machine.inventory.lastSnapshot()?.inventory?.sessions?.singleOrNull {
-        it.tmuxId == editor.target.session.tmuxId && it.identityToken == editor.target.session.identityToken
-    } ?: return false
+    val current = machine.inventory.observedSession(editor.target.session) ?: return false
     val label = if (editor.draft.isEmpty()) null else GroupLabel.fromDraft(editor.draft) ?: return false
     return label != current.group
 }
@@ -245,9 +239,7 @@ internal fun completeGroupHttp(editor: GroupEditor, result: GatewayResult<Unit>)
 
 internal fun reconcileGroupEditor(editor: GroupEditor, machine: MachineState): GroupEditor? {
     if (editor.phase == GroupPhase.Sending) return editor
-    val current = machine.inventory.lastSnapshot()?.inventory?.sessions?.singleOrNull {
-        it.tmuxId == editor.target.session.tmuxId && it.identityToken == editor.target.session.identityToken
-    } ?: return null
+    val current = machine.inventory.observedSession(editor.target.session) ?: return null
     return when (val phase = editor.phase) {
         GroupPhase.Sending -> error("sending is handled before inventory reconciliation")
         GroupPhase.Editing -> editor.copy(target = editor.target.copy(session = current))

@@ -7,7 +7,6 @@ import java.security.MessageDigest
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.serialization.KSerializer
@@ -55,38 +54,19 @@ internal inline fun <Value> decodeProtocol(block: () -> Value): Value = try {
 private val wireInstantPattern = Regex(
     """[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{0,8}[1-9])?Z""",
 )
-private val wireInstantBaseFormatter =
-    DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss", Locale.ROOT).withZone(ZoneOffset.UTC)
-
 internal fun acceptWireInstant(text: String): Instant {
     if (!wireInstantPattern.matches(text)) throw SerializationException("instant is not the canonical UTC wire form")
     return Instant.parse(text)
 }
 
-internal fun formatWireInstant(value: Instant): String {
-    val base = try {
-        wireInstantBaseFormatter.format(value)
-    } catch (_: DateTimeException) {
-        throw SerializationException("instant is outside the canonical UTC wire range")
-    }
-    val fraction = value.nano.takeIf { it != 0 }
-        ?.toString()
-        ?.padStart(9, '0')
-        ?.trimEnd('0')
-        ?.let { ".$it" }
-        .orEmpty()
-    val encoded = "$base${fraction}Z"
-    if (!wireInstantPattern.matches(encoded)) {
-        throw SerializationException("instant is outside the canonical UTC wire range")
-    }
-    return encoded
-}
-
+// Decode-only: every type carrying a protocol instant is a private Wire* response.
 internal object IsoInstantSerializer : KSerializer<Instant> {
     override val descriptor =
         PrimitiveSerialDescriptor("dev.niels.skidbladnir.IsoInstant", PrimitiveKind.STRING)
     override fun deserialize(decoder: Decoder): Instant = acceptWireInstant(decoder.decodeString())
-    override fun serialize(encoder: Encoder, value: Instant) = encoder.encodeString(formatWireInstant(value))
+    override fun serialize(encoder: Encoder, value: Instant) {
+        throw SerializationException("protocol instants are decode-only")
+    }
 }
 
 // Go's zero time is syntactically valid RFC 3339, but it cannot represent a captured projection.
@@ -186,7 +166,10 @@ internal class ProfileKey private constructor(val encoded: String) {
 }
 
 internal data class PairedMachine(val handle: MachineHandle, val label: MachineLabel, val origin: MachineOrigin?)
-internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession)
+internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession) {
+    fun sameLifetime(other: SessionTarget): Boolean =
+        machineHandle == other.machineHandle && session.sameLifetime(other.session)
+}
 internal enum class MachinePlatform { Linux, Darwin }
 internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
 @Serializable internal enum class AgentProvider { Codex, Claude }
@@ -268,7 +251,11 @@ internal data class TmuxSession(
     val terminalUsage: TerminalUsage? = null,
     val terminalFooter: String? = null,
     val connection: RemoteConnection? = null,
-)
+) {
+    /** tmux reuses session ids, so one lifetime is the id plus the gateway's identity token. */
+    fun sameLifetime(other: TmuxSession): Boolean =
+        tmuxId == other.tmuxId && identityToken == other.identityToken
+}
 
 @Serializable internal enum class RemoteTransport { @kotlinx.serialization.SerialName("ssh") Ssh, @kotlinx.serialization.SerialName("mosh") Mosh }
 internal data class RemoteConnection(val transport: RemoteTransport, val id: String? = null) {
@@ -837,6 +824,10 @@ internal fun InventoryState.lastSnapshot(): InventorySnapshot? = when (this) {
     InventoryState.Reading, is InventoryState.Unreachable -> null
 }
 
+/** The last observed state of [session]'s lifetime, if a snapshot holds it. */
+internal fun InventoryState.observedSession(session: TmuxSession): TmuxSession? =
+    lastSnapshot()?.inventory?.sessions?.singleOrNull { it.sameLifetime(session) }
+
 /** Single owner of the read-failure downgrade: a failed read never discards another machine's facts. */
 internal fun InventoryState.downgraded(cause: GatewayFailure): InventoryState = when (this) {
     is InventoryState.Fresh -> InventoryState.Stale(snapshot, cause)
@@ -858,14 +849,12 @@ internal data class MachineState(
         MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
     }
 
-    val canForge: Boolean get() = canMutate
-
     fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
 }
 
 internal fun MachineState.executionContext(session: TmuxSession): ExecutionContext {
     val current = (inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
-        it.tmuxId == session.tmuxId && it.identityToken == session.identityToken
+        it.sameLifetime(session)
     }
     val observed = current ?: session
     return if (observed.connection == null) ExecutionContext.Local(observed.cwd, observed.agent)

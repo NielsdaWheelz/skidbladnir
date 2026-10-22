@@ -9,7 +9,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -53,7 +52,6 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -79,16 +77,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
-
-internal fun notificationHealthMessage(health: NotificationHealth): String = when (health) {
-    NotificationHealth.Disabled -> "background notifications are disabled on the hub."
-    NotificationHealth.RestartRequired -> "stop and reopen skid to activate changed notification settings."
-    NotificationHealth.Unconfigured -> "configure android push credentials on the hub."
-    NotificationHealth.Ready -> "allow notifications for needs input."
-    NotificationHealth.SetupRequired, NotificationHealth.ResetRequired -> "notification setup required."
-    NotificationHealth.PermissionBlocked -> "notifications are blocked in system settings."
-    NotificationHealth.DeliveryUnavailable -> "notification delivery unavailable."
-}
 
 @Composable
 internal fun DashboardScreen(
@@ -161,7 +149,6 @@ internal fun DashboardMain(
     var machineSelection by remember { mutableStateOf<DashboardMachineSelection?>(null) }
     val machines = state.machines
     val items = dashboardItems(machines, entry.view)
-    val canForge = machines.any(MachineState::canForge)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
@@ -221,7 +208,7 @@ internal fun DashboardMain(
         // semantics bounds past its ink, and the grid's trailing clearance is
         // measured against those bounds.
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-            ForgeSeal(canForge = canForge, onClick = controller::openForge)
+            ForgeSeal(canForge = machines.any(MachineState::canMutate), onClick = controller::openForge)
         }
     }
     machineSelection?.let { selection ->
@@ -596,7 +583,7 @@ internal fun DashboardViewStrip(
                                 .selectable(
                                     selected = selected,
                                     role = Role.Tab,
-                                    interactionSource = remember { MutableInteractionSource() },
+                                    interactionSource = null,
                                     indication = AngularIndication(NidavellirShapes.Chip),
                                     onClick = { onSelect(choice) },
                                 )

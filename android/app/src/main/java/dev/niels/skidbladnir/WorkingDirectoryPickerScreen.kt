@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -262,7 +261,7 @@ private fun PickerActionRow(
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = null,
                 indication = AngularIndication(NidavellirShapes.Chip),
                 enabled = enabled,
                 role = Role.Button,

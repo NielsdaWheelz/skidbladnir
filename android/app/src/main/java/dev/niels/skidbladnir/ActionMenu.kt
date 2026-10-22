@@ -2,7 +2,6 @@ package dev.niels.skidbladnir
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -71,7 +70,7 @@ internal fun ActionMenuButton(
             modifier = Modifier
                 .size(48.dp)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = null,
                     indication = AngularIndication(NidavellirShapes.Chip),
                     enabled = enabled,
                     role = Role.Button,
@@ -119,39 +118,34 @@ internal fun ActionRows(actions: List<MenuAction>, dismiss: () -> Unit) {
         if (action.destructive && actions.getOrNull(index - 1)?.destructive == false) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Bone.copy(alpha = 0.12f))
         }
-        ActionItem(action, dismiss)
-    }
-}
-
-// M3's DropdownMenuItem hardcodes a circular ripple (§12 forbids it), so the
-// row is built here with the angular flash. Controls speak the body face (§9).
-@Composable
-private fun ActionItem(action: MenuAction, dismiss: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = AngularIndication(NidavellirShapes.Chip),
-                enabled = action.enabled,
-                role = Role.Button,
-                onClick = {
-                    dismiss()
-                    action.perform()
+        // M3's DropdownMenuItem hardcodes a circular ripple (§12 forbids it), so the
+        // row is built here with the angular flash. Controls speak the body face (§9).
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(
+                    interactionSource = null,
+                    indication = AngularIndication(NidavellirShapes.Chip),
+                    enabled = action.enabled,
+                    role = Role.Button,
+                    onClick = {
+                        dismiss()
+                        action.perform()
+                    },
+                )
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                text = action.label,
+                color = when {
+                    !action.enabled -> Bone.copy(alpha = NidavellirMotion.DisabledAlpha.Content)
+                    action.destructive -> noticeToneColor(NoticeTone.Failure)
+                    else -> Bone
                 },
+                style = MaterialTheme.typography.labelLarge,
             )
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(
-            text = action.label,
-            color = when {
-                !action.enabled -> Bone.copy(alpha = NidavellirMotion.DisabledAlpha.Content)
-                action.destructive -> noticeToneColor(NoticeTone.Failure)
-                else -> Bone
-            },
-            style = MaterialTheme.typography.labelLarge,
-        )
+        }
     }
 }

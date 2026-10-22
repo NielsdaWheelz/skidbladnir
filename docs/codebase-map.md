@@ -21,7 +21,7 @@ quiet/armed/ready and revision fences; the clients own freshness and local visit
 | phone polling and ordering | `Polling.kt` | coalesced reads, per-machine mutation fences and awaited inventory reads; the controller owns lane lifetimes |
 | phone machine pressure | `Pressure.kt`, `PressurePresentation.kt`, `MachinePressureRail.kt` | strict pressure contract and state, dashboard visibility and content, rendered rail and details |
 | phone terminal | `TerminalConnection.kt`, `LockedTerminalWebView.kt`, terminal composables, `assets/terminal` | transport, page protocol, input, selection and rendering |
-| visual assets | theme/chrome/seal/ornament files, `catalog`, `scripts/gen-ornament` | shared presentation and generated artwork |
+| visual assets | `Theme.kt` (tokens, material theme, notice panel, modal back), seal/ornament files, `catalog`, `scripts/gen-ornament` | shared presentation and generated artwork |
 | build and operations | `scripts`, `.github/workflows`, android build files | engineering checks, release artifacts, installation and fleet operations; `internal/install` owns standalone installation; dev-server is an optional consumer |
 
 phone source paths are relative to

@@ -3,11 +3,9 @@ package dev.niels.skidbladnir
 import android.app.Application
 import android.app.KeyguardManager
 import android.content.Context
-import android.database.sqlite.SQLiteException
 import android.os.PowerManager
 import androidx.work.ExistingWorkPolicy
 import java.io.IOException
-import java.security.GeneralSecurityException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -18,7 +16,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -42,6 +39,15 @@ internal fun Context.notificationOwner(): NotificationOwner =
     (applicationContext as SkidNotificationApplication).notifications
 
 internal enum class NotificationHealth { Ready, Disabled, SetupRequired, Unconfigured, PermissionBlocked, DeliveryUnavailable, ResetRequired, RestartRequired }
+internal fun notificationHealthMessage(health: NotificationHealth): String = when (health) {
+    NotificationHealth.Disabled -> "background notifications are disabled on the hub."
+    NotificationHealth.RestartRequired -> "stop and reopen skid to activate changed notification settings."
+    NotificationHealth.Unconfigured -> "configure android push credentials on the hub."
+    NotificationHealth.Ready -> "allow notifications for needs input."
+    NotificationHealth.SetupRequired, NotificationHealth.ResetRequired -> "notification setup required."
+    NotificationHealth.PermissionBlocked -> "notifications are blocked in system settings."
+    NotificationHealth.DeliveryUnavailable -> "notification delivery unavailable."
+}
 internal data class NotificationView(
     val device: DeviceNotifications = DeviceNotifications(), val snapshot: ObserverSnapshot? = null,
     val health: NotificationHealth = NotificationHealth.SetupRequired,

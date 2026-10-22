@@ -1,21 +1,32 @@
 package dev.niels.skidbladnir
 
 import android.animation.ValueAnimator
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CutCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -23,6 +34,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
@@ -33,7 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// Stone strata + accents (design-language.md §5). Sole owner: MainActivity's
+// Stone strata + accents (design-language.md §5). Sole owner: NidavellirTheme's
 // color scheme and every screen reference these as same-package top-level
 // symbols. No duplicate definitions may exist elsewhere (hard cut).
 internal val Ink = Color(0xFF0C0D0F)
@@ -121,6 +133,43 @@ internal object NidavellirMotion {
     }
 }
 
+private val NidavellirTypography = Typography().let { base ->
+    base.copy(
+        displayLarge = base.displayLarge.copy(fontFamily = NidavellirType.Display),
+        headlineLarge = base.headlineLarge.copy(fontFamily = NidavellirType.Display),
+        titleLarge = base.titleLarge.copy(fontFamily = NidavellirType.Display),
+    )
+}
+
+private val NidavellirMaterialShapes = Shapes(
+    small = NidavellirShapes.Chip,
+    medium = NidavellirShapes.Card,
+    large = NidavellirShapes.Sheet,
+)
+
+@Composable
+internal fun NidavellirTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Gold,
+            onPrimary = Ink,
+            secondary = Frost,
+            background = Ink,
+            onBackground = Bone,
+            surface = DeepSurface,
+            onSurface = Bone,
+            surfaceVariant = RaisedSurface,
+            onSurfaceVariant = Muted,
+            // Unread by app code; the slot stays for M3-internal error
+            // state such as text fields (destructive-chrome.md).
+            error = noticeToneColor(NoticeTone.Failure),
+        ),
+        shapes = NidavellirMaterialShapes,
+        typography = NidavellirTypography,
+        content = content,
+    )
+}
+
 internal fun sessionStatusColor(tone: SessionStatusTone): Color = when (tone) {
     SessionStatusTone.Working -> Frost
     SessionStatusTone.Ready -> Moss
@@ -162,6 +211,61 @@ internal fun noticeToneColor(tone: NoticeTone): Color = when (tone) {
     NoticeTone.Failure -> Ember // an attempt failed, trust broke, or you are ending something
     NoticeTone.Degraded -> Muted // knowledge is absent or old; nothing is broken
     NoticeTone.Armed -> Gold // a recovery is waiting on you
+}
+
+// One panel for every failure, degradation, and armed recovery
+// (destructive-chrome.md). Three hand-rolled banner Surfaces each picked their
+// own colour, which is how Ember came to mean five unrelated things; here the
+// tone is the only input and noticeToneColor is its sole owner.
+// It takes no `modifier` on purpose: all three consumers applied the identical
+// outer geometry, so that geometry is the duplication being removed, and a
+// parameter no call site varies is what docs/rules.md forbids.
+// No ornament, here or ever — §7 and §15 forbid it on error surfaces.
+@Composable
+internal fun NoticePanel(
+    tone: NoticeTone,
+    body: String,
+    title: String? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val toneColor = noticeToneColor(tone)
+    Surface(
+        color = toneColor.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, toneColor),
+        shape = NidavellirShapes.Card,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            title?.let {
+                Text(
+                    text = it,
+                    color = Bone,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(text = body, color = toneColor, style = MaterialTheme.typography.bodyMedium)
+            actions?.let { Row(content = it) }
+        }
+    }
+}
+
+/** Back for an in-window modal: an overlay-priority callback that outranks the activity's handlers. */
+@Composable
+internal fun ModalBackHandler(onBack: () -> Unit) {
+    val currentOnBack by rememberUpdatedState(onBack)
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val dispatcher = checkNotNull(view.findOnBackInvokedDispatcher()) {
+            "modal must be attached to a Back dispatcher"
+        }
+        val callback = OnBackInvokedCallback { currentOnBack() }
+        dispatcher.registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_OVERLAY,
+            callback,
+        )
+        onDispose { dispatcher.unregisterOnBackInvokedCallback(callback) }
+    }
 }
 
 // The octagon's eight vertices in edge order, starting at the top-left cut
@@ -249,19 +353,4 @@ internal fun HlidskjalfMark(color: Color, markSize: Dp, modifier: Modifier = Mod
     ) {
         drawValknut(color)
     }
-}
-
-// The one composition of the affordance that returns to the Dwarves grid, so
-// the terminal reconnect panel's label and mark cannot drift apart. The
-// mark takes `LocalContentColor` rather than a fixed accent so it dims with the
-// button when the button is disabled — a drawn glyph gets no disabled state for
-// free (design-language.md §12).
-@Composable
-internal fun BackToDwarvesContent() {
-    HlidskjalfMark(
-        color = LocalContentColor.current,
-        markSize = 18.dp,
-        modifier = Modifier.padding(end = ButtonDefaults.IconSpacing),
-    )
-    Text("Back to Dwarves")
 }
