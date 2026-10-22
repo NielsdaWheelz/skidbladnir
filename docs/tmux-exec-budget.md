@@ -1,7 +1,8 @@
 # tmux exec budget and serve priority
 
-2026-10-21: proposed, not implemented; owner acceptance pending. the
-[cleanup campaign](cleanup.md) coordinator schedules it (see sequencing).
+2026-10-21: accepted by the owner, including a3's amendments to architecture's
+agent-observation paragraph and session latency's no-cache scope; not yet
+implemented. the [cleanup campaign](cleanup.md) schedules it (see sequencing).
 cross-repo decisions come from dev-server `docs/macbook-capacity-plan.md`
 (macbook-capacity d6, d7, d10); this spec cites them and does not vary them.
 the [exec overhead](issues/tmux-exec-overhead.md) and
