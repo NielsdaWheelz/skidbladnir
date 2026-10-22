@@ -118,11 +118,12 @@ branch retains its exact command, arguments, environment, and identity behavior.
 
 source creation, in order:
 
-1. validate the source session lifetime, independent of its name or agent.
-2. pin its current pane once; read its required cwd directly and local group
-   through the existing pr 1 metadata reader. do not use best-effort inventory
-   enrichment or a cached client row. absent/invalid metadata means unassigned;
-   failed tmux observation fails creation. validate cwd through workdir.
+1. read the source session once: that one read supplies its lifetime,
+   independent of its name or agent, its selected pane and pid, the pane's cwd
+   and its exact local group.
+2. do not use best-effort inventory enrichment or a cached client row.
+   absent/invalid metadata means unassigned; failed tmux observation fails
+   creation. validate cwd through workdir.
 3. copy those observations into creation input. they are samples, not a lock
    against later cwd, pane, or membership changes.
 4. guard the create queue with the existing tmux lifetime predicate. a vanished

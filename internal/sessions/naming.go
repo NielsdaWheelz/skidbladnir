@@ -91,57 +91,48 @@ func automaticName(base, id, current string, names map[string]struct{}) string {
 		}
 	}
 }
-func (manager *Manager) normalizeNames(ctx context.Context, visible []scannedSession, names map[string]struct{}, server tmuxclient.ServerIdentity) ([]scannedSession, error) {
-	result := make([]scannedSession, 0, len(visible))
-	for _, session := range visible {
-		guard := tmuxclient.NamingGuard{ID: session.id, Name: session.tmuxName, Marker: session.autoMarker, Server: server}
-		desired, marker := "", session.autoMarker
-		if effectiveNameMode(session.tmuxName, session.autoMarker) == NameAutomatic {
-			if base := titleName(session.row.Title); base != "" {
-				desired = automaticName(base, session.id, session.tmuxName, names)
-				guard.PaneID, guard.Title = session.row.PaneID, session.row.Title
+
+// normalizeNames applies automatic naming (automatic-session-names.md) to
+// rows, normalizeCharacters' copy, in place. A write that tmux applied is
+// projected; a refused or uncertain write keeps the observed row, and the next
+// inventory observes the outcome. Guards compare format lookup, so the marker
+// they expect is the row's format value; mode comes from the exact local value.
+func (manager *Manager) normalizeNames(ctx context.Context, rows []tmuxclient.InventoryRow, names map[string]struct{}, server tmuxclient.ServerIdentity) ([]tmuxclient.InventoryRow, error) {
+	for i, row := range rows {
+		guard := tmuxclient.NamingGuard{ID: row.ID, Name: row.Name, Marker: row.Format.AutoName, Server: server}
+		desired, marker := row.Name, row.LocalSession.AutoName
+		if effectiveNameMode(row.Name, row.LocalSession.AutoName) == NameAutomatic {
+			if base := titleName(row.Title); base != "" {
+				desired = automaticName(base, row.ID, row.Name, names)
+				guard.PaneID, guard.Title = row.PaneID, row.Title
 				marker = encodeAutoName(desired)
 			}
-		} else if session.autoMarker != "" {
-			decoded, err := base64.RawURLEncoding.Strict().DecodeString(session.autoMarker)
-			if err == nil && encodeAutoName(string(decoded)) == session.autoMarker && string(decoded) != session.tmuxName {
+		} else if row.LocalSession.AutoName != "" {
+			decoded, err := base64.RawURLEncoding.Strict().DecodeString(row.LocalSession.AutoName)
+			if err == nil && encodeAutoName(string(decoded)) == row.LocalSession.AutoName && string(decoded) != row.Name {
 				marker = ""
 			}
 		}
-		if desired != "" && desired != session.tmuxName || marker != session.autoMarker {
-			_, err := manager.tmux.SetNamingIfUnchanged(ctx, guard, desired, marker)
-			if errors.Is(err, tmuxclient.WorkspaceProtocolInvalid) {
-				return nil, err
-			}
-			if err != nil { // An external destination race defers to the next inventory.
-				token, tokenErr := makeIdentityToken(server, session.id)
-				if tokenErr != nil {
-					return nil, tokenErr
-				}
-				if _, _, identityErr := manager.sessionLifetimeIdentity(ctx, session.id, token); identityErr != nil {
-					var missing *Error
-					if !errors.As(identityErr, &missing) || missing.Code != ErrorSessionNotFound {
-						return nil, identityErr
-					}
-				}
-			}
-		}
-		if desired == "" && marker == session.autoMarker || desired == session.tmuxName && marker == session.autoMarker {
-			result = append(result, session)
+		if desired == row.Name && marker == row.LocalSession.AutoName {
 			continue
 		}
-		actual, found, err := manager.rereadSession(ctx, session.id, server)
-		if err != nil {
+		applied, err := manager.tmux.SetNamingIfUnchanged(ctx, guard, desired, marker)
+		if errors.Is(err, tmuxclient.WorkspaceProtocolInvalid) {
 			return nil, err
 		}
-		if found {
-			delete(names, session.tmuxName)
-			names[actual.tmuxName] = struct{}{}
-			result = append(result, actual)
+		if err != nil || !applied {
+			continue
 		}
+		delete(names, row.Name)
+		names[desired] = struct{}{}
+		rows[i].Name, rows[i].LocalSession.AutoName = desired, marker
 	}
-	return result, nil
+	return rows, nil
 }
+
+// Rename reads its session once, writes in one guarded queue, and classifies a
+// refusal by one more read. The guard also requires the new name to be free, so
+// a refusal whose other observed conjuncts still hold is a name conflict.
 func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 	if err := manager.acquire(ctx); err != nil {
 		return err
@@ -152,55 +143,35 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 			return err
 		}
 	}
-	server, name, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
+	server, row, err := manager.resolve(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return err
 	}
-	marker, err := manager.sessionOption(ctx, input.TmuxID, tmuxclient.AutoNameOption)
-	if err != nil {
-		return err
+	changed := newSessionError(ErrorSessionNameChanged, "the session name changed. review and save again.")
+	mode := effectiveNameMode(row.Name, row.LocalSession.AutoName)
+	if mode != input.ExpectedNaming.Mode || mode == NameManual && row.Name != input.ExpectedNaming.Name {
+		return changed
 	}
-	mode := effectiveNameMode(name, marker)
-	if mode != input.ExpectedNaming.Mode || mode == NameManual && name != input.ExpectedNaming.Name {
-		return newSessionError(ErrorSessionNameChanged, "the session name changed. review and save again.")
-	}
-	desired, newMarker := input.Naming.Name, ""
+	desired, marker := input.Naming.Name, ""
 	if input.Naming.Mode == NameAutomatic {
-		desired = name
-		newMarker = encodeAutoName(name)
+		desired, marker = row.Name, encodeAutoName(row.Name)
 	}
-
-	if desired != name {
-		scan, err := manager.scanSessions(ctx)
-		if err != nil {
-			return err
-		}
-		if _, occupied := scan.names[desired]; occupied {
-			return newSessionError(ErrorSessionNameConflict, "another session on this machine uses that name.")
-		}
-	}
-	accepted, err := manager.tmux.SetNamingIfUnchanged(ctx, tmuxclient.NamingGuard{ID: input.TmuxID, Name: name, Marker: marker, Server: server}, desired, newMarker)
+	applied, err := manager.tmux.SetNamingIfUnchanged(ctx, tmuxclient.NamingGuard{ID: row.ID, Name: row.Name, Marker: row.Format.AutoName, Server: server}, desired, marker)
 	if err != nil {
-		if _, actualName, lifetimeErr := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken); lifetimeErr != nil {
-			return lifetimeErr
-		} else if actualName == name {
-			actualMarker, readErr := manager.sessionOption(ctx, input.TmuxID, tmuxclient.AutoNameOption)
-			if readErr == nil && actualMarker == marker && desired != name {
-				scan, scanErr := manager.scanSessions(ctx)
-				if scanErr == nil {
-					if _, occupied := scan.names[desired]; occupied {
-						return newSessionError(ErrorSessionNameConflict, "another session on this machine uses that name.")
-					}
-				}
-			}
+		if _, _, resolveErr := manager.resolve(ctx, input.TmuxID, input.IdentityToken); resolveErr != nil {
+			return resolveErr
 		}
 		return fmt.Errorf("tmux naming completion unknown: %w", err)
 	}
-	if !accepted {
-		if _, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken); err != nil {
+	if !applied {
+		_, current, err := manager.resolve(ctx, input.TmuxID, input.IdentityToken)
+		if err != nil {
 			return err
 		}
-		return newSessionError(ErrorSessionNameChanged, "the session name changed. review and save again.")
+		if current.Name == row.Name && current.Format.AutoName == row.Format.AutoName && desired != row.Name {
+			return newSessionError(ErrorSessionNameConflict, "another session on this machine uses that name.")
+		}
+		return changed
 	}
 	manager.checkpointAfterMutation(ctx, server)
 	return nil

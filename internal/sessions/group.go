@@ -14,7 +14,7 @@ func (manager *Manager) SetGroup(ctx context.Context, input SetGroupInput) error
 	}
 	defer manager.release()
 
-	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
+	server, err := parseLifetime(input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return err
 	}
@@ -23,7 +23,7 @@ func (manager *Manager) SetGroup(ctx context.Context, input SetGroupInput) error
 		return ErrGroupDispatchUnknown
 	}
 	if !assigned {
-		return sessionIdentityMismatch()
+		return manager.refused(ctx, input.TmuxID)
 	}
 	manager.checkpointAfterMutation(ctx, server)
 	return nil

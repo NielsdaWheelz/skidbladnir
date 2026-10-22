@@ -12,8 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
 var (
@@ -25,14 +23,9 @@ const (
 	AutoNameOption         = "@skid_auto_name_b64"
 	ServerEpochOption      = "@skid_server_epoch"
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
-	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
 	// GroupOption retains the persisted tmux key so existing memberships remain visible.
-	GroupOption         = "@skid_space_b64"
-	groupSuccessMarker  = "SKIDBLADNIR_GROUP_SUCCESS_V1"
-	deleteSuccessMarker = "SKIDBLADNIR_DELETE_SUCCESS"
+	GroupOption = "@skid_space_b64"
 )
-
-var ErrDeleteUnknown = errors.New("session deletion is unknown")
 
 var (
 	serverEpochPattern = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
@@ -98,9 +91,6 @@ func (client Client) TerminalCommand(directory, launch string) ([]string, error)
 func (client Client) CreateSession(ctx context.Context, directory, sourceID string, server ServerIdentity, args []string) (string, bool, error) {
 	commandName := "new-session"
 	if sourceID != "" {
-		if !sessionIDPattern.MatchString(sourceID) || !server.valid() {
-			panic("invalid source creation identity") // justify-defect: sessions admitted this exact source lifetime.
-		}
 		var branch strings.Builder
 		branch.WriteString("new-session")
 		for _, argument := range args {
@@ -163,19 +153,6 @@ func (client Client) ListSessionIDs(ctx context.Context) ([]string, error) {
 	return strings.Split(output, "\n"), nil
 }
 
-func (client Client) HasSession(ctx context.Context, id string) (bool, error) {
-	ids, err := client.ListSessionIDs(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, candidate := range ids {
-		if candidate == id {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerIdentity, proposed string) (ServerIdentity, error) {
 	if !serverEpochPattern.MatchString(proposed) {
 		panic("proposed tmux server epoch is invalid") // justify-defect: the manager generates a canonical epoch.
@@ -209,117 +186,6 @@ func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerId
 	return identity, nil
 }
 
-func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error) {
-	output, err := client.Output(ctx, "read-server-identity", "-N", "display-message", "-p",
-		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
-	if err != nil {
-		return ServerIdentity{}, err
-	}
-	fields := strings.Split(output, "|")
-	if len(fields) != 3 {
-		return ServerIdentity{}, WorkspaceProtocolInvalid
-	}
-	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-	if !identity.valid() {
-		return ServerIdentity{}, WorkspaceProtocolInvalid
-	}
-	return identity, nil
-}
-
-func (client Client) KillSessionIfIdentity(ctx context.Context, id string, server ServerIdentity) (bool, error) {
-	if !sessionIDPattern.MatchString(id) || !server.valid() {
-		return false, errors.New("tmux kill identity is invalid")
-	}
-	condition := andFormatConditions(sessionLifetimeConditions(id, server))
-	var stdout bytes.Buffer
-	command := client.command(ctx, &stdout, "-N", "if-shell", "-F", "-t", id, condition,
-		"kill-session -t '"+id+"' ; display-message -p -l '"+deleteSuccessMarker+"'",
-		"display-message -p -l '"+identityMismatchMarker+"'")
-	if err := command.Start(); err != nil {
-		return false, err
-	}
-	if err := command.Wait(); err != nil {
-		return false, ErrDeleteUnknown
-	}
-	switch strings.TrimSuffix(stdout.String(), "\n") {
-	case deleteSuccessMarker:
-		return true, nil
-	case identityMismatchMarker:
-		return false, nil
-	default:
-		return false, ErrDeleteUnknown
-	}
-}
-
-// A nil expected value means local absence: native -o guards that race even
-// when a global value is inherited. Present values retain the exact raw guard.
-func (client Client) AssignCharacterIfUnchanged(
-	ctx context.Context,
-	id string,
-	expected *string,
-	character string,
-	server ServerIdentity,
-) (bool, error) {
-	arguments, err := characterAssignmentArguments(id, expected, character, server)
-	if err != nil {
-		return false, err
-	}
-	output, err := client.Output(ctx, "assign-character-if-unchanged", arguments[0], arguments[1:]...)
-	if err != nil {
-		return false, err
-	}
-	switch output {
-	case "":
-		return true, nil
-	case identityMismatchMarker:
-		return false, nil
-	default:
-		return false, WorkspaceProtocolInvalid
-	}
-}
-
-func (client Client) SetSessionGroupIfIdentity(ctx context.Context, id string, label group.Label, server ServerIdentity) (bool, error) {
-	if !sessionIDPattern.MatchString(id) || !server.valid() {
-		return false, errors.New("tmux group assignment identity is invalid")
-	}
-	assignment := "set-option -u -t '" + id + "' -- " + GroupOption
-	if !label.IsUnassigned() {
-		encoded := base64.RawURLEncoding.EncodeToString([]byte(label.String()))
-		assignment = "set-option -t '" + id + "' -- " + GroupOption + " " + encoded
-	}
-	output, err := client.Output(ctx, "set-group-if-identity", "if-shell", "-F", "-t", id,
-		andFormatConditions(sessionLifetimeConditions(id, server)),
-		assignment+" ; display-message -p -l '"+groupSuccessMarker+"'",
-		"display-message -p -l '"+identityMismatchMarker+"'")
-	if err != nil {
-		return false, err
-	}
-	switch output {
-	case groupSuccessMarker:
-		return true, nil
-	case identityMismatchMarker:
-		return false, nil
-	default:
-		return false, errors.New("tmux conditional group assignment returned unexpected output")
-	}
-}
-
-func characterAssignmentArguments(id string, expected *string, character string, server ServerIdentity) ([]string, error) {
-	if !sessionIDPattern.MatchString(id) || !tmuxCommandTokenPattern.MatchString(character) || !server.valid() {
-		return nil, errors.New("tmux character assignment identity is invalid")
-	}
-	conditions := sessionLifetimeConditions(id, server)
-	assignment := "set-option -o -t '" + id + "' -- @skid_character " + character
-	if expected != nil {
-		conditions = append(conditions, "#{==:#{@skid_character},"+formatLiteral(*expected)+"}")
-		assignment = "set-option -t '" + id + "' -- @skid_character " + character
-	}
-	return []string{
-		"if-shell", "-F", "-t", id, andFormatConditions(conditions), assignment,
-		"display-message -p -l '" + identityMismatchMarker + "'",
-	}, nil
-}
-
 func formatLiteral(value string) string {
 	return "#{l:" + strings.NewReplacer("#", "##", ",", "#,", "}", "#}").Replace(value) + "}"
 }
@@ -339,7 +205,14 @@ func commandToken(value string) string {
 }
 
 func sessionLifetimeConditions(id string, server ServerIdentity) []string {
-	return append(serverLifetimeConditions(server), "#{==:#{session_id},"+formatLiteral(id)+"}")
+	return append(serverLifetimeConditions(server), sessionIDCondition(id))
+}
+
+// sessionIDCondition holds under if-shell -F -t id only while session id
+// exists: -t naming an absent id evaluates the format without a target, so
+// #{session_id} is not id and the condition is false.
+func sessionIDCondition(id string) string {
+	return "#{==:#{session_id}," + formatLiteral(id) + "}"
 }
 
 func serverLifetimeConditions(server ServerIdentity) []string {

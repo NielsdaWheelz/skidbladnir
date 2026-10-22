@@ -1,8 +1,11 @@
 # tmux exec budget and serve priority
 
 2026-10-21: accepted by the owner, including a3's amendments to architecture's
-agent-observation paragraph and session latency's no-cache scope; not yet
-implemented. the [cleanup campaign](cleanup.md) schedules it (see sequencing).
+agent-observation paragraph and session latency's no-cache scope. a1 implemented
+in W2.7 (unreleased); a2 and a3 not yet. the owner accepted W2.7's amendment to
+a1 the same day: G reads `-s`, `-g` and `-g -w` (format lookup order), and the
+invariants record the window/pane-local residual. line references are to origin/main at
+acceptance. the [cleanup campaign](cleanup.md) schedules it (see sequencing).
 cross-repo decisions come from dev-server `docs/macbook-capacity-plan.md`
 (macbook-capacity d6, d7, d10); this spec cites them and does not vary them.
 the [exec overhead](issues/tmux-exec-overhead.md) and
@@ -65,6 +68,10 @@ these hold today and must keep holding:
   the list with `WorkspaceSourceChanged`, as today.
 - metadata are session-local values. inherited lookup never substitutes for an
   absent local value ([session latency](session-latency.md#native-inventory-and-admission)).
+  the residual: a window- or pane-local `@skid_` definition on the selected
+  pane shadows the format value undetected; a non-catalogue window/pane
+  `@skid_character` makes every list rewrite that session's local key. skid
+  writes none, and such definitions are unsupported.
 - an observation describes the exact target of the row it enriches: session,
   pane, pane pid and foreground process. a reused observation is valid only
   while that pane's screen provably has not changed since its capture.
@@ -77,18 +84,21 @@ these hold today and must keep holding:
 
 ### a1. inventory in one exec
 
-one `source-file -` script on stdin, using the existing `inventoryBatch`
-framing and 8 mib ceiling:
+one `source-file -` script on stdin, using the existing B/E framing (`batch` in
+`tmux/inventory.go`) and 8 mib ceiling:
 
 1. `B` bracket: epoch, pid, start time (existing).
-2. `show-options -gq` for the five session options `@skid_character`,
-   `@skid_auto_name_b64`, `@skid_space_b64`, `@skid_profile`,
-   `@skid_objective_b64`.
+2. `show-options -q` at `-s`, `-g` and `-g -w` for the five session options
+   `@skid_character`, `@skid_auto_name_b64`, `@skid_space_b64`,
+   `@skid_profile`, `@skid_objective_b64`. format lookup checks server options,
+   then pane, window and global-window options, then session and global-session
+   options, so `-s` and `-g -w` shadow even a present local value and `-g` fills
+   its absence.
 3. one `list-sessions -F` record per session: today's builtin fields, plus the
    five options as `#{q:@skid_…}` fields, plus the selected pane's
    `pane_width`, `pane_height`, `alternate_on` and `window_activity` (inputs
    to a2 and a3).
-4. `show-options -gq` for the same five options again.
+4. the same fifteen `show-options -q` reads again.
 5. `E` bracket.
 
 admission: `B` supplies the epoch. if the epoch option is absent, or the
@@ -97,8 +107,9 @@ inspection plus `EnsureServerIdentity`) and then the script. an absent server
 keeps today's classification (`internal/tmux/recovery.go:110`, `missingServer`)
 and today's empty-inventory result.
 
-fallback: format lookup inherits from global options, so the format-read values
-are admissible only when both global reads return no `@skid_` option. otherwise
+fallback: format lookup inherits from server, global-window and global-session
+options, so the format-read values are admissible only when both reads at all
+three scopes return no `@skid_` option. otherwise
 discard them and run today's per-row metadata batch in a second exec. skid
 never writes global `@skid_` options, so this path exists only for globals an
 operator set by hand.
@@ -106,7 +117,9 @@ operator set by hand.
 the two identity re-checks fold into brackets. the inventory script's `E`
 bracket replaces the check at `manager.go:203`. the capture script's bracket
 (a2) replaces `manager.go:233`, and must still run after foreground enrichment.
-with no agent pane, a bracket-only script remains.
+with no agent pane, a bracket-only script remains. until a2 folds the
+post-enrichment check, a steady list stays at two execs plus the per-agent-pane
+observation execs.
 
 consistency: afaict tmux runs one client's queued non-waiting commands
 consecutively in one `cmdq_next` pass, without interleaving other clients'
@@ -134,9 +147,9 @@ stdin removes the 16 kib client-message limit noted at `observation.go:22-24`.
 the 192-row top cap stays, so presentation is unchanged.
 
 - failure isolation: no block may resolve an unguarded `-t` target. a vanished
-  pane refuses only its own block. use a format-only existence guard like
-  `inventorySessionExists`, or prove per-line command-group isolation on the
-  installed tmux.
+  pane refuses only its own block. use a format-only existence guard, such as a
+  `#{S:}` loop over `session_id`, or prove per-line command-group isolation on
+  the installed tmux.
 - fallback: a refused block falls back to today's two-phase `ObservePane` for
   that pane alone, within the shared 2 s deadline.
 - limits: per-pane region byte limits are unchanged. the batch uses the 8 mib
@@ -209,7 +222,7 @@ does not pay for the machinery.
 
 ## priority (macbook-capacity d7)
 
-status: the source change and install check landed, unreleased. install also
+status: the source change and install check shipped in v0.20.1. install also
 fails when no new serve appears within 5 s of bootstrap. the
 [issue](issues/launchd-standard-priority.md) stays open until release, install
 and the maintenance window verify priority 31.

@@ -31,8 +31,8 @@ func TargetOf(session Session) TerminalTarget {
 
 // Called only after resolution has accepted this exact lifetime token.
 func (target TerminalTarget) paneTarget() tmuxclient.PaneTarget {
-	identity, _ := parseIdentityToken(target.IdentityToken, target.TmuxID)
-	return tmuxclient.PaneTarget{SessionID: target.TmuxID, PaneID: target.PaneID, Server: identity}
+	server, _ := parseLifetime(target.TmuxID, target.IdentityToken)
+	return tmuxclient.PaneTarget{SessionID: target.TmuxID, PaneID: target.PaneID, Server: server}
 }
 
 // Terminal observations/effects require no manager mutex: immutable configuration
@@ -44,29 +44,15 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if !paneIDPattern.MatchString(target.PaneID) {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	identity, _, err := manager.sessionLifetimeIdentity(ctx, target.TmuxID, target.IdentityToken)
+	server, row, err := manager.resolve(ctx, target.TmuxID, target.IdentityToken)
 	if err != nil {
 		return Session{}, terminalError(err)
 	}
-	observed, found, err := manager.scanSession(ctx, target.TmuxID)
-	if err != nil {
-		return Session{}, terminalError(err)
-	}
-	if !found {
-		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	inspected, present, err := manager.inspectAnchor(ctx, Session{
-		TmuxID: target.TmuxID, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
-		IdentityToken: target.IdentityToken, Character: observed.character,
-	})
-	if err != nil {
-		return Session{}, terminalError(err)
-	}
-	if !present || inspected.paneID != target.PaneID {
+	if row.PaneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session := manager.enrichSession(ctx, inspected)
-	err = manager.requireServerIdentity(ctx, identity)
+	session := manager.enrichSession(server, row)
+	err = manager.requireServerIdentity(ctx, server)
 	// An expired ctx fails the identity read and degrades enrichment without
 	// saying anything about the target, so it outranks the read's failure.
 	if ctx.Err() != nil {
@@ -232,9 +218,4 @@ func terminalError(err error) error {
 func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profile, bool) {
 	profile, found := manager.settings.Load().byKey[key]
 	return profile, found
-}
-
-func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToken string) error {
-	_, _, err := manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken)
-	return err
 }

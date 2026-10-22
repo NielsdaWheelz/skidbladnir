@@ -58,30 +58,44 @@ type InventoryRow struct {
     ID, Name, PaneID string
     PanePID, AttachedClients int
     Title, CWD, Command string
-    LocalSession SessionMetadata
-    PaneRegistration string
+    PaneWidth, PaneHeight int // selected pane screen facts: a2/a3 inputs
+    AlternateOn bool
+    WindowActivity int64
+    Format, LocalSession SessionMetadata
 }
 type SessionMetadata struct {
-    Character, AutoName, Group, Profile, Objective, Conversation string
+    Character, AutoName, Group, Profile, Objective string
 }
+func (Client) ReadCurrentInventory(ctx context.Context, admitted ServerIdentity) (InventoryCapture, error)
 func (Client) ReadInventory(context.Context, ServerIdentity) (InventoryCapture, error)
+func (Client) ReadSession(ctx context.Context, id string) (InventoryCapture, error)
 ```
 
-expected server is already admitted. ids, nonempty name, pane id and nonnegative
-pid/count are required. title/cwd/command may be empty. metadata is exact admitted
-token bytes, otherwise empty. after admission, a missing/replaced server returns
-`WorkspaceSourceChanged`; the same surviving server becoming empty is valid.
-malformed transcript returns `WorkspaceProtocolInvalid`, overflow `WorkspaceLimit`;
-child/context failures retain their causes. initial absent/empty admission stays
-outside and succeeds. additions appear next sample; disappearing rows use existing
-reconciliation, never a topology failure solely because a session was added.
+the current-server read reports its server; List admits only when that differs
+from the last admitted identity, then reads the admitted server. a read that
+fails while its nonzero `admitted` lifetime no longer runs is
+`WorkspaceSourceChanged`. ids, nonempty
+name, pane id, nonnegative pid/count/width/height/activity and a 0|1 alternate
+flag are required. title/cwd/command may be empty. `LocalSession` is exact
+admitted token bytes, otherwise empty; `Format` is the raw format-lookup value
+the guards compare, never projected. after admission, a missing/replaced server
+returns `WorkspaceSourceChanged`; the same surviving server becoming empty is
+valid. malformed transcript returns `WorkspaceProtocolInvalid`, overflow
+`WorkspaceLimit`; child/context failures retain their causes. an absent or empty
+server succeeds empty and is never stamped. additions appear next sample;
+disappearing rows use existing reconciliation, never a topology failure solely
+because a session was added.
 
-after existing epoch admission, use two native batches: builtin session/pane
-facts, then local metadata for those discovered ids. reuse `source-file -`,
-literal command construction, bounded output and native identity predicates from
+each read is one `-N source-file -` script: a `B` identity record; G, the
+`show-options -q` of the five keys at `-s`, `-g` and `-g -w`; one
+`list-sessions -F` record per session carrying the keys as `#{q:@skid_…}`
+fields; G again; an `E` record. `E` ≠ `B` is `WorkspaceSourceChanged`. any G
+line runs the per-row `show-options -q -t <id>` batch as a second exec. the
+one-id read brackets one `if-shell -F -t <id>` block holding the row and its
+exact local options. reuse literal command construction and bounded output from
 `tmux/recovery.go`; do not capture the recovery graph or inherit its session cap.
-bracket each batch with the expected server identity. retain `-u`, `-N`, context
-cancellation and the existing 100 ms child wait allowance.
+retain `-u`, `-N`, context cancellation and the existing 100 ms child wait
+allowance.
 
 builtin records have a tag, fixed ordered fields and a final newline. encode
 each field once with `#{q:field}` and an unescaped `|` terminator; decode the byte
@@ -91,23 +105,26 @@ reject malformed framing, duplicate ids, invalid required fields or changed
 server identity. use the existing 8 mib capture ceiling per transcript; overflow
 fails the request, never truncates inventory. retain the existing wire limit.
 
-read session-local `@skid_character`, `@skid_auto_name_b64`, `@skid_space_b64`,
-`@skid_profile`, `@skid_objective_b64`, `@skid_conversation_b64`, and selected-pane
-`@skid_agent_runtime` through `show-options -q`, with the correct local scope,
-without `-A` or `-v`. admit existing canonical unquoted tokens; malformed optional
-values are absent. never substitute inherited format lookup. missing/invalid
-character metadata takes the existing exact raw-read/guarded-repair path.
-explicit rename/reset retains its exact marker read. add no general shell parser.
+the session-local keys are `@skid_character`, `@skid_auto_name_b64`,
+`@skid_space_b64`, `@skid_profile` and `@skid_objective_b64`. admit existing
+canonical unquoted tokens; malformed optional values are absent. format values
+are admitted only when neither G read prints a line; otherwise
+`show-options -q -t <id>`, without `-A` or `-v`, supplies them, and the one-id
+read always uses it. window- and pane-local definitions are unsupported.
+character repair is one write guarded by lifetime and the sampled format value,
+re-read once on a lost race; rename reads its session once. add no general
+shell parser.
 
 sessions applies existing character/naming policy to the captured observation.
-untouched rows need no rescan. writes and predicate losses require an actual
-affected-row reread; never synthesize a renamed card. preserve title/pane/name/
+untouched rows need no rescan. an applied guarded write is projected; a lost
+character race re-reads its row; a lost or uncertain naming write keeps the
+observed row for the next inventory. preserve title/pane/name/
 marker guards, collision handling, and partial rename's conservative manual mode.
 reuse this scanner for checkpoint normalization. release manager ownership before
-kernel/process and screen enrichment; project the captured registration without
-another per-row tmux read.
+kernel/process and screen enrichment; project the captured row without another
+per-row tmux read.
 
-remove manager locks from `ValidateTerminal` and `OpenTerminal`:
+remove manager locks from `ResolveSession` and `OpenTerminal`:
 they read immutable configuration/native facts, reserve nothing, and have exact
 checks at dispatch. retain gateway `terminalLifecycle` registration/cancel/join/
 close ordering and tmux's final attach predicate. inventory cannot block attachment
