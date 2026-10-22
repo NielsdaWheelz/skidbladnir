@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -18,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -61,12 +59,6 @@ func verify(archive, signature string) error {
 	return nil
 }
 
-type releaseManifest struct {
-	Platform  string `json:"platform"`
-	SourceSHA string `json:"sourceSha"`
-	Version   string `json:"version"`
-}
-
 func extract(archive, destination string) error {
 	file, err := os.Open(archive)
 	if err != nil {
@@ -79,7 +71,9 @@ func extract(archive, destination string) error {
 	}
 	defer zipped.Close()
 	reader := tar.NewReader(zipped)
-	seen := map[string]bool{}
+	// The signature proves the layout. These checks keep the installer's writes and
+	// the release's relative links inside destination, which check-release does not
+	// fully prove. Exclusive creation rejects a duplicated file or link.
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -90,15 +84,8 @@ func extract(archive, destination string) error {
 		}
 		name := strings.TrimSuffix(header.Name, "/")
 		clean := filepath.Clean(filepath.FromSlash(name))
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || seen[clean] {
-			return errors.New("release archive contains an invalid or duplicate path")
-		}
-		seen[clean] = true
-		top := strings.Split(filepath.ToSlash(clean), "/")[0]
-		switch top {
-		case "skidbladnir", "characters.json", "release.json", "providers", "native-helper", "Skid.app":
-		default:
-			return fmt.Errorf("unexpected release archive member: %s", top)
+		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return errors.New("release archive contains an invalid path")
 		}
 		path := filepath.Join(destination, clean)
 		// Never follow an archive-created symlink while extracting later members.
@@ -125,9 +112,6 @@ func extract(archive, destination string) error {
 				return err
 			}
 		case tar.TypeReg:
-			if header.Size < 0 || header.Size > 1024*1024*1024 {
-				return errors.New("release member exceeds size limit")
-			}
 			f, e := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, os.FileMode(header.Mode)&0755)
 			if e != nil {
 				return e
@@ -197,23 +181,4 @@ func latest(ctx context.Context) (string, error) {
 		return "", errors.New("latest release has invalid version")
 	}
 	return body.Tag, nil
-}
-
-func archivePlatform() (string, error) {
-	value := runtime.GOOS + "-" + runtime.GOARCH
-	switch value {
-	case "darwin-arm64", "linux-amd64":
-		return value, nil
-	}
-	return "", errors.New("supported hosts: macos 26+ arm64, ubuntu 24.04+ amd64, arch amd64 with systemd")
-}
-func fileHash(path string) (string, error) {
-	f, e := os.Open(path)
-	if e != nil {
-		return "", e
-	}
-	h := sha256.New()
-	_, e = io.Copy(h, f)
-	e = errors.Join(e, f.Close())
-	return hex.EncodeToString(h.Sum(nil)), e
 }

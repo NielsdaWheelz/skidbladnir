@@ -95,8 +95,8 @@ account report from an already-running native daemon, then
 attributable terminal observations. [agent control](docs/agent-control.md) describes
 the boundaries. readiness is a cue to inspect, not proof of successful work.
 
-uninstall removes only recorded skid runtime resources. settings, private state,
-provider history, tmux sessions and shared dependencies remain.
+uninstall removes skid's fixed runtime paths and shell blocks. settings, private
+state, provider history, tmux sessions and shared dependencies remain.
 
 ## development
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcli"
+	"github.com/NielsdaWheelz/skidbladnir/internal/install"
 	"io"
 	"os"
 )
@@ -62,7 +63,11 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	case "connect", "join", "remove", "recover", "status", "apply":
 		return fleetCommand(arguments, stdin, stdout, stderr)
 	case "install", "update", "uninstall":
-		return installationCommand(arguments, stdout, stderr)
+		if err := install.Run(context.Background(), arguments, stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "skid %s: %v\n", arguments[0], err)
+			return exitFailure
+		}
+		return 0
 	default:
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}

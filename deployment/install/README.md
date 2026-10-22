@@ -18,13 +18,15 @@ skid uninstall
 ```
 
 install and update download one signed immutable release, or verify the supplied
-local archive. repeated installation converges only when an existing release's
-complete immutable tree matches the signed archive. staging validates the host
-binary, packaged assets and managed helper before replacing `current`. the
-installer stops and restarts skid services at activation; it never restarts tmux
-or providers. failed validation leaves the active release untouched. a service
-startup failure reports that the release is installed and needs service repair.
-the installer refuses a release older than its recorded installation. matching-state
+local archive, then run its binary and quota helper (on mac, also verify the app
+signature) before any skid-owned path changes. the release lands at
+`releases/<version>-<sha>`; a same-version reinstall replaces that tree. the
+installer stops skid services, switches `current`, restarts them, then deletes
+every other release; it never restarts tmux or providers. failed validation
+leaves the active release untouched; a failure after the stop leaves skid
+services stopped until the next install. a service startup failure reports the
+release installed and keeps older releases until the next good install. the
+installer refuses a release older than `current/release.json`; matching-state
 recovery remains an explicit operator action.
 
 supported hosts are macos 26+ arm64, ubuntu 24.04+ amd64 and current arch-family
@@ -60,11 +62,14 @@ records commit, uv, python, interpreter, lock and requirements hashes.
 runtime launches the bundled interpreter directly, with
 isolated imports and bytecode writes disabled; startup never downloads packages.
 
-config, data, state and cache follow their XDG directories, falling back to
-`~/.config`, `~/.local/share`, `~/.local/state` and `~/.cache`. the public executable
+config, data and state follow their XDG directories, falling back to
+`~/.config`, `~/.local/share` and `~/.local/state`. the public executable
 is `~/.local/bin/skid`. installation adds guarded source blocks after existing
 bash/zsh startup content; it respects bash's selected login file and zsh's
 resolved `ZDOTDIR`, preserving symlink targets and existing file permissions.
+each install rewrites both blocks at their boundaries (the prompt block first in
+`.zshrc`, the shell block last), replacing edits inside them; an incomplete or
+duplicated block stops installation with the file's path.
 for the exact initial skid zsh process, a separate managed preamble disables
 powerlevel10k's instant prompt before the user's cache preamble can redirect its
 terminal. ordinary and nested shells keep their normal instant prompt. the
@@ -72,13 +77,15 @@ fully initialized theme still draws the prompt; only the early cached prompt is
 skipped. a later user theme setting may override the parameter. skid changes no
 provider configuration or global environment for this compatibility rule.
 
-uninstall checks recorded ownership before acting. it removes recorded skid
-services, exact links, release files and exact shell blocks. a changed owned
-resource stops removal with its path. additional user files remain. a recorded
-tailscale root proxy is removed only if the exact https:8443 configuration still
-matches and no additional routes share that port; unrelated serve routes remain.
-settings, private state, provider data, tmux and shared packages remain. there is
-no purge option.
+skid owns fixed paths: `releases/`, `current`, `~/.local/bin/skid`, its
+LaunchAgents or systemd unit, and its two marked shell blocks. install overwrites
+them and records nothing. uninstall turns off tailscale serve's https:8443, stops
+skid services, strips the blocks from every bash/zsh startup file install could
+have chosen under the current `ZDOTDIR`, deletes any regular startup file left
+empty, and deletes those paths; it also succeeds when nothing is installed.
+`skid connect` points https:8443 at the gateway, replacing any existing 8443
+handler. settings, private state, provider data, tmux and shared packages
+remain. there is no purge option.
 
 # release signing
 

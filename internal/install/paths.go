@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-type Directories struct{ Home, Config, Data, State, Cache, Bin string }
+type Directories struct{ Home, Config, Data, State, Bin string }
 
 func Paths() (Directories, error) {
 	home, err := os.UserHomeDir()
@@ -21,7 +21,6 @@ func Paths() (Directories, error) {
 		{"XDG_CONFIG_HOME", filepath.Join(home, ".config"), &dirs.Config},
 		{"XDG_DATA_HOME", filepath.Join(home, ".local", "share"), &dirs.Data},
 		{"XDG_STATE_HOME", filepath.Join(home, ".local", "state"), &dirs.State},
-		{"XDG_CACHE_HOME", filepath.Join(home, ".cache"), &dirs.Cache},
 	} {
 		value := os.Getenv(item.key)
 		if value == "" {

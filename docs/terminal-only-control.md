@@ -295,7 +295,7 @@ remove only verified deployment-owned files, then empty directories, from
 `~/.local/share/dev-server/assets/claude/agent-identity`. unexpected content blocks
 that cleanup, not a blind recursive delete. remove no immutable skid release
 members by hand: the new signed release excludes its hook and old launcher;
-installer receipts own old release resources. no permanent cleanup scanner.
+the installer deletes superseded releases. no permanent cleanup scanner.
 
 old native CLI callers/captured conversation refs become invalid at the cut;
 they are never converted to terminal targets. old inert tmux options need no
