@@ -27,3 +27,6 @@ resolved when [the exec budget spec](../tmux-exec-budget.md) option a is
 implemented and its targets are measured on the macbook at N ≥ 18: at most
 1.5 tmux execs/s, and under 5% of one core for serve, its children and the tmux
 server, with inventory and status results unchanged.
+
+progress: W2.7 landed a1, unreleased: a steady list is 2+2K execs; a2, a3 and the
+macbook measurement remain.

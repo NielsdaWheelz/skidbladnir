@@ -63,7 +63,7 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	}
 	identityToken := identityValues[0]
 	validationContext, cancelValidation := context.WithTimeout(request.Context(), 5*time.Second)
-	validationErr := gateway.sessions.ValidateTerminal(validationContext, id, identityToken)
+	validationErr := gateway.sessions.ResolveSession(validationContext, id, identityToken)
 	cancelValidation()
 	if validationErr != nil {
 		writeSessionError(writer, validationErr)

@@ -104,8 +104,10 @@ one session-local option, `@skid_auto_name_b64`, contains canonical unpadded
 base64url of the exact last name accepted by automatic naming. this is ownership
 state, not a second public name or a provenance/history system. reserve this
 private key exclusively for skid session options; definitions at server, global,
-window or pane scope are unsupported. derive ownership from local reads without
-`-A`, never inherited format lookup; add no scope scanner. absent/malformed
+window or pane scope are unsupported. derive ownership from session-local
+values: the inventory's format value only when no server, global or
+global-window definition exists, otherwise `show-options -q -t <id>`; window-
+and pane-local definitions remain unsupported. absent/malformed
 metadata means manual. a valid marker matching
 the current name means automatic; a mismatch means manual and is conditionally
 unset. explicit reset replaces absent/malformed metadata with the current name.
@@ -121,18 +123,22 @@ each automatic inventory pass:
 1. capture lifetime, current name, local marker, current active pane and its
    complete title. read title separately; never delimiter-split arbitrary text.
 2. derive effective mode and at most one desired update per session.
-3. guard the write in tmux by lifetime/id, current name and exact marker;
-   automatic renames additionally guard active pane id and full sampled title.
+3. guard the write in tmux by lifetime/id, current name and the marker as format
+   lookup shows it; a rename also requires that no other session holds the
+   name. automatic renames additionally guard active pane id and full sampled
+   title.
 4. rename first, then update the marker, in the same synchronous guarded queue.
    manual takeover renames first, then removes the marker. reset records the
    current name and may leave renaming to the following inventory pass. encode
    that actual name to base64url in go; insert only the encoded marker token.
-5. reread actual name/mode before projection. never synthesize a renamed card.
+5. project a write only when tmux printed its applied marker, after the last
+   write in the same queue; a refused or uncertain write keeps the observed row.
 
 the queue serializes commands; it is not a rollback transaction. interruption
 after rename but before marker update leaves a mismatch, conservatively manual
 on observation. preserve unknown outcomes; never replay to finish the write.
-an automatic predicate loss causes a fresh observation, not an unguarded retry.
+an automatic predicate loss keeps the observed row; the next inventory observes
+the outcome. there is no unguarded retry.
 optional title-read failure leaves the session visible; failure to obtain required
 canonical name/lifetime facts retains existing machine-inventory failure behavior.
 

@@ -12,29 +12,17 @@ import (
 var (
 	ErrTerminalCleanupFailed            = errors.New("terminal attachment cleanup failed")
 	ErrTerminalConfigurationUnsupported = errors.New("tmux terminal configuration is unsupported")
-	errSessionServerObservation         = errors.New("session server observation failed")
 )
 
 type TerminalAttachment struct {
-	sourceID string
-	runtime  *tmuxclient.Attachment
+	runtime *tmuxclient.Attachment
 }
 
-func (manager *Manager) ValidateTerminal(ctx context.Context, id, identityToken string) error {
-	_, _, err := manager.sessionLifetimeIdentity(ctx, id, identityToken)
-	if errors.Is(err, errSessionServerObservation) {
-		return newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
-	}
-	return err
-}
-
+// OpenTerminal attaches to the token's lifetime; the attachment's own tmux queue
+// enforces it, and one read classifies a refusal or failure whose session is
+// gone.
 func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, input OpenTerminalInput) (*TerminalAttachment, error) {
-	ctx := startupCtx
-
-	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
-	if errors.Is(err, errSessionServerObservation) {
-		return nil, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
-	}
+	server, err := parseLifetime(input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return nil, err
 	}
@@ -46,18 +34,22 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 		var classified error
 		switch {
 		case errors.Is(err, tmuxclient.ErrAttachmentIdentityMismatch):
-			classified = newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
+			classified = manager.refused(startupCtx, input.TmuxID)
 		case errors.Is(err, tmuxclient.ErrAttachmentConfigurationUnsupported):
 			classified = ErrTerminalConfigurationUnsupported
 		default:
-			classified = manager.classifyMissingSession(ctx, input.TmuxID, err)
+			classified = err
+			var sessionErr *Error
+			if _, _, resolveErr := manager.resolve(startupCtx, input.TmuxID, input.IdentityToken); errors.As(resolveErr, &sessionErr) && sessionErr.Code == ErrorSessionNotFound {
+				classified = resolveErr
+			}
 		}
 		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
 			classified = errors.Join(classified, ErrTerminalCleanupFailed)
 		}
 		return nil, classified
 	}
-	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime}, nil
+	return &TerminalAttachment{runtime: runtime}, nil
 }
 
 type TerminalGreeting struct {
@@ -88,8 +80,6 @@ func (attachment *TerminalAttachment) Greeting(ctx context.Context) (TerminalGre
 	return greeting, nil
 }
 
-func (attachment *TerminalAttachment) SourceID() string { return attachment.sourceID }
-
 func (attachment *TerminalAttachment) Read(contents []byte) (int, error) {
 	return attachment.runtime.Read(contents)
 }
@@ -112,29 +102,4 @@ func (attachment *TerminalAttachment) ClosePTY() error {
 
 func (attachment *TerminalAttachment) CloseClient() error {
 	return attachment.runtime.CloseClient()
-}
-
-func (manager *Manager) sessionLifetimeIdentity(ctx context.Context, id, identityToken string) (tmuxclient.ServerIdentity, string, error) {
-	if !sessionIDPattern.MatchString(id) {
-		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	server, valid := parseIdentityToken(identityToken, id)
-	if !valid {
-		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
-	}
-	name, found, err := manager.sessionIdentity(ctx, id)
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, "", err
-	}
-	if !found {
-		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	observed, err := manager.tmux.ServerIdentity(ctx)
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, "", errors.Join(errSessionServerObservation, err)
-	}
-	if observed != server {
-		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
-	}
-	return server, name, nil
 }

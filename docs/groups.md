@@ -180,8 +180,10 @@ unpadded base64url of the label's nfc utf-8 bytes, maximum 342 ascii characters.
 unassigned: the local option is absent. clear unsets it. no empty-option writer,
 global default, pane/window option, alternate key, or versioned value is added.
 
-reuse `sessionOption` / `show-options -qv -t <id>` without `-A` or `-g` so a
-global option is not inherited. tmux's
+membership is session-local metadata: the inventory's format value only when no
+server, global or global-window definition exists, otherwise
+`show-options -q -t <id>` without `-A` or `-g`, so a global option is not
+inherited. tmux's
 [local-option lookup](https://github.com/tmux/tmux/blob/master/cmd-show-options.c)
 uses the local value unless `-A` requests its parent. malformed, empty,
 noncanonical base64url, oversized, invalid-text, or unreadable optional metadata
@@ -204,9 +206,10 @@ existing-session assignment:
 
 1. gateway authenticates, binds the machine, decodes the exact body, and parses
    the label. no label enters a url, raw shell string, or tmux format.
-2. `sessions.Manager.SetGroup` takes the existing mutation lock and resolves the
-   supplied id/token using session-lifetime validation. missing/replaced lifetime
-   rejects. agent identity is irrelevant.
+2. `sessions.Manager.SetGroup` takes the existing mutation lock and parses the
+   supplied id/token; step 3's guard enforces the lifetime, and one read
+   classifies a refusal (gone: not found, otherwise identity mismatch). agent
+   identity is irrelevant.
 3. one `if-shell -F -t <id>` queue checks server epoch, server pid/start time,
    and session id, then sets/unsets only `@skid_space_b64` on that id. its
    predicate has no name, old-label, pane, or process condition. rename during
@@ -218,9 +221,8 @@ existing-session assignment:
 
 factor the common lifetime terms from the tmux identity predicates in
 `internal/tmux/client.go`. rename alone adds naming guards; closure and attachment use the same lifetime-only
-predicate under [automatic naming](automatic-session-names.md). reuse the lifetime-only
-validation currently named `terminalIdentity` in `internal/sessions/attachment.go`,
-giving it a session-oriented name and retaining existing callers. add one narrow
+predicate under [automatic naming](automatic-session-names.md). client-token
+admission lives in `internal/sessions/identity.go`. add one narrow
 `SetSessionGroupIfIdentity` operation, not an arbitrary-option setter. use existing
 argv execution and encoded tokens for the nested tmux command; no shell or hook.
 
@@ -576,7 +578,7 @@ followed [testing policy](rules.md#testing).
 | --- | --- |
 | `internal/group/group.go`, matching tests | pure shared go label/filter/order owner |
 | `internal/sessions/{types,manager,attachment,validation}.go`, new `group.go` if useful, matching tests | typed property/input, pane-independent metadata, create/set, lifetime validation reuse |
-| `internal/tmux/client.go`, matching tests | common lifetime terms, conditional encoded set/unset; naming alone adds name guards |
+| `internal/tmux/{client,guard}.go`, matching tests | common lifetime terms (client), conditional encoded set/unset (guard); naming alone adds name guards |
 | `internal/gateway/{dto,gateway}.go`, matching tests | field, put route/body, error/dispatch; reuse strict decoding and session projection |
 | `internal/logging/logger.go`, matching tests | normalized route, put method, error code; no labels |
 | `internal/fleetclient/{request,response,client,config}.go`, new `groups.go`, matching tests | request/projection/dispatch, bodyless result, shared grouping, safe machine-picker data |
