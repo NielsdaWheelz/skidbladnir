@@ -32,6 +32,7 @@ measured over every tracked non-binary file (fixtures, json and docs included), 
 | baseline `12b1516` | 101,192 | |
 | after wave 1 `9e7da6e` | 91,926 | -9,266 (-9.2%) |
 | after #129-#139 `623280a` | 87,753 | -13,439 (-13.3%) |
+| wave 2 done `a00bd7a` | 85,115 | -16,077 (-15.9%) |
 
 ## decisions
 
@@ -58,7 +59,7 @@ also accepted 2026-10-21:
 - the lockstep [cutover release](issues/release-cutover.md) ships after wave 2, so the fixed-hub fleet is qualified live before w3.1's hub-owned attention builds on it. wave-3 prs finish but merge only after that tag.
 - the coordinator cuts v0.20.1 from main once w1.7 and w1.8 merge; w2.1 and w2.2 (hard cutovers) merge only after that tag. dev-server's pin bump and the macbook maintenance window stay with the owner.
 
-kept by #135: xterm `screenReaderMode` stays on, because it also selects xterm's keydown and `insertText` input path that every phone ime qualification ran with. w3.5 turns it off with stock xterm, whose phone acceptance is already `NOT_RUN`.
+kept (owner, 2026-10-22): xterm `screenReaderMode` stays on. it also selects xterm's keydown and `insertText` input path; with it off, stock xterm lost the first Gboard letter in 4 of 72 emulator runs against 0 of 87 with it on.
 
 kept: runtime firebase configuration, the tui `N` create form, the usage selector, workspace restore verification, classifier precision, the identity-token format.
 
@@ -114,17 +115,17 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | R1 release v0.20.1 | | | merged | v0.20.1 at `05511dc`, pinned by #132 |
 | W2.1 fleet-fixed-hub | 11 | -1,880 | merged | #137, -2383 |
 | W2.2 install-fixed-paths | 4 | -745 | merged | #138, -497 |
-| W2.3 config-one-shape | 5 | -307 | planned |  |
-| W2.4 gateway-http | 8 | -620 | planned |  |
-| W2.5 logging-slog + bounded mac serve log | 2 | -470 | planned |  |
-| W2.6 host-resources | 4 | -390 | planned |  |
+| W2.3 config-one-shape | 5 | -307 | merged | #142, -293 |
+| W2.4 gateway-http | 8 | -620 | merged | #141, -688 |
+| W2.5 logging-slog + bounded mac serve log | 2 | -470 | merged | #146, -460 |
+| W2.6 host-resources + startup-composition rest | 5 | -390 | merged | #147, -715 |
 | W2.7 sessions-read-path + exec budget a1 | 8 | -745 | merged | #139, -183 |
-| W2.8 recovery-simplify | 8 | -575 | planned |  |
-| W3.1 hub-attention | 22 | -4,875 | planned |  |
-| W3.2 quota-go-client | 3 | -165 | planned |  |
+| W2.8 recovery-simplify | 8 | -575 | merged | #148, -494 |
+| W3.1 hub-attention | 22 | -4,875 | held for the cutover tag | #144 (draft), -3,837 |
+| W3.2 quota-go-client | 3 | -165 | held for the cutover tag | #145 (draft), -160 |
 | W3.3 talkback-removal | 3 | -340 | merged | #135, -580 |
 | W3.4 observation-cuts | 3 | -540 | merged | #133, -610 |
-| W3.5 stock-xterm, plus `screenReaderMode` off | 1 | ~-1,300 after w1.3 | planned |  |
+| W3.5 stock-xterm | 1 | ~-1,300 after w1.3 | held for the cutover tag | #143 (draft), -5,432 |
 | W4.1 tolerant-reader | 10 | -1,950 | planned |  |
 | W4.2 go-wire-package | 4 | -540 | planned |  |
 | W4.3 host-rendered-copy | 9 | -930 | planned |  |
@@ -342,6 +343,13 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `followup:sessionui-device-removed` | dead `DeviceRemoved` checks in sessionui (session.go, usage.go) and a stale 'verified roster' comment after #137 | -15 | deletion | W4.4 |
 | `followup:startup-composition-rest` | `platform.Current`'s three build-tagged files and single-caller `runtimeenv.WithoutLaunchContext`, left by #137 | -40 | refactor | W2.6 |
 | `followup:touch-scroll-protocol-doc` | terminal-touch-scroll.md says page protocol 3; the code sends 5 | 0 | docs | W5 |
+| `followup:gateway-dispatch-predicate` | #141 kept a coarse dispatch predicate beside the route table for `dispatch:not_sent` on unmatched and admission answers; derive it from routed mutations only | -20 | refactor | W4.2 |
+| `followup:gateway-no-store-bound` | #141's writeJSON ties the 64 KiB response bound to `Cache-Control: no-store` | -5 | refactor | W4.2 |
+| `followup:fleetclient-input-bounds` | fleetclient still duplicates the text/keys/maxBytes bounds agentcontrol owns after #141 | -20 | deletion | W4.4 |
+| `followup:session-handlers-move` | move the session handlers from gateway.go to sessions.go as a pure move | 0 | refactor | W4.2 |
+| `followup:id-grammar-copies` | %digits/$digits predicates remain in gateway digitsAfter and terminal validPaneID beside tmux.ValidID after #148 | -15 | refactor | W4.2 |
+| `followup:tolerant-consumers` | desktop `ParseServerText` stays strict (#141) and fleetclient's usage-report checks are half a contract (#145); convert with the other same-release consumers | -30 | refactor | W4.1 |
+| `followup:config-revalidation` | after #142: default_machine check could live in fleet; profiles are re-validated by agentruntime; sessions.New re-checks the tmux path | -25 | deletion | W4.4 |
 | `ops-docs:render-release-notes-legacy` | release notes duplicate README prose, re-validate inputs and carry a legacy migration pointer | -85 | cut | W4.10 |
 | `ops-docs:feature-spec-consolidation` | ~45 feature specs (17k lines) amend each other via preambles; merge into ~7 current-state docs | -14,700 | refactor | W5 |
 | `ops-docs:design-deltas-fold` | design deltas D1-D8 are implementation diaries; geometry numbers duplicated between doc and generator | -2,458 | refactor | W5 |
@@ -390,6 +398,11 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 - #137 fleet: a removed device gets 401 and the phone keeps its store; a removed computer drops its cached members. same-fleet phone repair sends the saved bearer to an origin read from an unverified qr, accepted under the tailnet-boundary threat model. join, recover and failed writes restart serve (3-10 s, websockets drop). the machine-handle file and persisted applied settings stay: deleting the first re-keys every host and breaks workspace recovery, and deriving the second in memory makes an invalid host refuse every restart. the qr pairing emulator journey is `NOT_RUN`.
 - #138 install: hand-edited skid-owned files are overwritten; uninstall turns off `tailscale serve --https=8443` unconditionally; the linux systemd branch, real launchd and real tailscale are `NOT_RUN`.
 - #139 sessions: an absent id with a valid token answers 404 `SessionNotFound` (was 500, or 409 `TerminalUnavailable` for terminal ops); an id on an epochless server answers 409 everywhere; a failed CreateShell source read answers 500 (was 422); a window- or pane-local `@skid_` option shadows the format value undetected. a steady list is 2+2K execs (was 6+2K); the M1-M14 mutation pass was not rerun on the final code.
+- #141 gateway: null request members read as absent; a stalled reader closes 5 s after the stall instead of at a 1 MiB backlog, and a slow reader stays connected while tmux paces output; revocation is CloseDevice only; `.`/`..` session ids answer 400 instead of 404; desktop terminal frames still decode strictly until w4.1.
+- #142 config: `machines:` is an unknown key (dev-server yaml edit in the cutover); yaml errors carry yaml.v3's wording; a vanished shell keeps serve up with `invalid_host` and creates answer 500 instead of crash-looping serve; a malformed push key now loads and fails at the first send.
+- #146 logging: every event line starts with `time` (the coordinator kept it so the mac file can place faults); Sessions.Observed is cut, so inventory latency is Request.Completed alone; two overlapping serve processes can push serve.log toward twice its bound; mac serve stderr is still discarded ([issue](issues/macos-serve-stderr-discarded.md)).
+- #147 host resources: a listing under concurrent mutation may show an entry's earlier kind; close errors after a successful read are ignored; pressure owns its wire, so a producer bug ships wrong data instead of a 500; a fifo token still hangs a listing ([issue](issues/directory-listing-fifo-hang.md)).
+- #148 recovery: failures are built at each call site, so an unlisted phase/cause pair now reaches the client instead of panicking the gateway; the reader admits decodable hand edits and drops the old count and length caps; the catalogue is compiled in (editing it needs a rebuild); terminal context records change format, so a rollback binary cannot read the new ones.
 
 ## cross-repo cutover
 
