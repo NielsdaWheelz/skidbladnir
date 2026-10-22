@@ -1,7 +1,8 @@
 # tmux exec budget and serve priority
 
-2026-10-21: proposed, not implemented; owner acceptance pending. the
-[cleanup campaign](cleanup.md) coordinator schedules it (see sequencing).
+2026-10-21: accepted by the owner, including a3's amendments to architecture's
+agent-observation paragraph and session latency's no-cache scope; not yet
+implemented. the [cleanup campaign](cleanup.md) schedules it (see sequencing).
 cross-repo decisions come from dev-server `docs/macbook-capacity-plan.md`
 (macbook-capacity d6, d7, d10); this spec cites them and does not vary them.
 the [exec overhead](issues/tmux-exec-overhead.md) and
@@ -59,7 +60,7 @@ observed.
 ## invariants
 
 these hold today and must keep holding:
-- inventory is a sample, not an atomic snapshot ([polling](rules/polling.md)).
+- inventory is a sample, not an atomic snapshot ([polling](rules.md#timing-and-polling)).
   every row comes from one admitted server lifetime. a changed lifetime fails
   the list with `WorkspaceSourceChanged`, as today.
 - metadata are session-local values. inherited lookup never substitutes for an
@@ -190,7 +191,7 @@ several clients shows overlapping lists dominate.
   inventory's attached-client count and terminal presence.
 - it needs a supervisor, `%begin`/`%end` framing, reconnects and new-lifetime
   handling.
-- [polling](rules/polling.md) forbids push infrastructure added to satisfy a
+- [polling](rules.md#timing-and-polling) forbids push infrastructure added to satisfy a
   generic preference, and [pull to refresh](dashboard-pull-to-refresh.md)
   lists control mode as a non-goal.
 - tmux 3.8 `set-hook -B` monitors run tmux commands. they reach skid only
@@ -251,7 +252,7 @@ plus 0.5/s per attached terminal.
 
 ## proving tests
 
-these are temporary tests under [testing](rules/testing.md). run each against
+these are temporary tests under [testing](rules.md#testing). run each against
 the current and the changed implementation, on an isolated `tmux -L` socket,
 with current-turn approval as `AGENTS.md` requires, and delete them before
 commit.

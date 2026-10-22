@@ -49,13 +49,19 @@ owner-approved product cuts (2026-10-21):
 | cli | `info --explain` prints reason and rule ids only | -310 | no region, capture or timing detail |
 | terminal | stock xterm.js replaces the patched fork | ~-5,800 | physical-phone acceptance stays `NOT_RUN` |
 
+also accepted 2026-10-21:
+
+- the [tmux exec budget](tmux-exec-budget.md) option a and its priority change, including a3's amendments to architecture's agent-observation paragraph and session latency's no-cache scope.
+- the mac serve event log goes to a bounded file, `~/.local/state/skidbladnir/serve.log`, rotating at 8 MiB with one previous file; linux keeps the journal.
+- the coordinator cuts v0.20.1 from main once w1.7 and w1.8 merge; w2.1 and w2.2 (hard cutovers) merge only after that tag. dev-server's pin bump and the macbook maintenance window stay with the owner.
+
 kept: runtime firebase configuration, the tui `N` create form, the usage selector, workspace restore verification, classifier precision, the identity-token format.
 
 process:
 
 - one finding cluster per pr, branch `cleanup/<slug>`, merged to main only; no release, re-pin or deploy without a separate request.
 - temporary boundary tests run against the original and the rewrite, then are deleted before commit ([testing](rules.md#testing)).
-- tests use isolated `tmux -L` sockets and loopback gateways with temporary state; never the production gateway, the owner's tmux server or other hosts.
+- tests use isolated `tmux -L` sockets and loopback gateways with temporary state; never the production gateway, the owner's tmux server or other hosts. every tmux or integration run needs the owner's approval in the current turn, per pr.
 - android end-to-end tests use the emulator only, never the phone.
 
 ## open questions
@@ -65,7 +71,7 @@ process:
 - [ ] phone dashboard: restore scroll by index, not card identity, after process death (-200)?
 - [ ] forge: drop the forced refresh after an uncertain create (-110)? a second tap could double-create.
 - [ ] phone saved state: drop the sha-256 label fingerprints that keep labels out of the saved-state bundle (-150)?
-- [ ] release: plan the lockstep host and apk release plus dev-server cutover when the code settles, or leave it to the owner?
+- [ ] release: after v0.20.1, plan the lockstep host and apk release that carries w2.1's fresh-enrolment cutover, or leave it to the owner?
 - [ ] housekeeping: close draft pr #102 and remove the ten merged `fix/*` worktrees? local main has 2 unpushed commits and uncommitted doc edits, left alone.
 
 ## slices
@@ -99,18 +105,21 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W1.4 go-dead-surface | 9 | -430 | merged | #124, -498 |
 | W1.5 android-dead-surface | 7 | -295 | merged | #125, -302 |
 | W1.6 ops-ledgers | 5 | -1,392 | merged | #126, -1,339 |
-| W2.1 fleet-fixed-hub | 11 | -1,880 | running |  |
-| W2.2 install-fixed-paths | 4 | -745 | running |  |
+| W1.7 launchd-interactive (exec budget priority) | 0 | small | running | ships in v0.20.1 |
+| W1.8 tty-probe-noise | 0 | 0 | review | #129, ships in v0.20.1 |
+| R1 release v0.20.1 | | | planned | gates w2.1 and w2.2 |
+| W2.1 fleet-fixed-hub (held for v0.20.1) | 11 | -1,880 | running |  |
+| W2.2 install-fixed-paths (held for v0.20.1) | 4 | -745 | running |  |
 | W2.3 config-one-shape | 5 | -307 | planned |  |
 | W2.4 gateway-http | 8 | -620 | planned |  |
-| W2.5 logging-slog | 2 | -470 | planned |  |
+| W2.5 logging-slog + bounded mac serve log | 2 | -470 | planned |  |
 | W2.6 host-resources | 4 | -390 | planned |  |
-| W2.7 sessions-read-path | 8 | -745 | running |  |
+| W2.7 sessions-read-path + exec budget a1 | 8 | -745 | running |  |
 | W2.8 recovery-simplify | 8 | -575 | planned |  |
 | W3.1 hub-attention | 22 | -4,875 | planned |  |
 | W3.2 quota-go-client | 3 | -165 | planned |  |
 | W3.3 talkback-removal | 3 | -340 | planned |  |
-| W3.4 observation-cuts | 3 | -540 | planned |  |
+| W3.4 observation-cuts | 3 | -540 | running |  |
 | W3.5 stock-xterm | 1 | ~-1,300 after w1.3 | planned |  |
 | W4.1 tolerant-reader | 10 | -1,950 | planned |  |
 | W4.2 go-wire-package | 4 | -540 | planned |  |
@@ -119,10 +128,23 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W4.5 android-controller | 13 | -1,945 | planned |  |
 | W4.6 android-ui-structure | 9 | -943 | planned |  |
 | W4.7 terminal-page | 6 | -420 | planned |  |
-| W4.8 observation-refactors | 9 | -384 | planned |  |
+| W4.8 observation-refactors + exec budget a2, a3 | 9 | -384 | planned |  |
 | W4.9 private-file-primitive | 1 | -150 | planned |  |
 | W4.10 release-pipeline | 2 | -872 | planned |  |
 | W5 docs-consolidation | 11 | ~-20,000 (mapper docs estimates overlap) | planned |  |
+
+## spec items
+
+non-mapper work folded into the waves.
+
+| item | source | pr |
+| --- | --- | --- |
+| a1 inventory in one exec | [exec budget](tmux-exec-budget.md#a1-inventory-in-one-exec) | W2.7 |
+| a2 all captures in one exec | [exec budget](tmux-exec-budget.md#a2-all-captures-in-one-exec) | W4.8, after W3.4 |
+| a3 activity-gated reuse, plus the architecture and session-latency amendments | [exec budget](tmux-exec-budget.md#a3-activity-gated-reuse) | W4.8, after W3.4 |
+| `ProcessType=Interactive` and the install priority check | [exec budget](tmux-exec-budget.md#priority-macbook-capacity-d7) | W1.7 |
+| zsh tty probe noise | terminal-context-tty-noise issue, resolved by #129 | W1.8 |
+| bounded mac serve log | [issue](issues/macos-serve-log-discarded.md) | W2.5 |
 
 ## findings
 
