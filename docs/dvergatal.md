@@ -1,6 +1,6 @@
 # Dvergatal curation and provenance
 
-Status: frozen curation record for `catalog/characters.json`, which is itself
+Status: frozen curation record for `internal/catalog/characters.json`, which is itself
 the inventory: every entry carries its key, display name, tradition, and source
 work and locus. This file owns the admission rules behind it. The 2026-08-25
 v0 scope reset replaced the superseded raster portrait deliverable with
@@ -34,11 +34,11 @@ excluded.
 
 Keys use the catalogue's ASCII asset-safe grammar. Display names preserve a
 single normalized source spelling or an explicit primary-text epithet and are
-globally unique. The gateway's catalogue loader (`internal/catalog`) rejects an
-invalid key and a duplicate key or display name when an installed gateway starts;
-nothing checks the file before release. The other rules here
-(NFC display names, no `FairyTale` or `ModernMedia` tradition, one primary-text
-locus per entry) are applied by review; no gate re-checks them.
+globally unique. `internal/catalog` embeds the file and panics at process start
+on an invalid or duplicate key; nothing checks the file before release. The
+other rules here (unique NFC display names, no `FairyTale` or `ModernMedia`
+tradition, one primary-text locus per entry) are applied by review; no gate
+re-checks them.
 
 ## Primary sources
 

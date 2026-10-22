@@ -224,12 +224,13 @@ the existing creation action `new terminal on <owner>`.
    leaves it intact for mosh-server. retain private `SKIDBLADNIR_TERMINAL_CONTEXT=1`
    for scoped transport functions in nested interactive shells. preserve native
    argv, status, job control, remote commands and exit; never create remote tmux.
-4. a private registration is `{connectionId, bootId, pid, startIdentity, tty}`,
-   at most 1 kib, atomically stored under
-   `$HOME/.cache/skidbladnir/terminal-contexts/<connectionId>.json` (directory 0700,
-   files 0600). helper and gateway share one path/codec owner. records hold no cwd,
-   provider content, timestamps or credentials. at most 256 live registrations;
-   prune dead records during ordinary register/read work. records survive gateway
+4. a private registration is `{bootId, pid, startIdentity, tty}`, atomically
+   stored under `$HOME/.cache/skidbladnir/terminal-contexts/<connectionId>.json`
+   (directory 0700, files 0600); the file name carries the id. helper and gateway
+   share one path/codec owner. records hold no cwd, provider content, timestamps
+   or credentials. no record cap, size check or directory lock: register writes a
+   temp file and renames it, after pruning records from another boot or with a
+   dead root; reads never prune. records survive gateway
    restart but supply no authority without current kernel validation. boot identity
    prevents accepting pid/start/tty reuse after reboot. no heartbeat or daemon.
    this is a narrow exception to tmux-only runtime metadata: transient connection
@@ -237,9 +238,11 @@ the existing creation action `new terminal on <owner>`.
 5. after native transport classification, source inventory uses the same bounded
    environment reader for its marker. remote gateway requires matching boot,
    pid/start, nonzero tty and leader `SessionID == PID`; foreground session/tty
-   must match that root. bracket the whole cwd/environment/provider sample with
-   revalidation; instability discards it. invalid root returns unavailable; stable
-   missing cwd/home only omits that field. linux `/proc/.../cwd` and darwin
+   must match that root. one sample: `process` brackets each environment or cwd
+   read with identity checks, and a foreground change during a read is
+   unavailable; the reads are not revalidated together. a transport foreground
+   reads no cwd. invalid root returns unavailable; stable missing cwd/home only
+   omits that field. linux `/proc/.../cwd` and darwin
    `PROC_PIDVNODEPATHINFO` remain in `process`.
 
 ```text

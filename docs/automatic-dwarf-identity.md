@@ -116,7 +116,7 @@ POST /v1/sessions
 
 Ownership stays where it is:
 
-- `catalog`: validates catalogue keys/names and resolves a key.
+- `catalog`: validates catalogue keys and resolves a key.
 - `tmux.Client`: owns the exact conditional tmux command and format escaping.
 - `sessions.Manager`: owns allocation, normalization, create, and inventory.
 - `gateway`: maps the required domain value and owns the sole wire-grid sort;
@@ -170,10 +170,10 @@ Do not accept aliases, dual payloads, nullable `character`, or omitted
 `character`. Keep existing session-name validation/error codes; tmux itself
 calls this value a session name. Objective remains create-time-only.
 
-Make the domain character one required value, preferably
-`catalog.Character`, instead of parallel `CharacterKey` and
-`CharacterDisplayName` strings. The catalogue owns that invariant. The API
-contains no image/color fields; Android derives them from `character.key`.
+Make the domain character one required value, `catalog.Entry`, instead of
+parallel `CharacterKey` and `CharacterDisplayName` strings. The catalogue owns
+that invariant. The API contains no image/color fields; Android derives them
+from `character.key`.
 
 Android adds no action, sheet, picker, rename, or objective editor. Keep the
 current card hierarchy and portrait. Remove the neutral portrait and nullable
@@ -195,7 +195,7 @@ Delete, do not deprecate:
 - Old DTO names, compatibility decoders, fixtures, comments, and tests.
 - Helpers made single-use or dead by the cutover.
 
-Keep `catalog/characters.json` and its provenance inventory unchanged. Do not
+Keep `internal/catalog/characters.json` and its provenance inventory unchanged. Do not
 rename already-running tmux sessions. `scripts/test` composition does not
 change.
 

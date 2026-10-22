@@ -218,7 +218,8 @@ does not pay for the machinery.
 - presence: 0.5 execs/s per attached web terminal. it bounds handoff and
   revocation lag.
 - attach readiness: bounded and once per attach.
-- recovery checkpoint: unchanged here. W2.8 owns its redundant lifetime checks.
+- recovery checkpoint: W2.8 cut a steady tick from 6 execs to 3 (`InspectServer`,
+  the inventory batch, the capture batch) and a mutation checkpoint from 6 to 3.
 
 ## priority (macbook-capacity d7)
 

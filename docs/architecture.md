@@ -164,7 +164,7 @@ account across machines.
 
 Skíðblaðnir (app), Hlíðskjálf (grid motif; literal label `Dwarves`), The Forge
 (new-session sheet; literal `New dwarf`), and Dvergatal (the append-only dwarf
-catalogue at `catalog/characters.json`, ≥100 entries, original deterministic
+catalogue at `internal/catalog/characters.json`, ≥100 entries, original deterministic
 procedural icon portraits) are retained. Every visible ordinary session owns a
 valid Dvergatal key in `@skid_character`, whether created from the laptop or
 the gateway. Inventory repairs a missing or invalid key before returning a

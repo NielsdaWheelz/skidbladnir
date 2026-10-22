@@ -9,9 +9,10 @@ import (
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
+// The attachment sentinels are tmux's own; consumers keep these names.
 var (
-	ErrTerminalCleanupFailed            = errors.New("terminal attachment cleanup failed")
-	ErrTerminalConfigurationUnsupported = errors.New("tmux terminal configuration is unsupported")
+	ErrTerminalCleanupFailed            = tmuxclient.ErrAttachmentCleanupFailed
+	ErrTerminalConfigurationUnsupported = tmuxclient.ErrAttachmentConfigurationUnsupported
 )
 
 type TerminalAttachment struct {
@@ -31,20 +32,23 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 		Columns:  input.Columns, Rows: input.Rows, Server: server,
 	})
 	if err != nil {
+		// err itself carries the configuration and cleanup sentinels; a
+		// replacement classification carries cleanup forward.
 		var classified error
 		switch {
 		case errors.Is(err, tmuxclient.ErrAttachmentIdentityMismatch):
 			classified = manager.refused(startupCtx, input.TmuxID)
-		case errors.Is(err, tmuxclient.ErrAttachmentConfigurationUnsupported):
-			classified = ErrTerminalConfigurationUnsupported
+		case errors.Is(err, ErrTerminalConfigurationUnsupported):
+			return nil, err
 		default:
-			classified = err
 			var sessionErr *Error
-			if _, _, resolveErr := manager.resolve(startupCtx, input.TmuxID, input.IdentityToken); errors.As(resolveErr, &sessionErr) && sessionErr.Code == ErrorSessionNotFound {
-				classified = resolveErr
+			_, _, resolveErr := manager.resolve(startupCtx, input.TmuxID, input.IdentityToken)
+			if !errors.As(resolveErr, &sessionErr) || sessionErr.Code != ErrorSessionNotFound {
+				return nil, err
 			}
+			classified = resolveErr
 		}
-		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
+		if errors.Is(err, ErrTerminalCleanupFailed) {
 			classified = errors.Join(classified, ErrTerminalCleanupFailed)
 		}
 		return nil, classified

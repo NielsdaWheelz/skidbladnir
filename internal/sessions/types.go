@@ -17,7 +17,6 @@ type Config struct {
 	ShellPath      string // a hostconfig.Resolve shell; sessions trusts it
 	SocketName     string
 	Workdir        *workdir.Service
-	CataloguePath  string
 	Profiles       []agentruntime.Profile
 	Machine        machine.Handle
 	CheckpointPath string
@@ -97,7 +96,7 @@ type Session struct {
 	Connection       *Connection
 	Objective        string
 	Group            group.Label
-	Character        catalog.Character
+	Character        catalog.Entry
 	CWD              string
 	ActiveCommand    string
 	AttachedClients  int
