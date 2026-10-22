@@ -82,13 +82,13 @@ no purge option.
 
 # release signing
 
-`scripts/sign-release RELEASE_DIRECTORY` signs the sha256 bytes of each host
-archive with ed25519 and emits detached `.tar.gz.sig` files plus the bootstrap
-installer. set `SKIDBLADNIR_RELEASE_SIGNING_KEY` to the private PKCS8 key path;
-the local default is `~/.config/skidbladnir/release-signing.pem`. the signer
-requires its derived public key to equal `internal/install/release-public-key.pem`.
-private material is never included in release assets. the release checker also
-requires the bootstrap's literal public key to match this canonical pin.
+`scripts/release` signs the sha256 bytes of each host archive with ed25519 and ships
+detached `.tar.gz.sig` files beside the bootstrap installer. set
+`SKIDBLADNIR_RELEASE_SIGNING_KEY` to the private PKCS8 key path; the local default is
+`~/.config/skidbladnir/release-signing.pem`. the release refuses before building unless
+the key's derived public key equals `internal/install/release-public-key.pem`. private
+material is never included in release assets. the release checker verifies each
+signature and requires the bootstrap's literal public key to match this canonical pin.
 
 checksums detect corruption; signatures establish possession of the pinned
 release key. they are different claims. signing keys and the initial bootstrap

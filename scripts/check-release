@@ -199,10 +199,8 @@ PY
     "$repo_dir/scripts/build-mac-icon" "$source_dir" "$stage/expected-skid.icns" || return 1
     cmp -s "$stage/expected-skid.icns" "$app/Contents/Resources/skid.icns" || return 1
     expected="$stage/expected-notifications"
-    (cd "$source_dir" && MACOSX_DEPLOYMENT_TARGET=26.0 GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
-      go build -buildvcs=false -mod=readonly -trimpath \
-        -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
-        -o "$expected" ./cmd/skid-notifications) || return 1
+    "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 \
+      ./cmd/skid-notifications "$expected" || return 1
     cp "$app/Contents/MacOS/skid-notifications" "$stage/observed-notifications" || return 1
     # Apple signing normalizes __LINKEDIT allocation. Match that metadata on
     # private audit copies before stripping; the verified release is untouched.
@@ -263,7 +261,7 @@ verify_archive() (
   if [[ -n "$reproduce" ]]; then
     expected_binary="$staging_dir/expected-skidbladnir"
     "$repo_dir/scripts/build-host-binary" \
-      "$source_dir" "$tag" "$sha" "$goos" "$goarch" "$expected_binary" || {
+      "$source_dir" "$tag" "$sha" "$platform" ./cmd/skidbladnir "$expected_binary" || {
       printf '%s exact-source binary reproduction failed\n' "$(basename "$archive")" >&2
       return 1
     }
@@ -326,9 +324,6 @@ validate_release_source "$source_dir" "$sha" || {
   printf 'Release source must be a clean repository root at the exact source SHA\n' >&2
   exit 1
 }
-if [[ -n "$reproduce" ]]; then
-  GOTOOLCHAIN=local "$source_dir/scripts/check-go-toolchain" >/dev/null
-fi
 [[ -d "$release_dir" ]] || {
   printf 'Release directory is unavailable\n' >&2
   exit 1

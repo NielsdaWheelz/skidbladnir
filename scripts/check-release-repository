@@ -1,26 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# usage: check-release-repository {immutable | run SOURCE_SHA}
+# proves the github side of a release: the original public repository, then either
+# immutable releases or a successful push verify run on main for exactly SOURCE_SHA,
+# whose id `run` prints.
 repo='NielsdaWheelz/skidbladnir'
 repo_id=1386409483
-
-case "${1:-}" in
-  identity) [[ "$#" -eq 1 ]] ;;
-  immutable) [[ "$#" -eq 1 ]] ;;
-  run)
-    [[ "$#" -eq 3 && "$2" =~ ^[0-9a-f]{40}$ && "$3" =~ ^[1-9][0-9]*$ ]] ;;
-  *)
-    printf 'usage: %s {identity|immutable|run SOURCE_SHA RUN_ID}\n' "$0" >&2
-    exit 64
-    ;;
-esac || exit 64
-
-for command in gh jq; do
-  command -v "$command" >/dev/null || {
-    printf 'Required release command is unavailable: %s\n' "$command" >&2
-    exit 1
-  }
-done
+[[ "${1:-}" == immutable || "${1:-}" == run ]] || {
+  printf 'usage: %s {immutable|run SOURCE_SHA}\n' "$0" >&2
+  exit 64
+}
 
 gh api --method GET "repos/$repo" |
   jq -e --arg name "$repo" --argjson id "$repo_id" \
@@ -38,8 +28,14 @@ if [[ "$1" == immutable ]]; then
     printf 'GitHub immutable releases are not enabled for repository id %s\n' "$repo_id" >&2
     exit 1
   }
-elif [[ "$1" == run ]]; then
-  gh api --method GET "repos/$repo/actions/runs/$3" |
+else
+  run_id="$(gh run list --repo "$repo" --workflow verify.yml --branch main --event push --commit "$2" \
+    --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+  [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'No successful verify run exists for source SHA %s\n' "$2" >&2
+    exit 1
+  }
+  gh api --method GET "repos/$repo/actions/runs/$run_id" |
     jq -e --arg sha "$2" --argjson id "$repo_id" '
       .repository.id == $id and .head_repository.id == $id and
       .head_sha == $sha and .head_branch == "main" and
@@ -50,4 +46,5 @@ elif [[ "$1" == run ]]; then
     printf 'Hosted verify run does not belong to the exact source in repository id %s\n' "$repo_id" >&2
     exit 1
   }
+  printf '%s\n' "$run_id"
 fi

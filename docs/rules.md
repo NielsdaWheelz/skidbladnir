@@ -193,12 +193,14 @@ commands:
 - terminal vendor files have no retained check: git tracks their bytes, and
   `scripts/build-terminal-xterm` rebuilds the patched bundle on demand; an empty
   `git diff` afterwards proves it reproducible.
-- `scripts/release TAG` builds, signs and verifies artifacts once, then drafts a
-  release; publication is separate. `scripts/check-release [--reproduce] [--source
-  DIR] RELEASE_DIRECTORY TAG SOURCE_SHA` verifies artifacts against the public
-  certificate and clean exact source; only `--reproduce`, run from that checkout,
-  compares bytes. `scripts/check published-release TAG SOURCE_SHA` reads a published
-  release's source, assets, pin and hosted verify run.
+- `scripts/release TAG` builds and signs every artifact from a fresh clone of exact
+  canonical main, runs `scripts/check-release` on the result, then drafts a release;
+  publication is separate. `scripts/check-release [--reproduce] [--source DIR]
+  RELEASE_DIRECTORY TAG SOURCE_SHA` verifies artifacts against the public certificate
+  and clean exact source; only `--reproduce`, run from that checkout, compares bytes,
+  rebuilding with its own `scripts/build-host-binary` and `scripts/build-mac-icon`.
+  `scripts/check published-release TAG SOURCE_SHA` reads a published release's
+  source, assets, pin and hosted verify run.
 - hosted ci runs `verify` on every pull request and main push, scoped by the changed
   paths in `.github/workflows/verify.yml`. a scoped pass proves only the checks it ran.
 

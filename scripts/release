@@ -1,130 +1,155 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# usage: scripts/release vMAJOR.MINOR.PATCH
+# builds, signs and verifies one release of the clean tip of canonical main, then
+# creates it as a github draft. publication, the pins and published-release follow.
+# scripts run from this reviewed checkout; everything built or shipped comes from a
+# fresh clone of the same SHA.
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-repo_name='NielsdaWheelz/skidbladnir'
-
-add_release_source_worktree() {
-  local repository="$1"
-  local sha="$2"
-  local target="$3"
-  [[ "$sha" =~ ^[0-9a-f]{40}$ && ! -e "$target" ]] || return 1
-  git -C "$repository" worktree add --quiet --detach "$target" "$sha" || return 1
-  if [[ "$(git -C "$target" rev-parse HEAD)" != "$sha" ||
-    -n "$(git -C "$target" status --porcelain=v1 --untracked-files=all)" ]]; then
-    git -C "$repository" worktree remove --force "$target" >/dev/null 2>&1 || {
-      printf 'Failed to clean up an invalid release source worktree\n' >&2
-      return 1
-    }
-    return 1
-  fi
+repo='NielsdaWheelz/skidbladnir'
+refuse() {
+  printf '%s\n' "$1" >&2
+  exit 1
 }
 
-remove_release_source_worktree() {
-  git -C "$1" worktree remove --force "$2"
-}
-
-if [[ "$#" -ne 1 ]]; then
+[[ "$#" -eq 1 ]] || {
   printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
   exit 64
-fi
-
+}
 tag="$1"
-[[ "$(uname -s)/$(uname -m)" == Darwin/arm64 && "${SKIDBLADNIR_MAC_SIGNING_IDENTITY:-}" =~ ^[0-9A-Fa-f]{40}$ ]] || {
-  printf 'release requires the native Darwin arm64 signing host and SKIDBLADNIR_MAC_SIGNING_IDENTITY\n' >&2
-  exit 1
-}
-preflight="$("$repo_dir/scripts/check-release-source" "$tag")"
-IFS=$'\t' read -r sha run_id <<<"$preflight"
-[[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[0-9]+$ ]] || {
-  printf 'Release source preflight returned invalid evidence\n' >&2
-  exit 1
-}
+[[ "$(uname -s)/$(uname -m)" == Darwin/arm64 && "${SKIDBLADNIR_MAC_SIGNING_IDENTITY:-}" =~ ^[0-9A-Fa-f]{40}$ ]] ||
+  refuse 'release requires the native Darwin arm64 signing host and SKIDBLADNIR_MAC_SIGNING_IDENTITY'
+version="$("$repo_dir/scripts/check-release" --android-version "$tag")"
+read -r version_name version_code <<<"$version"
+key="${SKIDBLADNIR_RELEASE_SIGNING_KEY:-$HOME/.config/skidbladnir/release-signing.pem}"
+public_key="$(openssl pkey -in "$key" -pubout)"
+[[ "$public_key" == "$(<"$repo_dir/internal/install/release-public-key.pem")" ]] ||
+  refuse 'release private key differs from the pinned public key'
+export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
+# source: the clean, unreleased tip of canonical main with hosted verify evidence.
+# the immutable check is the first gh call, so broken auth fails here and never
+# reaches the fail-open `gh release view` below.
 cd "$repo_dir"
-
-staging_dir="$(mktemp -d /tmp/skidbladnir-release.XXXXXX)"
-case "$staging_dir" in
-  /tmp/skidbladnir-release.* | /private/tmp/skidbladnir-release.*) ;;
-  *) printf 'Unexpected release staging directory\n' >&2; exit 1 ;;
+case "$(git remote get-url origin)" in
+  git@github.com:NielsdaWheelz/skidbladnir.git | https://github.com/NielsdaWheelz/skidbladnir.git) ;;
+  *) refuse "Release origin does not identify $repo" ;;
 esac
-source_worktree="$staging_dir/source"
-source_worktree_registered=''
-cleanup_release() {
-  local release_exit=$?
-  trap - EXIT
-  if [[ -n "$source_worktree_registered" ]]; then
-    remove_release_source_worktree "$repo_dir" "$source_worktree" >/dev/null 2>&1 || {
-      printf 'Failed to remove the temporary release source worktree\n' >&2
-      [[ "$release_exit" -ne 0 ]] || release_exit=1
-    }
-  fi
-  rm -R -- "$staging_dir" || {
-    printf 'Failed to remove the temporary release staging directory\n' >&2
-    [[ "$release_exit" -ne 0 ]] || release_exit=1
-  }
-  exit "$release_exit"
+[[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || refuse 'Release requires a clean worktree and index'
+"$repo_dir/scripts/check-release-repository" immutable
+git fetch --quiet origin main --tags
+sha="$(git rev-parse HEAD)"
+[[ "$sha" == "$(git rev-parse origin/main)" ]] || refuse 'Release HEAD is not exact origin/main'
+# the fetch imported every origin tag (or failed), so this loop also refuses $tag
+# itself, local or on origin. a draft has no tag yet; only github knows it.
+while IFS= read -r existing_tag; do
+  existing_version="$("$repo_dir/scripts/check-release" --android-version "$existing_tag" 2>/dev/null)" || continue
+  ((${existing_version#* } < version_code)) ||
+    refuse "Release tag $tag does not increase the Android version code beyond $existing_tag"
+done < <(git tag --list 'v*')
+if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+  refuse "Release already exists and will not be replaced: $tag"
+fi
+run_id="$("$repo_dir/scripts/check-release-repository" run "$sha")"
+
+# build from a fresh clone of sha, never the checkout: its ignored files must not ship.
+# staging is private and removed on every exit; -f because git objects are read-only.
+staging="$(mktemp -d /tmp/skidbladnir-release.XXXXXX)"
+cleanup() {
+  local status=$?
+  rm -Rf -- "$staging" || ((status)) || status=1
+  exit "$status"
 }
-trap cleanup_release EXIT
+trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-add_release_source_worktree "$repo_dir" "$sha" "$source_worktree" || {
-  printf 'Could not create a clean detached worktree for exact release SHA %s\n' "$sha" >&2
-  exit 1
-}
-source_worktree_registered=1
-release_dir="$staging_dir/assets"
-(
-  cd "$source_worktree"
-  export GOTOOLCHAIN=local
-  export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
-  export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-  scripts/check-go-toolchain >/dev/null
-  read -r version_name version_code < <(scripts/check-release --android-version "$tag")
-  mkdir -m 0700 "$release_dir"
-  cd android
+source_dir="$staging/source"
+assets="$staging/assets"
+git clone --quiet --no-checkout "$repo_dir" "$source_dir"
+git -C "$source_dir" checkout --quiet --detach "$sha"
+mkdir -m 0700 "$assets"
+
+for platform in linux-amd64 darwin-arm64; do
+  root="$staging/$platform"
+  install -d -m 0755 "$root/providers"
+  "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" "$platform" ./cmd/skidbladnir "$root/skidbladnir"
+  install -m 0644 "$source_dir/catalog/characters.json" "$root/characters.json"
+  jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
+    '{platform:$platform,sourceSha:$sha,version:$version}' >"$root/release.json"
+  chmod 0644 "$root/release.json"
+  install -m 0644 "$source_dir/deployment/providers/shell-init" \
+    "$source_dir/deployment/providers/terminal-context-init" "$root/providers"
+  install -m 0755 "$source_dir/deployment/install/quota-read" "$root/providers/quota-read"
+  # uv reads project config from its cwd upward; keep the checkout's ignored files out.
+  (cd "$source_dir" && python3 deployment/install/build-native.py "$platform" "$root/native-helper")
+  members=(skidbladnir characters.json release.json providers native-helper)
+  if [[ "$platform" == darwin-arm64 ]]; then
+    app="$root/Skid.app"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 ./cmd/skid-notifications \
+      "$app/Contents/MacOS/skid-notifications"
+    install -m 0644 "$source_dir/macos/Info.plist" "$app/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${tag#v}" -c "Set :CFBundleVersion ${tag#v}" \
+      -c "Add :SkidSourceSHA string $sha" "$app/Contents/Info.plist"
+    chmod 0644 "$app/Contents/Info.plist"
+    "$repo_dir/scripts/build-mac-icon" "$source_dir" "$app/Contents/Resources/skid.icns"
+    find "$app" -type d -exec chmod 0755 {} +
+    codesign --force --sign "$SKIDBLADNIR_MAC_SIGNING_IDENTITY" --timestamp=none --options runtime \
+      --entitlements "$source_dir/macos/entitlements.plist" "$app"
+    chmod 0755 "$app/Contents/_CodeSignature"
+    chmod 0644 "$app/Contents/_CodeSignature/CodeResources"
+    members+=(Skid.app)
+  fi
+  archive="$assets/skidbladnir-$platform.tar.gz"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$root" -czf "$archive" "${members[@]}"
+  openssl dgst -sha256 -binary "$archive" >"$staging/digest"
+  openssl pkeyutl -sign -rawin -inkey "$key" -in "$staging/digest" -out "$archive.sig"
+done
+
+(cd "$source_dir/android" &&
   SKIDBLADNIR_ANDROID_SIGNING_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-signing.properties" \
-    ./gradlew \
-    -Pskidbladnir.versionName="$version_name" \
-    -Pskidbladnir.versionCode="$version_code" \
-    :app:assembleRelease --no-daemon
-  cd ..
-  install -m 0644 android/app/build/outputs/apk/release/app-release.apk "$release_dir/skidbladnir-android.apk"
-  install -m 0644 android/app-signing-cert.sha256 "$release_dir/android-signing-cert.sha256"
-  scripts/build-host-archive . "$tag" "$sha" linux amd64 linux-amd64 "$release_dir/skidbladnir-linux-amd64.tar.gz"
-  scripts/build-host-archive . "$tag" "$sha" darwin arm64 darwin-arm64 "$release_dir/skidbladnir-darwin-arm64.tar.gz"
-  (
-    cd "$release_dir"
-    shasum -a 256 \
-      android-signing-cert.sha256 \
-      skidbladnir-android.apk \
-      skidbladnir-darwin-arm64.tar.gz \
-      skidbladnir-linux-amd64.tar.gz > SHA256SUMS
-  )
-  scripts/sign-release "$release_dir"
-  scripts/check-release "$release_dir" "$tag" "$sha"
-)
+    ./gradlew -Pskidbladnir.versionName="$version_name" -Pskidbladnir.versionCode="$version_code" \
+    :app:assembleRelease --no-daemon)
+install -m 0644 "$source_dir/android/app/build/outputs/apk/release/app-release.apk" "$assets/skidbladnir-android.apk"
+install -m 0644 "$source_dir/android/app-signing-cert.sha256" "$assets/android-signing-cert.sha256"
+install -m 0755 "$source_dir/scripts/install" "$assets/install"
+(cd "$assets" && shasum -a 256 android-signing-cert.sha256 skidbladnir-android.apk \
+  skidbladnir-darwin-arm64.tar.gz skidbladnir-linux-amd64.tar.gz >SHA256SUMS)
 
-notes_file="$staging_dir/release-notes.md"
-"$source_worktree/scripts/render-release-notes" \
-  "$tag" "$sha" "$run_id" "$release_dir" >"$notes_file"
+# the one release-directory verifier; published-release runs it again on the public bytes.
+"$repo_dir/scripts/check-release" --source "$source_dir" "$assets" "$tag" "$sha"
 
-"$repo_dir/scripts/check-release-repository" immutable
-"$repo_dir/scripts/check-release-repository" run "$sha" "$run_id"
+notes="$staging/notes.md"
+# shellcheck disable=SC2016 # markdown code spans are literal.
+{
+  printf '# skíðblaðnir %s\n\n' "$tag"
+  printf -- '- source: `%s`\n- verify run: `%s`\n' "$sha" "$run_id"
+  printf -- '- android signer sha256: `%s`\n' "$(<"$assets/android-signing-cert.sha256")"
+  printf -- '- mac app signer sha256: `%s`\n\n' "$(<"$source_dir/macos/app-signing-cert.sha256")"
+  printf '## install\n\ndownload `install` from this release, inspect it, then run `bash install %s`.\n' "$tag"
+  printf 'the [readme](https://github.com/%s/blob/%s/README.md#install) covers hosts, the phone and updates.\n\n' "$repo" "$sha"
+  printf '## assets\n\n| asset | sha256 |\n| --- | --- |\n'
+  for name in skidbladnir-android.apk skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz android-signing-cert.sha256; do
+    printf '| `%s` | `%s` |\n' "$name" "$(awk -v name="$name" '$2 == name { print $1 }' "$assets/SHA256SUMS")"
+  done
+  printf '| `SHA256SUMS` | `%s` |\n' "$(shasum -a 256 <"$assets/SHA256SUMS" | awk '{ print $1 }')"
+} >"$notes"
+
 gh release create "$tag" \
-  "$release_dir/skidbladnir-android.apk" \
-  "$release_dir/skidbladnir-linux-amd64.tar.gz" \
-  "$release_dir/skidbladnir-darwin-arm64.tar.gz" \
-  "$release_dir/skidbladnir-linux-amd64.tar.gz.sig" \
-  "$release_dir/skidbladnir-darwin-arm64.tar.gz.sig" \
-  "$release_dir/install" \
-  "$release_dir/SHA256SUMS" \
-  "$release_dir/android-signing-cert.sha256" \
-  --repo "$repo_name" \
+  "$assets/skidbladnir-android.apk" \
+  "$assets/skidbladnir-linux-amd64.tar.gz" \
+  "$assets/skidbladnir-darwin-arm64.tar.gz" \
+  "$assets/skidbladnir-linux-amd64.tar.gz.sig" \
+  "$assets/skidbladnir-darwin-arm64.tar.gz.sig" \
+  "$assets/install" \
+  "$assets/SHA256SUMS" \
+  "$assets/android-signing-cert.sha256" \
+  --repo "$repo" \
   --draft \
   --target "$sha" \
   --title "Skíðblaðnir $tag" \
-  --notes-file "$notes_file"
-
+  --notes-file "$notes"
 printf 'Draft release created: %s at %s (verify run %s)\n' "$tag" "$sha" "$run_id"

@@ -145,7 +145,7 @@ for name in sys.argv[1:]:
       /tmp/skidbladnir-published-release.* | /private/tmp/skidbladnir-published-release.*) ;;
       *) printf 'Unexpected published-release staging directory\n' >&2; exit 1 ;;
     esac
-    trap 'rm -R -- "$published_staging"' EXIT HUP INT TERM
+    trap 'rm -Rf -- "$published_staging"' EXIT HUP INT TERM
     published_source="$published_staging/source"
     published_assets="$published_staging/assets"
     mkdir "$published_assets"
@@ -209,16 +209,7 @@ for name in sys.argv[1:]:
       printf 'Upstream does not pin the exact public tag, source, and all five asset digests.\n' >&2
       exit 1
     }
-    published_run_id="$(
-      gh run list --repo "$published_repo" --workflow verify.yml \
-        --branch main --commit "$published_sha" --status success --limit 1 \
-        --json databaseId --jq '.[0].databaseId // empty'
-    )" || not_run published-release 'Hosted verify evidence is unavailable'
-    [[ "$published_run_id" =~ ^[1-9][0-9]*$ ]] || {
-      printf 'No successful hosted verify run exists for the published source SHA.\n' >&2
-      exit 1
-    }
-    "$repo_dir/scripts/check-release-repository" run "$published_sha" "$published_run_id"
+    "$repo_dir/scripts/check-release-repository" run "$published_sha" >/dev/null
     ;;
   '')
     printf 'usage: %s {static|verify [all|host|android|none]|published-release TAG SOURCE_SHA}\n' "$0" >&2
