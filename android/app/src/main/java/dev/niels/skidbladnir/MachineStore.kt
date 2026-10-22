@@ -12,54 +12,40 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.decodeFromJsonElement
 
-internal data class MachineStoreRead(
-    val credentials: List<MachineCredential>, val unreadable: Boolean, val envelope: FleetEnvelope?,
-)
+internal data class MachineStoreRead(val credentials: List<MachineCredential>, val unreadable: Boolean, val view: PublicFleet?)
+/** The phone's one membership: its bearer, the invitation it joined with, and the hub's last view. */
 @Serializable internal data class PhoneFleet(
-    val schema: Int = 1, val fleetId: String, val publicKey: String, val deviceId: String,
-    val bearer: String? = null, val invitation: FleetInvite, val envelope: FleetEnvelope? = null, val joined: Boolean = false,
+    val fleetId: String, val deviceId: String, val bearer: String, val invitation: FleetInvite,
+    val view: PublicFleet? = null, val joined: Boolean = false,
 ) {
-    init {
-        require(schema == 1 && fleetId == fleetFingerprint(publicKey))
-        require(deviceId.matches(Regex("d-[0-9a-f]{32}")) && (bearer == null || GatewayBearer.parse(bearer) != null))
-        require(invitation.fleetId == fleetId && invitation.publicKey == publicKey)
-        envelope?.let { verifyPublicFleet(it, publicKey) }
-    }
-    fun androidPush(): AndroidPush? = if (joined && bearer != null)
-        envelope?.let { verifyPublicFleet(it, publicKey).androidPush } else null
-    fun credentials(): List<MachineCredential> {
-        val credential = bearer?.let(GatewayBearer::parse) ?: return emptyList()
-        if (!joined) return emptyList()
-        return envelope?.let { verifyPublicFleet(it, publicKey).machines }.orEmpty().map { MachineCredential(it.paired(), credential) }
-    }
+    fun androidPush(): AndroidPush? = if (joined) view?.androidPush else null
+    fun credential(machine: PairedMachine): MachineCredential = MachineCredential(machine, checkNotNull(GatewayBearer.parse(bearer)))
+    fun credentials(): List<MachineCredential> = if (joined) view?.machines.orEmpty().map { credential(it.paired()) } else emptyList()
     fun hubCredential(): MachineCredential? {
-        val credential = bearer?.let(GatewayBearer::parse) ?: return null
-        val hub = envelope?.let { verifyPublicFleet(it, publicKey) }?.let { value -> value.machines.single { it.machine == value.activeHub } }
-            ?: invitation.hub
-        if (hub.origin == null) return null
-        return MachineCredential(hub.paired(), credential)
+        val hub = view?.let { value -> value.machines.firstOrNull { it.machine == value.hub } } ?: invitation.hub
+        return if (hub.origin == null) null else credential(hub.paired())
     }
 }
-/** One encrypted atomic record owns the phone credential, staged join and signed public cache. */
+/** One encrypted atomic record owns the phone credential, staged join and cached hub view. */
 internal class MachineStore(private val context: Context) {
-    private val file = AtomicFile(java.io.File(context.filesDir, "fleet-v1.json"))
+    private val file = AtomicFile(java.io.File(context.filesDir, "fleet-v2.json"))
     fun association(): PhoneFleet? = synchronized(lock) {
         if (!file.baseFile.exists()) return@synchronized null
-        val bytes = file.openRead().use { it.readNBytes(6_000_001) }
-        require(bytes.size in 13..6_000_000)
+        val bytes = file.openRead().use { it.readNBytes(2_000_001) }
+        require(bytes.size in 13..2_000_000)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
         cipher.updateAAD("skidbladnir.phone-fleet.v1".encodeToByteArray())
-        productJson.decodeFromJsonElement<PhoneFleet>(notificationJson(cipher.doFinal(bytes.copyOfRange(12, bytes.size)).decodeToString(throwOnInvalidSequence = true)))
+        productJson.decodeFromString<PhoneFleet>(cipher.doFinal(bytes.copyOfRange(12, bytes.size)).decodeToString(throwOnInvalidSequence = true))
     }
     /** Pairing commits and push admissions share this boundary; nested push writes take its lock second. */
     fun <T> withAssociation(block: (PhoneFleet?) -> T): T = synchronized(lock) { block(association()) }
     fun read(): MachineStoreRead = try {
         val value = association()
-        MachineStoreRead(value?.credentials().orEmpty(), false, value?.envelope)
+        MachineStoreRead(value?.credentials().orEmpty(), false, value?.view)
     } catch (_: IOException) { MachineStoreRead(emptyList(), true, null) }
       catch (_: GeneralSecurityException) { MachineStoreRead(emptyList(), true, null) }
       catch (_: IllegalArgumentException) { MachineStoreRead(emptyList(), true, null) }
@@ -78,27 +64,13 @@ internal class MachineStore(private val context: Context) {
         }
         catch (failure: IOException) { file.failWrite(stream); throw failure }
     }
-    fun accept(envelope: FleetEnvelope, expected: PhoneFleet): List<MachineCredential> = synchronized(lock) {
+    /** Commits a hub view only for the identity that requested it; a concurrent re-stage wins. */
+    fun accept(view: PublicFleet, expected: PhoneFleet): List<MachineCredential> = synchronized(lock) {
         val value = checkNotNull(association())
         require(value.deviceId == expected.deviceId && value.bearer == expected.bearer)
-        verifyPublicFleet(envelope, value.publicKey, value.envelope)
-        val next = value.copy(envelope = envelope, joined = true)
+        val next = value.copy(view = view, joined = true)
         save(next)
         next.credentials()
-    }
-    fun remove(proof: FleetEnvelope): Boolean = synchronized(lock) {
-        val value = association() ?: return@synchronized false
-        val removal = notificationJson(verifiedFleetPayload(proof, value.publicKey, "member-removed"))
-        removal.requireExactKeys(setOf("schema", "kind", "fleetId", "deviceId", "authorityEpoch", "stateRevision"))
-        fun text(key: String) = (removal.getValue(key) as kotlinx.serialization.json.JsonPrimitive).content
-        val current = value.envelope?.let { verifyPublicFleet(it, value.publicKey) }
-        require(text("schema") == "1" && text("kind") == "member-removed" && text("fleetId") == value.fleetId && text("deviceId") == value.deviceId)
-        val epoch = text("authorityEpoch").toLong()
-        val revision = text("stateRevision").toLong()
-        require(epoch > 0 && revision > 0)
-        require(current == null || epoch >= current.authorityEpoch && revision >= current.stateRevision)
-        save(value.copy(bearer = null, joined = false))
-        true
     }
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

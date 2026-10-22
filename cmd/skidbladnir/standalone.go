@@ -1,15 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -24,7 +28,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"github.com/NielsdaWheelz/skidbladnir/internal/install"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
-	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/notifier"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
@@ -32,52 +35,15 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
-type runtimeHostConfig struct {
-	TmuxPath, ZoxidePath, QuotaReadPath string
-	Profiles                            []agentruntime.Profile
-}
-
-func loadRuntimeHostConfig(ctx context.Context) (runtimeHostConfig, error) {
-	directories, err := install.Paths()
-	if err != nil {
-		return runtimeHostConfig{}, err
-	}
-	settings, _, err := fleet.LoadResolved(directories.State)
-	if err != nil {
-		return runtimeHostConfig{}, err
-	}
-	profiles, err := agentruntime.ResolveProfiles(settings.Profiles)
-	if err != nil {
-		return runtimeHostConfig{}, err
-	}
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		return runtimeHostConfig{}, errors.New("tmux unavailable; run skid install")
-	}
-	version, err := exec.CommandContext(ctx, tmux, "-V").Output()
-	if err != nil || len(version) < 2 || version[len(version)-1] != '\n' || bytes.ContainsRune(version[:len(version)-1], '\n') {
-		return runtimeHostConfig{}, errors.New("tmux version unavailable")
-	}
-	if err := hostconfig.ValidateTmuxVersion(string(version[:len(version)-1])); err != nil {
-		return runtimeHostConfig{}, err
-	}
-	zoxide, lookupErr := exec.LookPath("zoxide")
-	if lookupErr != nil {
-		zoxide = ""
-	} // justify-ignore-error: directory search explicitly supports an absent optional zoxide.
-	return runtimeHostConfig{tmux, zoxide, filepath.Join(directories.Data, "current", "providers", "quota-read"), profiles}, nil
-}
-
+// serveStandalone runs one gateway process. Machine identity and hub role are
+// constants of the process: when fleet commits a trust change or fails a write,
+// serve returns its error and the supervisor restarts it.
 func serveStandalone(logOutput io.Writer) (result error) {
 	directories, err := install.Paths()
 	if err != nil {
 		return err
 	}
 	home, config, state := directories.Home, directories.Config, directories.State
-	handle, err := machine.Init(filepath.Join(config, "machine-handle"))
-	if err != nil {
-		return err
-	}
 	name, err := os.Hostname()
 	if err != nil {
 		return err
@@ -86,107 +52,203 @@ func serveStandalone(logOutput io.Writer) (result error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	logger := logging.New(logOutput)
-	credentialPath := filepath.Join(config, "android-push-credentials.json")
-	host := &notificationHost{credentialPath: credentialPath, logger: &logger, path: filepath.Join(state, "notification-observer-v1.json"), changed: make(chan struct{}, 1)}
-	var manager atomic.Pointer[sessions.Manager]
-	var handler atomic.Pointer[gateway.Gateway]
-	shell, err := loginShell(ctx, home)
-	if err != nil {
-		return err
-	}
 	networkCtx, stopNetwork := context.WithTimeout(ctx, 2*time.Second)
 	origin, networkErr := networkOrigin(networkCtx)
 	stopNetwork()
 	if networkErr != nil {
-		origin = ""
-	} // justify-ignore-error: local access requires no tailnet login.
+		origin = "" // local access needs no tailnet login
+	}
+	observerPath := filepath.Join(state, "notification-observer-v1.json")
 	control, err := fleet.Open(fleet.Options{
-		Directory: state, ConfigPath: filepath.Join(config, "config.yaml"), Machine: handle.String(), Name: name, Home: home, LoginShell: shell, Origin: origin, Version: releaseVersion,
-		PushChanged: host.applyPush,
-		ValidateHub: func(push *hostconfig.AndroidPush) error {
-			if push == nil {
-				return nil
-			}
-			_, err := fcmpush.Load(credentialPath, push.ProjectID)
-			return err
-		},
-		Resolve: func(settings hostconfig.Settings) error {
-			profiles, err := agentruntime.ResolveProfiles(settings.Profiles)
-			if err != nil {
-				return err
-			}
-			if current := manager.Load(); current != nil {
-				if err := current.ApplySettings(ctx, profiles, settings.Shell); err != nil {
-					return err
-				}
-			}
-			host.signal()
-			return nil
-		},
-		CloseDevice: func(device string) {
-			if current := handler.Load(); current != nil {
-				current.CloseDevice(device)
-			}
-		},
-		DeviceRemoved: host.revoke,
-		Recovery:      host.recover,
-		Drain:         host.drain,
-		Resume:        func() error { host.signal(); return nil },
-		Activate: func(owned map[string]json.RawMessage) error {
-			if err := notifier.Restore(host.path, owned); err != nil {
-				return err
-			}
-			host.signal()
-			return nil
-		},
-		Detach: func() error { _, err := host.drain(); return err },
+		Directory: state, ConfigPath: filepath.Join(config, "config.yaml"), HandlePath: filepath.Join(config, "machine-handle"), ObserverPath: observerPath,
+		Name: name, Origin: origin, Home: home, LoginShell: loginShell(ctx, home), Version: releaseVersion,
 	})
 	if err != nil {
 		return err
 	}
 	defer func() { result = errors.Join(result, control.Close()) }()
-	settings, application := control.Settings()
-	if application.AppliedConfigRevision == 0 {
-		return errors.New("local settings invalid; fix config.yaml and restart skid")
+	local, changed := control.Watch()
+	handle := control.Machine()
+	tmux, err := exec.LookPath("tmux")
+	if err != nil {
+		return errors.New("tmux unavailable; run skid install")
 	}
-	runtime, err := loadRuntimeHostConfig(ctx)
+	zoxide, lookupErr := exec.LookPath("zoxide")
+	if lookupErr != nil {
+		zoxide = "" // directory search works without zoxide
+	}
+	profiles, err := agentruntime.ResolveProfiles(local.Settings.Profiles)
 	if err != nil {
 		return err
 	}
-	workingDirectories, err := workdir.New(home, runtime.ZoxidePath)
+	workingDirectories, err := workdir.New(home, zoxide)
 	if err != nil {
 		return err
 	}
-	sessionManager, err := sessions.New(sessions.Config{Machine: handle, CheckpointPath: filepath.Join(state, "workspace.json"), TmuxPath: runtime.TmuxPath, ShellPath: settings.Shell, Workdir: workingDirectories, CataloguePath: filepath.Join(directories.Data, "current", "characters.json"), Profiles: runtime.Profiles})
+	manager, err := sessions.New(sessions.Config{Machine: handle, CheckpointPath: filepath.Join(state, "workspace.json"), TmuxPath: tmux, ShellPath: local.Settings.Shell, Workdir: workingDirectories, CataloguePath: filepath.Join(directories.Data, "current", "characters.json"), Profiles: profiles})
 	if err != nil {
 		return err
 	}
-	manager.Store(sessionManager)
-	agents := agentcontrol.New(sessionManager, runtime.QuotaReadPath)
-	client, err := fleetclient.Open(state)
-	if err != nil {
-		return err
+	agents := agentcontrol.New(manager, filepath.Join(directories.Data, "current", "providers", "quota-read"))
+	client := fleetclient.New(state, local)
+	credentials := filepath.Join(config, "android-push-credentials.json")
+	notifications := &notificationHost{logger: logger}
+	configuredPush := pushKey(credentials, local.Push)
+	if local.Hub == local.Machine {
+		observer, err := notifier.New(notifier.Config{FleetID: local.FleetID, Client: client, Machine: handle, StatePath: observerPath, Fleet: control, Push: local.Push, Sender: pushSender(credentials, local.Push), Members: local.Members})
+		if err != nil {
+			notifications.fail()
+		} else {
+			notifications.observer = observer
+		}
 	}
 	monitor := pressure.NewMonitor()
-	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: sessionManager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: host, Logger: logger, Machine: handle, Platform: platform.Current()})
-	handler.Store(gatewayHandler)
-	if err := host.reconcile(ctx, control, client, handle); err != nil {
-		host.failed(err)
-	}
-	workers := make(chan error, 3)
+	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle, Platform: platform.Current()})
+	workers := make(chan error, 4)
 	go func() { monitor.Run(ctx); workers <- nil }()
+	go func() { control.Run(ctx); workers <- nil }()
 	go func() {
-		err := control.Run(ctx)
-		if err != nil {
-			cancel()
+		if notifications.observer != nil && notifications.observer.Run(ctx) != nil {
+			notifications.fail()
 		}
-		workers <- err
+		workers <- nil
 	}()
-	go func() { workers <- host.run(ctx, control, client, handle) }()
-	result = gateway.ListenAndServe(ctx, "127.0.0.1:7341", gatewayHandler)
+	// Every committed fleet change reaches the process here, as one snapshot.
+	go func() {
+		previous := local
+		for {
+			select {
+			case <-ctx.Done():
+				workers <- nil
+				return
+			case <-control.Done():
+				cancel()
+				workers <- nil
+				return
+			case <-changed:
+			}
+			var next fleet.Local
+			next, changed = control.Watch()
+			for _, member := range previous.Members {
+				if !slices.ContainsFunc(next.Members, func(m fleet.Member) bool { return m.DeviceID == member.DeviceID }) {
+					gatewayHandler.CloseDevice(member.DeviceID)
+				}
+			}
+			profiles, err := agentruntime.ResolveProfiles(next.Settings.Profiles)
+			if err == nil {
+				err = manager.ApplySettings(ctx, profiles, next.Settings.Shell)
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					err = nil // shutdown interrupted the apply; nothing failed
+				}
+				cancel()
+				workers <- err
+				return
+			}
+			client.Adopt(next)
+			if observer := notifications.observer; observer != nil {
+				if observer.ReconcileMembers(next.Members) != nil {
+					notifications.fail()
+				}
+				// Reconfiguring cancels a send in flight, so only a changed transport does.
+				if key := pushKey(credentials, next.Push); key != configuredPush {
+					configuredPush = key
+					if observer.ConfigurePush(next.Push, pushSender(credentials, next.Push)) != nil {
+						notifications.fail()
+					}
+				}
+			}
+			previous = next
+		}
+	}()
+	result = gateway.ListenAndServe(ctx, fleet.LocalAddress, gatewayHandler)
 	cancel()
-	for range 3 {
+	for range 4 {
 		result = errors.Join(result, <-workers)
 	}
-	return result
+	return errors.Join(result, control.Err())
+}
+
+// notificationHost serves the hub's observer. The observer is fixed before the
+// gateway serves; a failed observer answers 503 until the process restarts.
+type notificationHost struct {
+	observer *notifier.Observer
+	failed   atomic.Bool
+	logger   logging.Logger
+}
+
+func (host *notificationHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if host.observer != nil && !host.failed.Load() {
+		host.observer.ServeHTTP(w, r)
+		return
+	}
+	message := "notification hub unavailable; check skid status and service logs"
+	if host.failed.Load() {
+		message = "notification state unavailable; repair its state and restart the skid service"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = io.WriteString(w, "{\"code\":\"NotificationsUnavailable\",\"message\":\""+message+"\"}\n") // a disconnected client cannot be answered
+}
+func (host *notificationHost) fail() {
+	if !host.failed.Swap(true) {
+		_ = host.logger.Write(logging.NewNotificationsUnavailable()) // diagnostics must not interrupt local terminals
+	}
+}
+
+// pushSender loads the hub's firebase credential; nil when push is off or the
+// credential is missing, which affects android delivery only.
+func pushSender(path string, push *hostconfig.AndroidPush) *fcmpush.Client {
+	if push == nil {
+		return nil
+	}
+	sender, err := fcmpush.Load(path, push.ProjectID)
+	if err != nil {
+		return nil
+	}
+	return sender
+}
+
+// pushKey identifies the push transport: the accepted options and the credential
+// file's bytes. skid apply after replacing the credential changes it.
+func pushKey(path string, push *hostconfig.AndroidPush) string {
+	if push == nil {
+		return ""
+	}
+	data, _ := os.ReadFile(path) // a missing credential is a transport without a sender
+	sum := sha256.Sum256(data)
+	return push.ID() + hex.EncodeToString(sum[:])
+}
+
+// loginShell is the account's shell, or "" when unavailable: config.yaml `shell`
+// then supplies it, and resolution reports the gap otherwise.
+func loginShell(ctx context.Context, home string) string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+	var command *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		command = exec.CommandContext(ctx, "/usr/bin/dscl", ".", "-read", "/Users/"+filepath.Base(home), "UserShell")
+	} else {
+		command = exec.CommandContext(ctx, "getent", "passwd", fmt.Sprint(os.Getuid()))
+	}
+	data, err := command.Output()
+	if err != nil {
+		return ""
+	}
+	value := strings.TrimSpace(string(data))
+	if runtime.GOOS == "darwin" {
+		_, value, _ = strings.Cut(value, ": ")
+	} else {
+		fields := strings.Split(value, ":")
+		if len(fields) != 7 {
+			return ""
+		}
+		value = fields[6]
+	}
+	if !filepath.IsAbs(value) {
+		return ""
+	}
+	return value
 }

@@ -383,11 +383,7 @@ internal class SkidbladnirController(
     context: Context,
     private val dashboardEntry: DashboardEntryState,
 ) {
-    private val client = GatewayClient { response ->
-        if (fleetClient.acceptRemoval(response)) main.post {
-            if (foreground) { stopForBackground(); start() }
-        }
-    }
+    private val client = GatewayClient()
 
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
@@ -641,7 +637,7 @@ internal class SkidbladnirController(
     private fun watchFleet(activeGeneration: Long) {
         fleetClient.stopWatching()
         fleetWatch?.cancel(true)
-        var notificationEnvelope = store.read().envelope
+        var notificationView = store.read().view
         fleetWatch = network.submit {
             while (isActiveGeneration(activeGeneration) && !Thread.currentThread().isInterrupted) {
                 fleetClient.watch {
@@ -650,8 +646,8 @@ internal class SkidbladnirController(
                         if (!isActiveGeneration(activeGeneration)) return@post
                         if (stored.unreadable) return@post
                         val next = stored.credentials
-                        val notificationChanged = stored.envelope != notificationEnvelope
-                        notificationEnvelope = stored.envelope
+                        val notificationChanged = stored.view != notificationView
+                        notificationView = stored.view
                         if (next.toSet() == credentials.values.toSet()) {
                             if (notificationChanged) notifications.fleetChanged()
                             return@post

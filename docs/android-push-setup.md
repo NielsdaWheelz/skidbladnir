@@ -60,7 +60,7 @@ domain, dns, caddy configuration or notification app.
    | `api_key` | matching `client[].api_key[].current_key` |
 
 6. run `skid apply`. pair normally with `skid connect` and allow android
-   notifications. signed fleet state transfers public configuration
+   notifications. the hub's fleet state carries public configuration
    automatically. already paired phones learn it through normal reconciliation;
    private credentials stay on the hub.
 
@@ -87,10 +87,10 @@ stop skid in android's app settings and reopen it; merely swiping away a task
 may leave its process alive. same-project re-pairing uses independent fleet
 credentials without resetting notification memory. no app-data reset.
 
-before moving the hub with push configured, securely place a matching private
-credential file on the destination. skid never transfers that secret. missing
-credentials leave placement pending on the old hub. alternatively disable push,
-move, then configure it on the new hub. ordinary fcm outages affect push alone.
+moving the hub is a new fleet: `skid recover` on the new hub, `skid join` on the
+other computers and a fresh phone scan. with push configured, securely place a
+matching private credential file on the new hub first; skid never copies that
+secret. ordinary fcm outages affect push alone.
 
 ## status and recovery
 

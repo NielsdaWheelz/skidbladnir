@@ -245,16 +245,6 @@ func (owner *owner) startFetch(ctx context.Context) {
 		owner.signalEffects()
 		return
 	}
-	if _, configured := owner.client.Hub(); !configured {
-		owner.available = false
-		owner.health = "notification setup required."
-		for _, waiter := range owner.waiters {
-			waiter.reply <- ownerReply{owner.view(), nil}
-		}
-		owner.waiters = nil
-		owner.signalEffects()
-		return
-	}
 	owner.fetching = true
 	generation := owner.generation
 	hintFence := owner.hintFence
@@ -495,13 +485,13 @@ func (owner *owner) handle(request ownerRequest) {
 			return
 		}
 		nonce := randomID()
-		settings, _, settingsErr := fleet.LoadResolved(owner.configPath)
-		if settingsErr != nil {
+		local, err := fleet.ReadLocal(owner.configPath)
+		if err != nil {
 			answer(nil, attention.ErrUnavailable)
 			return
 		}
 		var script string
-		switch settings.Terminal {
+		switch local.Settings.Terminal {
 		case "ghostty":
 			script, err = ghosttyScript(owner.skidPath, owner.configPath, ref, nonce)
 		case "apple-terminal":
@@ -518,7 +508,7 @@ func (owner *owner) handle(request ownerRequest) {
 			Nonce    string
 			Script   string
 			Terminal string
-		}{nonce, script, settings.Terminal}, nil)
+		}{nonce, script, local.Settings.Terminal}, nil)
 	case "launched":
 		result := request.value.(launchResult) // justify-assertion: only launch completion submits this result.
 		launch, found := owner.launches[result.nonce]
@@ -797,9 +787,6 @@ func (owner *owner) settle(ctx context.Context, effect nativeEffect) (bool, erro
 
 func (owner *owner) startStream() {
 	if owner.client == nil || owner.resetting {
-		return
-	}
-	if _, configured := owner.client.Hub(); !configured {
 		return
 	}
 	ctx, stop := context.WithCancel(owner.ctx)

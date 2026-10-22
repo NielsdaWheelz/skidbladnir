@@ -1,6 +1,6 @@
 # standalone skid and fleet generalization
 
-status: implementation authorized, direction updated 2026-10-20. this is the
+status: implementation authorized, direction updated 2026-10-21. this is the
 owner's decision record. [the implementation contract](generalization-plan.md)
 owns schemas, boundaries and acceptance. unrelated completed implementation is
 retained. installed fleet cutover remains deferred.
@@ -49,7 +49,7 @@ features and already-specified behavior are not additional interview branches.
 | every enrolled client can manage sessions across the enrolled fleet | installing skid on several hosts retains today's remote session management; it does not restrict a client to its own host. |
 | a machine without skid is reached through ordinary manual ssh/mosh inside a managed terminal | skid controls that source terminal. it does not acquire remote session inventory, provider identity, agent status/attention/usage, or remote management authority. |
 | each host owns its tmux runtime; clients connect directly to the target host | the hub is not a terminal proxy or execution coordinator. a hub outage must not stop existing terminal work or direct access using valid cached membership. |
-| one hub owns shared configuration and notification coordination | the first standalone installation automatically makes itself the hub; no hub choice is required for one-machine use. choosing another enrolled, always-on host improves notification availability; a sleeping hub cannot observe or publish fresh alerts. |
+| one hub owns shared configuration and notification coordination | the first standalone installation automatically makes itself the hub; no hub choice is required for one-machine use. creating the fleet on an always-on host improves notification availability; a sleeping hub cannot observe or publish fresh alerts. |
 | one trusted user's fleet, with arbitrary machine and profile names | fixed macbook/devbox/arch names and a fixed four-profile table disappear. multi-user roles and tenant administration are outside the present design. |
 
 the original possibility of managing hosts without skid has been superseded by
@@ -92,6 +92,14 @@ skid-owned installation files from retained user/provider/session data.
 
 ## agreed networking and enrollment
 
+2026-10-21 owner decision (cleanup w2.1): the hub is fixed: the machine that
+created the fleet or last ran `skid recover`. devices fetch membership only from
+that hub; there is no relay discovery through other machines and no signed fleet
+state, removal proof or invitation proof. a removed device simply gets 401: no
+pending-revocation report, no automatic detach or forgetting. a removed computer
+that gets 401 from the hub stops admitting the fleet's other devices. join, recover and a
+failed state write restart the skid service (crash-only; tmux keeps running).
+
 tailscale remains required for remote/mobile access.
 2026-10-20 recap clarification: skid installs or reuses tailscale as part of
 preparing a host for remote/mobile access. this supersedes the earlier decision
@@ -131,24 +139,28 @@ joining preserves the installation's machine identity and running tmux sessions;
 it replaces the former standalone fleet trust/configuration as described below.
 the invitation authorizes membership; tailscale reachability alone does not.
 `skid connect` can be invoked on any enrolled machine by contacting the hub.
-both enrollment and planned hub changes need the hub available.
+enrollment needs the hub available.
 
 agreed outage policy: machines retain cached membership access without expiry
 when they cannot reach the hub. otherwise reachable machines keep accepting
 previously enrolled devices; a hub outage alone does not impose a remote-access
 deadline.
 
-revocation takes effect on each machine when it receives updated membership.
-until then, a removed device may still access that machine; report that removal
-as pending there. upon receiving revocation, reject new access and disconnect
-that device's existing skid connections. tmux sessions and provider processes
-keep running; revocation does not undo commands already accepted. this does not
+revocation takes effect on each machine when it next fetches membership from the
+hub. until then, a removed device may still access that machine. upon receiving
+revocation, reject new access and disconnect that device's existing skid
+connections. tmux sessions and provider processes keep running; revocation does not undo commands already accepted. this does not
 promise instantaneous revocation across disconnected machines.
 
 ## agreed configuration and hub changes
 
-there is one authoritative editable yaml file on the current hub. it defines
-profiles, shared settings, and the selected hub. other machines retain generated
+2026-10-21 owner decision (cleanup w2.1): there is no planned hub migration and no
+`hub:` yaml key. moving the hub is a new fleet: `skid recover` on the new hub,
+`skid join` on each other computer and a fresh phone scan; observer and receiver
+state are not carried.
+
+there is one authoritative editable yaml file on the hub. it defines profiles and
+shared settings. other machines retain generated
 identity/connection state and a last accepted configuration snapshot, not another
 human-maintained copy of the shared settings. any necessary host overrides should
 live in that same logical configuration. an external provisioner may maintain
@@ -159,8 +171,7 @@ users edit the file; no tui configuration editor is needed. agreed application
 trigger: opening skid on any enrolled computer asks the current hub service to
 validate and apply pending changes to its yaml. hub-service startup also applies
 the current file. the hub is the sole application authority; clients do not submit
-their cached settings as authoritative configuration. opening skid can therefore
-initiate a configured hub migration without a separate hub-service restart.
+their cached settings as authoritative configuration.
 
 invalid configuration produces a useful error and leaves the last valid applied
 configuration in force. launch changes affect subsequent launches, not running
@@ -171,37 +182,12 @@ applied, pending, or blocked by an offline machine. an unreachable hub leaves
 the client using its last accepted configuration.
 
 the startup rule concerns accepting changes to yaml. generated membership
-and hub routing must propagate to running clients so connected clients need
-neither restarting nor re-pairing for enrollment or planned handoff.
+must propagate to running clients so connected clients need neither restarting
+nor re-pairing for enrollment.
 
-changing the configured hub requests a planned migration to an installed,
-enrolled, reachable machine. skid handles the transfer, including configuration
-and private state needed for existing device registrations and notification
-continuity. the old hub must relinquish authority before the new hub activates.
-if the destination is unavailable before handoff, the current hub remains active
-and migration stays pending.
-an interrupted transfer may pause configuration and notifications; it must not
-create two authoritative hubs. terminal execution remains host-local.
-
-notification continuity includes the observer epoch, revision, and current
-attention records; acknowledgements remain on each device. current
-[android admission](../android/app/src/main/java/dev/niels/skidbladnir/NotificationOwner.kt)
-and [desktop admission](../internal/attention/device.go) reject changed observer
-epochs or regressed revisions. moving the hub must preserve that continuity,
-not silently reset device handling state.
-
-this is planned migration, not automatic election or recovery of an inaccessible
-hub. the user should never synchronize a hub setting manually across a collection
-of configuration files.
-
-agreed discovery recovery: after a planned hub move, a device learns the current
-hub through any reachable fleet machine it already knows. if a phone was offline
-and every fleet address it knew has since been retired, require another
-`skid connect` qr scan from the current fleet. retain still-valid same-fleet
-identity and notification memory during reconnection. this restores discovery
-within the existing fleet; it does not create a new fleet identity. the accepted
-cost is a manual scan in this exceptional case, without adding a permanent
-fleet-address directory solely to avoid it.
+there is no automatic election or recovery of an inaccessible hub, and no hub
+setting to synchronize across configuration files. terminal execution remains
+host-local.
 
 agreed recovery without a usable backup: if the hub is permanently lost, the user
 explicitly creates a new fleet identity using available cached settings from a
@@ -210,16 +196,17 @@ tmux sessions on surviving machines keep running; recovery costs another round
 of enrollment and pairing. cached settings do not restore private pairing or
 notification state.
 
-re-enrollment replaces a machine's old fleet trust; phone pairing replaces its old
-fleet association. recovery completes per device: offline devices remain attached
+re-enrollment replaces a machine's old fleet trust. a phone paired to the old
+fleet refuses another fleet's invite, so re-pairing it starts by clearing the
+app's data. recovery completes per device: offline devices remain attached
 to the old fleet until explicitly re-enrolled. a returning old hub must not regain
 authority over recovered devices. this is a new fleet, not promotion of a cached
 member under the old identity.
 
 agreed joining policy: a separately configured standalone installation joining an
-existing fleet adopts the destination fleet's shared configuration. save its
-previous configuration file as an inactive backup; do not automatically merge
-profiles, settings, or hub selections. the user copies any profiles they want to
+existing fleet adopts the destination fleet's shared configuration. its own
+configuration file stays in place, unused while it is a member; do not
+automatically merge profiles or settings. the user copies any profiles they want to
 retain. running tmux sessions continue. phones paired only to the former
 standalone installation must be paired to the destination fleet.
 
@@ -312,7 +299,7 @@ below still need a precise contract.
 
 ## agreed desktop/mobile notifications
 
-mac notifications remain on their existing path: the selected hub's authenticated
+mac notifications remain on their existing path: the hub's authenticated
 revision stream and current snapshot feed the native mac app. each mac retains
 its own acknowledgement and presentation state. the standalone installer must
 include the existing native app/service and its normal permission setup.
@@ -371,7 +358,7 @@ requests are cancelled. previously created cloud resources are inventoried for
 separate owner-approved cleanup, never deleted as an incidental source edit.
 
 one distributed apk initializes firebase at runtime using public configuration
-received automatically through signed fleet state after pairing. no project
+received automatically through the hub's fleet state after pairing. no project
 identity or private sending credential is compiled into it. four public firebase
 fields live in optional hub yaml; the private service-account export is a local
 `0600` hub file, outside shared yaml, fleet snapshots and phone payloads.
@@ -417,7 +404,6 @@ lock-screen privacy setting is part of this work.
 to replace today's shared gateway credentials with independent device credentials.
 preserve tmux/provider data, observer epoch/attention and valid device-local
 acknowledgements; no app-data reset or automatic old-credential conversion.
-this upgrade cost is separate from exceptional discovery repair after a hub move.
 the owner also approved a temporary conversion build using the same android
 signing identity to preserve notification memory before the final apk replaces
 it. temporary host tooling does the equivalent for observer state. this adds one
@@ -430,7 +416,7 @@ the proposed encrypted summary displayed directly from a push is withdrawn:
 it was not agreed and would require changing current snapshot-admission
 semantics. do not add content-encryption key machinery merely for that proposal.
 
-retain per-phone registration rotation, possession proof, revocation, signed
+retain per-phone registration rotation, possession proof, revocation, hub
 fleet routing, notification admission and device-local acknowledgement. bind
 registration, challenge and hints to the accepted public firebase configuration
 and receiver generation. changing/clearing configuration invalidates old
@@ -438,11 +424,9 @@ registrations without resetting attention or acknowledgement memory. google
 observes delivery metadata; notification details come only from authenticated
 hub reads over tailscale. no terminal or notification content goes through fcm.
 
-planned hub transfer carries observer/receiver state but NEVER firebase private
-credentials. for configured push, the destination must already have its own
-matching private credential file before source fencing; otherwise placement stays
-pending while the old hub remains active. disable push explicitly to move without
-that prerequisite. credential rotation/reload uses existing startup/apply triggers,
+moving the hub carries no observer/receiver state and NEVER firebase private
+credentials. for configured push, place a matching private credential file on the
+new hub before running `skid recover` there. credential rotation/reload uses existing startup/apply triggers,
 not another configuration service.
 
 android callbacks schedule bounded authenticated fetches under the existing
@@ -593,7 +577,7 @@ the remaining work:
 | account quota | implement the agreed native-first/terminal-fallback acquisition while preserving existing explicit terminal/native read apis. this needs attributable terminal quota evidence, not a new transcript api or association mechanism. |
 | profile commands and attribution | ordinary shell semantics already determine missing-command behavior; existing terminal controls already work for unsupported programs. implementation must remove injected launch policy and replace account-attribution dependencies where necessary. do not add command parsing/preflight that rejects valid aliases, functions, or compositions. |
 | standalone installation and configuration | implement one installer, the shared yaml and its generated snapshots, and dev-server consumption. retain startup, provider/session preservation, and matching-version updates. choose schema, paths, dependency handling, and compatible os minima as engineering details; surface an unavoidable new limitation. |
-| enrollment and hub changes | implement the agreed membership, cached-access/revocation, joining, planned transfer, and lost-hub recovery rules. invitation encoding and pending-status presentation are engineering details. no automatic election, automatic config merging, or built-in backup product is required. |
+| enrollment and hub changes | implement the agreed membership, cached-access/revocation, joining and new-fleet recovery rules. invitation encoding and pending-status presentation are engineering details. no automatic election, automatic config merging, or built-in backup product is required. |
 | notification transport | replace ntfy with optional user-configured direct hub→fcm delivery, one runtime-configured apk and independent phones. preserve content, currentness, acknowledgement and presentation. runtime firebase proof precedes production changes. |
 | migration, removal, and documentation | translate the existing installed layout into the new ownership/configuration without deleting provider data or active tmux work; document one local install, fleet enrollment, phone pairing, and recovery path. preserve existing verification policy. these are delivery requirements, not new preference questions. |
 
@@ -608,8 +592,8 @@ above. an offline phone whose known fleet addresses have all been retired requir
 another `skid connect` qr scan. all four preference questions from this audit are
 resolved; preserve the existing behavior elsewhere.
 
-other findings are engineering obligations under existing decisions: preserve
-notification identity during handoff, update generated membership/routing while
+other findings are engineering obligations under existing decisions: update
+generated membership/routing while
 clients run, remove fixed-roster admission, remove provider installation as an
 installer prerequisite, and complete optional push registration after pairing only when configured. successful
 pairing or snapshot access does not prove background delivery. no further owner
@@ -628,7 +612,7 @@ follow the existing [testing policy](rules.md#testing); this discussion does not
 reinstate retired harnesses. implementation needs focused evidence at meaningful
 boundaries: ordinary shell semantics, exact terminal targeting and uncertain
 input, supported provider frames and quota attribution, clean installation and
-enrollment, hub transfer/recovery, and phone delivery across sleep/outage.
+enrollment, new-fleet recovery, and phone delivery across sleep/outage.
 size the checks to the failure's consequences and keep source/build evidence
 separate from installed-host and physical-device behavior.
 

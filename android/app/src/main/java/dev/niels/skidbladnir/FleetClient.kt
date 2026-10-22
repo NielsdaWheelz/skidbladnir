@@ -1,129 +1,101 @@
 package dev.niels.skidbladnir
 
 import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
-import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-/** Phone requests only public snapshots. A saved pending identity survives uncertain join outcomes. */
+/** Hub responses are skid's own output: decode what the phone reads and ignore the rest. */
+private val fleetJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+internal sealed interface Fetch {
+    data class Fetched(val credentials: List<MachineCredential>) : Fetch
+    data object Unauthorized : Fetch
+    data object Failed : Fetch
+}
+
+/** The phone talks to one fixed hub. A staged identity is saved before any request, so a lost join reply recovers. */
 internal class FleetClient(private val store: MachineStore) {
     private val gateway = GatewayClient()
     @Volatile private var stream: Call? = null
     fun connect(invite: FleetInvite): List<MachineCredential>? {
-        var association = store.association()
-        require(association == null || association.fleetId == invite.fleetId && association.publicKey == invite.publicKey)
-        if (association == null || association.bearer == null) association = stage(invite, association)
-        // Invitation proof binds this endpoint to the pinned fleet key before bearer reuse.
-        val recovered = if (association.joined) refresh(association, invite.hub.paired()) ?: refresh()
-            else refresh(association, association.invitation.hub.paired())
-        if (recovered != null) return recovered
-        // A signed removal may have committed while the recovery request was in flight.
-        association = store.association() ?: return null
-        if (association.bearer == null) association = stage(invite, association)
-        if (association.joined) return null
-        if (association.invitation != invite) { association = association.copy(invitation = invite); store.save(association) }
-        return join(association)
-    }
-    private fun stage(invite: FleetInvite, previous: PhoneFleet?): PhoneFleet {
+        val saved = store.association()
+        require(saved == null || saved.fleetId == invite.fleetId)
+        if (saved != null) {
+            // Repair keeps the identity; a staged identity may already be enrolled by a lost reply.
+            val result = fetch(saved, (if (saved.joined) invite.hub else saved.invitation.hub).paired())
+            if (result is Fetch.Fetched) return result.credentials
+            if (saved.joined && result != Fetch.Unauthorized) return null
+        }
         val random = SecureRandom()
-        val value = PhoneFleet(fleetId = invite.fleetId, publicKey = invite.publicKey,
+        val staged = if (saved == null || saved.joined) PhoneFleet(fleetId = invite.fleetId,
             deviceId = "d-" + ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) },
-            bearer = fleetBase64(ByteArray(32).also(random::nextBytes)), invitation = invite, envelope = previous?.envelope)
-        store.save(value)
-        return value
+            bearer = fleetBase64(ByteArray(32).also(random::nextBytes)), invitation = invite, view = saved?.view)
+            else saved.copy(invitation = invite)
+        store.save(staged)
+        return join(staged)
     }
     fun resume(): List<MachineCredential>? {
-        val value = store.association()?.takeIf { it.bearer != null } ?: return null
-        refresh(value)?.let { return it }
-        val current = store.association() ?: return null
-        return if (current.bearer != null && !current.joined) join(current) else null
-    }
-    private fun join(value: PhoneFleet): List<MachineCredential>? {
-        val verifier = fleetBase64(MessageDigest.getInstance("SHA-256").digest(fleetBytes(checkNotNull(value.bearer), 32)))
-        val body = JsonObject(mapOf("token" to JsonPrimitive(value.invitation.token), "deviceId" to JsonPrimitive(value.deviceId),
-            "kind" to JsonPrimitive("phone"), "name" to JsonPrimitive("Phone"), "verifier" to JsonPrimitive(verifier)))
-        val request = gateway.authorizedRequest(MachineCredential(value.invitation.hub.paired(), checkNotNull(GatewayBearer.parse(checkNotNull(value.bearer)))), listOf("v1", "fleet", "join"))
-            .removeHeader("Authorization").post(body.toString().toRequestBody("application/json".toMediaType())).build()
-        return try {
-            gateway.http.newCall(request).execute().use { response ->
-                if (response.code != 201) return null
-                store.accept(decodeEnvelope(response), value)
-            }
-        } catch (_: IOException) { null }
+        val value = store.association()?.takeUnless { it.joined } ?: return null
+        val result = fetch(value, value.invitation.hub.paired())
+        return if (result is Fetch.Fetched) result.credentials else join(value)
     }
     fun refresh(timeoutMillis: Long = 15_000): List<MachineCredential>? {
-        val value = store.association()?.takeIf { it.bearer != null } ?: return null
-        val public = value.envelope?.let { verifyPublicFleet(it, value.publicKey) }
-        val hosts = (public?.machines?.sortedBy { it.machine != public.activeHub } ?: listOf(value.invitation.hub)).filter { it.origin != null }
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-        for ((index, host) in hosts.withIndex()) {
-            val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
-            if (remaining <= 0) break
-            refresh(value, host.paired(), maxOf(1, remaining / (hosts.size - index)))?.let { return it }
-            if (store.association()?.bearer == null) return null
-        }
-        return null
+        val value = store.association() ?: return null
+        val hub = value.hubCredential() ?: return null
+        return (fetch(value, hub.machine, timeoutMillis) as? Fetch.Fetched)?.credentials
     }
-    fun refresh(value: PhoneFleet, hub: PairedMachine = value.invitation.hub.paired(), timeoutMillis: Long = 15_000): List<MachineCredential>? = try {
-        val credential = MachineCredential(hub, checkNotNull(GatewayBearer.parse(checkNotNull(value.bearer))))
-        val call = gateway.http.newCall(gateway.authorizedRequest(credential, listOf("v1", "fleet")).get().build())
-            .apply { timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS) }
+    internal fun fetch(value: PhoneFleet, hub: PairedMachine, timeoutMillis: Long = 15_000): Fetch =
+        exchange(value, gateway.authorizedRequest(value.credential(hub), listOf("v1", "fleet")).get().build(), 200, timeoutMillis)
+    private fun join(value: PhoneFleet): List<MachineCredential>? {
+        val verifier = fleetBase64(MessageDigest.getInstance("SHA-256").digest(fleetBytes(value.bearer, 32)))
+        val body = JsonObject(mapOf("token" to JsonPrimitive(value.invitation.token), "deviceId" to JsonPrimitive(value.deviceId),
+            "kind" to JsonPrimitive("phone"), "name" to JsonPrimitive("Phone"), "verifier" to JsonPrimitive(verifier)))
+        val request = gateway.authorizedRequest(value.credential(value.invitation.hub.paired()), listOf("v1", "fleet", "join"))
+            .removeHeader("Authorization").post(body.toString().toRequestBody("application/json".toMediaType())).build()
+        return (exchange(value, request, 201, 15_000) as? Fetch.Fetched)?.credentials
+    }
+    /** One hub round trip whose success is a fleet view committed for exactly this identity. */
+    private fun exchange(value: PhoneFleet, request: Request, success: Int, timeoutMillis: Long): Fetch = try {
+        val call = gateway.http.newCall(request).apply { timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS) }
         call.execute().use { response ->
-            if (response.code == 403) { acceptRemoval(response); return null }
-            if (response.code != 200) return null
-            store.accept(decodeEnvelope(response), value)
+            when (response.code) {
+                success -> {
+                    val bytes = checkNotNull(response.body).byteStream().readNBytes(1_048_577)
+                    require(bytes.size <= 1_048_576)
+                    Fetch.Fetched(store.accept(fleetJson.decodeFromString<PublicFleet>(bytes.decodeToString()), value))
+                }
+                401 -> Fetch.Unauthorized
+                else -> Fetch.Failed
+            }
         }
-    } catch (_: IOException) { null }
-      catch (_: IllegalArgumentException) { null }
-      catch (_: kotlinx.serialization.SerializationException) { null }
-      catch (_: java.security.GeneralSecurityException) { null }
-    private fun decodeEnvelope(response: okhttp3.Response): FleetEnvelope {
-        require(response.body?.contentType()?.let { it.type == "application" && it.subtype == "json" } == true)
-        val bytes = checkNotNull(response.body).byteStream().readNBytes(5_600_001)
-        require(bytes.size <= 5_600_000)
-        return productJson.decodeFromJsonElement(notificationJson(bytes.decodeToString(throwOnInvalidSequence = true)))
-    }
-    fun acceptRemoval(response: okhttp3.Response): Boolean {
-        if (response.code != 403) return false
-        val bytes = response.peekBody(5_600_001).bytes()
-        if (bytes.size > 5_600_000) return false
-        return try {
-            val value = notificationJson(bytes.decodeToString(throwOnInvalidSequence = true))
-            value.requireExactKeys(setOf("code", "message", "removal"))
-            require((value.getValue("code") as JsonPrimitive).content == "DeviceRemoved")
-            store.remove(productJson.decodeFromJsonElement(value.getValue("removal")))
-        } catch (_: IllegalArgumentException) { false }
-          catch (_: kotlinx.serialization.SerializationException) { false }
-          catch (_: java.security.GeneralSecurityException) { false }
-    }
-    /** A revision is only a wake-up; the signed snapshot alone can change fleet authority. */
+    } catch (_: IOException) { Fetch.Failed }
+      catch (_: IllegalArgumentException) { Fetch.Failed } // includes SerializationException
+      catch (_: IllegalStateException) { Fetch.Failed }
+      catch (_: GeneralSecurityException) { Fetch.Failed }
+    /** A revision event is only a wake-up; the refetched view is the state. */
     fun watch(changed: () -> Unit) {
-        val value = store.association() ?: return
-        val hub = value.hubCredential() ?: return
+        val hub = store.association()?.hubCredential() ?: return
         val request = gateway.authorizedRequest(hub, listOf("v1", "fleet", "events"))
             .header("Accept", "text/event-stream").get().build()
         val call = gateway.http.newBuilder().readTimeout(0, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS).build().newCall(request)
         stream = call
         try {
             refresh()?.let { changed() }
-            if (store.association()?.hubCredential() != hub) return
             call.execute().use { response ->
-                if (response.code == 403) { if (acceptRemoval(response)) changed(); return }
-                if (response.code != 200 || response.body?.contentType()?.toString() != "text/event-stream") return
+                if (response.code != 200) return
                 val source = checkNotNull(response.body).source()
                 while (!call.isCanceled()) {
-                    val line = source.readUtf8LineStrict(1_024)
-                    if (line.isEmpty()) {
-                        refresh()?.let { changed() }
-                        if (store.association()?.hubCredential() != hub) return
-                    }
+                    if (source.readUtf8LineStrict(1_024).isEmpty()) refresh()?.let { changed() }
                 }
             }
         } catch (_: IOException) { /* the foreground owner retries the invalidated stream */ }

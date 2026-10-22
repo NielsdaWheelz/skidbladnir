@@ -6,7 +6,7 @@ this does not block skid's independent rollout. jarvis's
 records the access work and later activation criteria.
 
 problem: jarvis's system service runs as `jarvis`, with `ProtectHome=true` and
-`NoNewPrivileges=true`. standalone skid's live identity and signed host cache
+`NoNewPrivileges=true`. standalone skid's machine handle and fleet file (`fleet.json`)
 belong to the enrolled login user, in private `0600` files. jarvis cannot read
 that state through its current direct cli invocation.
 

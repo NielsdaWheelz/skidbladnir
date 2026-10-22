@@ -2,10 +2,11 @@
 
 tmux owns terminal sessions and pane processes. providers own execution and history.
 each gateway controls one host; clients compose gateways directly. there is no
-application database or execution coordinator. the configured hub owns fleet configuration, membership and a notification-only
-observer. terminals remain direct host capabilities; the hub is never an
+application database or execution coordinator. the hub (the machine that created
+the fleet or last ran `skid recover`) owns fleet configuration, membership and a
+notification-only observer. terminals remain direct host capabilities; the hub is never an
 execution proxy. [standalone generalization](generalization-plan.md) owns the
-configuration, signed fleet, handoff, installer and optional direct-fcm contracts;
+configuration, fleet, installer and optional direct-fcm contracts;
 [isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md) records source proof;
 [v0.20.0 qualification](v0.20.0-installed-qualification.md) records the installed
 fleet rollout and its remaining live boundaries.
@@ -16,7 +17,7 @@ terminal wait states; [terminal control](terminal-agent-control.md) owns termina
 targets, capture mechanics, rendered reads, exact terminal effects and wait's
 polling loop. [terminal attention](reply-notifications.md) owns the existing
 transition predicates. [native notifications](native-notifications.md) supersedes
-its device-local reducer and visit clauses: the active hub owns readiness, each device
+its device-local reducer and visit clauses: the hub owns readiness, each device
 owns acknowledgement and native presentation. [terminal-only control](terminal-only-control.md)
 owns the terminal capability boundary and read-only account quota. stop retains
 the terminal; close reports interruption and terminal closure separately.
@@ -128,20 +129,20 @@ machine does not block or authorize action against another.
 | product | skíðblaðnir; ascii namespace `skidbladnir`; one trusted user, one or more installed hosts, multiple independently enrolled phones |
 | phone | android 13+; compile/target api36; google play services for qr/fcm; dedicated older-device verification waived |
 | hosts | macos26+ arm64 launch agents; ubuntu24.04+ and arch amd64 systemd user service; one standalone install per host |
-| topology | direct host clients; signed membership/configuration relays; active hub owns notification observation; no execution proxy |
+| topology | direct host clients; hub-served membership/configuration, no relays; the fixed hub owns notification observation; no execution proxy |
 | network | local loopback works offline; remote endpoints require tailscale serve https8443; optional hub→fcm uses outbound https; no skid public ingress |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
-| auth | independent256-bit bearer per device; hosts store sha256 verifiers; signed routing and one-use five-minute signed invitation; exact machine header remains required |
+| auth | independent256-bit bearer per device; hosts store sha256 verifiers; one-use five-minute invitation token, no signed routing; exact machine header remains required |
 | profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; sparse machine overrides; terminal remains a separate launch choice |
 | agent control | foreground provider/account observation and terminal controls under [agent control](agent-control.md); read-only account quota; no conversation hooks, targeting or execution supervisor |
-| state | tmux owns live terminals; providers own history/execution; fleet owns private identity/authority and replaceable signed caches; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
+| state | tmux owns live terminals; providers own history/execution; fleet owns one machine file per host plus the write-once machine handle; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
-| cutover | matching signed host/phone releases; approved temporary converters preserve existing notification memory; final product has no old reader, auth path, ntfy or mixed-version mode |
+| cutover | matching signed host/phone releases in lockstep with a fresh fleet per [release cutover](issues/release-cutover.md); no converters, old reader, auth path, ntfy or mixed-version mode |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
 
 profiles are named opaque shell commands in the hub's yaml. hosts resolve their
@@ -184,7 +185,7 @@ portrait manifest.
 - Validate cwd; launch only the configured terminal shell or the target host's
   declared closed agent profile set.
 - Codex credentials stay on their host; the phone holds its own encrypted fleet bearer; each gateway admits it through
-  signed membership. provider credentials never enter clients or push messages.
+  hub membership. provider credentials never enter clients or push messages.
 - App or gateway restart re-lists tmux; it never replays input or guesses.
 
 ### Non-goals
@@ -202,9 +203,9 @@ ever bring the retired machinery back.
 automatic authority election, execution proxying, cross-machine move/broadcast/
 scheduling/failover/wake, durable inventory, arbitrary host setup and tailscale
 policy automation remain excluded. membership changes use `join`/`remove`; new
-hosts appear automatically from signed routing. disconnected access has no cache
-expiry; revocation reaches offline hosts when they reconnect. permanent hub loss
-requires explicit new-fleet recovery and fresh enrollment.
+hosts appear automatically from the hub's membership. disconnected access has no
+cache expiry; revocation reaches a host when it next fetches from the hub. moving or
+losing the hub means `skid recover` on the new hub plus fresh enrollment.
 
 ## 3. Platform evidence carried forward
 
@@ -612,7 +613,7 @@ ordinary commands expose list, info, enter,
 read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
 use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
-clients read the installed private identity and signed cache from
+clients read the installed machine file (`fleet.json`) from
 `${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config` selects another state directory. typed terminal handles select
 once across complete scoped inventory; `--machine` narrows that scope and `--ref`
 preserves exact captured identity for saved automation. names are creation input
@@ -667,7 +668,7 @@ history item is `current`.
       local tmux          local tmux           local tmux
 ```
 
-- gateways exchange signed control state; execution remains strictly local. each
+- members fetch control state from the hub; execution remains strictly local. each
   binds numeric loopback, exposes only
   `/v1` through its exact Tailscale Serve `:8443` mapping, and observes and
   mutates only the local default tmux server.
@@ -689,8 +690,9 @@ history item is `current`.
   authority. manual repair remains outside skid.
 - `internal/platform` is the closed `Linux | Darwin` native adapter.
   `internal/hostconfig` strictly decodes the one human yaml; `internal/fleet`
-  owns accepted settings, per-host application, identity, membership and planned
-  authority transfer. an invalid local shell/path retains previous launch
+  owns accepted settings, per-host application, identity and membership, with no
+  authority transfer. join, recover and a failed state write restart the service
+  (crash-only; tmux survives). an invalid local shell/path retains previous launch
   settings without blocking newer membership or revocation. no json host config,
   injected provider command policy or daemon lifecycle remains.
   `internal/process` owns foreground observation for
@@ -711,20 +713,19 @@ history item is `current`.
   and validate before switching `current`; restart skid services only. uninstall
   retains private/user/provider/tmux state and shared packages. public dev-server
   is an optional personal consumer of that ordinary installer and hub yaml.
-- one host service composes gateway/fleet and, only with active signing authority,
-  the notification observer. mac retains its separate notification app lifetime.
+- one host service composes gateway/fleet and, only on the hub, the notification
+  observer. mac retains its separate notification app lifetime.
   optional android push uses the hub's local user-owned firebase credential and
-  outbound fcm https. public runtime options travel in signed fleet state; private
+  outbound fcm https. public runtime options travel in the hub's fleet state; private
   credentials never leave the hub. no firebase setup is required for sessions or
   mac notifications. receiver registration/revocation and connection
-  fencing have distinct contracts. uncertain writes stop the responsible writer;
-  ordinary handoff preserves direct terminal admission.
+  fencing have distinct contracts.
 - startup initializes and preserves the private `mh-` machine handle. identity,
   label, network origin and device credentials remain separate. a deleted handle
   cannot silently adopt existing fleet identity. `skid connect`, `join`, `remove`,
   `apply`, `status` and explicit new-fleet `recover` own setup/control operations.
   the [generalization contract](generalization-plan.md#3-application-enrollment-and-access)
-  defines strict routes, errors, signed invitations and caches.
+  defines strict routes, errors, invitations and caches.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
   `@skid_objective_b64`, `@skid_space_b64`, `@skid_character`, `@skid_agent_runtime`, the
   server-scoped `@skid_server_epoch`). Poller state is in-memory and rebuilt on start.
@@ -841,24 +842,23 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   trust bypass. A release tag also carries Linux-amd64 and Darwin-arm64 host
   bundles, `SHA256SUMS`, and the public signing-certificate digest; signing
   remains local and release publication remains a reviewed draft action.
-- `MachineStore` atomically encrypts one phone identity, pending enrollment and
-  verified public routing under android keystore. cache counters cannot regress;
-  conflicting same-revision state fails. machine names/order come from signed
-  membership, without a fixed roster. unavailable origins remain visible.
-- an empty store opens connect. scan `skid connect`'s signed five-minute qr,
-  persist a pending credential before joining, and recover lost replies using
-  that same credential. saved bearers go only to signed known routing or a
-  verified signed invitation. same-fleet discovery repair retains identity and
-  acknowledgement. a signed removal proof clears access; rejoining creates a new
-  device identity. tailscale login remains external.
+- `MachineStore` atomically encrypts one phone identity, a staged enrollment and
+  the hub's public routing under android keystore. machine names/order come from
+  the hub's membership, without a fixed roster. unavailable origins remain visible.
+- an empty store opens connect. scan `skid connect`'s five-minute one-use invite qr,
+  persist a staged credential before joining, and recover lost replies using
+  that same credential. saved bearers go only to the cached hub or the scanned
+  invite's hub. same-fleet repair retains identity and acknowledgement. a removed
+  phone sees auth failures until a fresh scan re-enrolls it with a new device
+  identity. tailscale login remains external.
 - optional fcm carries only configuration/generation-fenced challenges and current-state hints.
-  one standard apk initializes the default firebase app from durable verified
+  one standard apk initializes the default firebase app from durable
   public fleet options before cold service startup. options changes fence old
   push immediately and require one app restart; the changed project is explicitly
   unregistered then registered before proving delivery. omitted configuration is
   healthy disabled operation. [setup](android-push-setup.md) owns credential setup,
-  local storage and hub-migration prerequisites.
-  background jobs refresh signed fleet routing, fetch authenticated snapshots and
+  local storage and new-hub prerequisites.
+  background jobs refresh fleet routing from the hub, fetch authenticated snapshots and
   use the existing device admission/effect owner. failed reads receive bounded
   retries; snapshots alone cannot clear independent push-transport failure.
   android stores its own acknowledgement, never a fleet-wide read receipt.
@@ -951,8 +951,7 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   `SessionTarget`;
   reconnect re-reads that machine before opening WSS.
   a mismatched machine identity closes the active terminal and refuses that
-  endpoint. signed membership updates own routing; signed device removal clears
-  the association and requires a fresh connect scan with a new device identity.
+  endpoint. membership updates from the hub own routing.
   Rotation, IME resize, Activity/process recreation, and app backgrounding
   cleanly recreate or release the attachment; nothing replays. Recreation from
   Terminal returns to the saved Dashboard entry and never restores or
@@ -970,11 +969,11 @@ and treat a mismatch as a defect; their cleanup slices convert them.
 - each enrolled device owns an independent256-bit bearer; hosts retain its
   sha256 verifier. private host state is computer-only; phones get public routing.
   local access uses a distinct installed local credential, never loopback-address
-  authority. removals close connections and retain signed revocation proofs.
-- hub invitations are five-minute single-use capabilities. exact signed claims
-  bind the destination, fleet, token and expiry. a copied public fingerprint
-  alone cannot redirect an existing credential. qr output is transient and
-  contains no permanent bearer.
+  authority. removals close connections and removed bearers get 401.
+- hub invitations are five-minute single-use tokens naming the hub. a phone
+  repair sends its saved bearer only to a `*.ts.net:8443` tailnet origin; the
+  tailnet is the trust boundary. qr output is transient and contains no
+  permanent bearer.
 - After authentication, `Skidbladnir-Machine` binds the pinned pairing to the
   reached installation. It is not a credential and never substitutes for the
   bearer. A mismatch discloses no actual handle and cannot reach tmux.

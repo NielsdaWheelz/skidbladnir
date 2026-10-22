@@ -15,9 +15,7 @@ internal enum class NotificationEnrollmentResult { Installed, Conflict, Unavaila
 
 /** One pinned bearer transport. Its total deadline includes TLS, body and decoding. */
 internal class NotificationClient(private val context: android.content.Context) {
-    private val gateway = GatewayClient { response ->
-        FleetClient(MachineStore(context)).acceptRemoval(response)
-    }
+    private val gateway = GatewayClient()
 
     fun state(credential: MachineCredential): GatewayResult<ObserverSnapshot> = try {
         val request = gateway.authorizedRequest(credential, listOf("v1", "notifications", "state")).get().build()

@@ -143,15 +143,15 @@ func retireAbsent(file observerFile, members []fleet.Member) (observerFile, bool
 	return file, changed
 }
 
-// ConfigurePush changes only push transport. It is synchronous, offline and safe
-// under the fleet lock. Configuration changes erase destinations but keep floors.
+// ConfigurePush changes only push transport. It is synchronous and offline.
+// Configuration changes erase destinations but keep floors.
 func (observer *Observer) ConfigurePush(push *hostconfig.AndroidPush, sender *fcmpush.Client) error {
 	if push != nil && push.Validate() != nil {
 		return attention.ErrUnavailable
 	}
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable {
+	if observer.unavailable {
 		return attention.ErrUnavailable
 	}
 	if observer.sendCancel != nil {
@@ -188,11 +188,11 @@ func (observer *Observer) ConfigurePush(push *hostconfig.AndroidPush, sender *fc
 	return nil
 }
 
-// ReconcileMembers closes the construction/admission race without a fleet call.
+// ReconcileMembers retires the receivers of devices no longer in the fleet.
 func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable {
+	if observer.unavailable {
 		return attention.ErrUnavailable
 	}
 	file, changed := retireAbsent(observer.file, members)
@@ -209,33 +209,10 @@ func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
 	return nil
 }
 
-// Revoke erases destinations in the local durable commit. There is no remote delete.
-func (observer *Observer) Revoke(device string) error {
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable || !fleet.ValidDeviceID(device) {
-		return attention.ErrUnavailable
-	}
-	value := receiver{DeviceID: device, Configuration: observer.file.Configuration}
-	if index := observer.receiverIndex(device); index >= 0 {
-		value = observer.file.Receivers[index]
-	}
-	if value.Removed {
-		return nil
-	}
-	if observer.sendCancel != nil {
-		observer.sendCancel()
-	}
-	if err := observer.saveReceiver(revoked(value)); err != nil {
-		return err
-	}
-	observer.signal(false)
-	return nil
-}
 func (observer *Observer) receiverState(writer http.ResponseWriter, device string) {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable {
+	if observer.unavailable {
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
@@ -261,7 +238,7 @@ func (observer *Observer) register(writer http.ResponseWriter, request *http.Req
 	}
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable {
+	if observer.unavailable {
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
@@ -324,7 +301,7 @@ func (observer *Observer) confirm(writer http.ResponseWriter, request *http.Requ
 	}
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.drained || observer.unavailable {
+	if observer.unavailable {
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
@@ -364,10 +341,10 @@ func (observer *Observer) confirm(writer http.ResponseWriter, request *http.Requ
 }
 
 // The existing worker owns all sends. Its snapshot is checked again after Google
-// HTTP; neither the fleet lock nor the observer lock is held across the request.
+// HTTP; the observer lock is not held across the request.
 func (observer *Observer) sendReceiver(ctx context.Context, device, urgency string, enrollment bool) {
 	observer.mutex.Lock()
-	if observer.drained || observer.unavailable || observer.push == nil || observer.sender == nil {
+	if observer.unavailable || observer.push == nil || observer.sender == nil {
 		observer.mutex.Unlock()
 		return
 	}
@@ -417,7 +394,7 @@ func (observer *Observer) sendReceiver(ctx context.Context, device, urgency stri
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	observer.sendCancel = nil
-	if observer.drained || observer.unavailable || observer.file.Configuration != configuration || observer.sender != sender {
+	if observer.unavailable || observer.file.Configuration != configuration || observer.sender != sender {
 		return
 	}
 	index = observer.receiverIndex(device)
@@ -468,7 +445,7 @@ func (observer *Observer) publish(ctx context.Context) {
 			return
 		}
 		observer.mutex.Lock()
-		if observer.drained || observer.unavailable {
+		if observer.unavailable {
 			observer.mutex.Unlock()
 			return
 		}
