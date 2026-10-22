@@ -11,13 +11,15 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
 var (
-	errorTerminalTargetChanged = apiError{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again.", Status: http.StatusConflict, Dispatch: "not_sent"}
-	errorTerminalUnavailable   = apiError{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again.", Status: http.StatusConflict, Dispatch: "not_sent"}
-	errorTerminalInputBlocked  = apiError{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys.", Status: http.StatusConflict, Dispatch: "not_sent"}
+	errorTerminalTargetChanged = apiError{api.Error{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again."}, http.StatusConflict}
+	errorTerminalUnavailable   = apiError{api.Error{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again."}, http.StatusConflict}
+	errorTerminalInputBlocked  = apiError{api.Error{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys."}, http.StatusConflict}
 )
 
 type terminalRequest struct {
@@ -35,7 +37,7 @@ type terminalRequest struct {
 // agentcontrol, sessions and tmux take the values as given. Key names and
 // initialProfile are admitted downstream, where their sets live.
 func (input terminalRequest) shaped(operation string) bool {
-	if input.IdentityToken == "" || !digitsAfter(input.PaneID, '%') ||
+	if input.IdentityToken == "" || !tmux.ValidID(input.PaneID, '%') ||
 		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") {
 		return false
 	}
@@ -60,7 +62,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
 	defer cancel()
 	id, operation := request.PathValue("tmuxId"), request.PathValue("operation")
-	if !digitsAfter(id, '$') {
+	if !tmux.ValidID(id, '$') {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -84,7 +86,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		// TerminalInspect resolves the target itself, so a failure's duration includes resolution.
 		startedAt := time.Now()
 		var status sessions.TerminalStatus
-		var diagnostics agentcontrol.Diagnostics
+		var diagnostics api.Diagnostics
 		status, diagnostics, err = gateway.agents.TerminalInspect(ctx, target)
 		if err != nil {
 			break
@@ -92,10 +94,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		if status.Source == sessions.SourceUnavailable {
 			gateway.logObservationFailure(id, status.Reason, time.Since(startedAt))
 		}
-		inspected := struct {
-			TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
-			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
-		}{TerminalStatus: status}
+		inspected := api.Inspect{TerminalStatus: status}
 		if input.Explain != nil && *input.Explain {
 			// A nil slice is zero rules, but encoding/json writes it as null.
 			if diagnostics.Rules == nil {
@@ -109,7 +108,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		if input.MaxBytes != nil {
 			limit = *input.MaxBytes
 		}
-		var read agentcontrol.ReadResult
+		var read api.ReadResult
 		read, err = gateway.agents.TerminalRead(ctx, target, limit)
 		if err != nil {
 			break
@@ -148,7 +147,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 			writeError(writer, terminalFailure(validationErr))
 			return
 		}
-		closed := terminalCloseResult{Interrupt: "not_sent", Terminal: "not_closed"}
+		closed := api.CloseResult{Interrupt: "not_sent", Terminal: "not_closed"}
 		stopDeadline := time.Now().Add(2 * time.Second)
 		if cap := deadline.Add(-8 * time.Second); cap.Before(stopDeadline) {
 			stopDeadline = cap
@@ -176,11 +175,6 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	writeJSON(writer, http.StatusOK, result, nil)
 }
 
-type terminalCloseResult struct {
-	Interrupt string `json:"interrupt"`
-	Terminal  string `json:"terminal"`
-}
-
 func terminalFailure(err error) apiError {
 	var failure apiError
 	var blocked *agentcontrol.TerminalInputBlockedError
@@ -203,17 +197,14 @@ func terminalFailure(err error) apiError {
 		failure = errorTerminalUnavailable
 		failure.Message = "could not confirm terminal input. inspect the terminal before trying again."
 		failure.Dispatch = "unknown"
-		return failure
 	case errors.Is(err, sessions.ErrSessionDeleteUnknown):
 		failure = errorTerminalUnavailable
 		failure.Message = "could not confirm terminal closure. refresh before trying again."
 		failure.Dispatch = "unknown"
-		return failure
 	case errors.Is(err, agentcontrol.ErrInvalidInput):
 		failure = errorInvalidRequest
 	default:
 		failure = sessionFailure(err)
 	}
-	failure.Dispatch = "not_sent"
 	return failure
 }

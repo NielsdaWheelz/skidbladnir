@@ -195,7 +195,7 @@ to the existing websocket. cli handle entry resolves once. keep authentication,
 pinned machine, session header, first resize, exact native attach predicate and
 owned-client cleanup. no guessed or fabricated phone session model.
 
-the strict greeting becomes:
+the greeting becomes:
 
 ```json
 {"kind":"Hello","attachedClients":1,"paneId":"%3","foreground":{"provider":"Codex","pid":123,"startIdentity":"456"}}
@@ -204,9 +204,9 @@ the strict greeting becomes:
 `kind`, positive `attachedClients` and native `paneId` are required. optional
 `foreground` is the exact `{provider:Codex|Claude,pid>0,startIdentity}` triple:
 positive signed-64-bit pid and canonical positive decimal uint64 start identity.
-omit it on uncertainty. reject nulls, duplicates, unknown fields and the
-old count-only greeting. `Presence`, errors, client frames and binary payloads
-retain their schemas. the greeting establishes no readiness or permanent pane pin.
+omit it on uncertainty. clients decode it per [rules](rules.md#trust-boundaries).
+`Presence`, errors, client frames and binary payloads retain their schemas. the
+greeting establishes no readiness or permanent pane pin.
 
 extend the existing exact owned-client query with selected pane id/pid. sample
 kernel foreground using existing observation/classification primitives, without

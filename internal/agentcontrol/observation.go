@@ -13,9 +13,3 @@ type ObservationFailure struct {
 	Reason  sessions.StatusReason
 	Elapsed time.Duration
 }
-
-// Diagnostics explain one inspect sample without terminal content: the ids of
-// the grammar rules that decided it, in decision order.
-type Diagnostics struct {
-	Rules []string `json:"rules"`
-}

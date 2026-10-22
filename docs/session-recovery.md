@@ -62,7 +62,7 @@ only a reconstruction recipe. it never supplies inventory or agent status.
 | `tmux.Client` | presence distinct from empty, coherent graph capture, guarded reconstruction; existing exact server identities, format escaping, `TerminalCommand(cwd, "")` |
 | gateway lifetime | one immediate-start, 30-second checkpoint loop independent of connected clients; bounded cancellation and exclusive ownership |
 | `process` | existing `BootIdentity`, `Observe`, `StartIdentity`, `ErrProcessAbsent` prove whether the saved server process still lives |
-| gateway/clients | required inventory recovery fact, strict decoding, passive machine notice; existing five-second client polling |
+| gateway/clients | required inventory recovery fact, tolerant decoding, passive machine notice; existing five-second client polling |
 | dev-server | tmux configuration, sole recovery-owner cutover, existing linux service/mac launch agent and shell integration |
 
 acquire a process-held exclusive lock beside the checkpoint before recovery

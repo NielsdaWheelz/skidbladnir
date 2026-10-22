@@ -793,12 +793,11 @@ Clients decode responses tolerantly, ignoring keys they do not read; an undecoda
 response is a lost response, so observations show that machine unavailable and a
 possibly dispatched mutation is `unknown`, never a defect or crash. There is no
 protocol branch or compatibility state; [rules](rules.md#trust-boundaries) own decode
-policy. Today `internal/fleetclient` and the phone's terminal frames
-(`TerminalConnection.kt`) still decode strictly and treat a mismatch as a defect;
-their cleanup slices convert them.
+policy. Today the phone's terminal frames (`TerminalConnection.kt`) still decode
+strictly and treat a mismatch as a defect; its cleanup slice converts them.
 
 - WSS: text frames `Hello | Presence | Resize | Detach | Error`; Presence
-  contains kind and attached-client count. strict Hello also requires the final
+  contains kind and attached-client count. Hello also carries the final
   pane id and may include the exact stable foreground triple;
   [the latency contract](session-latency.md) owns validation and ordering. The first client Resize gates
   attachment creation. Binary

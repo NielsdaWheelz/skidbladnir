@@ -63,6 +63,16 @@ func (manager *Manager) acquireRecoveryLock() (*os.File, *recoveryFailure) {
 	return lock, nil
 }
 
+// validSavedAt admits a non-zero instant inside the four-digit UTC years Go's
+// RFC3339 JSON encoder writes, so the inventory can always publish it.
+func validSavedAt(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	_, err := value.UTC().MarshalJSON()
+	return err == nil
+}
+
 // readCheckpoint admits the checkpoint file once; no file is a nil recipe. It
 // refuses what restore could not rebuild and verify. A malformed boot or start
 // identity is only compared and reads as a gone source; the restore preflight
@@ -90,7 +100,7 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 	}
 	var recipe checkpoint
 	if strictjson.Decode(encoded, &recipe) != nil || recipe.Schema != 1 ||
-		recipe.Machine != manager.recovery.machine.String() || !ValidProjectionInstant(recipe.SavedAt) {
+		recipe.Machine != manager.recovery.machine.String() || !validSavedAt(recipe.SavedAt) {
 		return nil, invalid
 	}
 	// sourceGone reads the pid as a number, so only the canonical grammar keeps

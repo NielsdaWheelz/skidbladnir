@@ -52,8 +52,8 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 }
 
 // NeedsInput reports a human request interaction, whatever the activity,
-// notice or reason; menus, notices and readiness never qualify. A request
-// already implies a terminal source (TerminalStatus.Valid). Callers own
+// notice, source or reason; menus, notices and readiness never qualify (the
+// producer only reports a request from a terminal source). Callers own
 // freshness: a stale observation never needs input.
 func NeedsInput(status sessions.TerminalStatus) bool {
 	return status.Interaction.Request()

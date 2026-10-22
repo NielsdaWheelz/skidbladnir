@@ -7,12 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
 type LaunchKind string
@@ -52,24 +51,13 @@ type Reference struct {
 	PaneID        string `json:"paneId"`
 }
 
+// DecodeReference admits exactly what Encode produced: a reference is valid when it re-encodes
+// to itself.
 func DecodeReference(encoded string) (Reference, error) {
-	invalid := errors.New("invalid session reference")
-	if len(encoded) == 0 || len(encoded) > 4096 {
-		return Reference{}, invalid
-	}
-	data, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	if err != nil || base64.RawURLEncoding.EncodeToString(data) != encoded {
-		return Reference{}, invalid
-	}
 	var ref Reference
-	if !nonNullJSON(data) || strictjson.Decode(data, &ref) != nil {
-		return Reference{}, invalid
-	}
-	if _, err := machine.Parse(ref.Machine); err != nil {
-		return Reference{}, invalid
-	}
-	if !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" || !tmuxAddress(ref.PaneID, '%') {
-		return Reference{}, invalid
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if len(encoded) > 4096 || err != nil || json.Unmarshal(data, &ref) != nil || !ref.valid() || ref.Encode() != encoded {
+		return Reference{}, errors.New("invalid session reference")
 	}
 	return ref, nil
 }
@@ -77,6 +65,13 @@ func DecodeReference(encoded string) (Reference, error) {
 func (ref Reference) Encode() string {
 	encoded, _ := json.Marshal(ref)
 	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+// valid reports whether the ids form a reference; it is the client's one check of a session
+// address, for cli input and gateway documents alike.
+func (ref Reference) valid() bool {
+	_, err := machine.Parse(ref.Machine)
+	return err == nil && tmux.ValidID(ref.TmuxID, '$') && ref.IdentityToken != "" && tmux.ValidID(ref.PaneID, '%')
 }
 
 // Handle names the session lifetime, independently of the selected pane.
@@ -101,7 +96,3 @@ func (ref Reference) IsZero() bool { return ref == Reference{} }
 type Ref struct{ Reference }
 
 func (ref Ref) MarshalJSON() ([]byte, error) { return json.Marshal(ref.Encode()) }
-
-func tmuxAddress(value string, prefix byte) bool {
-	return len(value) > 1 && value[0] == prefix && strings.Trim(value[1:], "0123456789") == ""
-}

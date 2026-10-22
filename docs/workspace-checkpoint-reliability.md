@@ -96,9 +96,10 @@ instant = existing canonical utc rfc3339nano
 
 `failure.at` is the latest failed attempt's observation time. do not require
 timestamp ordering: wall clocks can move. tracking/recovered forbid failure;
-delayed/broken require it. both clients reject unknown/duplicate fields, null,
-omitted required values and invalid variants/pairs. `Peer.MarshalJSON` preserves
-the same fact in cli json. state alone determines whether saving will retry.
+delayed/broken require it. clients decode per [rules](rules.md#trust-boundaries):
+the go client rejects only an unknown state, phase or cause
+(`sessions.Recovery.Known`). `Peer.MarshalJSON` preserves the same fact in cli
+json. state alone determines whether saving will retry.
 
 | phase | allowed causes |
 | --- | --- |
@@ -109,8 +110,8 @@ the same fact in cli json. state alone determines whether saving will retry.
 | `checkpoint_write` | `limit`, `permission`, `no_space`, `io` |
 | `restore` | `timeout`, `changed`, `unavailable`, `invalid`, `limit`, `permission`, `no_space`, `io`, `not_empty` |
 
-client admission: delayed permits source/timeout, every listed capture pair
-and every listed checkpoint_write pair. broken permits every listed pair.
+the host publishes delayed only for source/timeout, every listed capture pair
+and every listed checkpoint_write pair, and broken for any listed pair.
 private typed evidence selects the state: malformed protocol is broken;
 unsupported live values are delayed. boot/process/identity checks belong to
 source even inside capture. restoration preflight/execution/native verification

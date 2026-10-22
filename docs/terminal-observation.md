@@ -109,8 +109,8 @@ interaction classified; partial means one; layout_unknown means neither.
 no failed stage may be converted to successful ambiguity.
 
 `sessions` owns these domain types/invariants. gateway serializes them; the go
-client validates once at ingress and kotlin decodes the closed enums it reads. reject the
-former `state` shape, unknown enum values and, in go, invalid combinations. no dual reader or native alias.
+client checks only that each value is known (`TerminalStatus.Known`) and kotlin decodes the
+closed enums it reads. reject the former `state` shape and unknown enum values. no dual reader or native alias.
 inventory freshness remains the only status clock; no confidence percentage,
 status expiry, transition timestamp or inference history.
 

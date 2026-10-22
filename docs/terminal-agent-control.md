@@ -84,8 +84,8 @@ session += {terminalStatus: TerminalStatus}
 
 [observation §2](terminal-observation.md#2-capability-and-wire-contract) owns
 `TerminalStatus`: its five fields, their values and the legal combinations.
-`sessions.TerminalStatus.Valid` enforces them; the go client checks them once at
-ingress and kotlin decodes the closed enums it reads. every member is required and non-null; the former
+`sessions.TerminalStatus.Valid` enforces them at the producer; the go client checks
+only that each value is known (`Known`) and kotlin decodes the closed enums it reads. every member is required and non-null; the former
 `{state, source}` shape is rejected.
 retain existing `activePaneId`, foreground `agent?`, connection and account facts;
 do not introduce a second pane/provider identity or per-action capability map.
@@ -299,8 +299,7 @@ unknown; unknown/refusal/timeouts are nonzero. no native acceptance wording.
 close exits zero only for `interrupt:written,terminal:closed`; a partial result
 is nonzero even if the terminal closed. terminal-only close exits zero on confirmed
 closure. neither zero exit establishes that work stopped.
-the captured target kind selects the expected response decoder before dispatch;
-reject opposite-kind receipts/status rather than changing interpretation on return.
+the operation selects the response decoder before dispatch.
 terminal routes return `200` with declared bodies; deletion retains `204`.
 
 terminal reference = `{machine,tmuxId,identityToken,paneId}`. all are required;

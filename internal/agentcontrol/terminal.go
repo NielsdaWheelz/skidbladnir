@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
@@ -69,32 +70,32 @@ func (service *Service) sample(ctx context.Context, session sessions.Session) (d
 // two-second deadline. Resolution admits the target: its errors, and a target
 // that changes during the capture, are errors. Every later failed stage is an
 // unavailable status. Its diagnostics name the rules of this same sample.
-func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (sessions.TerminalStatus, Diagnostics, error) {
+func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (sessions.TerminalStatus, api.Diagnostics, error) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
-		return sessions.TerminalStatus{}, Diagnostics{}, err
+		return sessions.TerminalStatus{}, api.Diagnostics{}, err
 	}
 	read, err := service.sample(ctx, session)
 	if err != nil {
-		return sessions.TerminalStatus{}, Diagnostics{}, err
+		return sessions.TerminalStatus{}, api.Diagnostics{}, err
 	}
-	return read.status, Diagnostics{Rules: read.rules}, nil
+	return read.status, api.Diagnostics{Rules: read.rules}, nil
 }
 
 // TerminalRead captures at most limit bytes of terminal text: the retained
 // history, or the visible screen of an alternate-screen program.
-func (service *Service) TerminalRead(ctx context.Context, target sessions.TerminalTarget, limit int) (ReadResult, error) {
+func (service *Service) TerminalRead(ctx context.Context, target sessions.TerminalTarget, limit int) (api.ReadResult, error) {
 	capture, err := service.sessions.CaptureTerminal(ctx, target, limit)
 	if err != nil {
-		return ReadResult{}, err
+		return api.ReadResult{}, err
 	}
 	scope := "terminal_history"
 	if capture.Alternate {
 		scope = "visible"
 	}
-	return ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
+	return api.ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
 }
 
 // TerminalSend pastes only into a fresh local provider's empty ordinary
@@ -104,19 +105,19 @@ func (service *Service) TerminalRead(ctx context.Context, target sessions.Termin
 // is a dialog, a composer holding input a draft, anything else unknown. An
 // unavailable observation is ErrTerminalUnavailable. An unknown initialProfile
 // is ErrInvalidInput, before resolution.
-func (service *Service) TerminalSend(ctx context.Context, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (WriteResult, error) {
+func (service *Service) TerminalSend(ctx context.Context, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (api.WriteResult, error) {
 	if initialProfile != "" {
 		if _, found := service.sessions.Profile(initialProfile); !found {
-			return WriteResult{}, ErrInvalidInput
+			return api.WriteResult{}, ErrInvalidInput
 		}
 	}
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
-		return WriteResult{}, err
+		return api.WriteResult{}, err
 	}
 	read, err := service.sample(ctx, session)
 	if err != nil {
-		return WriteResult{}, err
+		return api.WriteResult{}, err
 	}
 	// Only a classified screen has an empty composer, so past the composer
 	// checks session.Agent is the recognized local provider, attributed only to
@@ -124,32 +125,32 @@ func (service *Service) TerminalSend(ctx context.Context, target sessions.Termin
 	status := read.status
 	switch {
 	case status.Source == sessions.SourceUnavailable:
-		return WriteResult{}, sessions.ErrTerminalUnavailable
+		return api.WriteResult{}, sessions.ErrTerminalUnavailable
 	case status.Interaction.Request():
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
+		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
 	case read.composer == composerDraft:
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
+		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
 	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
 		status.Interaction != sessions.InteractionNone || read.composer != composerEmpty:
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
+		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
 	case initialProfile != "" && (session.Agent.Profile != initialProfile || status.Activity != sessions.ActivityIdle || status.Notice != sessions.NoticeNone):
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
+		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
 	}
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, session.Agent))
 }
 
-func (service *Service) Text(ctx context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {
+func (service *Service) Text(ctx context.Context, target sessions.TerminalTarget, text string) (api.WriteResult, error) {
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, nil))
 }
 
-func (service *Service) Keys(ctx context.Context, target sessions.TerminalTarget, keys []string) (WriteResult, error) {
+func (service *Service) Keys(ctx context.Context, target sessions.TerminalTarget, keys []string) (api.WriteResult, error) {
 	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, keys, nil))
 }
 
-func (service *Service) TerminalStop(ctx context.Context, target sessions.TerminalTarget) (WriteResult, error) {
+func (service *Service) TerminalStop(ctx context.Context, target sessions.TerminalTarget) (api.WriteResult, error) {
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
-		return WriteResult{}, err
+		return api.WriteResult{}, err
 	}
 	// Agent is nil for a shell or a remote connection, which take an unguarded ctrl-c.
 	key := "ctrl-c"
@@ -159,15 +160,15 @@ func (service *Service) TerminalStop(ctx context.Context, target sessions.Termin
 	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, []string{key}, session.Agent))
 }
 
-func terminalWriteResult(err error) (WriteResult, error) {
+func terminalWriteResult(err error) (api.WriteResult, error) {
 	if err == nil {
-		return WriteResult{Method: "terminal", Outcome: "written"}, nil
+		return api.WriteResult{Method: "terminal", Outcome: "written"}, nil
 	}
 	if errors.Is(err, sessions.ErrTerminalWriteUnknown) {
-		return WriteResult{Method: "terminal", Outcome: "unknown"}, nil
+		return api.WriteResult{Method: "terminal", Outcome: "unknown"}, nil
 	}
 	if errors.Is(err, tmuxclient.ErrInputInvalid) {
-		return WriteResult{}, ErrInvalidInput
+		return api.WriteResult{}, ErrInvalidInput
 	}
-	return WriteResult{}, err
+	return api.WriteResult{}, err
 }

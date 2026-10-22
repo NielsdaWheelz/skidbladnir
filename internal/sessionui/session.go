@@ -9,9 +9,11 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type inventoryMsg struct {
@@ -244,14 +246,14 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.invalidatePendingPeer()
 		m.inform("metadata saved; checking inventory")
 	case "close":
-		text := fleetclient.CloseText(result.Value.(fleetclient.CloseResult))
+		text := fleetclient.CloseText(result.Value.(api.CloseResult))
 		if result.ExitCode("close") != 0 {
 			m.fail(text)
 		} else {
 			m.inform(text)
 		}
 	default:
-		receipt := result.Value.(fleetclient.WriteResult)
+		receipt := result.Value.(api.WriteResult)
 		text := fleetclient.WriteText(operation, receipt)
 		if receipt.Outcome == "unknown" {
 			m.fail(text)
@@ -337,7 +339,7 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 		m.fail(problem)
 		return nil
 	}
-	value := message.result.Value.(fleetclient.DirectorySearchResult)
+	value := message.result.Value.(workdir.SearchResult)
 	m.searchState, m.searchDirectories, m.searchOmitted = directorySearchReady, value.Directories, value.Omitted
 	m.directorySelection.retain(value.Directories)
 	if initial && len(value.Directories) > 0 {

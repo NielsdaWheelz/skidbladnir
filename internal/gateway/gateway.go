@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
-	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
@@ -48,6 +48,7 @@ type Gateway struct {
 	logger        *slog.Logger
 	machine       machine.Handle
 	routes        *http.ServeMux
+	notSent       map[string]bool // route patterns whose error answers default to dispatch not_sent
 
 	// liveMutex guards the live connections, closing and the closed devices (terminal.go).
 	liveMutex     sync.Mutex
@@ -68,17 +69,24 @@ func New(config Config) *Gateway {
 		machine:       config.Machine,
 		live:          make(map[*liveConnection]struct{}),
 		closedDevices: make(map[string]bool),
+		notSent:       make(map[string]bool),
 	}
 	// Each pattern without its method is the route name in the request log.
 	gateway.routes = http.NewServeMux()
+	// A session mutation's error answers were not dispatched unless the handler says unknown. PATCH
+	// rename is not one: its InternalError can follow a tmux naming effect.
+	mutation := func(pattern string, handler http.HandlerFunc) {
+		gateway.routes.HandleFunc(pattern, handler)
+		gateway.notSent[pattern] = true
+	}
 	gateway.routes.HandleFunc("GET /v1/sessions", gateway.listSessions)
-	gateway.routes.HandleFunc("POST /v1/sessions", gateway.createSession)
-	gateway.routes.HandleFunc("POST /v1/sessions/{tmuxId}/shell", gateway.createShell)
-	gateway.routes.HandleFunc("PUT /v1/sessions/{tmuxId}/group", gateway.setSessionGroup)
+	mutation("POST /v1/sessions", gateway.createSession)
+	mutation("POST /v1/sessions/{tmuxId}/shell", gateway.createShell)
+	mutation("PUT /v1/sessions/{tmuxId}/group", gateway.setSessionGroup)
 	gateway.routes.HandleFunc("PATCH /v1/sessions/{tmuxId}", gateway.renameSession)
-	gateway.routes.HandleFunc("DELETE /v1/sessions/{tmuxId}", gateway.killSession)
+	mutation("DELETE /v1/sessions/{tmuxId}", gateway.killSession)
 	gateway.routes.HandleFunc("GET /v1/sessions/{tmuxId}/terminal", gateway.openTerminal)
-	gateway.routes.HandleFunc("POST /v1/sessions/{tmuxId}/terminal/{operation}", gateway.terminalOperation)
+	mutation("POST /v1/sessions/{tmuxId}/terminal/{operation}", gateway.terminalOperation)
 	gateway.routes.HandleFunc("POST /v1/directory-listings", gateway.listDirectory)
 	gateway.routes.HandleFunc("POST /v1/directory-searches", gateway.searchDirectories)
 	gateway.routes.HandleFunc("GET /v1/terminal-contexts/{connectionId}", gateway.readTerminalContext)
@@ -92,12 +100,6 @@ func New(config Config) *Gateway {
 func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	path := request.URL.Path
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
-	// Every error envelope on a session-mutation path, routed or not, says it was not dispatched.
-	if request.Method == http.MethodPut && strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/group") ||
-		request.Method == http.MethodPost && (path == "/v1/sessions" || strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell")) ||
-		strings.HasPrefix(path, "/v1/sessions/") && (strings.Contains(path, "/terminal/") || request.Method == http.MethodDelete) {
-		tracked.dispatch = "not_sent"
-	}
 	route := "unmatched"
 	startedAt := time.Now()
 	defer func() {
@@ -138,6 +140,9 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		route = "/v1/notifications/{operation}"
 	} else if _, pattern := gateway.routes.Handler(request); canonical && pattern != "/" {
 		route = pattern[strings.IndexByte(pattern, ' ')+1:]
+		if gateway.notSent[pattern] {
+			tracked.dispatch = "not_sent"
+		}
 	}
 	member, authenticated := gateway.authenticate(tracked, request)
 	if !authenticated {
@@ -201,225 +206,19 @@ func (gateway *Gateway) authenticate(writer *trackedResponseWriter, request *htt
 		if failure.Status == http.StatusUnauthorized {
 			writer.Header().Set("WWW-Authenticate", "Bearer")
 		}
-		writeJSON(writer, failure.Status, struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		}{failure.Code, failure.Message}, nil)
+		writeJSON(writer, failure.Status, api.Error{Code: failure.Code, Message: failure.Message}, nil)
 	} else {
 		writeError(writer, errorInternal)
 	}
 	return fleet.Member{}, false
 }
 
-func (gateway *Gateway) machineDTO() machineDTO {
+func (gateway *Gateway) apiMachine() api.Machine {
 	platform := "Linux" // only darwin and linux build: pressure has no other collector
 	if runtime.GOOS == "darwin" {
 		platform = "Darwin"
 	}
-	return machineDTO{Handle: gateway.machine.String(), Platform: platform}
-}
-
-func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
-	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
-	defer cancel()
-	inventory, failures, err := gateway.agents.Inventory(ctx)
-	for _, failure := range failures {
-		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
-	}
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	response, err := mapSessionsResponse(gateway.machineDTO(), inventory)
-	// The five-second budget covers enrichment and projection: a late inventory fails whole.
-	if err != nil || ctx.Err() != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response, nil)
-}
-
-func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.Request) {
-	startedAt := time.Now()
-	input, ok := decodeJSON[createSessionRequest](writer, request)
-	if !ok {
-		return
-	}
-	if input.CWD == nil {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	switch input.Kind {
-	case sessions.LaunchAgent:
-		if input.Profile == nil {
-			writeError(writer, errorInvalidRequest)
-			return
-		}
-	case sessions.LaunchTerminal:
-		if input.Profile != nil {
-			writeError(writer, errorInvalidRequest)
-			return
-		}
-	default:
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	// Present but empty is invalid; absent means none.
-	if input.OptionalTmuxName != nil && *input.OptionalTmuxName == "" {
-		writeError(writer, errorSessionNameInvalid)
-		return
-	}
-	if input.Objective != nil && *input.Objective == "" {
-		writeError(writer, errorObjectiveInvalid)
-		return
-	}
-	label, err := group.Parse(valueOf(input.Group))
-	if err != nil || input.Group != nil && label.IsUnassigned() {
-		writeError(writer, errorGroupInvalid)
-		return
-	}
-	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
-		Kind:             input.Kind,
-		CWD:              *input.CWD,
-		Profile:          valueOf(input.Profile),
-		OptionalTmuxName: valueOf(input.OptionalTmuxName),
-		Objective:        valueOf(input.Objective),
-		Group:            label,
-	})
-	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
-}
-
-func (gateway *Gateway) createShell(writer http.ResponseWriter, request *http.Request) {
-	startedAt := time.Now()
-	input, ok := decodeJSON[identityRequest](writer, request)
-	if !ok {
-		return
-	}
-	if input.IdentityToken == "" {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	created, err := gateway.sessions.CreateShell(request.Context(), sessions.ShellInput{TmuxID: request.PathValue("tmuxId"), IdentityToken: input.IdentityToken})
-	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
-}
-
-func (gateway *Gateway) completeCreation(ctx context.Context, writer http.ResponseWriter, created sessions.ObservedSession, err error, startedAt time.Time) {
-	if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
-		failure := errorInternal
-		failure.Dispatch = "unknown"
-		failure.Target = capturedCreationTarget(created)
-		writeError(writer, failure)
-		return
-	}
-	if err != nil {
-		writeError(writer, sessionFailure(err))
-		return
-	}
-	// Session.Created times creation alone; the status observation below is response latency.
-	elapsed := time.Since(startedAt)
-	observing := time.Now()
-	created.Session = gateway.agents.EnrichCreated(ctx, created.Session)
-	if status := created.Session.TerminalStatus; status.Source == sessions.SourceUnavailable {
-		gateway.logObservationFailure(created.Session.TmuxID, status.Reason, time.Since(observing))
-	}
-	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
-	if err != nil {
-		failure := errorInternal
-		failure.Dispatch = "unknown"
-		failure.Target = capturedCreationTarget(created)
-		writeError(writer, failure)
-		return
-	}
-	attrs := []any{"skidbladnir.duration.ms", elapsed.Milliseconds(), "skidbladnir.session.tmux_id", created.Session.TmuxID}
-	if created.Session.LaunchProfile != "" {
-		attrs = append(attrs, "skidbladnir.session.launch_profile", string(created.Session.LaunchProfile))
-	}
-	gateway.logger.Info("Session.Created", attrs...)
-	writeJSON(writer, http.StatusCreated, response, nil)
-}
-
-func capturedCreationTarget(created sessions.ObservedSession) *createdTargetDTO {
-	// Manager only retains a partial observation once it has validated the
-	// complete target. Projection errors retain the same original capture.
-	if created.Session.TmuxID == "" || created.Session.IdentityToken == "" || created.Session.ActivePaneID == "" {
-		return nil
-	}
-	return &createdTargetDTO{TmuxID: created.Session.TmuxID, IdentityToken: created.Session.IdentityToken, PaneID: created.Session.ActivePaneID}
-}
-
-func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
-	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
-	defer cancel()
-	tmuxID := request.PathValue("tmuxId")
-	input, ok := decodeJSON[identityRequest](writer, request)
-	if !ok {
-		return
-	}
-	if input.IdentityToken == "" {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	if err := gateway.sessions.ResolveSession(ctx, tmuxID, input.IdentityToken); err != nil {
-		writeError(writer, terminalFailure(err))
-		return
-	}
-	if err := gateway.closeSession(ctx, tmuxID, input.IdentityToken); err != nil {
-		writeError(writer, terminalFailure(err))
-		return
-	}
-	writer.WriteHeader(http.StatusNoContent)
-}
-
-func (gateway *Gateway) renameSession(writer http.ResponseWriter, request *http.Request) {
-	input, ok := decodeJSON[renameSessionRequest](writer, request)
-	if !ok {
-		return
-	}
-	if input.ExpectedNaming == nil || input.Naming == nil || !input.ExpectedNaming.valid() || !input.Naming.valid() || input.IdentityToken == "" {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	err := gateway.sessions.Rename(request.Context(), sessions.RenameInput{TmuxID: request.PathValue("tmuxId"), IdentityToken: input.IdentityToken, ExpectedNaming: input.ExpectedNaming.naming(), Naming: input.Naming.naming()})
-	if err != nil {
-		writeError(writer, sessionFailure(err))
-		return
-	}
-	writer.WriteHeader(http.StatusNoContent)
-}
-
-func (gateway *Gateway) setSessionGroup(writer http.ResponseWriter, request *http.Request) {
-	id := request.PathValue("tmuxId")
-	if !digitsAfter(id, '$') {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	input, ok := decodeJSON[setSessionGroupRequest](writer, request)
-	if !ok {
-		return
-	}
-	if input.IdentityToken == "" || input.Group == nil {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	label, err := group.Parse(*input.Group)
-	if err != nil {
-		writeError(writer, errorGroupInvalid)
-		return
-	}
-	err = gateway.sessions.SetGroup(request.Context(), sessions.SetGroupInput{
-		TmuxID: id, IdentityToken: input.IdentityToken, Group: label,
-	})
-	if errors.Is(err, sessions.ErrGroupDispatchUnknown) {
-		failure := errorInternal
-		failure.Dispatch = "unknown"
-		writeError(writer, failure)
-		return
-	}
-	if err != nil {
-		writeError(writer, sessionFailure(err))
-		return
-	}
-	writer.WriteHeader(http.StatusNoContent)
+	return api.Machine{Handle: gateway.machine.String(), Platform: platform}
 }
 
 func (gateway *Gateway) readPressure(writer http.ResponseWriter, _ *http.Request) {
@@ -456,6 +255,14 @@ func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, bo
 	return *decoded, true
 }
 
+// valueOf reads an optional member; absent is empty.
+func valueOf(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func sessionFailure(err error) apiError {
 	var sessionError *sessions.Error
 	if !errors.As(err, &sessionError) {
@@ -487,7 +294,8 @@ func sessionFailure(err error) apiError {
 
 // writeJSON writes value and a newline. A non-nil tooLarge bounds the whole response to
 // MaximumBodyBytes, answering *tooLarge instead, and marks it no-store; unbounded responses
-// carry no cache header.
+// carry no cache header. The bounded routes are exactly the no-store ones, so one parameter
+// carries both facts.
 func writeJSON(writer http.ResponseWriter, status int, value any, tooLarge *apiError) {
 	payload, err := json.Marshal(value)
 	if err != nil {
@@ -515,7 +323,7 @@ func writeError(writer http.ResponseWriter, failure apiError) {
 		failure.Dispatch = tracked.dispatch
 	}
 	tracked.errorCode = failure.Code
-	writeJSON(writer, failure.Status, failure, nil)
+	writeJSON(writer, failure.Status, failure.Error, nil)
 }
 
 // trackedResponseWriter records what the request log and the error envelope need.
@@ -523,7 +331,7 @@ type trackedResponseWriter struct {
 	http.ResponseWriter
 	status    int
 	errorCode string // set with every status >= 400: the gateway's envelope code, else FleetError or NotificationsUnavailable
-	dispatch  string // the envelope's default dispatch, decided from the method and path
+	dispatch  string // the envelope's default dispatch, decided from the matched route
 }
 
 func (writer *trackedResponseWriter) WriteHeader(status int) {

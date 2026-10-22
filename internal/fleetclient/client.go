@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
 )
 
@@ -290,7 +290,7 @@ func (client *Client) info(ctx context.Context, resolved resolved, explain bool)
 		if !inspected.OK {
 			return inspected
 		}
-		value := inspected.Value.(TerminalInspectResult)
+		value := inspected.Value.(api.Inspect)
 		observed.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		observed.Session.TerminalStatus, observed.Diagnostics = value.TerminalStatus, value.Diagnostics
 		observed.Session.TerminalUsage = nil
@@ -326,7 +326,7 @@ func (client *Client) OpenTerminal(ctx context.Context, ref Reference) (*websock
 			encoded, readErr := io.ReadAll(io.LimitReader(response.Body, MaximumControlBytes+1))
 			mediaType, _, typeErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
 			if readErr == nil && len(encoded) <= MaximumControlBytes && typeErr == nil && mediaType == "application/json" {
-				if refusal := decodeFailure(encoded, "not_sent"); refusal != nil {
+				if refusal := decodeFailure("enter", encoded, "not_sent", selected.Machine); refusal != nil {
 					return nil, refusal
 				}
 			}
@@ -435,16 +435,10 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 		return Failed("protocol_error", dispatch)
 	}
 	if response.StatusCode != route.status {
-		var failure *Failure
-		if operation == "group" || operation == "start" || operation == "shell" {
-			failure = decodeMutationFailure(operation, encoded, response.StatusCode, target.Machine)
-		} else {
-			failure = decodeFailure(encoded, dispatch)
+		if failure := decodeFailure(operation, encoded, dispatch, target.Machine); failure != nil {
+			return Result{Error: failure}
 		}
-		if failure == nil {
-			return Failed("protocol_error", dispatch)
-		}
-		return Result{Error: failure}
+		return Failed("protocol_error", dispatch)
 	}
 	value, ok := decodeResponse(operation, encoded, target)
 	if !ok {
@@ -462,33 +456,31 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	return success(value)
 }
 
-func decodeFailure(encoded []byte, dispatch string) *Failure {
-	var value *struct {
-		Code     string `json:"code"`
-		Message  string `json:"message"`
-		Dispatch string `json:"dispatch,omitempty"`
-	}
-	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
+// decodeFailure reads one gateway error envelope. dispatch is the call's default: the body's own
+// dispatch wins, else a known rejection was not sent. Only creation carries a created target.
+func decodeFailure(operation string, encoded []byte, dispatch, machine string) *Failure {
+	var envelope api.Error
+	if json.Unmarshal(encoded, &envelope) != nil || envelope.Code == "" {
 		return nil
 	}
-	if value.Dispatch == "not_sent" || value.Dispatch == "unknown" {
-		dispatch = value.Dispatch
-	} else if value.Dispatch != "" {
+	switch {
+	case envelope.Dispatch == "not_sent" || envelope.Dispatch == "unknown":
+		dispatch = envelope.Dispatch
+	case envelope.Dispatch != "":
 		return nil
-	} else if knownRejection(value.Code) {
+	case knownRejection(envelope.Code):
 		dispatch = "not_sent"
 	}
-	failure := &Failure{Code: value.Code, Dispatch: dispatch}
-	if value.Code == "TerminalInputBlocked" {
-		switch value.Message {
-		case "send unavailable for this screen. open the terminal or use text/keys.",
-			"respond to the dialog in the terminal.",
-			"terminal contains a draft. open it before sending.",
-			"the requested agent is not ready for its initial prompt. inspect the terminal before sending.":
-			failure.terminalInputMessage = value.Message
-		default:
+	failure := &Failure{Code: envelope.Code, Dispatch: dispatch}
+	if envelope.Code == "TerminalInputBlocked" {
+		failure.terminalInputMessage = envelope.Message
+	}
+	if target := envelope.Target; target != nil && (operation == "start" || operation == "shell") {
+		ref := Reference{Machine: machine, TmuxID: target.TmuxID, IdentityToken: target.IdentityToken, PaneID: target.PaneID}
+		if !ref.valid() {
 			return nil
 		}
+		failure.Target = Ref{ref}
 	}
 	return failure
 }
@@ -532,14 +524,14 @@ func (result Result) ExitCode(operation string) int {
 			return 1
 		}
 	case "send", "text", "keys", "stop":
-		if result.Value.(WriteResult).Outcome == "unknown" {
+		if result.Value.(api.WriteResult).Outcome == "unknown" {
 			return 1
 		}
 	case "close":
 		if _, ok := result.Value.(TerminalCloseResult); ok {
 			return 0 // Execute builds it only after a confirmed deletion
 		}
-		value := result.Value.(CloseResult)
+		value := result.Value.(api.CloseResult)
 		if value.Interrupt != "written" || value.Terminal != "closed" {
 			return 1
 		}
