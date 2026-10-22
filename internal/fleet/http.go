@@ -56,7 +56,7 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	member, _, e := s.Authenticate(r)
+	member, e := s.Authenticate(r)
 	if e != nil {
 		writeHTTPError(w, e)
 		return
@@ -133,17 +133,6 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		e := s.AbortStaged(member, abort)
 		respond(w, struct{}{}, e)
-	case r.Method == "POST" && r.URL.Path == "/v1/fleet/handoff/status":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
-			return
-		}
-		transfer, e := s.TransferStatus()
-		if transfer != nil && member.Machine != transfer.Source && member.Machine != transfer.Target {
-			writeHTTPError(w, &Error{Code: "Forbidden", Message: "designated transfer member required", Status: 403})
-			return
-		}
-		respond(w, transfer, e)
 	default:
 		http.NotFound(w, r)
 	}
@@ -187,14 +176,6 @@ func (s *Service) serveLocal(w http.ResponseWriter, r *http.Request) {
 		}
 		e := s.Enroll(r.Context(), input.Invitation, input.Name)
 		respond(w, s.Status(), e)
-
-	case r.Method == "POST" && r.URL.Path == "/v1/local/refresh":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
-			return
-		}
-		e := s.Refresh(r.Context())
-		respond(w, s.Status(), e)
 	case r.Method == "POST" && r.URL.Path == "/v1/local/apply":
 		if e := emptyBody(r); e != nil {
 			writeHTTPError(w, e)
@@ -223,7 +204,7 @@ func (s *Service) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	for {
 		s.mu.Lock()
-		if _, _, e := s.authenticate(r); e != nil {
+		if _, e := s.authenticate(r); e != nil {
 			s.mu.Unlock()
 			return
 		}
@@ -299,24 +280,18 @@ func writeHTTPError(w http.ResponseWriter, e error) {
 	payload := struct {
 		Code    string    `json:"code"`
 		Message string    `json:"message"`
-		Routing *Envelope `json:"routing,omitempty"`
 		Removal *Envelope `json:"removal,omitempty"`
-	}{typed.Code, typed.Message, typed.Routing, typed.Removal}
+	}{typed.Code, typed.Message, typed.Removal}
 	writeJSON(w, typed.Status, payload)
 }
 func (s *Service) httpClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	client := &http.Client{Transport: transport, Timeout: 15 * time.Second}
-	if s.options.HTTPClient != nil {
-		copy := *s.options.HTTPClient
-		client = &copy
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	if client.Timeout <= 0 || client.Timeout > 15*time.Second {
-		client.Timeout = 15 * time.Second
-	}
-	return client
 }
 func (s *Service) request(ctx context.Context, origin, machine, bearer, method, path string, body any, result any) error {
 	var encoded []byte
@@ -352,13 +327,12 @@ func (s *Service) request(ctx context.Context, origin, machine, bearer, method, 
 		var wire struct {
 			Code    string    `json:"code"`
 			Message string    `json:"message"`
-			Routing *Envelope `json:"routing,omitempty"`
 			Removal *Envelope `json:"removal,omitempty"`
 		}
 		if strictjson.Decode(data, &wire) != nil {
 			return errors.New("invalid fleet error response")
 		}
-		return &Error{wire.Code, wire.Message, response.StatusCode, wire.Routing, wire.Removal}
+		return &Error{wire.Code, wire.Message, response.StatusCode, wire.Removal}
 	}
 	return strictjson.Decode(data, result)
 }

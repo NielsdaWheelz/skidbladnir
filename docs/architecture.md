@@ -669,8 +669,8 @@ history item is `current`.
 
 - gateways exchange signed control state; execution remains strictly local. each
   binds numeric loopback, exposes only
-  `/v1` through its exact Tailscale Serve `:8443` mapping, keeps `/healthz`
-  loopback-only, and observes and mutates only the local default tmux server.
+  `/v1` through its exact Tailscale Serve `:8443` mapping, and observes and
+  mutates only the local default tmux server.
   Gateway restart never kills tmux or changes the stock agent runtime. Every
   gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, `TMUX_TMPDIR`,
   `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux/helper child environments also drop

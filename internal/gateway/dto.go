@@ -158,15 +158,10 @@ type directoryListingEntryResponse struct {
 	Kind      string `json:"kind"`
 }
 
-func mapDirectoryListing(machine machineDTO, listing workdir.Listing) (directoryListingResponseDTO, error) {
+func mapDirectoryListing(machine machineDTO, listing workdir.Listing) directoryListingResponseDTO {
 	children := listing.Children()
 	mappedChildren := make([]directoryListingEntryResponse, len(children))
 	for index, entry := range children {
-		switch entry.Kind() {
-		case workdir.Directory, workdir.SymbolicLink:
-		default:
-			return directoryListingResponseDTO{}, errors.New("invalid working directory entry kind")
-		}
 		mappedChildren[index] = directoryListingEntryResponse{
 			Directory: entry.Directory().String(),
 			Kind:      string(entry.Kind()),
@@ -177,18 +172,13 @@ func mapDirectoryListing(machine machineDTO, listing workdir.Listing) (directory
 		value := parent.String()
 		parentDirectory = &value
 	}
-	switch listing.Omissions() {
-	case workdir.None, workdir.Present:
-	default:
-		return directoryListingResponseDTO{}, errors.New("invalid working directory omission state")
-	}
 	return directoryListingResponseDTO{
 		Machine:         machine,
 		Directory:       listing.Directory().String(),
 		ParentDirectory: parentDirectory,
 		Children:        mappedChildren,
 		Omitted:         listing.Omissions() == workdir.Present,
-	}, nil
+	}
 }
 
 type createSessionRequest struct {

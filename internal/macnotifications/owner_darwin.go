@@ -145,13 +145,13 @@ func (owner *owner) request(ctx context.Context, op string, connection uint64, v
 	select {
 	case owner.requests <- request:
 	case <-ctx.Done():
-		return nil, ErrUnavailable
+		return nil, attention.ErrUnavailable
 	}
 	select {
 	case reply := <-request.reply:
 		return reply.value, reply.err
 	case <-ctx.Done():
-		return nil, ErrUnavailable
+		return nil, attention.ErrUnavailable
 	}
 }
 
@@ -245,7 +245,7 @@ func (owner *owner) startFetch(ctx context.Context) {
 		owner.signalEffects()
 		return
 	}
-	if _, configured := owner.client.NotificationConfig(); !configured {
+	if _, configured := owner.client.Hub(); !configured {
 		owner.available = false
 		owner.health = "notification setup required."
 		for _, waiter := range owner.waiters {
@@ -318,7 +318,7 @@ func (owner *owner) handle(request ownerRequest) {
 		if launch, found := owner.launches[nonce]; found {
 			delete(owner.launches, nonce)
 			for _, waiter := range launch.waiters {
-				waiter.reply <- ownerReply{nil, ErrUnavailable}
+				waiter.reply <- ownerReply{nil, attention.ErrUnavailable}
 			}
 		}
 		answer(struct{}{}, nil)
@@ -327,7 +327,7 @@ func (owner *owner) handle(request ownerRequest) {
 		if args.LaunchNonce != "" && args.Surface == nil {
 			launch, found := owner.launches[args.LaunchNonce]
 			if !found || launch.slot != args.Key.Slot() {
-				answer(nil, ErrUnavailable)
+				answer(nil, attention.ErrUnavailable)
 				return
 			}
 			if launch.surface == nil {
@@ -352,7 +352,7 @@ func (owner *owner) handle(request ownerRequest) {
 		args := request.value.(presentedArgs) // justify-assertion: socket admission owns this closed operation.
 		visit, found := owner.visits[args.VisitID]
 		if !found || visit.connection != request.connection {
-			answer(nil, ErrUnavailable)
+			answer(nil, attention.ErrUnavailable)
 			return
 		}
 		if visit.args.Presented {
@@ -491,13 +491,13 @@ func (owner *owner) handle(request ownerRequest) {
 		ref := request.value.(string) // justify-assertion: native events carry only their captured session reference.
 		decoded, err := fleetclient.DecodeReference(ref)
 		if err != nil {
-			answer(nil, ErrUnavailable)
+			answer(nil, attention.ErrUnavailable)
 			return
 		}
 		nonce := randomID()
 		settings, _, settingsErr := fleet.LoadResolved(owner.configPath)
 		if settingsErr != nil {
-			answer(nil, ErrUnavailable)
+			answer(nil, attention.ErrUnavailable)
 			return
 		}
 		var script string
@@ -507,7 +507,7 @@ func (owner *owner) handle(request ownerRequest) {
 		case "apple-terminal":
 			script, err = appleTerminalScript(owner.skidPath, owner.configPath, ref, nonce)
 		default:
-			err = ErrUnavailable
+			err = attention.ErrUnavailable
 		}
 		if err != nil {
 			answer(nil, err)
@@ -529,7 +529,7 @@ func (owner *owner) handle(request ownerRequest) {
 			}
 			for _, waiter := range launch.waiters {
 				if result.id == "" || waiter.ctx.Err() != nil {
-					waiter.reply <- ownerReply{nil, ErrUnavailable}
+					waiter.reply <- ownerReply{nil, attention.ErrUnavailable}
 					continue
 				}
 				args := waiter.value.(RegisterArgs) // justify-assertion: only admitted pending registrations wait for their creator.
@@ -799,7 +799,7 @@ func (owner *owner) startStream() {
 	if owner.client == nil || owner.resetting {
 		return
 	}
-	if _, configured := owner.client.NotificationConfig(); !configured {
+	if _, configured := owner.client.Hub(); !configured {
 		return
 	}
 	ctx, stop := context.WithCancel(owner.ctx)

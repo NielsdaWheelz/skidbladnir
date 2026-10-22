@@ -242,13 +242,10 @@ func pumpTerminalInput(ctx context.Context, connection *websocket.Conn, attachme
 		}
 		switch messageType {
 		case websocket.MessageBinary:
-			if err := terminal.ValidateClientBinary(payload); errors.Is(err, terminal.ErrFrameTooLarge) {
-				return terminalRequestTooLarge
-			} else if err != nil {
-				return terminalInvalidRequest
-			}
-			if err := writeTerminalInput(attachment, payload); err != nil {
-				return terminalReconnect
+			if len(payload) > 0 {
+				if _, err := attachment.Write(payload); err != nil {
+					return terminalReconnect
+				}
 			}
 		case websocket.MessageText:
 			frame, err := terminal.ParseClientText(payload)
@@ -338,7 +335,7 @@ func (gateway *Gateway) monitorTerminal(
 		case <-ticker.C:
 		}
 		request := &http.Request{Header: http.Header{"Authorization": []string{authorization}}}
-		_, _, err := gateway.fleet.Authenticate(request)
+		_, err := gateway.fleet.Authenticate(request)
 		if err != nil {
 			return terminalReconnect
 		}
@@ -364,20 +361,6 @@ func observeAttachedClients(ctx context.Context, attachment *sessions.TerminalAt
 	observationContext, cancel := context.WithTimeout(ctx, terminalObservationTimeout)
 	defer cancel()
 	return attachment.AttachedClients(observationContext)
-}
-
-func writeTerminalInput(destination io.Writer, payload []byte) error {
-	for len(payload) > 0 {
-		count, err := destination.Write(payload)
-		if err != nil {
-			return err
-		}
-		if count <= 0 || count > len(payload) {
-			return io.ErrNoProgress
-		}
-		payload = payload[count:]
-	}
-	return nil
 }
 
 func readTerminalMessage(ctx context.Context, connection *websocket.Conn) (websocket.MessageType, []byte, bool, error) {
@@ -477,10 +460,6 @@ func terminalCodeForSessionError(err error) terminal.ErrorCode {
 	switch sessionError.Code {
 	case sessions.ErrorSessionNotFound, sessions.ErrorSessionIdentityMismatch:
 		return terminal.ErrorReconnectRequired
-	case sessions.ErrorWorkingDirectoryInvalid,
-		sessions.ErrorWorkingDirectoryUnavailable, sessions.ErrorProfileUnknown,
-		sessions.ErrorSessionNameInvalid, sessions.ErrorObjectiveInvalid, sessions.ErrorSessionNameConflict:
-		return terminal.ErrorInternal
 	default:
 		return terminal.ErrorInternal
 	}

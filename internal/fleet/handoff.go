@@ -323,39 +323,6 @@ func (s *Service) AbortStaged(source Member, abort Envelope) error {
 	a.Bundle = nil
 	return s.saveAuthority()
 }
-func (s *Service) TransferStatus() (*Transfer, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.authority == nil || s.authority.Transfer == nil {
-		return nil, nil
-	}
-	t := *s.authority.Transfer
-	return &t, nil
-}
-
-// ResumeAuthority restores durable owned state after a process restart. A fenced
-// source is never resumed. Composition calls this before starting hub writers.
-func (s *Service) ResumeAuthority() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e := s.active(); e != nil {
-		return e
-	}
-	a := s.authority
-	if a.Transfer != nil && a.Transfer.Phase == "active" {
-		if e := s.completeActivation(); e != nil {
-			return e
-		}
-		if e := s.publish(); e != nil {
-			return e
-		}
-		return s.install(s.state)
-	}
-	if s.options.Resume != nil {
-		return s.options.Resume()
-	}
-	return nil
-}
 
 // Owned-state import must be idempotent across a crash between import and this
 // completion commit. Its owner preserves newer state for the same transfer.
@@ -379,9 +346,6 @@ func (s *Service) completeActivation() error {
 	a.ActivationComplete = true
 	return s.saveAuthority()
 }
-
-// InactiveConfigPath is retained for explicit operator recovery; never merged.
-func (s *Service) InactiveConfigPath() string { return s.options.ConfigPath + ".inactive" }
 
 const androidPushCredentialsUnavailable = "AndroidPushCredentialsUnavailable"
 const androidPushCredentialsAction = "android push credentials unavailable on destination; install matching android-push-credentials.json there and apply, or disable android_push"

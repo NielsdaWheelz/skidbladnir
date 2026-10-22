@@ -96,7 +96,7 @@ func extract(archive, destination string) error {
 		seen[clean] = true
 		top := strings.Split(filepath.ToSlash(clean), "/")[0]
 		switch top {
-		case "skidbladnir", "characters.json", "release.json", "providers", "native-helper", "Skid.app", "services":
+		case "skidbladnir", "characters.json", "release.json", "providers", "native-helper", "Skid.app":
 		default:
 			return fmt.Errorf("unexpected release archive member: %s", top)
 		}

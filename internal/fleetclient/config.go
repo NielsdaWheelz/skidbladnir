@@ -101,12 +101,11 @@ func (client *Client) Refresh() error {
 }
 
 // Apply requests application of the hub's human configuration without uploading a cache.
-func (client *Client) Apply(ctx context.Context) error { return client.localControl(ctx, "apply") }
-func (client *Client) localControl(ctx context.Context, action string) error {
+func (client *Client) Apply(ctx context.Context) error {
 	client.mu.RLock()
 	identity := client.identity
 	client.mu.RUnlock()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:7341/v1/local/"+action, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:7341/v1/local/apply", nil)
 	if err != nil {
 		return err
 	}
@@ -147,12 +146,4 @@ func (client *Client) DefaultMachine() Machine {
 		}
 	}
 	panic("validated default machine is absent") // justify-defect: Refresh always includes the installed machine.
-}
-func (client *Client) MachineByLabel(label string) (Machine, bool) {
-	for _, target := range client.Machines() {
-		if target.Label == label {
-			return target, true
-		}
-	}
-	return Machine{}, false
 }

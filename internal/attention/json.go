@@ -107,15 +107,6 @@ func (hint *Hint) UnmarshalJSON(data []byte) error {
 	*hint = Hint(value)
 	return nil
 }
-func (config *Config) UnmarshalJSON(data []byte) error {
-	type wire Config
-	var value wire
-	if !required(data, "observerMachine") || strictjson.Decode(data, &value) != nil {
-		return ErrUnavailable
-	}
-	*config = Config(value)
-	return nil
-}
 func (token *ReadyToken) UnmarshalJSON(data []byte) error {
 	type wire ReadyToken
 	var value wire

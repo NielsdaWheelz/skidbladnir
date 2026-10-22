@@ -135,13 +135,7 @@ type recoveryError struct {
 	operation string
 	errno     syscall.Errno
 	broken    bool
-	err       error
 }
-
-func (failure *recoveryError) Error() string {
-	return "workspace recovery " + string(failure.phase) + " failed"
-}
-func (failure *recoveryError) Unwrap() error { return failure.err }
 
 var errRecoveryUnavailable = errors.New("workspace recovery dependency unavailable")
 
@@ -149,7 +143,7 @@ func recoveryOperationError(ctx context.Context, phase RecoveryPhase, operation 
 	if errors.Is(err, errSessionServerObservation) {
 		phase, operation = RecoveryPhaseSource, "server_identity"
 	}
-	failure := &recoveryError{phase: phase, operation: operation, err: err}
+	failure := &recoveryError{phase: phase, operation: operation}
 	var storage *checkpointError
 	if errors.As(err, &storage) {
 		failure.operation = storage.operation

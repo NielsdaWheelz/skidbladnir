@@ -84,7 +84,13 @@ func EncodeHello(frame HelloFrame) ([]byte, error) {
 }
 
 func EncodePresence(attachedClients int) ([]byte, error) {
-	return encodePresence("Presence", attachedClients)
+	if attachedClients < 1 {
+		return nil, ErrInvalidFrame
+	}
+	return json.Marshal(struct {
+		Kind            string `json:"kind"`
+		AttachedClients int    `json:"attachedClients"`
+	}{"Presence", attachedClients})
 }
 
 func errorMessage(code ErrorCode) string {
@@ -239,21 +245,4 @@ func ParseClientText(encoded []byte) (ClientFrame, error) {
 	default:
 		return nil, ErrInvalidFrame
 	}
-}
-
-func ValidateClientBinary(contents []byte) error {
-	if len(contents) > MaximumFrameBytes {
-		return ErrFrameTooLarge
-	}
-	return nil
-}
-
-func encodePresence(kind string, attachedClients int) ([]byte, error) {
-	if attachedClients < 1 {
-		return nil, ErrInvalidFrame
-	}
-	return json.Marshal(struct {
-		Kind            string `json:"kind"`
-		AttachedClients int    `json:"attachedClients"`
-	}{Kind: kind, AttachedClients: attachedClients})
 }

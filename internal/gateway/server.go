@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
@@ -19,26 +18,7 @@ const (
 	shutdownTimeout   = 9 * time.Second
 )
 
-func ValidateListenAddress(address string) error {
-	host, portText, err := net.SplitHostPort(address)
-	if err != nil {
-		return fmt.Errorf("parse listen address: %w", err)
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return errors.New("gateway listen address must be a numeric loopback address")
-	}
-	port, err := strconv.ParseUint(portText, 10, 16)
-	if err != nil || port == 0 {
-		return errors.New("gateway listen port must be between 1 and 65535")
-	}
-	return nil
-}
-
 func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (result error) {
-	if err := ValidateListenAddress(address); err != nil {
-		return err
-	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return fmt.Errorf("listen on gateway loopback: %w", err)

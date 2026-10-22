@@ -34,7 +34,6 @@ type CreateInput struct {
 	Kind             LaunchKind
 	CWD              string
 	Profile          string
-	preparedName     string
 	OptionalTmuxName string
 	Objective        string
 	Group            group.Label

@@ -124,15 +124,16 @@ current names/status stay in memory; attention records contain no terminal or
 question text. the private transport subscription contains capability/key
 material and is never returned in snapshots.
 
-all counters satisfy `0 <= value < 2^63 - 1`; the maximum signed-64-bit value
-means exhaustion and is invalid. reject an increment into exhaustion before
-persistence or publication. zero means no token.
+all counters satisfy `0 <= value`; zero means no token. go advances each by one
+and does not bound it above: `2^63 - 1` is unreachable in practice. android
+still treats that value as exhausted and invalid, and the gateway refuses it as
+a phone-supplied generation.
 one durable producer revision advances per admitted machine outcome; transition
 tokens take that commit's revision, never a timestamp. the epoch is generated
 once with the producer file and survives ordinary restarts: 16 random bytes as
 32 lowercase hex characters. reject nulls,
 unknown fields/enums, malformed identities, duplicate slots/keys, invalid
-combinations, regressing tokens and exhausted counters. reuse existing inventory
+combinations, regressing tokens and negative counters. reuse existing inventory
 limits; bound state responses at 1 mib, hints at 256 bytes and endpoint bodies
 at 4 kib. oversized/incompatible state is unavailable, never partial.
 
@@ -475,9 +476,7 @@ through the running helper; unavailable helper returns an error without launchin
 another owner. remove the former `--background` flag and activation-based setup.
 replacement/removal first stop the waiter, then use the admitted helper's
 `stop ABSOLUTE_APP_BUNDLE` mode to terminate exact registered app instances and
-confirm absence. a surviving socket rejects replacement. `status` returns the
-single finished registered app's pid; readiness requires that pid to own the
-exact socket and answer a bounded typed `read`. setup may report producer
+confirm absence. a surviving socket rejects replacement. setup may report producer
 unavailable. these utility modes neither acquire the owner nor request consent.
 unchanged apply is inert; generation, unit or private client bytes changing
 restart the helper. initial absent fleet config permits the existing setup

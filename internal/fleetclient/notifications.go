@@ -6,14 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 )
 
 func NotificationKey(ref Reference) attention.Key {
@@ -41,18 +40,12 @@ func NotificationReady(device attention.DeviceSnapshot, session Session, produce
 
 type NotificationStore struct{ path string }
 
-func NewNotificationStore(path string) (*NotificationStore, error) {
-	if !filepath.IsAbs(path) {
-		return nil, attention.ErrUnavailable
-	}
-	return &NotificationStore{path: path}, nil
-}
 func DefaultNotificationStore() (*NotificationStore, error) {
 	directory, err := attention.StateDirectory()
 	if err != nil {
 		return nil, err
 	}
-	return NewNotificationStore(filepath.Join(directory, "notifications-v4.json"))
+	return &NotificationStore{path: filepath.Join(directory, "notifications-v4.json")}, nil
 }
 func (store *NotificationStore) Read(ctx context.Context) (attention.DeviceSnapshot, error) {
 	return store.Update(ctx, func(*attention.DeviceSnapshot) (bool, error) { return false, nil })
@@ -124,28 +117,19 @@ func (store *NotificationStore) Update(ctx context.Context, update func(*attenti
 		return attention.DeviceSnapshot{}, err
 	}
 	snapshot = attention.DeviceSnapshot{Schema: 4, Records: []attention.DeviceRecord{}}
-	file, err := os.Open(store.path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	data, err := privatefile.Read(store.path, attention.MaximumSnapshotBytes)
+	initializing := errors.Is(err, os.ErrNotExist)
+	if err != nil && !initializing {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}
-	initializing := errors.Is(err, os.ErrNotExist)
 	if initializing {
 		var identity [16]byte
 		if _, err := rand.Read(identity[:]); err != nil {
 			return attention.DeviceSnapshot{}, attention.ErrUnavailable
 		}
 		snapshot.ResetID = hex.EncodeToString(identity[:])
-	} else {
-		info, statErr := file.Stat()
-		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-			_ = file.Close()
-			return attention.DeviceSnapshot{}, attention.ErrUnavailable
-		} // justify-ignore-error: private-file admission failure is primary.
-		data, readErr := io.ReadAll(io.LimitReader(file, attention.MaximumSnapshotBytes+1))
-		closeErr := file.Close()
-		if readErr != nil || closeErr != nil || len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &snapshot) != nil || !snapshot.Valid() {
-			return attention.DeviceSnapshot{}, attention.ErrUnavailable
-		}
+	} else if attention.Decode(data, &snapshot) != nil || !snapshot.Valid() {
+		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}
 	if err := ctx.Err(); err != nil {
 		return attention.DeviceSnapshot{}, err
@@ -160,14 +144,11 @@ func (store *NotificationStore) Update(ctx context.Context, update func(*attenti
 	if !changed && !initializing {
 		return snapshot, nil
 	}
-	if snapshot.LocalRevision >= math.MaxInt64-1 {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
 	snapshot.LocalRevision++
 	if !snapshot.Valid() {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}
-	data, err := json.Marshal(snapshot)
+	data, err = json.Marshal(snapshot)
 	if err != nil || len(data) > attention.MaximumSnapshotBytes {
 		return attention.DeviceSnapshot{}, attention.ErrUnavailable
 	}

@@ -43,7 +43,7 @@ signatures and cross-provider ambiguity rules. no new abstraction or endpoint.
 {"foregroundSignatures":[{"executableDirectory":"/canonical/claude/versions"}]}
 ```
 
-- `hostconfig.Load` admits the directory: absolute, clean, nonempty, utf-8,
+- host config admission admits the directory: absolute, clean, nonempty, utf-8,
   nul-free, resolving to an existing directory. canonicalize once at admission
   and store that canonical path. keep `ValidateProfiles` pure; it validates shape,
   not filesystem state. preserve existing strict null/duplicate/unknown rejection.

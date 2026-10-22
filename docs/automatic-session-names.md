@@ -186,10 +186,10 @@ exact lifetime and optional conversation/turn; a later rename changes neither.
 
 ## launch integration
 
-preserve original `OptionalTmuxName` through preflight; keep the selected initial
-tmux name in a separate internal prepared field. do not infer manual intent
-from a generated string. create the automatic marker in the existing creation
-queue before returning the session. supplied names have no automatic marker.
+create keeps the original `OptionalTmuxName` and generates the initial tmux
+name only when it is empty. do not infer manual intent from a generated string.
+create the automatic marker in the existing creation queue before returning the
+session. supplied names have no automatic marker.
 
 skid never names either provider, including when the user supplies a manual skid
 name. claude never receives a skid-generated `--name`. keep the existing ban on

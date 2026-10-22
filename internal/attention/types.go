@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -158,9 +157,6 @@ type Hint struct {
 	Epoch    string `json:"epoch"`
 	Revision int64  `json:"revision"`
 }
-type Config struct {
-	ObserverMachine string `json:"observerMachine"`
-}
 type ReadyToken struct {
 	Epoch      string `json:"epoch"`
 	Generation int64  `json:"generation"`
@@ -182,7 +178,7 @@ func (seed ReadySeed) Valid() bool {
 		return false
 	}
 	candidate := seed.Candidate
-	return candidate == nil || candidate.Key.Valid() && candidate.Foreground != nil && candidate.Foreground.Valid() && EpochValid(candidate.Token.Epoch) && candidate.Token.Generation > 0 && candidate.Token.Generation < math.MaxInt64
+	return candidate == nil || candidate.Key.Valid() && candidate.Foreground != nil && candidate.Foreground.Valid() && EpochValid(candidate.Token.Epoch) && candidate.Token.Generation > 0
 }
 
 // ReadySeed copies only a pending generation in this exact session lifetime.
@@ -334,7 +330,7 @@ func ValidRecord(record Record, revision int64) bool {
 	return true
 }
 func (snapshot Snapshot) Valid() bool {
-	if snapshot.Schema != 1 || !EpochValid(snapshot.Epoch) || snapshot.Revision < 0 || snapshot.Revision >= math.MaxInt64 || snapshot.Machines == nil {
+	if snapshot.Schema != 1 || !EpochValid(snapshot.Epoch) || snapshot.Revision < 0 || snapshot.Machines == nil {
 		return false
 	}
 	machines := map[string]bool{}
@@ -377,10 +373,10 @@ func (snapshot Snapshot) Valid() bool {
 	return true
 }
 func (hint Hint) Valid() bool {
-	return hint.Schema == 1 && EpochValid(hint.Epoch) && hint.Revision >= 0 && hint.Revision < math.MaxInt64
+	return hint.Schema == 1 && EpochValid(hint.Epoch) && hint.Revision >= 0
 }
 func (snapshot DeviceSnapshot) Valid() bool {
-	if snapshot.Schema != 4 || !EpochValid(snapshot.ResetID) || snapshot.Records == nil || snapshot.AdmittedRevision < 0 || snapshot.AdmittedRevision >= math.MaxInt64 || snapshot.LocalRevision < 0 || snapshot.LocalRevision >= math.MaxInt64 || snapshot.ObserverEpoch != "" && !EpochValid(snapshot.ObserverEpoch) || snapshot.ObserverEpoch == "" && (snapshot.AdmittedRevision != 0 || len(snapshot.Records) != 0) {
+	if snapshot.Schema != 4 || !EpochValid(snapshot.ResetID) || snapshot.Records == nil || snapshot.AdmittedRevision < 0 || snapshot.LocalRevision < 0 || snapshot.ObserverEpoch != "" && !EpochValid(snapshot.ObserverEpoch) || snapshot.ObserverEpoch == "" && (snapshot.AdmittedRevision != 0 || len(snapshot.Records) != 0) {
 		return false
 	}
 	slots := map[Slot]bool{}

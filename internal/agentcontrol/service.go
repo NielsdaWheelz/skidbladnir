@@ -2,7 +2,6 @@ package agentcontrol
 
 import (
 	"errors"
-	"path/filepath"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -14,11 +13,8 @@ type Service struct {
 	quotaReadPath string
 }
 
-func New(manager *sessions.Manager, quotaReadPath string) (*Service, error) {
-	if manager == nil || !filepath.IsAbs(quotaReadPath) {
-		return nil, errors.New("agent control requires sessions and an absolute quota command")
-	}
-	return &Service{sessions: manager, quotaReadPath: quotaReadPath}, nil
+func New(manager *sessions.Manager, quotaReadPath string) *Service {
+	return &Service{sessions: manager, quotaReadPath: quotaReadPath}
 }
 
 type ReadResult struct {

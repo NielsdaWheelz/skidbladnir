@@ -20,7 +20,7 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	}
 	// Authentication precedes writer admission. Drain may run while the fleet
 	// mutation lock is held; no admitted writer can wait for that lock.
-	member, _, err := observer.fleet.Authenticate(request)
+	member, err := observer.fleet.Authenticate(request)
 	if err != nil {
 		writeFleetError(writer, err)
 		return
@@ -183,9 +183,8 @@ func writeFleetError(writer http.ResponseWriter, err error) {
 	_ = json.NewEncoder(writer).Encode(struct {
 		Code    string          `json:"code"`
 		Message string          `json:"message"`
-		Routing *fleet.Envelope `json:"routing,omitempty"`
 		Removal *fleet.Envelope `json:"removal,omitempty"`
-	}{value.Code, value.Message, value.Routing, value.Removal}) // justify-ignore-error: a disconnected response cannot be repaired.
+	}{value.Code, value.Message, value.Removal}) // justify-ignore-error: a disconnected response cannot be repaired.
 }
 func readRegistration(writer http.ResponseWriter, request *http.Request, value any) bool {
 	media, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))

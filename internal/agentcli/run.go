@@ -492,9 +492,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		} else if len(list.Peers) == 0 {
 			fmt.Fprintln(table, "no machines in this view")
 		}
-		if table.Flush() != nil {
-			return 1
-		}
+		table.Flush()
 		for _, peer := range list.Peers {
 			if text, _ := fleetclient.RecoveryNotice(peer); text != "" {
 				fmt.Fprintln(stdout, text)
@@ -540,9 +538,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		value := result.Value.(fleetclient.ObservedSession)
 		fmt.Fprintf(stdout, "target: %s on %s\n", value.Session.TerminalHandle, value.Label)
 		if command.request.Operation != "info" {
-			if _, err := fmt.Fprintf(stdout, "created %s\nenter with: skid enter %s --machine %s\n", value.Session.Name, value.Session.TerminalHandle, machineArgument(value.Label)); err != nil {
-				return 1
-			}
+			fmt.Fprintf(stdout, "created %s\nenter with: skid enter %s --machine %s\n", value.Session.Name, value.Session.TerminalHandle, machineArgument(value.Label))
 		} else {
 			row := value.Session
 			current := row.Current(fleetclient.Peer{Label: value.Label, Machine: value.Machine})
@@ -582,9 +578,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			if row.LaunchProfile != "" {
 				fmt.Fprintf(stdout, "started with: %s\n", row.LaunchProfile)
 			}
-			if _, err := fmt.Fprintf(stdout, "observed: %s\n", value.ObservedAt); err != nil {
-				return 1
-			}
+			fmt.Fprintf(stdout, "observed: %s\n", value.ObservedAt)
 			if diagnostics := value.Diagnostics; diagnostics != nil {
 				status := row.TerminalStatus
 				rules := []string{}
@@ -622,19 +616,14 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 						timing = append(timing, fmt.Sprintf("%s %d ms", stage.name, *stage.elapsed))
 					}
 				}
-				if _, err := fmt.Fprintf(stdout, "status evidence\n  activity: %s\n  interaction: %s\n  notice: %s\n  reason: %s\n  rules: %s\n  capture: %s\n  timing: %s\n", status.Activity, status.Interaction, status.Notice, view.Reason, strings.Join(rules, ", "), capture, strings.Join(timing, ", ")); err != nil {
-					return 1
-				}
+				fmt.Fprintf(stdout, "status evidence\n  activity: %s\n  interaction: %s\n  notice: %s\n  reason: %s\n  rules: %s\n  capture: %s\n  timing: %s\n", status.Activity, status.Interaction, status.Notice, view.Reason, strings.Join(rules, ", "), capture, strings.Join(timing, ", "))
 			}
 		}
 	case "read":
 		value := result.Value.(fleetclient.ReadResult)
 		fmt.Fprintf(stderr, "target: %s; source: %s; scope: %s; truncated: %t", targetText(command.request, command.machines), value.Source, value.Scope, value.Truncated)
 		fmt.Fprintln(stderr)
-		text := value.Text
-		if _, err := io.WriteString(stdout, text); err != nil {
-			return 1
-		}
+		io.WriteString(stdout, value.Text)
 	case "close":
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
 		if value, ok := result.Value.(fleetclient.TerminalCloseResult); ok {
@@ -649,9 +638,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if command.request.Group.IsUnassigned() {
 			text = "group cleared\n"
 		}
-		if _, err := io.WriteString(stdout, text); err != nil {
-			return 1
-		}
+		io.WriteString(stdout, text)
 	case "wait":
 		value := result.Value.(fleetclient.WaitResult)
 		request := fleetclient.Request{Ref: value.Target}

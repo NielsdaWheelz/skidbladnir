@@ -64,7 +64,6 @@ func (host *notificationHost) drain() (map[string]json.RawMessage, error) {
 	if host.worker != nil {
 		err = errors.Join(err, host.worker.err)
 	}
-	err = errors.Join(err, host.observer.Close())
 	host.observer, host.worker = nil, nil
 	host.owned = nil
 	if err == nil {
@@ -226,15 +225,13 @@ func (host *notificationHost) reconcile(ctx context.Context, control *fleet.Serv
 	}
 	if !active || current.FleetID != status.FleetID || current.AuthorityEpoch != status.AuthorityEpoch || generation != host.generation || ctx.Err() != nil {
 		_, drainErr := observer.Drain()
-		closeErr := observer.Close()
 		host.observer = nil
-		return errors.Join(drainErr, closeErr)
+		return drainErr
 	}
 	if err := observer.ReconcileMembers(current.Members); err != nil {
 		_, drainErr := observer.Drain()
-		closeErr := observer.Close()
 		host.observer = nil
-		return errors.Join(err, drainErr, closeErr)
+		return errors.Join(err, drainErr)
 	}
 	workerCtx, cancel := context.WithCancel(ctx)
 	worker := &notificationWorker{cancel: cancel, done: make(chan struct{})}

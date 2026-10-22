@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -28,11 +27,11 @@ type presentedArgs struct {
 func listenSocket() (*net.UnixListener, *os.File, error) {
 	path, err := SocketPath()
 	if err != nil || os.MkdirAll(filepath.Dir(path), 0700) != nil {
-		return nil, nil, ErrUnavailable
+		return nil, nil, attention.ErrUnavailable
 	}
 	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return nil, nil, ErrUnavailable
+		return nil, nil, attention.ErrUnavailable
 	}
 	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		_ = lock.Close() // justify-ignore-error: failed admission owns no store or socket.
@@ -40,17 +39,17 @@ func listenSocket() (*net.UnixListener, *os.File, error) {
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		_ = lock.Close() // justify-ignore-error: the socket removal failure is primary.
-		return nil, nil, ErrUnavailable
+		return nil, nil, attention.ErrUnavailable
 	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		_ = lock.Close() // justify-ignore-error: the failed bind owns no listener.
-		return nil, nil, ErrUnavailable
+		return nil, nil, attention.ErrUnavailable
 	}
 	if os.Chmod(path, 0600) != nil {
 		_ = listener.Close() // justify-ignore-error: failed admission does not publish an owner.
 		_ = lock.Close()     // justify-ignore-error: releasing failed owner admission cannot repair chmod.
-		return nil, nil, ErrUnavailable
+		return nil, nil, attention.ErrUnavailable
 	}
 	return listener, lock, nil
 }
@@ -181,5 +180,5 @@ func (owner *owner) serveConnection(connection *net.UnixConn, id uint64) {
 }
 
 func validToken(token attention.ReadyToken) bool {
-	return token == (attention.ReadyToken{}) || attention.EpochValid(token.Epoch) && token.Generation > 0 && token.Generation < math.MaxInt64
+	return token == (attention.ReadyToken{}) || attention.EpochValid(token.Epoch) && token.Generation > 0
 }

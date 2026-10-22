@@ -110,9 +110,6 @@ func (s *Service) StageJoin(invitation Invitation, name string) (JoinRequest, er
 			return p.Request, nil
 		}
 	}
-	if name == "" {
-		name = s.options.Name
-	}
 	if e := ValidateInvitation(invitation, time.Now()); e != nil {
 		return JoinRequest{}, e
 	}
@@ -348,50 +345,50 @@ func (s *Service) Remove(deviceID string) (Status, error) {
 	}
 	return status, nil
 }
-func (s *Service) Authenticate(request *http.Request) (Member, *Removal, error) {
+func (s *Service) Authenticate(request *http.Request) (Member, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.authenticate(request)
 }
-func (s *Service) authenticate(r *http.Request) (Member, *Removal, error) {
+func (s *Service) authenticate(r *http.Request) (Member, error) {
 	if e := s.admissionError(); e != nil {
-		return Member{}, nil, e
+		return Member{}, e
 	}
 	headers := r.Header.Values("Authorization")
 	if len(headers) != 1 || strings.ContainsRune(headers[0], ',') {
-		return Member{}, nil, &Error{Code: "Unauthenticated", Message: "authentication required", Status: 401}
+		return Member{}, &Error{Code: "Unauthenticated", Message: "authentication required", Status: 401}
 	}
 	// Stored installation identity authenticates local mode. Request source does
 	// not grant local authority: tailscale serve also connects over loopback.
 	credential, e := auth.ParseCredential(s.identity.LocalBearer)
 	if e != nil {
-		return Member{}, nil, e
+		return Member{}, e
 	}
 	if credential.Verify(headers[0]) {
-		return Member{DeviceID: "local-" + credential.Verifier(), Kind: "computer", Machine: s.options.Machine, Verifier: credential.Verifier()}, nil, nil
+		return Member{DeviceID: "local-" + credential.Verifier(), Kind: "computer", Machine: s.options.Machine, Verifier: credential.Verifier()}, nil
 	}
 	if s.identity.ActiveFleet != nil {
 		for _, m := range s.private.Members {
 			if auth.VerifyDigest(m.Verifier, headers[0]) {
-				return m, nil, nil
+				return m, nil
 			}
 		}
 		for _, retired := range s.private.Retired {
 			if auth.VerifyDigest(retired.Verifier, headers[0]) {
 				key, e := ParsePublicKey(s.identity.ActiveFleet.PublicKey)
 				if e != nil {
-					return Member{}, nil, e
+					return Member{}, e
 				}
 				var removal Removal
 				if e = Verify(key, "member-removed", retired.Removal, &removal); e != nil {
-					return Member{}, nil, e
+					return Member{}, e
 				}
 				proof := retired.Removal
-				return Member{}, &removal, &Error{Code: "DeviceRemoved", Message: "device removed; join again to restore access", Status: 403, Removal: &proof}
+				return Member{}, &Error{Code: "DeviceRemoved", Message: "device removed; join again to restore access", Status: 403, Removal: &proof}
 			}
 		}
 	}
-	return Member{}, nil, &Error{Code: "Unauthenticated", Message: "authentication required", Status: 401}
+	return Member{}, &Error{Code: "Unauthenticated", Message: "authentication required", Status: 401}
 }
 func (s *Service) AcceptRemoval(envelope Envelope) error {
 	s.mu.Lock()
