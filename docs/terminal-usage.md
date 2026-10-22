@@ -58,7 +58,7 @@ existing all-host inventory lane (5s)
           -> shared session dto -> fleetclient -> desktop claude candidates
 
 existing all-host native-usage lane (60s)
-  gateway -> agentcontrol -> existing helper/account daemon: codex only
+  gateway -> quota -> existing account daemon: codex only
           -> native profile reports -> fleetclient -> desktop codex candidates
 
 desktop: select one whole observation per profile -> desktop usage projection
@@ -168,8 +168,9 @@ include declared codex profiles in configured order, including unused profiles;
 zero profiles returns `[]`. remove the obsolete `source` member and statusline
 variant; native origin follows from this capability. unavailable carries no new
 report. preserve native default-pool/duration validation, full precision, values
-above 100, optional resets, five-second host deadline and 64-kib response bound.
-no helper change or daemon start. old claude/source-bearing replies are rejected.
+above 100, optional resets, five-second host deadline and a bounded daemon frame
+([profile usage](profile-usage.md)). no daemon start. old claude/source-bearing
+replies are rejected.
 
 ## collection, selection and lifetime
 

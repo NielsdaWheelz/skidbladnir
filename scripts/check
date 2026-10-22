@@ -49,7 +49,7 @@ case "$gate" in
     run diff-check git diff --check
     # shellcheck disable=SC2016 # The inner shell owns this variable.
     run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    shell_scripts=(deployment/install/quota-read deployment/providers/shell-init deployment/providers/terminal-context-init)
+    shell_scripts=(deployment/providers/shell-init deployment/providers/terminal-context-init)
     for script in scripts/*; do
       [[ -x "$script" ]] || { printf '%s is not executable\n' "$script" >&2; exit 1; }
       if [[ "$(head -n 1 "$script")" == '#!/usr/bin/env bash' ]]; then
@@ -60,11 +60,6 @@ case "$gate" in
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' "${shell_scripts[@]}"
     run shellcheck shellcheck "${shell_scripts[@]}"
-    run python-syntax python3 -c \
-      'import pathlib, sys
-for name in sys.argv[1:]:
-    compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
-      deployment/install/build-native.py
     if [[ "$scope" == all || "$scope" == host ]]; then
       run go-mod-verify go mod verify
       run go-vet go vet ./...

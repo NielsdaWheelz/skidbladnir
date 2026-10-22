@@ -15,16 +15,19 @@ supersedes the earlier claude publisher and devbox-only contracts.
 
 ## acquisition and normalization
 
-the bounded `provider_runtime.agent_runtime.quota_cli` helper uses
-skid's validated environment and `agentruntime.CodexEndpoint`. it initializes a
-connection to the already-running account daemon and calls
-`account/rateLimits/read`. no caller supplies a home, socket or conversation target.
+`internal/quota` dials `agentruntime.CodexEndpoint` directly: a websocket to
+`ws://localhost/` without compression, then `initialize` (clientInfo
+`skidbladnir`), `initialized` and `account/rateLimits/read` against the
+already-running account daemon. it skips and never answers server messages and
+closes without a close handshake. no caller supplies a home, socket or conversation target.
 
 consume the required `rateLimits` default snapshot; never substitute the first
 map entry or another quota pool. within that snapshot, `windowDurationMins == 300`
 identifies 5h and `10080` identifies 7d. primary/secondary position alone is
 insufficient. omit unknown durations; duplicate recognized durations are
-incompatible. normalize `usedPercent` and optional `resetsAt`.
+incompatible. normalize `usedPercent` and optional `resetsAt`. every number must
+be a json integer token (`42.0`, `"42"` and integers beyond int64 are malformed);
+a reset outside years 1-9999 is malformed.
 
 the read creates no thread or inference turn. it never starts/restarts a daemon,
 replaces an owner, answers another client's requests, logs in or forces token
@@ -61,8 +64,9 @@ percentages are finite and nonnegative. preserve precision and valid values
 above 100; never infer admission. optional facts are omitted, never null or zero
 substitutes. reset seconds become explicit utc. the existing five-second host
 deadline covers concurrent profile reads, preserving completed results and
-marking timed-out reads unavailable. the native response remains bounded at
-64 kib. the gateway owns cancellation/completion, with no recurring task or cache.
+marking timed-out reads unavailable. each daemon frame is bounded at 4 MiB; a
+binary or malformed frame, an error or an unexpected id makes only that profile
+unavailable. the gateway owns cancellation/completion, with no recurring task or cache.
 
 ## clocks and display lifetime
 

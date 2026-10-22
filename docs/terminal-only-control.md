@@ -1,6 +1,9 @@
 # terminal controls, ordinary launches, account quota
 
 status: source merged and released in v0.20.0 on 2026-10-21.
+2026-10-21: the quota helper, its packaging and pins below are superseded;
+`internal/quota` reads the daemon directly ([profile usage](profile-usage.md)) and
+releases carry no native helper.
 [isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records its actual
 results; [live cells](issues/terminal-only-live-qualification.md) remain open; [installed qualification](v0.20.0-installed-qualification.md)
 owns the separately authorized fleet rollout.

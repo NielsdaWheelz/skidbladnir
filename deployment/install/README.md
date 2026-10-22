@@ -18,8 +18,8 @@ skid uninstall
 ```
 
 install and update download one signed immutable release, or verify the supplied
-local archive, then run its binary and quota helper (on mac, also verify the app
-signature) before any skid-owned path changes. the release lands at
+local archive, then run its binary (on mac, also verify the app signature)
+before any skid-owned path changes. the release lands at
 `releases/<version>-<sha>`; a same-version reinstall replaces that tree. the
 installer stops skid services, switches `current`, restarts them, then deletes
 every other release; it never restarts tmux or providers. failed validation
@@ -52,15 +52,9 @@ provider installation, accounts, settings, history and daemon lifetime remain
 external. the default yaml has no profiles. local shell use needs no provider,
 network login or runtime download. zoxide, ssh and mosh are optional user tools.
 
-the signed archive contains the provider-runtime source, uv, and managed
-python pinned in [`native-runtime.json`](../../internal/install/native-runtime.json),
-the source's original `uv.lock`, and installed distributions admitted by frozen export
-with base dependencies and required wheel hashes. `providers/quota-read` imports
-only the bounded account-quota entrypoint; no optional claude SDK, conversation
-launcher, identity plugin, cli or provider daemon is installed. `runtime.json`
-records commit, uv, python, interpreter, lock and requirements hashes.
-runtime launches the bundled interpreter directly, with
-isolated imports and bytecode writes disabled; startup never downloads packages.
+the signed archive holds the binary, the character catalogue, `release.json`, the
+two shell provider scripts and, on mac, `Skid.app`; it ships no interpreter and
+runtime startup downloads nothing.
 
 config, data and state follow their XDG directories, falling back to
 `~/.config`, `~/.local/share` and `~/.local/state`. the public executable

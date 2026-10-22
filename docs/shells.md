@@ -171,7 +171,7 @@ table. retain every nonempty profile constraint and the existing config schema;
 do not add arbitrary subsets or a second profile registry. successful host/fleet
 inventories include `profiles:[]` when empty, never omit it or encode null.
 no agent installation is needed for the empty
-case; the configured quota helper still requires an absolute path. creation
+case. creation
 logging permits an absent launch profile and stays content-free.
 
 ## 4. client ownership and completion

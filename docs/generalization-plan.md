@@ -2,8 +2,10 @@
 
 2026-10-21 amendment: [terminal-only control](terminal-only-control.md) removes
 conversation discovery/controls and hooks below, replaces `historyScope`
-with `accountScope`, and narrows the packaged helper to quota. ordinary commands
-and existing terminal observation remain. the earlier native clauses are historical.
+with `accountScope`, and narrows the packaged helper to quota; the go quota
+client ([profile usage](profile-usage.md)) then removes the helper and its pins.
+ordinary commands and existing terminal observation remain. the earlier native
+clauses are historical.
 
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
@@ -505,19 +507,16 @@ one signed host archive and bootstrap installer; internal components are not
 separate user installations. `skid install` registers services/dependencies;
 `skid update` stages a matching release; `skid uninstall` removes owned runtime.
 keep the existing immutable release/signature/checksum workflow and catalogue.
-include shell assets, native-helper source/launcher/locked dependency manifest
-and mac app in the archive. pin helper commit, interpreter and admitted dependency
-artifacts per release, including required claude sdk extras; no remote `HEAD` or
-`uv sync --upgrade`. runtime startup never downloads packages. clean installation
-must need no private repository checkout or credentials.
+include shell assets and the mac app in the archive. runtime startup never
+downloads packages. clean installation must need no private repository checkout
+or credentials.
 
 install/reuse tmux and tailscale through native package/installation mechanisms.
 linux uses apt/pacman and user systemd; mac uses the existing launch-agent model,
 homebrew for tmux and official tailscale installer where absent. privilege,
 login/extension permission and systemd linger needs must be reported honestly.
-reuse the native helper's managed uv/python environment, python >=3.12, independent
-of system python. install provider-independent helper dependencies, not codex or
-claude. zoxide remains optional; ssh/mosh remain ordinary user tools.
+skid installs neither codex nor claude. zoxide remains optional; ssh/mosh remain
+ordinary user tools.
 
 initial host release matrix: macos arm64, ubuntu amd64 and current arch amd64
 with systemd. the currently installed mac artifacts require macos 26; explicitly

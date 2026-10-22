@@ -71,9 +71,8 @@ func extract(archive, destination string) error {
 	}
 	defer zipped.Close()
 	reader := tar.NewReader(zipped)
-	// The signature proves the layout. These checks keep the installer's writes and
-	// the release's relative links inside destination, which check-release does not
-	// fully prove. Exclusive creation rejects a duplicated file or link.
+	// The signature proves the layout. These checks keep the installer's writes
+	// inside destination; exclusive creation rejects a duplicated file.
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -88,18 +87,6 @@ func extract(archive, destination string) error {
 			return errors.New("release archive contains an invalid path")
 		}
 		path := filepath.Join(destination, clean)
-		// Never follow an archive-created symlink while extracting later members.
-		parent := filepath.Dir(path)
-		for parent != destination {
-			info, e := os.Lstat(parent)
-			if e == nil && info.Mode()&os.ModeSymlink != 0 {
-				return errors.New("release archive traverses a symlink")
-			}
-			if e != nil && !errors.Is(e, os.ErrNotExist) {
-				return e
-			}
-			parent = filepath.Dir(parent)
-		}
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return err
 		}
@@ -121,14 +108,6 @@ func extract(archive, destination string) error {
 				e = f.Chmod(os.FileMode(header.Mode) & 0755)
 			}
 			if e = errors.Join(e, f.Close()); e != nil {
-				return e
-			}
-		case tar.TypeSymlink:
-			target := filepath.Clean(filepath.Join(filepath.Dir(clean), header.Linkname))
-			if filepath.IsAbs(header.Linkname) || target == ".." || strings.HasPrefix(target, "../") {
-				return errors.New("release symlink escapes archive")
-			}
-			if e := os.Symlink(header.Linkname, path); e != nil {
 				return e
 			}
 		default:

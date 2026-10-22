@@ -106,8 +106,27 @@ steps:
    - w3.1: hub-owned attention discards per-device notification memory.
    - hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone
      decodes tolerantly and additive wire changes stop requiring lockstep.
-   - w3.2: the go quota client removes the native helper and the llm-calling pin
-     from skid and dev-server.
+   - w3.2: host archives no longer carry `native-helper/` or `providers/quota-read`
+     (about 146 MB unpacked less per host) and skid pins no llm-calling
+     (`native-runtime.json` is gone); `scripts/release` no longer needs uv 0.13.4
+     or network fetches of llm-calling/uv/python. a pre-cutover binary's
+     `skid update` refuses this release ("bundled quota helper cannot start;
+     installed release unchanged") because its validate still runs
+     `providers/quota-read`; steps 3-4 already install through dev-server apply or
+     `bash install TAG`, which run the new installer. the new installer refuses
+     archive symlinks, so it cannot extract a pre-cutover archive; a rollback runs
+     that release's own `bash install TAG` under the existing downgrade guard.
+     dev-server `origin/main` 5f4fef0 already installs no helper and pins no
+     llm-calling (a0fe999): delete
+     `SPEC.md`'s `## native helper source` section, whose first sentence ("skid's
+     signed host release owns its native helper and locked dependencies") becomes
+     false, and check whether `SPEC.md`'s "native helper/provider launchers"
+     sentence (about line 400) still names anything; the pin bump is step 1.
+     jarvis pins llm-calling itself and is unaffected. llm-calling's
+     `provider_runtime.agent_runtime.quota_cli` loses its only consumer; deleting
+     it is llm-calling's follow-up. step 6 gains: the desktop usage page shows `ok`
+     for each codex profile whose daemon runs (the go client was proven only
+     against a fake app-server).
    - dev-server `docs/gateway-separation-validation.md` links skid
      `docs/native-agent-qualification.md` on main, deleted by #122; pin the
      link to `12b1516`.

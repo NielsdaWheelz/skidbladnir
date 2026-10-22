@@ -3,18 +3,18 @@ package gateway
 import (
 	"net/http"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
 )
 
 type profileUsageDTO struct {
 	profileDTO
-	ReadState string                    `json:"readState"`
-	Report    *agentcontrol.UsageReport `json:"report,omitempty"`
+	ReadState string        `json:"readState"`
+	Report    *quota.Report `json:"report,omitempty"`
 }
 
 func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *http.Request) {
-	observed, err := gateway.agents.ProfileUsage(request.Context())
+	observed, err := quota.Observe(request.Context(), gateway.sessions)
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
@@ -30,8 +30,12 @@ func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *ht
 	}
 	mapped := make([]profileUsageDTO, len(profiles))
 	for index, profile := range profiles {
-		usage := observed.Profiles[index]
-		mapped[index] = profileUsageDTO{profileDTO: profile, ReadState: usage.ReadState, Report: usage.Report}
+		report := observed.Profiles[index].Report
+		readState := "ok"
+		if report == nil {
+			readState = "unavailable"
+		}
+		mapped[index] = profileUsageDTO{profileDTO: profile, ReadState: readState, Report: report}
 	}
 	stamp, err := formatProjectionInstant(observed.ObservedAt)
 	if err != nil {

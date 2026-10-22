@@ -94,7 +94,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 	if err != nil {
 		return err
 	}
-	agents := agentcontrol.New(manager, filepath.Join(directories.Data, "current", "providers", "quota-read"))
+	agents := agentcontrol.New(manager)
 	client := fleetclient.New(state, local)
 	credentials := filepath.Join(config, "android-push-credentials.json")
 	notifications := &notificationHost{logger: logger}

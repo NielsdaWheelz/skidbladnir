@@ -81,10 +81,7 @@ for platform in linux-amd64 darwin-arm64; do
   chmod 0644 "$root/release.json"
   install -m 0644 "$source_dir/deployment/providers/shell-init" \
     "$source_dir/deployment/providers/terminal-context-init" "$root/providers"
-  install -m 0755 "$source_dir/deployment/install/quota-read" "$root/providers/quota-read"
-  # uv reads project config from its cwd upward; keep the checkout's ignored files out.
-  (cd "$source_dir" && python3 deployment/install/build-native.py "$platform" "$root/native-helper")
-  members=(skidbladnir release.json providers native-helper)
+  members=(skidbladnir release.json providers)
   if [[ "$platform" == darwin-arm64 ]]; then
     app="$root/Skid.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
