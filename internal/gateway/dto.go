@@ -200,41 +200,34 @@ func digitsAfter(value string, prefix byte) bool {
 	return true
 }
 
-func mapProfiles(profiles []agentruntime.Profile) ([]profileDTO, error) {
-	validated, err := agentruntime.ValidateProfiles(profiles)
-	if err != nil {
-		return nil, err
-	}
-	mapped := make([]profileDTO, len(validated))
-	for index, profile := range validated {
+func mapProfiles(profiles []agentruntime.Profile) []profileDTO {
+	mapped := make([]profileDTO, len(profiles))
+	for index, profile := range profiles {
 		mapped[index] = profileDTO{Key: string(profile.Key), Label: profile.Label, Provider: profile.Provider.String()}
 		// justify-ignore-error: absent account home omits this profile's quota scope without hiding its terminal launch.
 		if scope, err := agentruntime.AccountScope(profile); err == nil {
 			mapped[index].AccountScope = scope
 		}
 	}
-	return mapped, nil
+	return mapped
 }
 
-func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile) (*agentDTO, error) {
+// mapAgent maps the agent in the session's selected pane, paneID.
+func mapAgent(agent *agentruntime.Agent, paneID string, profiles []agentruntime.Profile) *agentDTO {
 	if agent == nil {
-		return nil, nil
+		return nil
 	}
-	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil || agent.PaneID == "" || agent.StartIdentity == "" {
-		return nil, errors.New("invalid agent runtime")
-	}
-	mapped := &agentDTO{
-		PaneID: agent.PaneID, StartIdentity: string(agent.StartIdentity),
+	return &agentDTO{
+		PaneID: paneID, StartIdentity: string(agent.StartIdentity),
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
 		Profile:  string(agent.Profile),
 		Label:    profileLabel(profiles, agent.Profile),
 	}
-	return mapped, nil
 }
 
-// profileLabel is key's configured label; empty when key is empty or not
-// configured. Provider agreement is ValidateAgentRuntime's invariant.
+// profileLabel is key's label in profiles; empty when key is empty or not
+// in this snapshot.
 func profileLabel(profiles []agentruntime.Profile, key agentruntime.ProfileKey) string {
 	for _, profile := range profiles {
 		if profile.Key == key {
@@ -245,27 +238,13 @@ func profileLabel(profiles []agentruntime.Profile, key agentruntime.ProfileKey) 
 }
 
 func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sessionDTO, error) {
-	agent, err := mapAgent(session.Agent, profiles)
-	if err != nil {
-		return sessionDTO{}, err
-	}
+	agent := mapAgent(session.Agent, session.ActivePaneID, profiles)
 	var connection *connectionDTO
 	if session.Connection != nil {
 		if agent != nil || session.CWD != "" || session.Connection.Transport != "ssh" && session.Connection.Transport != "mosh" || session.Connection.ID != "" && !terminalcontext.ValidConnectionID(session.Connection.ID) {
 			return sessionDTO{}, errors.New("invalid session connection")
 		}
 		connection = &connectionDTO{Transport: session.Connection.Transport, ID: session.Connection.ID}
-	}
-	if session.LaunchProfile != "" {
-		matches := 0
-		for _, profile := range profiles {
-			if profile.Key == session.LaunchProfile {
-				matches++
-			}
-		}
-		if matches != 1 {
-			return sessionDTO{}, errors.New("invalid session launch profile")
-		}
 	}
 	card := sessionDTO{
 		TmuxID:          session.TmuxID,
@@ -286,7 +265,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if !card.TerminalStatus.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
+	if !card.TerminalStatus.Valid() || card.ActivePaneID == "" || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}
@@ -300,11 +279,9 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	return card, nil
 }
 
-func mapSessionsResponse(
-	machine machineDTO,
-	inventory sessions.Inventory,
-	configuredProfiles []agentruntime.Profile,
-) (sessionsResponseDTO, error) {
+// mapSessionsResponse maps inventory with its own settings snapshot, which every
+// launch profile and agent profile in it names.
+func mapSessionsResponse(machine machineDTO, inventory sessions.Inventory) (sessionsResponseDTO, error) {
 	encodedObservedAt, err := formatProjectionInstant(inventory.ObservedAt)
 	if err != nil {
 		return sessionsResponseDTO{}, errors.New("invalid inventory observation time")
@@ -320,13 +297,9 @@ func mapSessionsResponse(
 			Cause: failure.Cause,
 		}
 	}
-	profiles, err := mapProfiles(configuredProfiles)
-	if err != nil {
-		return sessionsResponseDTO{}, err
-	}
 	cards := make([]sessionDTO, len(inventory.Sessions))
 	for index, session := range inventory.Sessions {
-		card, mapErr := mapSession(session, configuredProfiles)
+		card, mapErr := mapSession(session, inventory.Profiles)
 		if mapErr != nil {
 			return sessionsResponseDTO{}, mapErr
 		}
@@ -344,15 +317,12 @@ func mapSessionsResponse(
 		Machine:    machine,
 		ObservedAt: encodedObservedAt,
 		Recovery:   recovery,
-		Profiles:   profiles,
+		Profiles:   mapProfiles(inventory.Profiles),
 		Sessions:   cards,
 	}, nil
 }
 
-func mapCreateSessionResponse(
-	observed sessions.ObservedSession,
-	profiles []agentruntime.Profile,
-) (createSessionResponseDTO, error) {
+func mapCreateSessionResponse(observed sessions.ObservedSession, profiles []agentruntime.Profile) (createSessionResponseDTO, error) {
 	encodedObservedAt, err := formatProjectionInstant(observed.ObservedAt)
 	if err != nil {
 		return createSessionResponseDTO{}, errors.New("invalid session observation time")

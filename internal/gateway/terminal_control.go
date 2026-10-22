@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -29,8 +30,10 @@ type terminalRequest struct {
 	Explain        *bool    `json:"explain"`
 }
 
-// shaped reports whether input names a target and only the members operation admits.
-// agentcontrol owns the members' value bounds.
+// shaped reports whether input names a target and only the members operation
+// admits, each within its bounds. It is the only check of those bounds:
+// agentcontrol, sessions and tmux take the values as given. Key names and
+// initialProfile are admitted downstream, where their sets live.
 func (input terminalRequest) shaped(operation string) bool {
 	if input.IdentityToken == "" || !digitsAfter(input.PaneID, '%') ||
 		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") {
@@ -42,11 +45,13 @@ func (input terminalRequest) shaped(operation string) bool {
 	case "stop", "close":
 		return input.Text == nil && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "read":
-		return input.Text == nil && input.Keys == nil && input.Explain == nil
+		return input.Text == nil && input.Keys == nil && input.Explain == nil &&
+			(input.MaxBytes == nil || *input.MaxBytes >= 1 && *input.MaxBytes <= 32768)
 	case "send", "text":
-		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
+		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil && input.Text != nil &&
+			*input.Text != "" && len(*input.Text) <= 32768 && utf8.ValidString(*input.Text) && !strings.ContainsRune(*input.Text, 0)
 	case "keys":
-		return input.Text == nil && input.MaxBytes == nil && input.Explain == nil
+		return input.Text == nil && input.MaxBytes == nil && input.Explain == nil && len(input.Keys) >= 1 && len(input.Keys) <= 16
 	}
 	return false
 }
@@ -100,8 +105,12 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		}
 		result = inspected
 	case "read":
+		limit := 16384
+		if input.MaxBytes != nil {
+			limit = *input.MaxBytes
+		}
 		var read agentcontrol.ReadResult
-		read, err = gateway.agents.TerminalRead(ctx, target, input.MaxBytes)
+		read, err = gateway.agents.TerminalRead(ctx, target, limit)
 		if err != nil {
 			break
 		}
@@ -174,21 +183,19 @@ type terminalCloseResult struct {
 
 func terminalFailure(err error) apiError {
 	var failure apiError
+	var blocked *agentcontrol.TerminalInputBlockedError
 	switch {
 	case errors.Is(err, sessions.ErrTerminalTargetChanged):
 		failure = errorTerminalTargetChanged
-	case errors.Is(err, agentcontrol.ErrTerminalInputBlocked):
+	case errors.As(err, &blocked):
 		failure = errorTerminalInputBlocked
-		var blocked *agentcontrol.TerminalInputBlockedError
-		if errors.As(err, &blocked) {
-			switch blocked.Reason {
-			case "draft":
-				failure.Message = "terminal contains a draft. open it before sending."
-			case "dialog":
-				failure.Message = "respond to the dialog in the terminal."
-			case "initial_not_ready":
-				failure.Message = "the requested agent is not ready for its initial prompt. inspect the terminal before sending."
-			}
+		switch blocked.Reason {
+		case "draft":
+			failure.Message = "terminal contains a draft. open it before sending."
+		case "dialog":
+			failure.Message = "respond to the dialog in the terminal."
+		case "initial_not_ready":
+			failure.Message = "the requested agent is not ready for its initial prompt. inspect the terminal before sending."
 		}
 	case errors.Is(err, sessions.ErrTerminalUnavailable), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		failure = errorTerminalUnavailable

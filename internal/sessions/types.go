@@ -9,6 +9,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
+	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -80,7 +81,8 @@ type RenameInput struct {
 }
 
 type Session struct {
-	panePID          processinfo.PID
+	screen           tmuxclient.ScreenTarget // the selected pane's target, pid and screen as the row read them
+	activity         int64                   // the row's window_activity (unix seconds)
 	foreground       *processinfo.Observation
 	foregroundFailed bool
 	TmuxID           string
@@ -89,8 +91,8 @@ type Session struct {
 	NameMode         NameMode
 	IdentityToken    string
 	LaunchProfile    agentruntime.ProfileKey
-	Agent            *agentruntime.AgentRuntime
-	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol.Enrich observes the session
+	Agent            *agentruntime.Agent
+	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol observes the session
 	TerminalUsage    *TerminalUsage
 	TerminalFooter   *TerminalFooter
 	Connection       *Connection
@@ -105,6 +107,26 @@ type Session struct {
 // ForegroundFailed reports that this sample could not identify the pane's
 // foreground process. Agent and Connection are then unknown, not absent.
 func (session Session) ForegroundFailed() bool { return session.foregroundFailed }
+
+// ScreenKey is an agent session's screen as its inventory row and foreground
+// sample proved it (tmux-exec-budget.md a3): lifetime, session, selected pane,
+// pane pid, size, alternate screen, the whole foreground sample, its provider
+// and the window's last output. Equal keys with no output after a capture
+// prove the capture still shows the screen.
+type ScreenKey struct {
+	screen     tmuxclient.ScreenTarget
+	foreground processinfo.Observation
+	provider   agentruntime.Provider
+	activity   int64
+}
+
+// Activity is the window's last output, at tmux's one-second resolution.
+func (key ScreenKey) Activity() time.Time { return time.Unix(key.activity, 0) }
+
+// ScreenKey is defined only for a session with an Agent.
+func (session Session) ScreenKey() ScreenKey {
+	return ScreenKey{screen: session.screen, foreground: *session.foreground, provider: session.Agent.Provider, activity: session.activity}
+}
 
 type Connection struct {
 	Transport string
@@ -126,7 +148,9 @@ type TerminalContext struct {
 type Inventory struct {
 	ObservedAt time.Time
 	Sessions   []Session
+	Profiles   []agentruntime.Profile // the one settings snapshot every LaunchProfile and Agent.Profile names
 	Recovery   Recovery
+	Server     tmuxclient.ServerIdentity // the one admitted lifetime of every row; zero with no rows
 }
 
 type ObservedSession struct {

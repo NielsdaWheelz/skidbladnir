@@ -25,7 +25,6 @@ func TestFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	composers := map[composer]string{composerUnknown: "unknown", composerEmpty: "empty", composerDraft: "draft", composerBlocked: "blocked"}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 1<<20), 1<<24)
 	for scanner.Scan() {
@@ -46,12 +45,16 @@ func TestFrames(t *testing.T) {
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
 			t.Fatal(err)
 		}
-		provider, err := agentruntime.ParseProvider(frame.Provider)
-		if err != nil {
-			t.Fatal(err)
+		provider := agentruntime.Provider(frame.Provider)
+		if provider != agentruntime.ProviderCodex && provider != agentruntime.ProviderClaude {
+			t.Fatalf("%s: unknown provider", frame.ID)
 		}
 		got := detect(provider, tmuxclient.PaneObservation{Width: frame.Width, Height: frame.Height, Alternate: frame.Alternate, Regions: frame.Regions})
-		status := []string{string(got.status.Activity), string(got.status.Interaction), string(got.status.Notice), composers[got.composer], string(got.status.Reason)}
+		composer := string(got.composer)
+		if got.composer == composerUnknown {
+			composer = "unknown"
+		}
+		status := []string{string(got.status.Activity), string(got.status.Interaction), string(got.status.Notice), composer, string(got.status.Reason)}
 		want := []string{frame.Expect.Activity, frame.Expect.Interaction, frame.Expect.Notice, frame.Expect.Composer, frame.Expect.Reason}
 		if strings.Join(status, " ") != strings.Join(want, " ") {
 			t.Errorf("%s: status %v, want %v", frame.ID, status, want)

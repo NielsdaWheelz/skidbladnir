@@ -28,8 +28,10 @@ records their correction. a preexisting canceled-input dependency race is
 | slow optional owner | preserve uncertain ready; report secondary notification failure; keep terminal input/output usable |
 
 scope: gateway, desktop, android codecs/dataflow and existing notification owners.
-no runtime replacement, cache, request singleflight, permanent control connection,
-new daemon, event framework, http route, account/provider change,
+no runtime replacement, cache (except agent observation's activity-gated detection
+reuse, [exec budget a3](tmux-exec-budget.md#a3-activity-gated-reuse)), request
+singleflight, permanent control connection, new daemon, event framework, http
+route, account/provider change,
 input replay or visual redesign. phone interaction and visual redesign are
 [separate](issues/phone-interaction-redesign.md) [issues](issues/visual-redesign.md).
 inventory and [workspace capture](session-recovery.md#checkpoint-schema-and-capture)
@@ -211,7 +213,7 @@ kernel foreground using existing observation/classification primitives, without
 registration, profile environment, screen capture or `enrichSession`. freeze the
 order: initial owned-client row, foreground observation a, existing final
 pre-greeting row, foreground observation b. include foreground only when pane/root
-are unchanged and `processinfo.SameObservation(a,b)` holds; classify that sample.
+are unchanged and the samples are equal (`a == b`); classify that sample.
 otherwise send the final row's pane and omit foreground, without retry.
 required client/lifetime failure still
 refuses entry. optional foreground failure never refuses a valid terminal.

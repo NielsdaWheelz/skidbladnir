@@ -18,7 +18,7 @@ type InventoryRow struct {
 	ID, Name, PaneID         string
 	PanePID, AttachedClients int
 	Title, CWD, Command      string
-	// Selected pane screen facts: a2/a3 inputs, carried unused for now.
+	// Selected pane screen facts: the a2 capture guard and the a3 reuse key.
 	PaneWidth, PaneHeight int
 	AlternateOn           bool
 	WindowActivity        int64 // unix seconds
@@ -276,7 +276,10 @@ func (client Client) batch(ctx context.Context, body string) (ServerIdentity, []
 		return ServerIdentity{}, nil, err
 	}
 	identity := inventoryFields(ServerEpochOption, "pid", "start_time")
-	script := commandText("display-message", "-p", "B"+identity) + " ; " + body + " ; " + commandText("display-message", "-p", "E"+identity) + "\n"
+	if body != "" {
+		body += " ; "
+	}
+	script := commandText("display-message", "-p", "B"+identity) + " ; " + body + commandText("display-message", "-p", "E"+identity) + "\n"
 	output := batchOutput{}
 	var stderr bytes.Buffer
 	command := client.commandWithStderr(ctx, nil, &stderr, "-N", "source-file", "-")

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
@@ -85,12 +84,12 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	character := selectCharacter(scan.characterUse, epochCandidate)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
+	// The launch is the profile's command text, opaque to every hop until
+	// agent-exec decodes it for the initialized shell (one binary produces and
+	// consumes it).
 	launch := ""
 	if input.Kind == LaunchAgent {
-		launch, err = agentruntime.EncodeLaunch(agentruntime.NewLaunch(profile))
-		if err != nil {
-			return ObservedSession{}, err
-		}
+		launch = base64.RawURLEncoding.EncodeToString([]byte(profile.Command))
 	}
 	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd, launch)
 	if err != nil {
@@ -164,14 +163,15 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if created.Server != server {
 		return ObservedSession{}, tmuxclient.WorkspaceSourceChanged
 	}
-	observedAt := time.Now().UTC()
-	session := manager.enrichSession(server, created.Rows[0])
+	// Under the mutation lock, this is the snapshot validateCreate admitted
+	// the profile from.
+	observed := ObservedSession{ObservedAt: time.Now().UTC(), Session: enrichSession(server, created.Rows[0], manager.settings.Load())}
 	// The target is captured; a later failure retains it for the caller.
-	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return ObservedSession{ObservedAt: observedAt, Session: session}, err
+	if err := manager.RequireServer(ctx, server); err != nil {
+		return observed, err
 	}
 	manager.checkpointAfterMutation(ctx, server)
-	return ObservedSession{ObservedAt: observedAt, Session: session}, nil
+	return observed, nil
 }
 
 func mapWorkingDirectoryError(err error) error {

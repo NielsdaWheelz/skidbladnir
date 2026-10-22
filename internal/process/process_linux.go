@@ -70,15 +70,7 @@ func observeOnce(pid PID) (Observation, error) {
 	if err != nil {
 		return Observation{}, classifyProcError(err, "read process executable")
 	}
-	line, err := os.ReadFile(filepath.Join(root, "cmdline"))
-	if err != nil {
-		return Observation{}, classifyProcError(err, "read process command line")
-	}
-	argv := splitArgv(line)
-	if len(argv) == 0 {
-		return Observation{}, errors.New("process command line is empty")
-	}
-	return Observation{PID: pid, ParentPID: PID(parent), ProcessGroup: PID(group), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: executable, Argv: argv, StartIdentity: StartIdentity(fields[19])}, nil
+	return Observation{PID: pid, ParentPID: PID(parent), ProcessGroup: PID(group), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: executable, StartIdentity: StartIdentity(fields[19])}, nil
 }
 
 func classifyProcError(err error, action string) error {
@@ -117,12 +109,4 @@ func statFields(contents []byte) ([]string, error) {
 		return nil, errors.New("process stat is incomplete")
 	}
 	return fields, nil
-}
-
-func splitArgv(contents []byte) []string {
-	trimmed := strings.TrimSuffix(string(contents), "\x00")
-	if trimmed == "" {
-		return nil
-	}
-	return strings.Split(trimmed, "\x00")
 }

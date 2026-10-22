@@ -3,9 +3,6 @@ package agentcontrol
 import (
 	"context"
 	"errors"
-	"fmt"
-	"runtime/debug"
-	"sync"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -13,95 +10,59 @@ import (
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
-var ErrTerminalInputBlocked = errors.New("terminal input blocked")
-
+// TerminalInputBlockedError refuses a guarded send before anything is written.
+// Reason is dialog, draft, initial_not_ready or unknown.
 type TerminalInputBlockedError struct{ Reason string }
 
 func (err *TerminalInputBlockedError) Error() string { return "terminal input blocked: " + err.Reason }
-func (err *TerminalInputBlockedError) Unwrap() error { return ErrTerminalInputBlocked }
 
-// Enrich sets each session's terminal facts from one focused observation of
-// the identity List or creation captured, never resolving it again. Every
-// session is observed concurrently under one shared two-second deadline. It
-// returns the unavailable observations, each timed from Enrich's start, for
-// content-free logging.
-func (service *Service) Enrich(parent context.Context, observed []sessions.Session) []ObservationFailure {
-	startedAt := time.Now()
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
-	defer cancel()
-	elapsed := make([]time.Duration, len(observed))
-	defects := make([]string, len(observed))
-	var work sync.WaitGroup
-	for index := range observed {
-		work.Go(func() {
-			// A panic on a worker goroutine would end the gateway; the defect is
-			// raised again below on the caller's goroutine, where net/http confines
-			// it to the one request, as it does for inspect and send.
-			defer func() {
-				if defect := recover(); defect != nil {
-					defects[index] = fmt.Sprintf("%v\n\n%s", defect, debug.Stack())
-				}
-			}()
-			read, err := service.sample(ctx, observed[index])
-			if errors.Is(err, sessions.ErrTerminalTargetChanged) {
-				// justify-ignore-error: inventory has no target to reject, so a lifetime or pane change during capture is a failed capture; explicit operations return it.
-				read = detection{status: sessions.UnknownStatus(sessions.ReasonCaptureFailed)}
-			}
-			observed[index].TerminalStatus, observed[index].TerminalUsage = read.status, read.usage
-			observed[index].TerminalFooter = read.footer
-			elapsed[index] = time.Since(startedAt)
-		})
-	}
-	work.Wait()
-	for _, defect := range defects {
-		if defect != "" {
-			panic(defect) // justify-defect: a worker's classifier or observation defect, with the worker's stack.
-		}
-	}
-	var failures []ObservationFailure
-	for index, session := range observed {
-		if session.TerminalStatus.Source == sessions.SourceUnavailable {
-			failures = append(failures, ObservationFailure{TmuxID: session.TmuxID, Reason: session.TerminalStatus.Reason, Elapsed: elapsed[index]})
-		}
-	}
-	return failures
-}
-
-// sample is the one observation that inventory, inspect and guarded send
-// share. A failed foreground sample leaves Agent and Connection unknown, not
-// absent, so it is decided before them. An expired ctx outranks the stage that
-// failed, whose error is then the deadline's doing. Its only error is
-// sessions.ErrTerminalTargetChanged: inventory reports it as capture_failed and
-// explicit operations return it.
-func (service *Service) sample(ctx context.Context, session sessions.Session) (detection, error) {
+// unobserved is the status of a session whose screen is never read:
+// process_failed, remote_context or provider_unrecognized; false for a
+// recognized local agent. A failed foreground sample leaves Agent and
+// Connection unknown, not absent, so it is decided before them.
+func unobserved(session sessions.Session) (detection, bool) {
 	switch {
 	case session.ForegroundFailed():
-		return detection{status: sessions.UnknownStatus(sessions.ReasonProcessFailed)}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonProcessFailed)}, true
 	case session.Connection != nil:
-		return detection{status: sessions.UnknownStatus(sessions.ReasonRemoteContext)}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonRemoteContext)}, true
 	case session.Agent == nil:
-		return detection{status: sessions.UnknownStatus(sessions.ReasonProviderUnrecognized)}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonProviderUnrecognized)}, true
+	}
+	return detection{}, false
+}
+
+// failedDetection is the unavailable status of a failed observation stage. An
+// expired ctx outranks the stage, whose error is then the deadline's doing.
+func failedDetection(ctx context.Context, err error) detection {
+	reason := sessions.ReasonCaptureFailed
+	switch {
+	case ctx.Err() != nil:
+		reason = sessions.ReasonObservationTimeout
+	case errors.Is(err, sessions.ErrTerminalObservationChanged):
+		reason = sessions.ReasonForegroundChanged
+	case errors.Is(err, sessions.ErrTerminalProcessFailed):
+		reason = sessions.ReasonProcessFailed
+	}
+	return detection{status: sessions.UnknownStatus(reason)}
+}
+
+// sample is the two-phase observation that inspect, guarded send and
+// enrichment's fallback share. Its only error is
+// sessions.ErrTerminalTargetChanged while ctx is live: enrichment reports it as
+// capture_failed and explicit operations return it.
+func (service *Service) sample(ctx context.Context, session sessions.Session) (detection, error) {
+	if read, ok := unobserved(session); ok {
+		return read, nil
 	}
 	observation, err := service.sessions.ObservePane(ctx, session)
-	if err != nil {
-		var reason sessions.StatusReason
-		switch {
-		case ctx.Err() != nil:
-			reason = sessions.ReasonObservationTimeout
-		case errors.Is(err, sessions.ErrTerminalObservationChanged):
-			reason = sessions.ReasonForegroundChanged
-		case errors.Is(err, sessions.ErrTerminalProcessFailed):
-			reason = sessions.ReasonProcessFailed
-		case errors.Is(err, sessions.ErrTerminalCaptureFailed):
-			reason = sessions.ReasonCaptureFailed
-		case errors.Is(err, sessions.ErrTerminalTargetChanged):
-			return detection{}, err
-		default:
-			panic("unknown terminal observation error") // justify-defect: ObservePane's errors are closed.
-		}
-		return detection{status: sessions.UnknownStatus(reason)}, nil
+	switch {
+	case err == nil:
+		return detect(session.Agent.Provider, observation), nil
+	case ctx.Err() == nil && errors.Is(err, sessions.ErrTerminalTargetChanged):
+		return detection{}, err
 	}
-	return detect(session.Agent.Provider, observation), nil
+	return failedDetection(ctx, err), nil
 }
 
 // TerminalInspect resolves target fresh and observes it once under a
@@ -122,17 +83,9 @@ func (service *Service) TerminalInspect(parent context.Context, target sessions.
 	return read.status, Diagnostics{Rules: read.rules}, nil
 }
 
-// TerminalRead captures at most maxBytes of terminal text, 16 KiB when maxBytes is nil.
-func (service *Service) TerminalRead(parent context.Context, target sessions.TerminalTarget, maxBytes *int) (ReadResult, error) {
-	limit := 16384
-	if maxBytes != nil {
-		limit = *maxBytes
-	}
-	if limit < 1 || limit > 32768 {
-		return ReadResult{}, ErrInvalidInput
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
+// TerminalRead captures at most limit bytes of terminal text: the retained
+// history, or the visible screen of an alternate-screen program.
+func (service *Service) TerminalRead(ctx context.Context, target sessions.TerminalTarget, limit int) (ReadResult, error) {
 	capture, err := service.sessions.CaptureTerminal(ctx, target, limit)
 	if err != nil {
 		return ReadResult{}, err
@@ -146,24 +99,17 @@ func (service *Service) TerminalRead(parent context.Context, target sessions.Ter
 
 // TerminalSend pastes only into a fresh local provider's empty ordinary
 // composer: activity working or idle, interaction none. Initial sends also
-// require the requested provider/profile, idle activity and no notice. It
-// resolves target, observes it once, and refuses before writing: a request
-// interaction is a dialog, a composer holding input a draft, anything else
-// unknown. An unavailable observation is ErrTerminalUnavailable.
-func (service *Service) TerminalSend(parent context.Context, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (WriteResult, error) {
-	if !validText(text) {
-		return WriteResult{}, ErrInvalidInput
-	}
-	var profile agentruntime.Profile
+// require the requested profile, idle activity and no notice. It resolves
+// target, observes it once, and refuses before writing: a request interaction
+// is a dialog, a composer holding input a draft, anything else unknown. An
+// unavailable observation is ErrTerminalUnavailable. An unknown initialProfile
+// is ErrInvalidInput, before resolution.
+func (service *Service) TerminalSend(ctx context.Context, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (WriteResult, error) {
 	if initialProfile != "" {
-		var found bool
-		profile, found = service.sessions.Profile(initialProfile)
-		if !found {
+		if _, found := service.sessions.Profile(initialProfile); !found {
 			return WriteResult{}, ErrInvalidInput
 		}
 	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
 		return WriteResult{}, err
@@ -172,47 +118,35 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	if err != nil {
 		return WriteResult{}, err
 	}
-	status, composerState := read.status, read.composer
+	// Only a classified screen has an empty composer, so past the composer
+	// checks session.Agent is the recognized local provider, attributed only to
+	// a profile of its own provider, whose exact foreground the paste requires.
+	status := read.status
 	switch {
 	case status.Source == sessions.SourceUnavailable:
 		return WriteResult{}, sessions.ErrTerminalUnavailable
 	case status.Interaction.Request():
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
-	case composerState == composerDraft:
+	case read.composer == composerDraft:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
 	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
-		status.Interaction != sessions.InteractionNone || composerState != composerEmpty:
+		status.Interaction != sessions.InteractionNone || read.composer != composerEmpty:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
-	case initialProfile != "" && (session.Agent == nil || session.Agent.Provider != profile.Provider || session.Agent.Profile != initialProfile ||
-		status.Activity != sessions.ActivityIdle || status.Notice != sessions.NoticeNone):
+	case initialProfile != "" && (session.Agent.Profile != initialProfile || status.Activity != sessions.ActivityIdle || status.Notice != sessions.NoticeNone):
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
 	}
-	// Only a classified screen has an empty composer, so session.Agent is the
-	// recognized local provider whose exact foreground the paste requires.
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, session.Agent))
 }
 
-func (service *Service) Text(parent context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {
-	if !validText(text) {
-		return WriteResult{}, ErrInvalidInput
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
+func (service *Service) Text(ctx context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, nil))
 }
 
-func (service *Service) Keys(parent context.Context, target sessions.TerminalTarget, keys []string) (WriteResult, error) {
-	if len(keys) < 1 || len(keys) > 16 {
-		return WriteResult{}, ErrInvalidInput
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
+func (service *Service) Keys(ctx context.Context, target sessions.TerminalTarget, keys []string) (WriteResult, error) {
 	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, keys, nil))
 }
 
-func (service *Service) TerminalStop(parent context.Context, target sessions.TerminalTarget) (WriteResult, error) {
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
+func (service *Service) TerminalStop(ctx context.Context, target sessions.TerminalTarget) (WriteResult, error) {
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
 		return WriteResult{}, err

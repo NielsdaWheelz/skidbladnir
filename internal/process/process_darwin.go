@@ -127,7 +127,7 @@ func observeEnvironment(pid PID) (map[string]string, error) {
 	mib = []C.int{C.CTL_KERN, C.KERN_PROCARGS2, C.int(pid)}
 	size = C.size_t(len(buffer))
 	if result, err := C.sysctl(&mib[0], 3, unsafe.Pointer(&buffer[0]), &size, nil, 0); result != 0 {
-		return nil, classifyDarwinArgvError(err)
+		return nil, classifyProcargsError(err)
 	}
 	buffer = buffer[:int(size)]
 	if len(buffer) < int(unsafe.Sizeof(C.int(0))) {
@@ -171,15 +171,11 @@ func observeOnce(pid PID) (Observation, error) {
 	if code := C.skid_proc_info(C.int(pid), &info, (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path)), &session, &terminal, &foreground, &failedStage); code != 0 {
 		return Observation{}, classifyDarwinProcessInfoError(syscall.Errno(code), failedStage)
 	}
-	argv, err := darwinArgv(pid)
-	if err != nil {
-		return Observation{}, err
-	}
 	start := uint64(info.pbi_start_tvsec)*1_000_000 + uint64(info.pbi_start_tvusec)
 	if start == 0 {
 		return Observation{}, errors.New("Darwin process start identity is zero")
 	}
-	return Observation{PID: pid, ParentPID: PID(info.pbi_ppid), ProcessGroup: PID(info.pbi_pgid), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: C.GoString((*C.char)(unsafe.Pointer(&path[0]))), Argv: argv, StartIdentity: StartIdentity(strconv.FormatUint(start, 10))}, nil
+	return Observation{PID: pid, ParentPID: PID(info.pbi_ppid), ProcessGroup: PID(info.pbi_pgid), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: C.GoString((*C.char)(unsafe.Pointer(&path[0]))), StartIdentity: StartIdentity(strconv.FormatUint(start, 10))}, nil
 }
 
 func classifyDarwinProcessInfoError(cause syscall.Errno, failedStage C.int) error {
@@ -215,59 +211,15 @@ func foregroundProcessGroup(panePID PID) (PID, error) {
 	return PID(foreground), nil
 }
 
-func darwinArgv(pid PID) ([]string, error) {
-	mib := []C.int{C.CTL_KERN, C.KERN_ARGMAX}
-	var size C.size_t
-	var argmax C.int
-	size = C.size_t(unsafe.Sizeof(argmax))
-	if C.sysctl(&mib[0], 2, unsafe.Pointer(&argmax), &size, nil, 0) != 0 || argmax <= 0 {
-		return nil, errors.New("read Darwin argument limit")
-	}
-	buffer := make([]byte, int(argmax))
-	mib = []C.int{C.CTL_KERN, C.KERN_PROCARGS2, C.int(pid)}
-	size = C.size_t(len(buffer))
-	if result, err := C.sysctl(&mib[0], 3, unsafe.Pointer(&buffer[0]), &size, nil, 0); result != 0 {
-		return nil, classifyDarwinArgvError(err)
-	}
-	buffer = buffer[:int(size)]
-	if len(buffer) < int(unsafe.Sizeof(C.int(0))) {
-		return nil, errors.New("Darwin process arguments are incomplete")
-	}
-	argc := *(*C.int)(unsafe.Pointer(&buffer[0]))
-	offset := int(unsafe.Sizeof(argc))
-	for offset < len(buffer) && buffer[offset] != 0 {
-		offset++
-	}
-	for offset < len(buffer) && buffer[offset] == 0 {
-		offset++
-	}
-	argv := make([]string, 0, int(argc))
-	for len(argv) < int(argc) && offset < len(buffer) {
-		start := offset
-		for offset < len(buffer) && buffer[offset] != 0 {
-			offset++
-		}
-		if offset == len(buffer) {
-			return nil, errors.New("Darwin process argument is unterminated")
-		}
-		argv = append(argv, string(buffer[start:offset]))
-		offset++
-	}
-	if len(argv) != int(argc) {
-		return nil, errors.New("Darwin process argument count is incomplete")
-	}
-	return argv, nil
-}
-
-func classifyDarwinArgvError(err error) error {
+func classifyProcargsError(err error) error {
 	var cause syscall.Errno
 	if !errors.As(err, &cause) {
 		return fmt.Errorf("read Darwin process arguments: %w", err)
 	}
 	// KERN_PROCARGS2 reports EINVAL, not EPERM, for a process outside the
-	// caller's observation domain; skid_proc_info has already distinguished an
-	// absent pid (ESRCH) before argv is read, so EINVAL here is the privilege
-	// boundary.
+	// caller's observation domain. The environment read sits inside a bracket
+	// whose closing sample proves the process present, so a surviving EINVAL is
+	// the privilege boundary, not an absent pid.
 	if cause == syscall.EINVAL {
 		return ErrProcessNotPermitted
 	}

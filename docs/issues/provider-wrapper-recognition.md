@@ -15,7 +15,7 @@ evidence:
 
 - `internal/process/process.go`, `ObserveForeground`, reads the foreground group
   id and observes the process with that pid; it does not discover children.
-- `internal/agentruntime/runtime.go`, `ClassifyForeground`, classifies that one
+- `internal/agentruntime/runtime.go`, `Classify`, classifies that one
   observation. config recognizes native images, not a node or waiting shell.
 - the [stock npm codex launcher](https://github.com/openai/codex/blob/main/codex-cli/bin/codex.js)
   spawns the native binary with inherited stdio and waits for it instead of

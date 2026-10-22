@@ -28,5 +28,9 @@ implemented and its targets are measured on the macbook at N ≥ 18: at most
 1.5 tmux execs/s, and under 5% of one core for serve, its children and the tmux
 server, with inventory and status results unchanged.
 
-progress: W2.7 landed a1, released in `v0.21.0`: a steady list is 2+2K execs; a2, a3 and the
-macbook measurement remain.
+progress: W2.7 landed a1, released in `v0.21.0`: a steady list is 2+2K execs. W4.8 landed a2
+and a3, unreleased: a steady list is 2 execs (inventory and capture batch) at any
+K. isolated counting-shim run, 2026-10-22: steady lists at K = 0, 1, 18 took
+2, 4, 38 execs before and 2, 2, 2 after; at K = 19 (25 rows) 40 before and 2
+after, capturing only the animated pane's 12 rows. the macbook measurement
+remains.

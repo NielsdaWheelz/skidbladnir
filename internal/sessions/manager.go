@@ -45,12 +45,8 @@ func New(config Config) (*Manager, error) {
 	if config.Machine.String() == "" || !filepath.IsAbs(config.CheckpointPath) || filepath.Clean(config.CheckpointPath) != config.CheckpointPath {
 		return nil, errors.New("workspace checkpoint configuration is invalid")
 	}
-	profiles, err := agentruntime.ValidateProfiles(config.Profiles)
-	if err != nil {
-		return nil, err
-	}
-	profilesByKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(profiles))
-	for _, profile := range profiles {
+	profilesByKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(config.Profiles))
+	for _, profile := range config.Profiles {
 		profilesByKey[profile.Key] = profile
 	}
 	manager := &Manager{
@@ -59,10 +55,13 @@ func New(config Config) (*Manager, error) {
 		mutations: make(chan struct{}, 1),
 		recovery:  workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
 	}
-	manager.settings.Store(&runtimeSettings{profiles: profiles, byKey: profilesByKey, shellPath: config.ShellPath, revision: 1})
+	manager.settings.Store(&runtimeSettings{profiles: config.Profiles, byKey: profilesByKey, shellPath: config.ShellPath, revision: 1})
 	return manager, nil
 }
 
+// runtimeSettings is one immutable settings snapshot. profiles is
+// agentruntime.ResolveProfiles output, its only validation; it is shared with
+// callers and never mutated.
 type runtimeSettings struct {
 	profiles  []agentruntime.Profile
 	byKey     map[agentruntime.ProfileKey]agentruntime.Profile
@@ -71,30 +70,26 @@ type runtimeSettings struct {
 }
 
 func (manager *Manager) ApplySettings(ctx context.Context, profiles []agentruntime.Profile, shellPath string) error {
-	validated, err := agentruntime.ValidateProfiles(profiles)
-	if err != nil {
-		return err
-	}
 	if err := manager.acquire(ctx); err != nil {
 		return err
 	}
 	defer manager.release()
 	current := manager.settings.Load()
-	if current.shellPath == shellPath && slices.Equal(current.profiles, validated) {
+	if current.shellPath == shellPath && slices.Equal(current.profiles, profiles) {
 		return nil
 	}
-	byKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(validated))
-	for _, p := range validated {
+	byKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(profiles))
+	for _, p := range profiles {
 		byKey[p.Key] = p
 	}
-	manager.settings.Store(&runtimeSettings{profiles: validated, byKey: byKey, shellPath: shellPath, revision: manager.SettingsRevision() + 1})
+	manager.settings.Store(&runtimeSettings{profiles: profiles, byKey: byKey, shellPath: shellPath, revision: manager.SettingsRevision() + 1})
 	return nil
 }
 
 func (manager *Manager) SettingsRevision() uint64 { return manager.settings.Load().revision }
-func (manager *Manager) Profiles() []agentruntime.Profile {
-	return agentruntime.CloneProfiles(manager.settings.Load().profiles)
-}
+
+// Profiles is the current snapshot's profiles; callers must not mutate it.
+func (manager *Manager) Profiles() []agentruntime.Profile { return manager.settings.Load().profiles }
 
 func (manager *Manager) acquire(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
@@ -113,11 +108,14 @@ func (manager *Manager) acquire(ctx context.Context) error {
 }
 func (manager *Manager) release() { <-manager.mutations }
 
-// List returns one admitted lifetime's sessions (tmux-exec-budget.md a1). The
-// inventory's B and E records prove that lifetime for every row and token.
-// Epoch admission runs only for a lifetime List has not admitted and never
-// stamps an absent or empty server.
+// List returns one admitted lifetime's sessions (tmux-exec-budget.md a1) and
+// the one settings snapshot their launch profiles and agents name. The
+// inventory's B and E records prove that lifetime for every row and token, and
+// List proves it only through normalization: agentcontrol.Inventory proves it
+// through enrichment (a2). Epoch admission runs only for a lifetime List has
+// not admitted and never stamps an absent or empty server.
 func (manager *Manager) List(ctx context.Context) (Inventory, error) {
+	settings := manager.settings.Load()
 	if err := manager.acquire(ctx); err != nil {
 		return Inventory{}, err
 	}
@@ -151,7 +149,7 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 		}
 	}
 	if len(capture.Rows) == 0 {
-		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, nil
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Profiles: settings.profiles, Recovery: manager.recovery.fact}, nil
 	}
 	scan := manager.scanCapture(capture)
 	rows, err := manager.normalizeCharacters(ctx, scan, capture.Server)
@@ -170,16 +168,12 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 		if err = ctx.Err(); err != nil {
 			break
 		}
-		sessions = append(sessions, manager.enrichSession(capture.Server, row))
-	}
-	if err == nil {
-		// Enrichment ran outside any tmux client; a2 folds this into its bracket.
-		err = manager.requireServerIdentity(ctx, capture.Server)
+		sessions = append(sessions, enrichSession(capture.Server, row, settings))
 	}
 	if err != nil {
 		return Inventory{}, err
 	}
-	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, nil
+	return Inventory{ObservedAt: observedAt, Sessions: sessions, Profiles: settings.profiles, Recovery: recovery, Server: capture.Server}, nil
 }
 
 // Kill deletes only the captured session lifetime. Pane/process changes and
@@ -209,21 +203,27 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	return nil
 }
 
-// enrichSession projects one inventory row of server and one foreground sample.
-// server must be validated (admitted, or create's validated identity) and the
-// row id came from tmux ingress, so the token needs no validation. A failed
-// sample is recorded by ForegroundFailed; the session remains a terminal.
-func (manager *Manager) enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow) Session {
+// enrichSession projects one inventory row of server and one foreground sample
+// under one settings snapshot. server must be validated (admitted, or create's
+// validated identity) and the row id came from tmux ingress, so the token needs
+// no validation. A failed sample is recorded by ForegroundFailed; the session
+// remains a terminal.
+func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow, settings *runtimeSettings) Session {
 	character, _ := catalog.Character(row.LocalSession.Character)
 	panePID := processinfo.PID(row.PanePID)
 	session := Session{
 		TmuxID: row.ID, TmuxName: row.Name, NameMode: effectiveNameMode(row.Name, row.LocalSession.AutoName),
 		IdentityToken: strings.Join([]string{server.Epoch, server.PID, server.StartTime, strings.TrimPrefix(row.ID, "$")}, "."), Character: character,
-		ActivePaneID: row.PaneID, panePID: panePID, AttachedClients: row.AttachedClients,
+		ActivePaneID: row.PaneID, AttachedClients: row.AttachedClients,
 		CWD: row.CWD, ActiveCommand: row.Command, Group: group.DecodeMetadata(row.LocalSession.Group),
+		activity: row.WindowActivity,
+	}
+	session.screen = tmuxclient.ScreenTarget{
+		PaneTarget: tmuxclient.PaneTarget{SessionID: row.ID, PaneID: row.PaneID, Server: server},
+		PanePID:    row.PanePID, Width: row.PaneWidth, Height: row.PaneHeight, Alternate: row.AlternateOn,
 	}
 	key := agentruntime.ProfileKey(row.LocalSession.Profile)
-	if _, valid := manager.Profile(key); valid {
+	if _, valid := settings.byKey[key]; valid {
 		session.LaunchProfile = key
 	}
 	if encoded := row.LocalSession.Objective; encoded != "" {
@@ -233,7 +233,7 @@ func (manager *Manager) enrichSession(server tmuxclient.ServerIdentity, row tmux
 		}
 	}
 	var foregroundErr error
-	session.Agent, session.foreground, foregroundErr = manager.observeAgent(row.PaneID, panePID)
+	session.Agent, session.foreground, foregroundErr = observeAgent(panePID, settings.profiles)
 	session.foregroundFailed = foregroundErr != nil
 	if session.foreground != nil {
 		foreground := *session.foreground

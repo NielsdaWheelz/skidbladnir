@@ -53,11 +53,12 @@ removes duplication; do not broaden either capability's provider rules.
 
 ```text
 existing exact-target ObservePane -> parseScreen -> provider footer extraction
-  -> reading/detection -> Enrich -> session dto -> fleetclient / android ingress
+  -> reading/detection -> inventory enrichment -> session dto -> fleetclient / android ingress
   -> desktop row and info
 ```
 
-extend `reading` and `detection` with the optional value; `Enrich` assigns it
+extend `reading` and `detection` with the optional value; inventory enrichment
+(`agentcontrol.Inventory`) assigns it
 beside status/usage from the same sample. reuse existing deadline, capture and
 foreground revalidation. no additional capture, provider request, polling,
 config/history read, launch-default substitution or publisher. extraction cannot

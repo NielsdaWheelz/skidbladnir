@@ -474,7 +474,29 @@ func codexScrollIndicator(row row) bool {
 	return (row.cell(0).text == "↑" || row.cell(0).text == "↓") && len(codexCells(row, 1)) == 0
 }
 
-// codexComposer is rule 10, the composer surface (2.1, 3, 4).
+// codexBand is what codexComposer reads from the composer band it anchors:
+// SL and the qualifications the composer (4), interaction (2.1) and activity
+// (3) rules read.
+type codexBand struct {
+	statusLine   int    // SL, or -1
+	bang         bool   // the glyph is `!`
+	enabled      bool   // the glyph is bold, not dim
+	disabled     bool   // the glyph is a dim `›`, not bold
+	dimmed       bool   // the composer is dimmed under a transcript footer
+	typed        bool   // a non-dim glyph from column 2 of C or its continuation rows
+	images       bool   // remote image rows sit above C
+	run          string // the dim placeholder run at column 2
+	clean        bool   // the placeholder run and the glyph are the band's only glyphs
+	main         bool   // the main placeholder shows
+	side         bool   // the side conversation's placeholder shows
+	editor       bool   // the hint row is the external editor's
+	disconnected bool   // the hint row is the disconnect hint
+	state        codexRunState
+}
+
+// codexComposer is rule 10, the composer surface: it anchors the band, then
+// reads the composer (4), the interaction (2.1), the activity (3) and the
+// notice (2.9) from it.
 func codexComposer(screen screen, end int) (reading, bool) {
 	// F, the run of non-blank rows ending at E, holds at most three rows; B,
 	// the blank row above it, is the composer's bottom padding; C is the first
@@ -512,43 +534,44 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	// C is row-local: its glyph is enabled, disabled or dimmed, and no later
 	// cell is bold unless also reverse (history-search highlights).
 	glyph := input.cell(0)
-	allDim, typed := true, false
+	band := codexBand{bang: glyph.text == "!"}
+	allDim := true
 	for _, row := range screen.rows[inputRow:padding] {
 		for column, cell := range row.cells {
 			if column > 0 && cell.text != " " && !cell.style.dim {
-				allDim, typed = false, typed || column >= 2
+				allDim, band.typed = false, band.typed || column >= 2
 			}
 		}
 	}
 	marked := glyph.text == "›" || glyph.text == "»" || glyph.text == "!"
-	enabled := marked && glyph.style.bold && !glyph.style.dim
-	disabled := glyph.text == "›" && glyph.style.dim && !glyph.style.bold
-	dimmed := marked && glyph.style.bold && glyph.style.dim && allDim
-	if glyph.style.reverse || !enabled && !disabled && !dimmed ||
+	band.enabled = marked && glyph.style.bold && !glyph.style.dim
+	band.disabled = glyph.text == "›" && glyph.style.dim && !glyph.style.bold
+	band.dimmed = marked && glyph.style.bold && glyph.style.dim && allDim
+	if glyph.style.reverse || !band.enabled && !band.disabled && !band.dimmed ||
 		slices.ContainsFunc(input.cells[1:], func(cell cell) bool { return cell.style.bold && !cell.style.reverse }) {
 		return reading{}, false
 	}
 
 	// SL and the hint row: two or three footer rows are SL then the hint row;
 	// one row is SL only when it starts with a run-state word.
-	statusLine, hint, state := footerFirst, end, codexReadRunState(screen.rows[footerFirst])
+	band.statusLine, band.state = footerFirst, codexReadRunState(screen.rows[footerFirst])
+	hint := end
 	if footerFirst == end {
-		if state == codexNoRunState {
-			statusLine = -1
+		if band.state == codexNoRunState {
+			band.statusLine = -1
 		} else {
 			hint = -1
 		}
 	}
 	// The hint-row overrides (3 step 1): the disconnect hint `K quit` and the
 	// external editor's constant, each optionally followed by right context.
-	disconnected, editor := false, false
 	if hint >= 0 && codexIndented(screen.rows[hint]) {
 		cells := codexCells(screen.rows[hint], 2)
 		key := codexKey(cells)
 		quit := codexToken(cells, key, " quit")
-		disconnected = key > 0 && quit >= 0 &&
+		band.disconnected = key > 0 && quit >= 0 &&
 			!slices.ContainsFunc(cells[key:quit], func(cell cell) bool { return cell.style.dim || cell.style.bold })
-		editor = cellText(cells[:key]) == "Save and close external editor to continue." && (key == len(cells) || cells[key].text == " ")
+		band.editor = cellText(cells[:key]) == "Save and close external editor to continue." && (key == len(cells) || cells[key].text == " ")
 	}
 
 	// The band: the top padding C-1, C, its continuation rows and B; remote
@@ -558,155 +581,152 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	for codexImageRow(codexRow(screen, start)) {
 		start--
 	}
-	images := start < inputRow-2
-	if images {
+	band.images = start < inputRow-2
+	if band.images {
 		start-- // the padding row above the image rows
 	}
 	// The placeholder is the dim run at column 2; the band is clean when it and
 	// the glyph are its only glyphs.
-	run, after := "", 2
+	after := 2
 	if input.cell(2).text != " " {
 		for after < len(input.cells) && input.cells[after].style.dim {
 			after++
 		}
-		run = strings.TrimRight(cellText(input.cells[2:after]), " ")
+		band.run = strings.TrimRight(cellText(input.cells[2:after]), " ")
 	}
-	clean := run != "" && input.cell(1).text == " " && len(codexCells(input, after)) == 0 && !images &&
+	band.clean = band.run != "" && input.cell(1).text == " " && len(codexCells(input, after)) == 0 && !band.images &&
 		codexRow(screen, inputRow-1).blank() && !slices.ContainsFunc(screen.rows[inputRow+1:padding], func(row row) bool { return !row.blank() })
 	showing := func(placeholder string) bool {
 		// A narrow pane clips the placeholder at its right edge.
-		return clean && (run == placeholder || len(run) >= 5 && len(run) < len(placeholder) &&
-			strings.HasPrefix(placeholder, run) && 2+len(run)-1 >= screen.width-4)
+		return band.clean && (band.run == placeholder || len(band.run) >= 5 && len(band.run) < len(placeholder) &&
+			strings.HasPrefix(placeholder, band.run) && 2+len(band.run)-1 >= screen.width-4)
 	}
-	main, side := showing("Ask Codex to do anything"), showing("Ask a follow-up question")
+	band.main, band.side = showing("Ask Codex to do anything"), showing("Ask a follow-up question")
 
-	var read reading
-	if !side && !editor && !disconnected && screen.rows[footerFirst].presence == rowParsed {
-		read.footer = codexReadTerminalFooter(screen.rows[footerFirst], screen.width)
-		read.usage = codexReadUsage(screen.rows[footerFirst], screen.width)
+	read := reading{composer: codexComposerState(band)}
+	if !band.side && !band.editor && !band.disconnected && screen.rows[footerFirst].presence == rowParsed {
+		read.usage, read.footer = codexReadStatusline(screen.rows[footerFirst], screen.width)
 	}
-	// Composer (4), first match wins.
-	switch {
-	case disabled || dimmed || side || editor:
-		read.composer = composerBlocked
-	case images || glyph.text == "!":
-		read.composer = composerDraft
-	case run != "" && !clean:
-		read.composer = composerUnknown // sparkle or ignition painted the band
-	case typed:
-		read.composer = composerDraft
-	case enabled && main:
-		read.composer = composerEmpty
-	default:
-		read.composer = composerUnknown
-	}
-	if side {
+	if band.side {
 		read.rules = append(read.rules, "codex.scope.side")
 	}
-	if editor {
+	if band.editor {
 		read.rules = append(read.rules, "codex.composer.external_editor")
 	}
-
-	// Interaction (2.1): the elements between the transcript's stop and the band.
 	scan := codexScan(screen, start)
-	switch {
-	case scan.otherThread:
-		read.interaction = sessions.InteractionPermission
-		read.rules = append(read.rules, "codex.permission.other_thread")
-	case scan.questions:
-		read.interaction = sessions.InteractionQuestion
-		read.rules = append(read.rules, "codex.question.async_collapsed")
-	case scan.banner:
-		read.interaction = sessions.InteractionConfirmation
-		read.rules = append(read.rules, "codex.confirmation.inline_banner")
-	case dimmed:
-		read.interaction = sessions.InteractionMenu
-		read.rules = append(read.rules, "codex.menu.transcript_footer")
-	case scan.information:
-		read.interaction = sessions.InteractionUnknown
-	default:
-		read.interaction = sessions.InteractionNone
-		read.rules = append(read.rules, "codex.interaction.none")
+	var rule string
+	if read.interaction, rule = codexInteraction(scan, band); rule != "" {
+		read.rules = append(read.rules, rule)
 	}
-
-	// Activity (3): the hint-row override, the status row, then a run-state
-	// word when SL carries one. Idle comes from the screen itself (step 4):
-	// codex hides the status row while it streams a final answer, so only a
-	// settled transcript under a qualified band proves no turn is running.
-	if scan.status {
-		read.rules = append(read.rules, "codex.activity.status_row")
-	}
-	read.activity = sessions.ActivityUnknown
-	switch {
-	case disconnected:
-		read.rules = append(read.rules, "codex.activity.disconnected")
-		if scan.status || state != codexNoRunState {
-			read.activityCause = causeConflict
-		}
-	case scan.status && state == codexReady:
-		read.activityCause = causeConflict
-	case scan.status || state == codexWorking:
-		read.activity = sessions.ActivityWorking
-	case state == codexStarting:
-		read.activity = sessions.ActivityStarting
-	case !enabled && !dimmed || !main || editor:
-		// No idle without the composer qualifications (3 step 4.1, 4.2).
-	case statusLine >= 0 && codexGoalActive(screen.rows[statusLine]):
-		read.activityCause = causeConflict
-		read.rules = append(read.rules, "codex.activity.goal_active")
-	case scan.ending == codexOpen:
-		// A prompt ends the transcript with no status row: the submit window,
-		// a final answer streaming, or a turn that ended without a terminator.
-		read.rules = append(read.rules, "codex.activity.prompt_pending")
-		if state == codexReady {
-			read.activityCause = causeConflict
-		}
-	case scan.ending == codexUnproven:
-		read.activityCause = causeClipped
-	case scan.ending == codexUnreadable:
-		// An unparseable row hides the transcript's end: unknown, not clipped.
-	case scan.ending == codexSettled:
-		read.activity = sessions.ActivityIdle
-		read.rules = append(read.rules, "codex.activity.idle")
-	default:
-		panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open, unproven or unreadable.
-	}
-	switch state {
-	case codexNoRunState:
-	case codexStarting:
-		read.rules = append(read.rules, "codex.run_state.starting")
-	case codexReady:
-		read.rules = append(read.rules, "codex.run_state.ready")
-	case codexWorking:
-		read.rules = append(read.rules, "codex.run_state.working")
-	default:
-		panic("unknown codex run state") // justify-defect: codexReadRunState returns only the closed states.
-	}
-	// Notice (2.9): a notice cell that ends the transcript is the latest
-	// turn's interruption or error; older cells sit above a later stop.
+	var rules []string
+	read.activity, read.activityCause, rules = codexActivity(scan, band, screen)
+	read.rules = append(read.rules, rules...)
+	// A notice cell that ends the transcript is the latest turn's interruption
+	// or error; older cells sit above a later stop.
 	if scan.ending == codexSettled {
-		switch read.notice = codexNotice(screen.rows[scan.stop]); read.notice {
-		case noticeNone:
-		case noticeInterrupted:
-			read.rules = append(read.rules, "codex.notice.interrupted")
-		case noticeError:
-			read.rules = append(read.rules, "codex.notice.error")
-		default:
-			panic("unknown codex notice") // justify-defect: codexNotice returns only the closed notices.
+		if read.notice = codexNotice(screen.rows[scan.stop]); read.notice != "" {
+			read.rules = append(read.rules, "codex.notice."+string(read.notice))
 		}
 	}
 	return read, true
 }
 
-// codexRunState is SL's run-state word (3). Working, Thinking and Waiting all
-// mean a running turn: SL refreshes lazily, so they lag one another.
-type codexRunState uint8
+// codexComposerState is the composer (4): first match wins.
+func codexComposerState(band codexBand) composer {
+	switch {
+	case band.disabled || band.dimmed || band.side || band.editor:
+		return composerBlocked
+	case band.images || band.bang:
+		return composerDraft
+	case band.run != "" && !band.clean:
+		return composerUnknown // sparkle or ignition painted the band
+	case band.typed:
+		return composerDraft
+	case band.enabled && band.main:
+		return composerEmpty
+	default:
+		return composerUnknown
+	}
+}
+
+// codexInteraction is the interaction (2.1) the elements between the
+// transcript's stop and the band show, and its rule, if any.
+func codexInteraction(scan codexTranscript, band codexBand) (sessions.Interaction, string) {
+	switch {
+	case scan.otherThread:
+		return sessions.InteractionPermission, "codex.permission.other_thread"
+	case scan.questions:
+		return sessions.InteractionQuestion, "codex.question.async_collapsed"
+	case scan.banner:
+		return sessions.InteractionConfirmation, "codex.confirmation.inline_banner"
+	case band.dimmed:
+		return sessions.InteractionMenu, "codex.menu.transcript_footer"
+	case scan.information:
+		return sessions.InteractionUnknown, ""
+	default:
+		return sessions.InteractionNone, "codex.interaction.none"
+	}
+}
+
+// codexActivity is the activity (3): the hint-row override, the status row,
+// then a run-state word when SL carries one. Idle comes from the screen itself
+// (step 4): codex hides the status row while it streams a final answer, so only
+// a settled transcript under a qualified band proves no turn is running. Its
+// rules are the status row's, the deciding one's and the run state's, in that
+// order.
+func codexActivity(scan codexTranscript, band codexBand, screen screen) (activity sessions.Activity, cause unknownCause, rules []string) {
+	if scan.status {
+		rules = append(rules, "codex.activity.status_row")
+	}
+	activity = sessions.ActivityUnknown
+	switch state := band.state; {
+	case band.disconnected:
+		rules = append(rules, "codex.activity.disconnected")
+		if scan.status || state != codexNoRunState {
+			cause = causeConflict
+		}
+	case scan.status && state == codexReady:
+		cause = causeConflict
+	case scan.status || state == codexWorking:
+		activity = sessions.ActivityWorking
+	case state == codexStarting:
+		activity = sessions.ActivityStarting
+	case !band.enabled && !band.dimmed || !band.main || band.editor:
+		// No idle without the composer qualifications (3 step 4.1, 4.2).
+	case band.statusLine >= 0 && codexGoalActive(screen.rows[band.statusLine]):
+		cause = causeConflict
+		rules = append(rules, "codex.activity.goal_active")
+	case scan.ending == codexOpen:
+		// A prompt ends the transcript with no status row: the submit window,
+		// a final answer streaming, or a turn that ended without a terminator.
+		rules = append(rules, "codex.activity.prompt_pending")
+		if state == codexReady {
+			cause = causeConflict
+		}
+	case scan.ending == codexUnproven:
+		cause = causeClipped
+	case scan.ending == codexUnreadable:
+		// An unparseable row hides the transcript's end: unknown, not clipped.
+	case scan.ending == codexSettled:
+		activity = sessions.ActivityIdle
+		rules = append(rules, "codex.activity.idle")
+	}
+	if band.state != codexNoRunState {
+		rules = append(rules, "codex.run_state."+string(band.state))
+	}
+	return activity, cause, rules
+}
+
+// codexRunState is SL's run-state word (3), named as its rule suffix. Working,
+// Thinking and Waiting all mean a running turn: SL refreshes lazily, so they
+// lag one another.
+type codexRunState string
 
 const (
-	codexNoRunState codexRunState = iota // no SL, or its first item is not a run-state word
-	codexStarting
-	codexReady
-	codexWorking
+	codexNoRunState codexRunState = "" // no SL, or its first item is not a run-state word
+	codexStarting   codexRunState = "starting"
+	codexReady      codexRunState = "ready"
+	codexWorking    codexRunState = "working"
 )
 
 // codexReadRunState reads SL's first item: items are ` · `-separated, and a
@@ -838,18 +858,18 @@ func codexTerminator(row row) bool {
 
 // codexNotice is the notice a terminator stop shows (2.9): codex draws an
 // error cell's `■` red and the interruption cell's in the default colour.
-// Other notice cells, such as the goal budget, are no notice.
-func codexNotice(row row) turnNotice {
+// Other notice cells, such as the goal budget, are no notice (zero).
+func codexNotice(row row) sessions.Notice {
 	glyph := row.cell(0)
 	switch {
 	case glyph.text != "■":
-		return noticeNone
+		return ""
 	case glyph.style.fg == codexRed:
-		return noticeError
+		return sessions.NoticeError
 	case strings.HasPrefix(cellText(row.cells), "■ Conversation interrupted"):
-		return noticeInterrupted
+		return sessions.NoticeInterrupted
 	}
-	return noticeNone
+	return ""
 }
 
 // codexImageRow is a row of `[Image #N]` labels at column 2, coloured and not

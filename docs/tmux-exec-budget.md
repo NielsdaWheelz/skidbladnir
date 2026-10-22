@@ -2,7 +2,8 @@
 
 2026-10-21: accepted by the owner, including a3's amendments to architecture's
 agent-observation paragraph and session latency's no-cache scope. a1 implemented
-in W2.7 (unreleased); a2 and a3 not yet. the owner accepted W2.7's amendment to
+in W2.7, a2 and a3 in W4.8 (all unreleased; W4.8's amendments are under each
+option, as implemented). the owner accepted W2.7's amendment to
 a1 the same day: G reads `-s`, `-g` and `-g -w` (format lookup order), and the
 invariants record the window/pane-local residual. line references are to origin/main at
 acceptance. the [cleanup campaign](cleanup.md) schedules it (see sequencing).
@@ -156,9 +157,41 @@ the 192-row top cap stays, so presentation is unchanged.
   transcript ceiling. overflow falls back to per-pane observation, never to
   silent truncation.
 
+as implemented (W4.8, `agentcontrol.Inventory` → `sessions.Manager.CapturePanes`
+→ `tmux.Client.CapturePanes`):
+- the guard is the row's exact target: lifetime, session id, selected
+  `pane_id`, `pane_pid` and `width height alternate`. a refused block prints
+  one refusal marker; the per-pane fallback tells a changed target from a
+  changed screen. a row with no rows or columns gets no block and reads
+  `capture_failed`, as before.
+- probe, tmux 3.8 on an isolated socket: an unguarded failing `-t` skips the
+  rest of its command group and exits the client 1, which loses the whole
+  transcript, so every `-t` sits inside its block's guard. `if-shell -F -t`
+  naming a vanished session evaluates without a target, so its guard is false.
+- markers frame each block and the rows inside are counted, so a row that
+  looks like a marker is data. a non-utf-8 kept row fails only its pane. any
+  other surprise fails the batch.
+- each captured pane's foreground is then re-sampled against the session's own
+  sample, as `ObservePane` does.
+- a batch with no bracketed transcript (deadline, client failure, overflow)
+  falls back per pane for every pane, and then one `InspectServer` under the
+  list's own five-second deadline proves the lifetime, so a slow capture never
+  fails the list. a bracket that proves another lifetime, or none, fails it
+  with `WorkspaceSourceChanged`, as before.
+- a batch that overruns the shared 2 s deadline leaves its fallbacks no time:
+  every pending pane reads `observation_timeout` for that list, where per-pane
+  observation timed out only the panes not yet read. one exec instead of 2K is
+  the price.
+- an inventory with rows always sends the batch, a bracket alone when nothing
+  needs capture; an inventory with no rows sends none, since nothing in it
+  names a lifetime.
+- creation keeps today's per-pane `ObservePane` under its own 2 s deadline:
+  its pane rarely runs the provider yet, and a target change reads as
+  `capture_failed`, never failing the create response.
+
 ### a3. activity-gated reuse
 
-`agentcontrol`, which owns `Enrich`, keeps one cached detection per live pane.
+`agentcontrol`, which owns inventory enrichment, keeps one cached detection per live pane.
 the key is: server identity, session id, pane id, pane pid, foreground process
 identity (pid and start time), width, height, alternate screen and
 `window_activity`.
@@ -186,6 +219,37 @@ why this is sound:
 
 net: two execs per list. capture work happens only for panes that printed
 output since their last capture.
+
+as implemented (W4.8, `internal/agentcontrol/enrich.go`):
+- key: the spec's, plus the provider (exec keeps pid and start time) and the
+  whole foreground sample (stricter is safe): `sessions.Session.ScreenKey`.
+- an entry is stored only from a batch capture whose start, taken before the
+  batch exec, is at least `window_activity` + 1.1 s: 1 s for activity's
+  resolution and 100 ms (`stepTolerance`) for a clock step too small to
+  detect. a fallback capture is never stored: its fresh screen need not match
+  the key, and a resize back without output would reuse the other size's
+  detection.
+- only an inventory reads or writes the cache: it keeps exactly its own
+  settled detections, reused or new. an inventory with no rows changes nothing;
+  its stale entries cannot match, because pane ids are not reused within a
+  lifetime and the lifetime is in the key.
+- a wall/monotonic disagreement over 100 ms since the previous enrichment, or
+  during this one, clears every entry. a server change needs no clear: no key
+  matches, and the next inventory drops them.
+- every access is under one mutex; overlapping lists only cost captures.
+  creation, inspect and send never read or write the cache: a created pane
+  printed within the second, so no capture of it could settle.
+- probes on tmux 3.8: a spinner rewriting one cell bumps `window_activity`;
+  resize and copy mode do not, but size is keyed and capture reads the base
+  screen. `send-keys -R` clears the grid and homes the cursor without bumping
+  activity, which refutes the assumption above.
+- residuals: a `send-keys -R` with no later output keeps the cached detection;
+  a resize away and back while the program does not redraw lets tmux reflow the
+  grid under an equal key; two opposite clock steps between consecutive
+  enrichments cancel; per-window activity over-captures multi-pane windows; a
+  quiet pane becomes reusable only once a capture starts at least 1.1 s after
+  its last output. adding `cursor_x,cursor_y` to a1's row and the key would
+  close the first; it changes a1's frozen row and is not owner-approved.
 
 ## option b: host single-flight (not recommended now)
 

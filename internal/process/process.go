@@ -3,12 +3,8 @@ package process
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"path/filepath"
-	"slices"
 )
-
-const coherentObservationAttempts = 8
 
 // ErrProcessAbsent and ErrProcessNotPermitted are the closed set of stable
 // per-process observation failures. Every other observation error is a
@@ -23,6 +19,9 @@ type PID int
 type StartIdentity string
 type TerminalDevice uint64
 
+// Observation is one kernel sample of a process. Its identity is PID and
+// StartIdentity, which exec keeps, so Executable is the only witness of an exec.
+// It is comparable: == is sample equality.
 type Observation struct {
 	PID                    PID
 	ParentPID              PID
@@ -31,52 +30,20 @@ type Observation struct {
 	TerminalDevice         TerminalDevice
 	ForegroundProcessGroup PID
 	Executable             string
-	Argv                   []string
 	StartIdentity          StartIdentity
 }
 
 func (observation Observation) ExecutableBase() string { return filepath.Base(observation.Executable) }
 
+// Observe is one kernel sample of pid, never retried: a transient read error
+// fails it. Exec keeps PID and StartIdentity, so one sample proves identity
+// (recovery's server check); it can mix two images' other fields, so a
+// foreground decision requires a bracket that closes with an equal sample.
 func Observe(pid PID) (Observation, error) {
 	if pid <= 0 {
 		return Observation{}, errors.New("invalid process id")
 	}
-	var previous Observation
-	var lastFailure error
-	hasPrevious := false
-	for attempt := 0; attempt < coherentObservationAttempts; attempt++ {
-		current, err := observeOnce(pid)
-		if err != nil {
-			if errors.Is(err, ErrProcessAbsent) || errors.Is(err, ErrProcessNotPermitted) {
-				return Observation{}, err
-			}
-			lastFailure = err
-			hasPrevious = false
-			continue
-		}
-		if hasPrevious && SameObservation(previous, current) {
-			return current, nil
-		}
-		previous, hasPrevious = current, true
-	}
-	if lastFailure != nil {
-		return Observation{}, fmt.Errorf("process observation did not stabilize: %w", lastFailure)
-	}
-	return Observation{}, errors.New("process observation did not stabilize")
-}
-
-// SameObservation compares every process identity and foreground fact sampled
-// by Observe, including executable arguments across exec of the same path.
-func SameObservation(left, right Observation) bool {
-	return left.PID == right.PID &&
-		left.ParentPID == right.ParentPID &&
-		left.ProcessGroup == right.ProcessGroup &&
-		left.SessionID == right.SessionID &&
-		left.TerminalDevice == right.TerminalDevice &&
-		left.ForegroundProcessGroup == right.ForegroundProcessGroup &&
-		left.Executable == right.Executable &&
-		left.StartIdentity == right.StartIdentity &&
-		slices.Equal(left.Argv, right.Argv)
+	return observeOnce(pid)
 }
 
 func ObserveForeground(panePID PID) (Observation, error) {
@@ -87,32 +54,22 @@ func ObserveForeground(panePID PID) (Observation, error) {
 	return Observe(foreground)
 }
 
-// ObserveForegroundEnvironment reads only the fields needed for terminal
-// context. The caller's observation must still be the terminal foreground
-// process on both sides of the native read.
+// ObserveForegroundEnvironment reads expected.PID's allowlisted environment,
+// then requires terminalPID's foreground to still equal expected. expected must
+// be a sample the caller has just taken: it opens the bracket this closes.
 func ObserveForegroundEnvironment(terminalPID PID, expected Observation) (map[string]string, error) {
-	before, err := ObserveForeground(terminalPID)
-	if err != nil || !SameObservation(before, expected) {
-		return nil, ErrForegroundMismatch
-	}
 	environment, readErr := observeEnvironment(expected.PID)
-	after, err := ObserveForeground(terminalPID)
-	if err != nil || !SameObservation(after, expected) {
+	if after, err := ObserveForeground(terminalPID); err != nil || after != expected {
 		return nil, ErrForegroundMismatch
 	}
 	return environment, readErr
 }
 
-// ObserveCurrentDirectory brackets the native cwd read with exact process
-// identity validation. A stable missing cwd is represented by the read error.
+// ObserveCurrentDirectory reads pid's cwd, then requires pid to still equal
+// expected, the caller's fresh sample. A stable missing cwd is the read error.
 func ObserveCurrentDirectory(pid PID, expected Observation) (string, error) {
-	before, err := Observe(pid)
-	if err != nil || !SameObservation(before, expected) {
-		return "", ErrForegroundMismatch
-	}
 	cwd, readErr := observeCurrentDirectory(pid)
-	after, err := Observe(pid)
-	if err != nil || !SameObservation(after, expected) {
+	if after, err := Observe(pid); err != nil || after != expected {
 		return "", ErrForegroundMismatch
 	}
 	return cwd, readErr
