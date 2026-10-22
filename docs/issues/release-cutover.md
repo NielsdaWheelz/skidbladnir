@@ -91,15 +91,18 @@ steps:
    `releases/` entry, the one `current` names; then delete the two
    `install-owned.json` removals in `internal/install/install.go` (`Run` and
    `uninstall`).
-9. carried from [cleanup](../cleanup.md#cross-repo-cutover):
+9. obligations of later campaign waves:
    - w3.1: hub-owned attention discards per-device notification memory.
    - hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone
      decodes tolerantly and additive wire changes stop requiring lockstep.
    - w3.2: the go quota client removes the native helper and the llm-calling pin
      from skid and dev-server.
-   - w3.4: check jarvis's use of `info --explain` output before it merges.
+   - dev-server `docs/gateway-separation-validation.md` links skid
+     `docs/native-agent-qualification.md` on main, deleted by #122; pin the
+     link to `12b1516`.
    - jarvis consumes the cli, not fleet files: no jarvis change for w2.1
-     (jarvis ce6f488 reads none of the old files or removed status fields).
+     (jarvis ce6f488 reads none of the old files or removed status fields),
+     and none for #133 (jarvis f397031 never reads `skid info --explain`).
 10. not part of this cutover: #131's launchd `ProcessType=Interactive` and its
     install-time priority check shipped in v0.20.1. its dev-server pin bump and
     macbook install are the owner's, before this release.

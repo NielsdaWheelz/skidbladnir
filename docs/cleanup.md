@@ -31,6 +31,7 @@ measured over every tracked non-binary file (fixtures, json and docs included), 
 | --- | --- | --- |
 | baseline `12b1516` | 101,192 | |
 | after wave 1 `9e7da6e` | 91,926 | -9,266 (-9.2%) |
+| after #129-#139 `623280a` | 87,753 | -13,439 (-13.3%) |
 
 ## decisions
 
@@ -53,7 +54,11 @@ also accepted 2026-10-21:
 
 - the [tmux exec budget](tmux-exec-budget.md) option a and its priority change, including a3's amendments to architecture's agent-observation paragraph and session latency's no-cache scope.
 - the mac serve event log goes to a bounded file, `~/.local/state/skidbladnir/serve.log`, rotating at 8 MiB with one previous file; linux keeps the journal.
+- w2.7's amendment to a1 (the global probe reads `-s`, `-g` and `-g -w`), its window/pane-local residual and its status changes (an absent id answers 404, an id on an epochless server 409).
+- the lockstep [cutover release](issues/release-cutover.md) ships after wave 2, so the fixed-hub fleet is qualified live before w3.1's hub-owned attention builds on it. wave-3 prs finish but merge only after that tag.
 - the coordinator cuts v0.20.1 from main once w1.7 and w1.8 merge; w2.1 and w2.2 (hard cutovers) merge only after that tag. dev-server's pin bump and the macbook maintenance window stay with the owner.
+
+kept by #135: xterm `screenReaderMode` stays on, because it also selects xterm's keydown and `insertText` input path that every phone ime qualification ran with. w3.5 turns it off with stock xterm, whose phone acceptance is already `NOT_RUN`.
 
 kept: runtime firebase configuration, the tui `N` create form, the usage selector, workspace restore verification, classifier precision, the identity-token format.
 
@@ -71,7 +76,6 @@ process:
 - [ ] phone dashboard: restore scroll by index, not card identity, after process death (-200)?
 - [ ] forge: drop the forced refresh after an uncertain create (-110)? a second tap could double-create.
 - [ ] phone saved state: drop the sha-256 label fingerprints that keep labels out of the saved-state bundle (-150)?
-- [ ] release: after v0.20.1, plan the lockstep host and apk release that carries w2.1's fresh-enrolment cutover, or leave it to the owner?
 - [ ] housekeeping: close draft pr #102 and remove the ten merged `fix/*` worktrees? local main has 2 unpushed commits and uncommitted doc edits, left alone.
 
 ## slices
@@ -105,22 +109,22 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W1.4 go-dead-surface | 9 | -430 | merged | #124, -498 |
 | W1.5 android-dead-surface | 7 | -295 | merged | #125, -302 |
 | W1.6 ops-ledgers | 5 | -1,392 | merged | #126, -1,339 |
-| W1.7 launchd-interactive (exec budget priority) | 0 | small | running | ships in v0.20.1 |
-| W1.8 tty-probe-noise | 0 | 0 | review | #129, ships in v0.20.1 |
-| R1 release v0.20.1 | | | planned | gates w2.1 and w2.2 |
-| W2.1 fleet-fixed-hub (held for v0.20.1) | 11 | -1,880 | running |  |
-| W2.2 install-fixed-paths (held for v0.20.1) | 4 | -745 | running |  |
+| W1.7 launchd-interactive (exec budget priority) | 0 | small | merged | #131, +71; shipped in v0.20.1 |
+| W1.8 tty-probe-noise | 0 | 0 | merged | #129, -24; shipped in v0.20.1 |
+| R1 release v0.20.1 | | | merged | v0.20.1 at `05511dc`, pinned by #132 |
+| W2.1 fleet-fixed-hub | 11 | -1,880 | merged | #137, -2383 |
+| W2.2 install-fixed-paths | 4 | -745 | merged | #138, -497 |
 | W2.3 config-one-shape | 5 | -307 | planned |  |
 | W2.4 gateway-http | 8 | -620 | planned |  |
 | W2.5 logging-slog + bounded mac serve log | 2 | -470 | planned |  |
 | W2.6 host-resources | 4 | -390 | planned |  |
-| W2.7 sessions-read-path + exec budget a1 | 8 | -745 | running |  |
+| W2.7 sessions-read-path + exec budget a1 | 8 | -745 | merged | #139, -183 |
 | W2.8 recovery-simplify | 8 | -575 | planned |  |
 | W3.1 hub-attention | 22 | -4,875 | planned |  |
 | W3.2 quota-go-client | 3 | -165 | planned |  |
-| W3.3 talkback-removal | 3 | -340 | planned |  |
-| W3.4 observation-cuts | 3 | -540 | running |  |
-| W3.5 stock-xterm | 1 | ~-1,300 after w1.3 | planned |  |
+| W3.3 talkback-removal | 3 | -340 | merged | #135, -580 |
+| W3.4 observation-cuts | 3 | -540 | merged | #133, -610 |
+| W3.5 stock-xterm, plus `screenReaderMode` off | 1 | ~-1,300 after w1.3 | planned |  |
 | W4.1 tolerant-reader | 10 | -1,950 | planned |  |
 | W4.2 go-wire-package | 4 | -540 | planned |  |
 | W4.3 host-rendered-copy | 9 | -930 | planned |  |
@@ -130,7 +134,7 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W4.7 terminal-page | 6 | -420 | planned |  |
 | W4.8 observation-refactors + exec budget a2, a3 | 9 | -384 | planned |  |
 | W4.9 private-file-primitive | 1 | -150 | planned |  |
-| W4.10 release-pipeline | 2 | -872 | planned |  |
+| W4.10 release-pipeline | 2 | -872 | merged | #136, -389 |
 | W5 docs-consolidation | 11 | ~-20,000 (mapper docs estimates overlap) | planned |  |
 
 ## spec items
@@ -195,7 +199,7 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `host-fleet:tailnet-route-ownership` | Receipt plus serve-status inspection to own one fixed tailscale serve route | -140 | cut | W2.2 |
 | `host-fleet:release-validate-redundancy` | Installer re-proves signed-release invariants; ships unused 27 MB uv and 2.3 MB source per release | -55 | refactor | W2.2 |
 | `host-fleet:paths-duplicate` | State-directory resolution duplicated; notifications app flags shadow env and ignore XDG_DATA_HOME | -30 | refactor | W2.2 |
-| `host-fleet:machine-handle-file` | 125 LOC to create a 36-byte random id file whose value is also stored in identity.json | -140 | refactor | W2.1 |
+| `host-fleet:machine-handle-file` | 125 LOC to create a 36-byte random id file whose value is also stored in identity.json | -140 | refactor | W2.1, file kept: it is the only identity root the cutover keeps |
 | `host-fleet:hostconfig-triple-validation` | Config yaml parsed and validated three ways, plus a JSON-to-YAML re-parse on every receive | -140 | refactor | W2.3 |
 | `host-fleet:machine-overrides` | Per-machine override schema (shell/terminal/default_machine/profile command+home) where the live fleet uses... | -90 | cut | W2.3 |
 | `host-fleet:android-push-dual-struct` | Same four Firebase fields in two structs with two JSON casings, converters and a coherence check | -25 | refactor | W2.3 |
@@ -258,10 +262,10 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `agent-observation:quota-misplaced` | account quota is a separate concept inside agentcontrol; clients import the host classifier for wire types | -10 | refactor | W3.2 |
 | `android-ui:a11y-narration-layer` | curated talkback narration runs parallel to every visible fact | -130 | cut | W3.3 |
 | `android-ui:bidi-isolation` | bidi isolates on the owner's own labels force duplicate visual/spoken strings | -40 | cut | W3.3 |
-| `android-terminal-notify:a11y-wheel-actions` | custom TalkBack wheel actions and xterm screen-reader DOM mirror for a single sighted user | -170 | cut | W3.3 |
+| `android-terminal-notify:a11y-wheel-actions` | custom TalkBack wheel actions and xterm screen-reader DOM mirror for a single sighted user | -170 | cut | W3.3; the `screenReaderMode` flip moves to W3.5 |
 | `agent-observation:claude-screen-reader` | claude screen-reader renderer support (~230 lines) for an opt-in accessibility mode | -230 | cut | W3.4 |
 | `agent-observation:diagnostics-region-capture-elapsed` | explain diagnostics (rule regions, capture facts, stage timings) are threaded through every grammar rule fo... | -180 | cut | W3.4 |
-| `desktop-clients:cut-info-explain` | PRODUCT CUT: remove `skid info --explain` detector diagnostics | -130 | cut | W3.4 |
+| `desktop-clients:cut-info-explain` | PRODUCT CUT: remove `skid info --explain` detector diagnostics | -130 | cut | W3.4, refuted as separate work and folded into the diagnostics cut |
 | `android-terminal-notify:xterm-fork-replace` | the xterm fork solves a three-route wheel problem that collapses to one route under tmux | -5,800 | refactor | W3.5 |
 | `cross:tolerant-reader` | Closed-schema strict decoding on every same-system hop forces lockstep releases and turns any drift into a... | -280 | refactor | W4.1 |
 | `cross:wire-error-envelope` | Error code/status/message lives in 5 server tables, a logging enum and 3 client pin sets; the pins already... | -120 | refactor | W4.1 |
@@ -333,6 +337,11 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `agent-observation:grammar-god-functions` | codexComposer (cyclo 110) and claude.go (1867 lines) are blobs mixing every dimension | -10 | refactor | W4.8 |
 | `cross:one-private-file-primitive` | Atomic durable write reimplemented ~9 times and flock in 7 packages | -150 | refactor | W4.9 |
 | `ops-docs:release-pipeline-collapse` | release path is 11 scripts that each re-validate and re-verify the same facts | -787 | refactor | W4.10 |
+| `followup:directory-entry-kind` | the phone's domain `DirectoryEntry.kind` lost its only reader in #135; the strict wire decode stays | -15 | deletion | W4.1 |
+| `followup:pressure-detail-metric` | `PressureDetailRow.metric` has no reader | -5 | deletion | W4.6 |
+| `followup:sessionui-device-removed` | dead `DeviceRemoved` checks in sessionui (session.go, usage.go) and a stale 'verified roster' comment after #137 | -15 | deletion | W4.4 |
+| `followup:startup-composition-rest` | `platform.Current`'s three build-tagged files and single-caller `runtimeenv.WithoutLaunchContext`, left by #137 | -40 | refactor | W2.6 |
+| `followup:touch-scroll-protocol-doc` | terminal-touch-scroll.md says page protocol 3; the code sends 5 | 0 | docs | W5 |
 | `ops-docs:render-release-notes-legacy` | release notes duplicate README prose, re-validate inputs and carry a legacy migration pointer | -85 | cut | W4.10 |
 | `ops-docs:feature-spec-consolidation` | ~45 feature specs (17k lines) amend each other via preambles; merge into ~7 current-state docs | -14,700 | refactor | W5 |
 | `ops-docs:design-deltas-fold` | design deltas D1-D8 are implementation diaries; geometry numbers duplicated between doc and generator | -2,458 | refactor | W5 |
@@ -373,15 +382,15 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 - #124 host: `/healthz` removed (no consumer); `handoff/status` and `local/refresh` now 404; wrong-hub errors lose `routing`; composition assertions become first-use nil dereferences; the observer flock is replaced by single-writer composition; int64 exhaustion guards removed.
 - #125 android: the debug seal gallery is deleted (restore from git for a seal redesign). press, back and dialog behaviour on device is `NOT_RUN`.
 - #126 ops: the catalogue has no pre-release check (the gateway loader rejects bad keys at startup); the ornament generator is deleted, so regeneration is manual; `scripts/build` is folded into `scripts/check`; the release path has not run end to end since, so the next release is its first live run.
+- #129 providers: the zsh tty probe is silenced only in interactive shells without a terminal.
+- #131 install: launchd runs serve, tmux and agents as `Interactive`; the new installer fails an install whose serve runs below priority 31. `skid update` from v0.20.0 does not apply it; only the v0.20.1 installer does.
+- #133 observation: claude screen-reader screens classify `unknown`; `info --explain` reports the classification and bare rule ids.
+- #135 android: screen readers get compose's merged visible text only: no curated narration, custom actions, headings or live regions, and talkback can no longer scroll the terminal. rtl names may reorder neighbouring punctuation (paths keep `TextDirection.Ltr`). pixel identity and talkback behaviour on device are `NOT_RUN`.
+- #136 release: one linear `scripts/release`; every integrity check runs once, in one `check-release` call before the draft; the key-to-pem check runs in preflight; release notes link the readme instead of repeating it. the next real release is its first live run.
+- #137 fleet: a removed device gets 401 and the phone keeps its store; a removed computer drops its cached members. same-fleet phone repair sends the saved bearer to an origin read from an unverified qr, accepted under the tailnet-boundary threat model. join, recover and failed writes restart serve (3-10 s, websockets drop). the machine-handle file and persisted applied settings stay: deleting the first re-keys every host and breaks workspace recovery, and deriving the second in memory makes an invalid host refuse every restart. the qr pairing emulator journey is `NOT_RUN`.
+- #138 install: hand-edited skid-owned files are overwritten; uninstall turns off `tailscale serve --https=8443` unconditionally; the linux systemd branch, real launchd and real tailscale are `NOT_RUN`.
+- #139 sessions: an absent id with a valid token answers 404 `SessionNotFound` (was 500, or 409 `TerminalUnavailable` for terminal ops); an id on an epochless server answers 409 everywhere; a failed CreateShell source read answers 500 (was 422); a window- or pane-local `@skid_` option shadows the format value undetected. a steady list is 2+2K execs (was 6+2K); the M1-M14 mutation pass was not rerun on the final code.
 
 ## cross-repo cutover
 
-obligations the next release must carry; none is deployed.
-
-- dev-server: remove `machines:` overrides from the skidbladnir yaml template and devbox's private desired file before skid rejects them (w2.3).
-- fleet state: no signatures, fixed hub and one machine file change identity.json, authority.json, host-state.json and resolved.json; the release needs a one-time operator cutover, not retained converters (w2.1).
-- notifications: hub-owned attention discards per-device notification memory at cutover (w3.1).
-- hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone decodes tolerantly and later wire additions stop requiring lockstep.
-- quota: the go client removes the native helper and the llm-calling pin from skid and dev-server (w3.2).
-- jarvis: check its use of `info --explain` output before w3.4 merges.
-- dev-server: `docs/gateway-separation-validation.md` links skid `docs/native-agent-qualification.md` on main, deleted by #122; pin it to `12b1516`.
+every obligation, with operator steps, lives in [release cutover](issues/release-cutover.md). nothing is deployed.
