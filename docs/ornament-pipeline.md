@@ -113,7 +113,7 @@ phone at runtime beyond drawing pre-built paths.
 
 ## Red / green / refactor
 
-historical implementation plan; [testing status](rules/testing.md) owns current
+historical implementation plan; [testing status](rules.md#testing) owns current
 checks. only generated-file drift checking remains from the proof plan below.
 
 Red (each observed failing first):

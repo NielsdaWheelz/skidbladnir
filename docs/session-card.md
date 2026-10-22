@@ -91,7 +91,7 @@ the card is two accessibility nodes.
 
 [roster verification](dashboard-compact-roster.md#verification) records the
 change-specific integration/device evidence. temporary probes are removed under
-[testing policy](rules/testing.md); no behavioral regression suite remains.
+[testing policy](rules.md#testing); no behavioral regression suite remains.
 
 interrupting takes two taps; closures retain their confirmations. inference is
 spoken without adding a repeated visible qualifier. compact-crests/wrapping and

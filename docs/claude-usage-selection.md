@@ -5,8 +5,8 @@
 architecture, quota content and adversarial acceptance reviews approved.
 this document owns claude disagreement handling, amending [terminal usage](terminal-usage.md)
 and [desktop usage](desktop-usage.md). their acquisition, presentation and historical
-qualification retain their owners. [architecture](architecture.md), [rules](rules/index.md)
-and [testing policy](rules/testing.md) govern implementation.
+qualification retain their owners. [architecture](architecture.md), [rules](rules.md)
+and [testing policy](rules.md#testing) govern implementation.
 
 ## goal and scope
 

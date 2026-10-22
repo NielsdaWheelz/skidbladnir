@@ -235,7 +235,7 @@ inventory reads from key-triggered reads; check native request counts before its
 next deadline. fail unexpected methods/routes. inspect the rendered grid, not an
 undecoded stream of ansi updates.
 
-[testing policy](rules/testing.md) governs deletion. [AGENTS.md](../AGENTS.md)
+[testing policy](rules.md#testing) governs deletion. [AGENTS.md](../AGENTS.md)
 requires current-turn approval for any tmux/live execution; planning approval
 does not grant it. an emulator using tmux may touch only its exact test-created
 session/pane on an isolated `-L` socket. no phone, stock-provider turns or user

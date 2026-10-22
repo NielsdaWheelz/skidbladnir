@@ -14,7 +14,7 @@ the owner chose a one-shot `Shift` key replacing `-`, affecting custom-bar
 navigation and tab only. gboard owns text, punctuation and capitalisation.
 this supersedes the changed matrix, modifier, width and page-version clauses in
 [key deck](terminal-key-deck.md) and [readable sizing](terminal-readable-sizing.md).
-their other contracts remain; [testing policy](rules/testing.md) governs proofs.
+their other contracts remain; [testing policy](rules.md#testing) governs proofs.
 [architecture](architecture.md) owns shared invariants.
 
 ## target interface and content

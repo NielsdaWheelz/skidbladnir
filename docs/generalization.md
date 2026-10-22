@@ -33,7 +33,7 @@ no license choice is made here.
 | terminal creation/control, exact targets, input uncertainty, and unsupported-program behavior, except the explicitly agreed launch changes | [terminal control](terminal-agent-control.md) and [terminal continuity](terminal-continuity.md) |
 | notification causes, display copy, device-local acknowledgement/dismissal, foreground suppression, exact-session clicks, and current-state reconciliation | [native notifications](native-notifications.md), with [session latency](session-latency.md) amendments |
 | service startup and preservation of accounts, histories, identities, and running tmux sessions during installation | [deployment contract](dev-server-handoff.md); move installation ownership to skid |
-| signed/checksummed immutable releases, coordinated matching-version updates, and verification boundaries | [distribution](public-fleet-distribution.md) as amended by [testing policy](rules/testing.md) |
+| signed/checksummed immutable releases, coordinated matching-version updates, and verification boundaries | [distribution](public-fleet-distribution.md) as amended by [testing policy](rules.md#testing) |
 
 engineering should choose concrete implementation details that preserve these
 contracts. ask the owner only when a necessary adaptation forces a material
@@ -624,7 +624,7 @@ custom-https issue is already linked above.
 
 ## verification boundary
 
-follow the existing [testing policy](rules/testing.md); this discussion does not
+follow the existing [testing policy](rules.md#testing); this discussion does not
 reinstate retired harnesses. implementation needs focused evidence at meaningful
 boundaries: ordinary shell semantics, exact terminal targeting and uncertain
 input, supported provider frames and quota attribution, clean installation and

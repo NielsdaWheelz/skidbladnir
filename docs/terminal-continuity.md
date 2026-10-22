@@ -29,7 +29,7 @@ this document owns the implementation delta to [architecture](architecture.md),
 [agent control](agent-control.md), [desktop](desktop-browser.md) and
 [directory selection](working-directory-chooser.md). root updates their affected
 clauses at cutover; do not maintain contradictory final contracts. retain
-[codebase rules](rules/index.md) and [temporary-test policy](rules/testing.md).
+[codebase rules](rules.md) and [temporary-test policy](rules.md#testing).
 
 goals: persistent terminals, quick desktop creation, touch-friendly mobile
 creation, current cwd/provider/home and ordinary ssh/mosh context tracking.

@@ -32,5 +32,5 @@ cleanup proceeds one finding and one merged pr at a time: establish the current
 contract and callers, demonstrate the finding, characterize important behavior
 through its real boundary, simplify its owner, and independently review the
 result. remove temporary tests before committing, as requested for this cleanup.
-[testing policy](rules/testing.md) distinguishes that evidence from retained
+[testing policy](rules.md#testing) distinguishes that evidence from retained
 engineering checks. unresolved findings belong in `docs/issues`, one per issue.

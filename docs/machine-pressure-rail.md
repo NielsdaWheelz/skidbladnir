@@ -18,7 +18,7 @@ hands-on acceptance remain `NOT_RUN`.
 This is the implementation contract for one hard-cut presentation refactor.
 It is subordinate to [`architecture.md`](architecture.md),
 [`roadmap.md`](roadmap.md), [`design-language.md`](design-language.md), and
-[`rules/testing.md`](rules/testing.md). Before Android work, the root integrator
+[`rules.md`](rules.md#testing). Before Android work, the root integrator
 must reconcile those documents with this approved target. No parallel
 `testing-standards.md` exists or should be created.
 
@@ -276,7 +276,7 @@ tmux, terminal, or device-mutation code.
 
 ## Red / green / refactor and 80/20 proof
 
-Follow [`rules/testing.md`](rules/testing.md). Establish a green routine
+Follow [`rules.md`](rules.md#testing). Establish a green routine
 baseline first. Each builder writes and observes its own behavioral red before
 editing production in its slice.
 

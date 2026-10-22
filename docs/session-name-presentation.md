@@ -5,8 +5,8 @@ this contract owns desktop name overflow
 and interrupt/close target disclosure, superseding those clauses in
 [single-line rows](desktop-single-line-rows.md) and
 [desktop browser](desktop-browser.md). their other contracts remain authoritative.
-[architecture](architecture.md), [rules](rules/index.md) and
-[testing policy](rules/testing.md) govern implementation.
+[architecture](architecture.md), [rules](rules.md) and
+[testing policy](rules.md#testing) govern implementation.
 
 ## outcome and scope
 

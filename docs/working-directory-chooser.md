@@ -208,5 +208,5 @@ the earlier chooser's Places/Search/ExactPath pages, private exact draft,
 `z <words>` entrance and redundant callbacks are removed. prior chooser evidence
 is historical and does not qualify this replacement; current changed-boundary
 evidence belongs to [directory and group entry](directory-group-entry.md#qualification).
-[testing policy](rules/testing.md) governs temporary tests and their removal.
+[testing policy](rules.md#testing) governs temporary tests and their removal.
 release and production installation remain separate work.

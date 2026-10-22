@@ -4,8 +4,8 @@
 a machine; enter creates and immediately attaches a home terminal there. this plan owns that narrow replacement of the desktop
 creation clauses in [browser simplification](desktop-browser-simplification.md),
 [desktop browser](desktop-browser.md) and [terminal continuity](terminal-continuity.md).
-the [architecture](architecture.md), [rules](rules/index.md) and
-[testing policy](rules/testing.md) govern all other behavior. no product question
+the [architecture](architecture.md), [rules](rules.md) and
+[testing policy](rules.md#testing) govern all other behavior. no product question
 remains open. v0.17.3 is deployed; [shared installed qualification](desktop-single-line-rows.md#installed-qualification)
 records the three-host/phone update and read-only chooser/resize/cancel smokes.
 creation/attachment claims retain the isolated source qualification below.
@@ -136,7 +136,7 @@ or deployment. `N` and `T` keep their behavior; only the named copy changes appl
 
 ## implementation and acceptance
 
-follow [testing policy](rules/testing.md). use disposable tests against the
+follow [testing policy](rules.md#testing). use disposable tests against the
 actual model/events/rendering and browser/pty → production client → loopback
 gateways → owned isolated tmux. use two dummy machines, default different from
 the selected destination; terminal-only fixtures suffice. reuse the

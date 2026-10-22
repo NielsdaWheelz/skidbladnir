@@ -83,13 +83,13 @@ feasibility investigation, not an accepted production terminal contract. never
 relabel historical evidence as new proof.
 broader capability changes require a new explicit scope decision.
 
-read [../AGENTS.md](../AGENTS.md), [rules/index.md](rules/index.md),
+read [../AGENTS.md](../AGENTS.md), [rules.md](rules.md),
 [agent-control.md](agent-control.md), and
 [agent-control-ux.md](agent-control-ux.md) before implementation. the accepted
 agent-control deltas extend v0; the old activity-only language is not the whole
 current contract. use [design-language.md](design-language.md) for presentation.
 
-retain the [testing rules](rules/testing.md) and architecture's bounded red/green
+retain the [testing rules](rules.md#testing) and architecture's bounded red/green
 proof shape. builders observe their acceptance test fail before implementing;
 verifiers do not write tests or production code. inspect test composition before
 running it: tmux and integration/live gates require explicit user approval in

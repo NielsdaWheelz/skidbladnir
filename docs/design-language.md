@@ -7,7 +7,7 @@ owns status copy and tone.
 [`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. §17 links the implemented component contracts. changes follow the
-current [testing policy](rules/testing.md).
+current [testing policy](rules.md#testing).
 
 2026-09-15 accepted [groups](groups.md) target reuses these visual primitives for
 one compact dashboard selector, quiet full-span group headings, a literal card

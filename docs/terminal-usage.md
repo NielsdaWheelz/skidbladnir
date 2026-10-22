@@ -295,7 +295,7 @@ generic observer, candidate framework or provider adapter.
    native helper/reads and existing control semantics. reviewers recheck invariants
    and any changed behavior before repeating only affected checks.
 5. **finish:** remove temporary behavioral probes before commit under
-   [testing policy](rules/testing.md); retain only its explicit detector
+   [testing policy](rules.md#testing); retain only its explicit detector
    fixtures/pure replay exception. run `go test ./internal/agentcontrol` and
    `scripts/check verify`; engineering success is not live acceptance. record exact
    source/boundaries and remaining issues. release/deployment require their own

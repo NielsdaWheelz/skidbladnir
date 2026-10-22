@@ -69,7 +69,7 @@ NidavellirColors (flat vals)
   Bronze #CD7F32, Orpiment #E8B923
   // Overlook and the gem fills (design language §5) are documented values
   // with no consumer in this delta and are deliberately NOT shipped here —
-  // no speculative tokens (rules/simplicity). Overlook waits for a topmost
+  // no speculative tokens (rules.md). Overlook waits for a topmost
   // sheet; the gems land with D3's mineral table.
 
 internal object NidavellirShapes

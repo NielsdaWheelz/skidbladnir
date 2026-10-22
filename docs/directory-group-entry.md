@@ -204,7 +204,7 @@ places, search and exact-path pages and their redundant state/actions.
    callbacks and exact-path/search state. reuse `GatewayClient.searchDirectories`
    and the existing strict response decoder; no gateway change is planned.
 4. **verify and record.** exercise the acceptance below against the actual
-   client owners and changed behavior. follow [testing policy](rules/testing.md),
+   client owners and changed behavior. follow [testing policy](rules.md#testing),
    remove temporary checks before commit and run `scripts/check verify`. record
    source/transport, host and physical-phone results separately. review source
    and docs together for one primary interaction and no retired state. release

@@ -8,7 +8,7 @@ see "Sequencing" below.
 [`design-language.md`](design-language.md) owns visual identity and wins on
 every value here; [`roadmap.md`](roadmap.md) owns delivery order. This document
 owns the create affordance's implementation boundary. Testing standard is
-[`rules/testing.md`](rules/testing.md).
+[`rules.md`](rules.md#testing).
 
 ## Outcome and final state
 
@@ -215,7 +215,7 @@ internal val UnstruckMark: List<Pair<Offset, Offset>>
 // half-stroke, 0.75dp, overhangs it). Placement is the caller's, in a padded
 // wrapper. (`DwarfPortrait`, `EmptyState`, and
 // `AgentCard` take no modifier either; this codebase does not follow the
-// always-accept-a-modifier convention, and rules/simplicity forbids a
+// always-accept-a-modifier convention, and rules.md forbids a
 // parameter with no call site.)
 @Composable internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit)
 ```
@@ -309,7 +309,7 @@ argument — proof 3 must stay anchored on it.
   caller passing `unitAspect = 1f` and a one-element list. Its second layer died
   with the pairing screen's interlace band (ornament-pipeline.md). It collapses
   to `drawFretBand(color)`. Taken here because `Theme.kt` is already in D5's
-  path and rules/simplicity bans speculative surface; it is two deleted
+  path and rules.md bans speculative surface; it is two deleted
   parameters and one call site, and nothing else in the ornament system moves.
 
 ## Work split
@@ -366,7 +366,7 @@ referencing symbols that do not exist.
 **Deliberately unproven (80/20).** `AngularIndication`'s shape parameter gets no
 test of its own: proof 3 and the existing card-click proof are both consumers'
 gates, and asserting the flash's pixel geometry would assert styling, which
-rules/cleanliness forbids.
+rules.md forbids.
 
 The **scrolled** last-row clearance is hands-on, not automated. The journey runs
 against whatever sessions two real machines happen to hold — as few as two, which

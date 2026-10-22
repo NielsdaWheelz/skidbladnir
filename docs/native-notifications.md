@@ -630,7 +630,7 @@ diagnostics are separate follow-ups.
 tmux/phone runs require explicit current-turn approval; only exact temporary
 sessions on isolated `-L` sockets may be controlled. sound/dnd/focus need actual
 devices. absent boundaries are `NOT_RUN`, never passes. use
-[testing policy](rules/testing.md); do not restore retired gates or modify the
+[testing policy](rules.md#testing); do not restore retired gates or modify the
 retained detector corpus unless classification changes.
 
 ## accepted tradeoffs and exclusions

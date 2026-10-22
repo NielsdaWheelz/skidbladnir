@@ -369,7 +369,7 @@ where concrete failures or conceptual complexity justify it. no line-count or
 calendar estimate was established by this review.
 
 any experiments require the applicable current-turn approval, isolated resources
-and content-free evidence. follow [testing policy](rules/testing.md): temporary
+and content-free evidence. follow [testing policy](rules.md#testing): temporary
 change-specific behavioral checks do not recreate retired harnesses, and
 engineering checks cannot establish live acceptance.
 

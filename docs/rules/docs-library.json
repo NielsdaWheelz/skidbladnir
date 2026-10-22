@@ -1,7 +1,0 @@
-{
-  "name": "engineering-docs",
-  "format": "markdown",
-  "entrypoint": "index.md",
-  "docsRoot": ".",
-  "languageAgnostic": true
-}

@@ -34,7 +34,7 @@ while hands-on acceptance remains `NOT_RUN`.
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns this delta's
 implementation boundary. The requested testing standard is
-[`rules/testing.md`](rules/testing.md); no duplicate `testing-standards.md` is
+[`rules.md`](rules.md#testing); no duplicate `testing-standards.md` is
 introduced.
 
 ## Outcome and final state
@@ -196,7 +196,7 @@ ordering above; do not export a general operation/ticket framework.
 
 the following cleanup, ownership and red/green instructions record the original
 pull-to-refresh delivery. they are not a new assignment or retained test suite;
-[testing policy](rules/testing.md) governs current work.
+[testing policy](rules.md#testing) governs current work.
 
 - Delete the header `TextButton`, `onRefresh`, and `refreshing` top-bar
   parameters.

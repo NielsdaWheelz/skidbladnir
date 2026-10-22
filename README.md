@@ -4,9 +4,6 @@ use codex, claude code, and ordinary shell sessions from your desktop or android
 phone. skid brings enrolled machines' tmux sessions into one view. detach and the
 work keeps running; either device can return to the same live terminal.
 
-[v0.20.0 qualification](docs/v0.20.0-installed-qualification.md) records the
-standalone release and installed fleet rollout, with remaining live checks.
-
 ## install
 
 [releases](https://github.com/NielsdaWheelz/skidbladnir/releases) contain the
@@ -112,6 +109,6 @@ scripts/check verify
 ```
 
 [architecture](docs/architecture.md), [codebase map](docs/codebase-map.md),
-[rules](docs/rules/index.md), [roadmap](docs/roadmap.md), and
+[rules](docs/rules.md), [roadmap](docs/roadmap.md), and
 [open issues](docs/issues) describe ownership and remaining work. engineering
 checks and builds do not establish live behavior or release/deployment acceptance.

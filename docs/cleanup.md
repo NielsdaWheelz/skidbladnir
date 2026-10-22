@@ -45,7 +45,7 @@ kept: runtime firebase configuration, the tui `N` create form, the usage selecto
 process:
 
 - one finding cluster per pr, branch `cleanup/<slug>`, merged to main only; no release, re-pin or deploy without a separate request.
-- temporary boundary tests run against the original and the rewrite, then are deleted before commit ([testing](rules/testing.md)).
+- temporary boundary tests run against the original and the rewrite, then are deleted before commit ([testing](rules.md#testing)).
 - tests use isolated `tmux -L` sockets and loopback gateways with temporary state; never the production gateway, the owner's tmux server or other hosts.
 - android end-to-end tests use the emulator only, never the phone.
 
