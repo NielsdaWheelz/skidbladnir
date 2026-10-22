@@ -1,7 +1,6 @@
 package install
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,56 +13,46 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
-	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
-
-type resource struct {
-	Path           string `json:"path"`
-	Hash           string `json:"hash,omitempty"`
-	Target         string `json:"target,omitempty"`
-	PreviousTarget string `json:"previousTarget,omitempty"`
-	PreviousHash   string `json:"previousHash,omitempty"`
-	Directory      bool   `json:"directory,omitempty"`
-	Mode           uint32 `json:"mode,omitempty"`
-	Current        bool   `json:"current,omitempty"`
-}
-type shellBlock struct {
-	Path    string `json:"path"`
-	Text    string `json:"text"`
-	Created bool   `json:"created,omitempty"`
-}
-type receipt struct {
-	Version   string        `json:"version"`
-	Resources []resource    `json:"resources"`
-	Blocks    []shellBlock  `json:"blocks"`
-	Services  []string      `json:"services"`
-	Route     *tailnetRoute `json:"route,omitempty"`
-}
 
 type installer struct {
 	dirs           Directories
-	receipt        receipt
 	stdout, stderr io.Writer
 }
 
+// release.json is signed, same-release data, so it is decoded tolerantly.
+type releaseManifest struct {
+	Platform  string `json:"platform"`
+	SourceSHA string `json:"sourceSha"`
+	Version   string `json:"version"`
+}
+
+func readManifest(path string) (releaseManifest, error) {
+	var manifest releaseManifest
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return manifest, err
+	}
+	err = json.Unmarshal(data, &manifest)
+	return manifest, err
+}
+
+// Run installs, updates or uninstalls skid. Every path it writes is fixed and
+// skid's by name: releases/*, current, bin/skid, the service files and two marked
+// shell blocks. Install overwrites them, uninstall deletes them, and nothing else
+// is recorded.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result error) {
-	if len(args) == 0 {
-		return errors.New("usage: skid install|update [--version vX.Y.Z] [--archive PATH --signature PATH] | uninstall")
-	}
 	action := args[0]
-	if action != "install" && action != "update" && action != "uninstall" {
-		return errors.New("expected install, update or uninstall")
-	}
 	flags := flag.NewFlagSet(action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	version := flags.String("version", "", "immutable release version (default: latest stable)")
 	archive := flags.String("archive", "", "local signed release archive")
 	signature := flags.String("signature", "", "detached archive signature")
-	if e := flags.Parse(args[1:]); e != nil {
-		return e
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected installation argument")
@@ -77,325 +66,255 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if action == "uninstall" && (*version != "" || *archive != "") {
 		return errors.New("uninstall accepts no release options")
 	}
-	dirs, e := Paths()
-	if e != nil {
-		return e
+	dirs, err := Paths()
+	if err != nil {
+		return err
 	}
-	lock, e := lockInstallation(dirs)
-	if e != nil {
-		return e
+	if err = os.MkdirAll(dirs.State, 0700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(dirs.State, "install.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
 	}
 	defer func() { result = errors.Join(result, lock.Close()) }()
-	i := installer{dirs: dirs, stdout: stdout, stderr: stderr}
-	data, e := os.ReadFile(filepath.Join(dirs.State, "install-owned.json"))
-	if e == nil {
-		if e = decodeReceipt(data, &i.receipt); e != nil {
-			return errors.New("installation ownership record is invalid")
-		}
-	} else if !errors.Is(e, os.ErrNotExist) {
-		return e
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return errors.New("another skid installation operation is running")
 	}
+	i := installer{dirs: dirs, stdout: stdout, stderr: stderr}
 	if action == "uninstall" {
 		return i.uninstall(ctx)
 	}
-	if e = i.platform(ctx); e != nil {
-		return e
+	if err = platform(ctx); err != nil {
+		return err
 	}
-	if action == "update" && i.receipt.Version == "" {
-		return errors.New("skid is not installed; run skid install")
+	current := filepath.Join(dirs.Data, "current")
+	installed, err := readManifest(filepath.Join(current, "release.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		if action == "update" {
+			return errors.New("skid is not installed; run skid install")
+		}
+	} else if err != nil {
+		return fmt.Errorf("installed release unreadable: %w", err)
 	}
-	if e = os.MkdirAll(filepath.Join(dirs.Data, "releases"), 0700); e != nil {
-		return e
+	releases := filepath.Join(dirs.Data, "releases")
+	if err = os.MkdirAll(releases, 0700); err != nil {
+		return err
 	}
-	stage, e := os.MkdirTemp(filepath.Join(dirs.Data, "releases"), ".stage-")
-	if e != nil {
-		return e
+	stage, err := os.MkdirTemp(releases, ".stage-")
+	if err != nil {
+		return err
 	}
 	defer func() { result = errors.Join(result, os.RemoveAll(stage)) }()
 	if *archive == "" {
 		if *version == "" {
-			*version, e = latest(ctx)
-			if e != nil {
-				return e
+			if *version, err = latest(ctx); err != nil {
+				return err
 			}
 		}
 		name := "skidbladnir-" + runtime.GOOS + "-" + runtime.GOARCH + ".tar.gz"
 		*archive = filepath.Join(stage, "archive.tar.gz")
 		*signature = filepath.Join(stage, "archive.sig")
 		base := "https://github.com/NielsdaWheelz/skidbladnir/releases/download/" + *version + "/"
-		if e = download(ctx, base+name, *archive); e != nil {
-			return e
+		if err = download(ctx, base+name, *archive); err != nil {
+			return err
 		}
-		if e = download(ctx, base+name+".sig", *signature); e != nil {
-			return e
+		if err = download(ctx, base+name+".sig", *signature); err != nil {
+			return err
 		}
 	}
-	if e = verify(*archive, *signature); e != nil {
-		return e
+	if err = verify(*archive, *signature); err != nil {
+		return err
 	}
 	payload := filepath.Join(stage, "payload")
-	if e = os.Mkdir(payload, 0700); e != nil {
-		return e
+	if err = os.Mkdir(payload, 0700); err != nil {
+		return err
 	}
-	if e = extract(*archive, payload); e != nil {
-		return e
+	if err = extract(*archive, payload); err != nil {
+		return err
 	}
-	manifest, e := i.validate(ctx, payload)
-	if e != nil {
-		return e
+	manifest, err := validate(ctx, payload)
+	if err != nil {
+		return err
 	}
 	if *version != "" && manifest.Version != *version {
 		return errors.New("archive version differs from requested release")
 	}
-	if i.receipt.Version != "" && versionBefore(manifest.Version, i.receipt.Version) {
+	// An empty installed version (nothing installed) is never newer.
+	if versionBefore(manifest.Version, installed.Version) {
 		return errors.New("release downgrade refused; recover matching private state deliberately before reinstalling")
 	}
-
-	if e = i.dependencies(ctx); e != nil {
-		return e
-	}
-	if e = i.checkOwned(); e != nil {
-		return e
-	}
-	defer func() { result = errors.Join(result, i.save()) }()
-	final := filepath.Join(dirs.Data, "releases", manifest.Version+"-"+manifest.SourceSHA)
-	if _, e = os.Lstat(final); e == nil {
-		if e = compareTrees(payload, final); e != nil {
-			return fmt.Errorf("existing release differs from verified archive: %w", e)
-		}
-	} else if errors.Is(e, os.ErrNotExist) {
-		if e = os.Rename(payload, final); e != nil {
-			return e
-		}
-	} else {
-		return e
-	}
-	if e = i.recordTree(final); e != nil {
-		return e
-	}
-	config := filepath.Join(dirs.Config, "config.yaml")
-	if e = os.MkdirAll(dirs.Config, 0700); e != nil {
-		return e
-	}
-	f, e := os.OpenFile(config, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if e == nil {
-		_, e = f.WriteString(hostconfig.DefaultYAML)
-		e = errors.Join(e, f.Close())
-		if e != nil {
-			return e
-		}
-	} else if !errors.Is(e, os.ErrExist) {
-		return e
-	}
-	if e = os.MkdirAll(dirs.Bin, 0755); e != nil {
-		return e
-	}
-	if e = i.link(filepath.Join(dirs.Bin, "skid"), filepath.Join(dirs.Data, "current", "skidbladnir")); e != nil {
-		return e
-	}
-	if e = i.shellStartup(ctx); e != nil {
-		return e
-	}
-	if e = i.writeServices(); e != nil {
-		return e
-	}
-	// Save ownership before visibility; an interrupted install remains removable.
-	current := filepath.Join(dirs.Data, "current")
-	if _, err := os.Lstat(current); err == nil {
-		owned := false
-		for _, r := range i.receipt.Resources {
-			if r.Path == current {
-				owned = true
-				break
-			}
-		}
-		if !owned {
-			return fmt.Errorf("existing path is not installer-owned: %s", current)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	if err = i.dependencies(ctx); err != nil {
 		return err
 	}
-	i.putResource(resource{Path: current, Current: true})
-	i.receipt.Version = manifest.Version
-	if e = i.save(); e != nil {
-		return e
+
+	// Nothing above changed a skid-owned path. The writes below leave running
+	// services undisturbed, so they precede stop: a refused startup file fails
+	// before any downtime.
+	if err = os.MkdirAll(dirs.Config, 0700); err != nil {
+		return err
 	}
-	if len(i.receipt.Services) > 0 {
-		if e = i.stopServices(ctx); e != nil {
-			return e
+	config, err := os.OpenFile(filepath.Join(dirs.Config, "config.yaml"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err == nil {
+		_, err = config.WriteString(hostconfig.DefaultYAML)
+		if err = errors.Join(err, config.Close()); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if err = os.MkdirAll(dirs.Bin, 0755); err != nil {
+		return err
+	}
+	if err = replaceLink(filepath.Join(dirs.Bin, "skid"), filepath.Join(current, "skidbladnir")); err != nil {
+		return err
+	}
+	if err = i.addShellBlocks(ctx); err != nil {
+		return err
+	}
+	for _, s := range i.services() {
+		if err = os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+			return err
+		}
+		if err = writeAtomic(s.path, []byte(s.text), 0644); err != nil {
+			return err
 		}
 	}
-	if e = replaceLink(current, final); e != nil {
-		return e
+	// Stop precedes any release move: mac finds the running app through
+	// current's old physical bundle, which a move aside would hide.
+	if err = i.stopServices(ctx); err != nil {
+		return err
 	}
-	if e = i.save(); e != nil {
-		return e
+	final := filepath.Join(releases, manifest.Version+"-"+manifest.SourceSHA)
+	replaced := filepath.Join(stage, "replaced")
+	if err = os.Rename(final, replaced); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	if e = i.startServices(ctx); e != nil {
-		return fmt.Errorf("release installed; service startup failed: %w", e)
+	if err = os.Rename(payload, final); err != nil {
+		// Put back the same-version tree current names; the stage cleanup would delete it.
+		if restore := os.Rename(replaced, final); !errors.Is(restore, os.ErrNotExist) {
+			err = errors.Join(err, restore)
+		}
+		return err
+	}
+	if err = replaceLink(current, final); err != nil {
+		return err
+	}
+	if err = i.startServices(ctx); err != nil {
+		return fmt.Errorf("release installed; service startup failed: %w", err)
+	}
+	// Only a release that started supersedes the others; a failed start keeps them.
+	entries, err := os.ReadDir(releases)
+	if err != nil {
+		return fmt.Errorf("release installed; pruning failed: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == filepath.Base(final) {
+			continue
+		}
+		if err = os.RemoveAll(filepath.Join(releases, entry.Name())); err != nil {
+			return fmt.Errorf("release installed; pruning failed: %w", err)
+		}
+	}
+	if err = os.Remove(filepath.Join(dirs.State, "install-owned.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("release installed; pruning failed: %w", err)
 	}
 	fmt.Fprintf(stdout, "installed %s; settings and private state preserved\n", manifest.Version)
 	fmt.Fprintln(stdout, "local shells need no provider or tailscale login; open a new login shell to use skid")
 	return nil
 }
 
-func (i *installer) validate(ctx context.Context, path string) (releaseManifest, error) {
-	var manifest releaseManifest
-	b, e := os.ReadFile(filepath.Join(path, "release.json"))
-	if e != nil {
-		return manifest, e
+// validate admits a verified payload for this host. The signature already
+// proves the contents; this proves the host can run them.
+func validate(ctx context.Context, payload string) (releaseManifest, error) {
+	manifest, err := readManifest(filepath.Join(payload, "release.json"))
+	if err != nil {
+		return manifest, err
 	}
-	if e = strictjson.Decode(b, &manifest); e != nil {
-		return manifest, e
+	if manifest.Platform != runtime.GOOS+"-"+runtime.GOARCH {
+		return manifest, errors.New("release is for another platform")
 	}
-	platform, e := archivePlatform()
-	if e != nil {
-		return manifest, e
-	}
-	if manifest.Platform != platform || !versionPattern.MatchString(manifest.Version) || !regexpSHA(manifest.SourceSHA) {
-		return manifest, errors.New("release identity or platform invalid")
-	}
-	for _, asset := range []string{"skidbladnir", "characters.json", "providers/shell-init", "providers/terminal-context-init", "providers/quota-read", "native-helper/runtime.json", "native-helper/source/uv.lock", "native-helper/uv"} {
-		if _, e := os.Stat(filepath.Join(path, asset)); e != nil {
-			return manifest, fmt.Errorf("release missing required asset: %s", asset)
-		}
-	}
-	output, e := exec.CommandContext(ctx, filepath.Join(path, "skidbladnir"), "version").Output()
-	if e != nil || string(output) != manifest.Version+" "+manifest.SourceSHA+"\n" {
+	output, err := exec.CommandContext(ctx, filepath.Join(payload, "skidbladnir"), "version").Output()
+	if err != nil || string(output) != manifest.Version+" "+manifest.SourceSHA+"\n" {
 		return manifest, errors.New("release executable identity check failed")
 	}
-	helper := exec.CommandContext(ctx, filepath.Join(path, "providers", "quota-read"))
-	helperOutput, helperErr := helper.Output()
+	helperOutput, helperErr := exec.CommandContext(ctx, filepath.Join(payload, "providers", "quota-read")).Output()
 	var rejected *exec.ExitError
 	if !errors.As(helperErr, &rejected) || rejected.ExitCode() != 1 || string(helperOutput) != `{"ok":false,"error":{"code":"rejected"}}`+"\n" {
 		return manifest, errors.New("bundled quota helper cannot start; installed release unchanged")
 	}
-	var native struct {
-		Interpreter     string `json:"interpreter"`
-		Commit          string `json:"commit"`
-		Python          string `json:"python"`
-		UV              string `json:"uv"`
-		LockSHA         string `json:"lockSha256"`
-		RequirementsSHA string `json:"requirementsSha256"`
-	}
-	nativeBytes, e := os.ReadFile(filepath.Join(path, "native-helper", "runtime.json"))
-	if e != nil {
-		return manifest, e
-	}
-	if e = strictjson.Decode(nativeBytes, &native); e != nil {
-		return manifest, e
-	}
-	if !regexpSHA(native.Commit) || !versionPattern.MatchString("v"+native.Python) || !versionPattern.MatchString("v"+native.UV) || native.Interpreter == "" {
-		return manifest, errors.New("native helper runtime metadata invalid")
-	}
-	lockHash, e := fileHash(filepath.Join(path, "native-helper", "source", "uv.lock"))
-	if e != nil {
-		return manifest, e
-	}
-	requirementsHash, e := fileHash(filepath.Join(path, "native-helper", "requirements.txt"))
-	if e != nil {
-		return manifest, e
-	}
-	if lockHash != native.LockSHA || requirementsHash != native.RequirementsSHA {
-		return manifest, errors.New("native helper dependency manifests differ")
-	}
 	if runtime.GOOS == "darwin" {
-		if e = exec.CommandContext(ctx, "codesign", "--verify", "--strict", filepath.Join(path, "Skid.app")).Run(); e != nil {
+		if err = exec.CommandContext(ctx, "codesign", "--verify", "--strict", filepath.Join(payload, "Skid.app")).Run(); err != nil {
 			return manifest, errors.New("mac notification app signature invalid")
 		}
 	}
 	return manifest, nil
 }
-func regexpSHA(value string) bool {
-	if len(value) != 40 {
-		return false
+
+// uninstall is idempotent: on a host with nothing installed it changes nothing
+// but the tailscale route and still succeeds.
+func (i *installer) uninstall(ctx context.Context) error {
+	// zsh runs the user's .zshenv and can fail, so it runs before any side effect.
+	zdir, err := zshDirectory(ctx, i.dirs.Home)
+	if err != nil {
+		return err
 	}
-	for _, c := range value {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
-}
-func (i *installer) save() error {
-	b, e := json.MarshalIndent(i.receipt, "", "  ")
-	if e != nil {
-		return e
-	}
-	return privatefile.WriteFile(filepath.Join(i.dirs.State, "install-owned.json"), append(b, '\n'))
-}
-func (i *installer) putResource(r resource) {
-	for n, old := range i.receipt.Resources {
-		if old.Path == r.Path {
-			i.receipt.Resources[n] = r
-			return
-		}
-	}
-	i.receipt.Resources = append(i.receipt.Resources, r)
-}
-func (i *installer) recordTree(root string) error {
-	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	// skid connect points tailscale serve's https:8443 at the gateway. A host that
+	// never connected, or whose tailscale is down, warns and continues.
+	if tailscale, err := TailscalePath(); err == nil {
+		routeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		err = command(routeCtx, io.Discard, io.Discard, tailscale, "serve", "--https=8443", "off")
+		cancel()
 		if err != nil {
+			fmt.Fprintf(i.stderr, "tailscale serve --https=8443 off failed (%v); if a route remains, run it by hand\n", err)
+		}
+	}
+	if err = i.stopServices(ctx); err != nil {
+		return err
+	}
+	if err = removeShellBlocks(i.dirs.Home, zdir); err != nil {
+		return err
+	}
+	paths := []string{filepath.Join(i.dirs.Bin, "skid"), filepath.Join(i.dirs.Data, "current"), filepath.Join(i.dirs.State, "install-owned.json")}
+	for _, s := range i.services() {
+		paths = append(paths, s.path)
+	}
+	for _, path := range paths {
+		if err = os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		r := resource{Path: path, Directory: entry.IsDir(), Mode: uint32(info.Mode().Perm())}
-		if entry.Type()&os.ModeSymlink != 0 {
-			r.Mode = 0
-			r.Target, err = os.Readlink(path)
-		} else if !entry.IsDir() {
-			r.Hash, err = fileHash(path)
-		}
-		if err != nil {
-			return err
-		}
-		i.putResource(r)
-		return nil
-	})
+	}
+	if err = os.RemoveAll(filepath.Join(i.dirs.Data, "releases")); err != nil {
+		return err
+	}
+	fmt.Fprintln(i.stdout, "skid runtime removed; settings, private state, provider data, tmux and shared packages retained")
+	return nil
 }
-func (i *installer) checkOwned() error {
-	for _, r := range i.receipt.Resources {
-		if r.Current {
-			if e := i.matchesCurrent(r.Path); e != nil {
-				return e
-			}
-			continue
-		}
-		if e := matches(r); e != nil {
-			return e
-		}
+
+// writeAtomic replaces path in one rename, so readers see the old or the new
+// bytes, never a truncated file.
+func writeAtomic(path string, data []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".skid-")
+	if err != nil {
+		return err
+	}
+	_, err = temporary.Write(data)
+	if err == nil {
+		err = temporary.Chmod(mode)
+	}
+	if err == nil {
+		err = temporary.Sync()
+	}
+	err = errors.Join(err, temporary.Close())
+	if err == nil {
+		err = os.Rename(temporary.Name(), path)
+	}
+	if err != nil {
+		return errors.Join(err, os.Remove(temporary.Name()))
 	}
 	return nil
 }
-func matches(r resource) error {
-	info, e := os.Lstat(r.Path)
-	if errors.Is(e, os.ErrNotExist) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	valid := false
-	if r.Target != "" {
-		v, e := os.Readlink(r.Path)
-		valid = e == nil && (v == r.Target || v == r.PreviousTarget)
-	} else if r.Directory {
-		valid = info.IsDir()
-	} else if info.Mode().IsRegular() {
-		v, e := fileHash(r.Path)
-		valid = e == nil && (v == r.Hash || v == r.PreviousHash)
-	}
-	if r.Mode != 0 && uint32(info.Mode().Perm()) != r.Mode {
-		valid = false
-	}
-	if !valid {
-		return fmt.Errorf("owned resource changed; preserve and resolve manually: %s", r.Path)
-	}
-	return nil
-}
+
 func replaceLink(path, target string) error {
 	temporary, e := os.CreateTemp(filepath.Dir(path), ".skid-link-")
 	if e != nil {
@@ -413,77 +332,6 @@ func replaceLink(path, target string) error {
 	}
 	return nil
 }
-func (i *installer) link(path, target string) error {
-	if _, e := os.Lstat(path); e == nil {
-		owned := false
-		for _, r := range i.receipt.Resources {
-			if r.Path == path {
-				owned = true
-				break
-			}
-		}
-		if !owned {
-			return fmt.Errorf("existing path is not installer-owned: %s", path)
-		}
-	} else if !errors.Is(e, os.ErrNotExist) {
-		return e
-	}
-	previous, e := os.Readlink(path)
-	if e != nil && !errors.Is(e, os.ErrNotExist) {
-		return e
-	}
-	i.putResource(resource{Path: path, Target: target, PreviousTarget: previous})
-	if e = i.save(); e != nil {
-		return e
-	}
-	if e = replaceLink(path, target); e != nil {
-		return e
-	}
-	i.putResource(resource{Path: path, Target: target})
-	return i.save()
-}
-
-func (i *installer) uninstall(ctx context.Context) error {
-	if len(i.receipt.Resources) == 0 && len(i.receipt.Blocks) == 0 {
-		return errors.New("no recorded skid installation; nothing removed")
-	}
-	if e := i.checkOwned(); e != nil {
-		return e
-	}
-	if e := i.removeTailnetRoute(ctx); e != nil {
-		return e
-	}
-	if e := i.stopServices(ctx); e != nil {
-		return e
-	}
-	for _, block := range i.receipt.Blocks {
-		if e := removeBlock(block); e != nil {
-			return e
-		}
-	}
-	// Files before directories; nonempty directories retain unrecorded user files.
-	for n := len(i.receipt.Resources) - 1; n >= 0; n-- {
-		r := i.receipt.Resources[n]
-		e := os.Remove(r.Path)
-		if errors.Is(e, os.ErrNotExist) {
-			continue
-		}
-		if r.Directory && e != nil {
-			entries, readErr := os.ReadDir(r.Path)
-			if readErr == nil && len(entries) > 0 {
-				continue
-			}
-		}
-		if e != nil {
-			return e
-		}
-	}
-	if e := os.Remove(filepath.Join(i.dirs.State, "install-owned.json")); e != nil {
-		return e
-	}
-	fmt.Fprintln(i.stdout, "skid runtime removed; settings, private state, provider data, tmux and shared packages retained")
-	return nil
-}
 
 func command(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
@@ -493,70 +341,6 @@ func command(ctx context.Context, stdout, stderr io.Writer, name string, args ..
 	return cmd.Run()
 }
 func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-
-func lockInstallation(dirs Directories) (*os.File, error) {
-	if e := os.MkdirAll(dirs.State, 0700); e != nil {
-		return nil, e
-	}
-	f, e := os.OpenFile(filepath.Join(dirs.State, "install.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if e != nil {
-		return nil, e
-	}
-	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
-		return nil, errors.Join(errors.New("another skid installation operation is running"), f.Close())
-	}
-	return f, nil
-}
-func decodeReceipt(data []byte, value *receipt) error {
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if e := d.Decode(value); e != nil {
-		return e
-	}
-	var extra any
-	if e := d.Decode(&extra); !errors.Is(e, io.EOF) {
-		return errors.New("ownership record must contain one json object")
-	}
-	return nil
-}
-func compareTrees(want, existing string) error {
-	expected := installer{}
-	if e := expected.recordTree(want); e != nil {
-		return e
-	}
-	observed := installer{}
-	if e := observed.recordTree(existing); e != nil {
-		return e
-	}
-	if len(expected.receipt.Resources) != len(observed.receipt.Resources) {
-		return errors.New("release members differ")
-	}
-	for n, w := range expected.receipt.Resources {
-		got := observed.receipt.Resources[n]
-		w.Path = strings.TrimPrefix(w.Path, want)
-		got.Path = strings.TrimPrefix(got.Path, existing)
-		if w != got {
-			return errors.New("release contents differ")
-		}
-	}
-	return nil
-}
-
-func (i *installer) matchesCurrent(path string) error {
-	target, e := os.Readlink(path)
-	if errors.Is(e, os.ErrNotExist) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	for _, r := range i.receipt.Resources {
-		if r.Directory && r.Path == target && filepath.Dir(r.Path) == filepath.Join(i.dirs.Data, "releases") {
-			return nil
-		}
-	}
-	return fmt.Errorf("current release link is not installer-owned: %s", path)
-}
 
 func versionBefore(candidate, installed string) bool {
 	a, b := strings.Split(strings.TrimPrefix(candidate, "v"), "."), strings.Split(strings.TrimPrefix(installed, "v"), ".")

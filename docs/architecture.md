@@ -709,8 +709,9 @@ history item is `current`.
   quota helpers read existing codex account daemons using the selected profile
   environment; neither helper nor client owns the provider runtime.
 - `internal/install` owns the signed bootstrap, immutable releases, dependencies,
-  services, exact shell blocks and tailscale route receipts. install/update stage
-  and validate before switching `current`; restart skid services only. uninstall
+  services and marker-delimited shell blocks at fixed skid-owned paths.
+  install/update stage and validate before switching `current`, restart skid
+  services only, then delete superseded releases. uninstall
   retains private/user/provider/tmux state and shared packages. public dev-server
   is an optional personal consumer of that ordinary installer and hub yaml.
 - one host service composes gateway/fleet and, only on the hub, the notification

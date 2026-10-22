@@ -19,8 +19,13 @@ evidence:
   checking `machines:` and `default_machine` against its own name only.
   `internal/hostconfig` rejects `hub` as an unknown key. `MachineStore.kt` reads
   `fleet-v2.json`, so `fleet-v1.json` is inert. `internal/install/install.go`
-  refuses a downgrade while its receipt exists. at 5e1d26d, `notifier.New`
-  refuses an observer file that names another fleet.
+  refuses a downgrade by reading `current/release.json`, ignores the old
+  `install-owned.json` receipt (48,821 entries on the macbook) and, on its first
+  good run, deletes it and every release except `current` (7 trees, 1.2 GB
+  there). an older installed binary's `skid update` still keeps the receipt and
+  prunes nothing; after the receipt is gone, a pre-cutover installer refuses the
+  host ("existing path is not installer-owned") until `skid uninstall`. at
+  5e1d26d, `notifier.New` refuses an observer file that names another fleet.
 - dev-server `origin/main` 5f4fef0: `assets/skidbladnir/config.yaml` carries
   `hub: devbox` and `machines: {macbook: {terminal: ghostty}}`.
   `lib/skidbladnir.sh` runs the release installer before it installs the desired
@@ -44,13 +49,14 @@ steps:
    serve exits at every start until dev-server's rewrite lands, and dev-server's
    `skid apply` can fail in that window. macbook and arch hold their own pre-join
    yaml (join never rewrote it); the installed default parses.
-3. devbox: install the release (dev-server apply or `skid update`). the service
+3. devbox: install the release with dev-server apply or the release's
+   `bash install TAG`, not the old binary's `skid update`. the service
    bootstraps a fresh fleet with devbox as hub: machine handle kept, old files
    untouched, `notification-observer-v1.json` reset,
    `android-push-credentials.json` reused. `skid status` shows one member, a new
    `fleetId` and an application named `devbox` (the bootstrap name is the
    hostname minus `.local`; there is no rename).
-4. macbook, then arch: install the release; each first bootstraps a private
+4. macbook, then arch: install the release the same way; each first bootstraps a private
    fleet. on devbox run `skid connect` (one invite per host, single-use, five
    minutes). on the host run `skid join --name macbook` (resp. `--name arch`) and
    paste the line; its service restarts. `skid status` on devbox then shows that
@@ -64,7 +70,8 @@ steps:
    a needs-input notification reaches the mac app and the phone; with push
    configured, the phone's push status reaches `active`.
 7. rollback, only before step 8. each host: `skid uninstall` (keeps settings and
-   private state; removes the receipt, services and tailnet route), then the
+   private state; removes `current`, every release, `bin/skid`, the services,
+   the shell blocks and the tailnet route), then the
    previous release's `scripts/install vPREVIOUS`, then its `skid connect` once
    to restore the tailnet route. on devbox, before reinstalling, delete the new
    `notification-observer-v1.json` and revert the dev-server pin; the old
@@ -80,7 +87,10 @@ steps:
    `notification-observer-v1.json.recovered-*`; on macbook and arch also
    `notification-observer-v1.json` (inert on a member); from each config
    directory delete `config.yaml.inactive`. the phone's `fleet-v1.json` stays as
-   inert app data.
+   inert app data. confirm each host has no `install-owned.json` and exactly one
+   `releases/` entry, the one `current` names; then delete the two
+   `install-owned.json` removals in `internal/install/install.go` (`Run` and
+   `uninstall`).
 9. carried from [cleanup](../cleanup.md#cross-repo-cutover):
    - w3.1: hub-owned attention discards per-device notification memory.
    - hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone

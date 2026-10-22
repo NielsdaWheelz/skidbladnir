@@ -531,9 +531,10 @@ stage dependencies/assets and validate before atomic `current` switch; preserve
 user yaml on normal upgrade. restart skid services only, never tmux or providers.
 failed staging leaves the installed release untouched. coordinated releases
 update host/phone together; no old-wire reader, ntfy branch or mixed-version mode.
-uninstall removes only recorded skid services, links, files and exact owned shell
-blocks/tailscale routes. retain settings/private state, provider data, tmux and
-shared packages. no “purge everything” option in this scope.
+uninstall stops skid services and deletes its fixed services, links and releases,
+its marked shell blocks and its https:8443 serve route. retain settings/private
+state, provider data, tmux and shared packages. no “purge everything” option in
+this scope.
 
 the next release's fresh-fleet cutover and every cross-repo obligation it carries
 are recorded in [release cutover](issues/release-cutover.md). the completed

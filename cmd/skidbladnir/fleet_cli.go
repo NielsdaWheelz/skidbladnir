@@ -20,14 +20,6 @@ import (
 	"golang.org/x/term"
 )
 
-func installationCommand(arguments []string, stdout, stderr io.Writer) int {
-	if err := install.Run(context.Background(), arguments, stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "skid %s: %v\n", arguments[0], err)
-		return exitFailure
-	}
-	return 0
-}
-
 func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -88,9 +80,12 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 			fmt.Fprintln(stderr, "skid connect: installed service differs from this skid release; restart the installed service before connect")
 			return exitFailure
 		}
-		origin, networkErr := networkOrigin(ctx)
+		origin, tailscale, networkErr := networkOrigin(ctx)
+		// Point https:8443 at the gateway, replacing whatever 8443 served.
 		if networkErr == nil {
-			networkErr = install.ConfigureTailnetRoute(ctx, origin, fleet.LocalOrigin)
+			if serveErr := exec.CommandContext(ctx, tailscale, "serve", "--bg", "--https=8443", fleet.LocalOrigin).Run(); serveErr != nil {
+				networkErr = fmt.Errorf("tailscale route configuration failed: %w", serveErr)
+			}
 		}
 		if networkErr != nil {
 			fmt.Fprintln(stderr, networkErr)
@@ -150,21 +145,23 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 
 const hubWithoutOrigin = "hub has no remote address; connect tailscale on the hub and run skid connect there"
 
-func networkOrigin(ctx context.Context) (string, error) {
-	path, err := install.TailscalePath()
+// networkOrigin returns this host's tailnet gateway origin and the tailscale
+// command that resolved it.
+func networkOrigin(ctx context.Context) (origin, tailscale string, err error) {
+	tailscale, err = install.TailscalePath()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	data, err := exec.CommandContext(ctx, path, "status", "--json").Output()
+	data, err := exec.CommandContext(ctx, tailscale, "status", "--json").Output()
 	if err != nil {
-		return "", errors.New("tailscale unavailable; open tailscale and sign in")
+		return "", "", errors.New("tailscale unavailable; open tailscale and sign in")
 	}
 	var status struct {
 		BackendState string
 		Self         *struct{ DNSName string }
 	}
 	if json.Unmarshal(data, &status) != nil || status.BackendState != "Running" || status.Self == nil || status.Self.DNSName == "" {
-		return "", errors.New("tailscale is not connected; sign in to tailscale first")
+		return "", "", errors.New("tailscale is not connected; sign in to tailscale first")
 	}
-	return "https://" + strings.TrimSuffix(status.Self.DNSName, ".") + ":8443", nil
+	return "https://" + strings.TrimSuffix(status.Self.DNSName, ".") + ":8443", tailscale, nil
 }
