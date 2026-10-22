@@ -23,6 +23,15 @@ baseline is origin/main `12b1516` (v0.20.0): about 94.2k lines.
 - static analysis finds 11 unreachable functions: the bloat is live complexity, not dead code.
 - root cause: docs/rules mandated same-system distrust (216 `justify-*` comments, 94 defensive panics, 297 kotlin `require`/`check`).
 
+## progress
+
+measured over every tracked non-binary file (fixtures, json and docs included), so the base differs from the mapper total above.
+
+| point | lines | change |
+| --- | --- | --- |
+| baseline `12b1516` | 101,192 | |
+| after wave 1 `9e7da6e` | 91,926 | -9,266 (-9.2%) |
+
 ## decisions
 
 owner-approved product cuts (2026-10-21):
@@ -84,19 +93,19 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 
 | pr | findings | est. lines | status | merged as |
 | --- | --- | --- | --- | --- |
-| W1.1 rules-trust-boundaries | 3 | -1,025 | running |  |
-| W1.2 docs-history-purge | 3 | -5,987 | running |  |
-| W1.3 xterm-patch-trim | 2 | -5,010 | running |  |
-| W1.4 go-dead-surface | 9 | -430 | running |  |
-| W1.5 android-dead-surface | 7 | -295 | running |  |
-| W1.6 ops-ledgers | 5 | -1,392 | running |  |
-| W2.1 fleet-fixed-hub | 10 | -1,880 | planned |  |
-| W2.2 install-fixed-paths | 5 | -745 | planned |  |
+| W1.1 rules-trust-boundaries | 3 | -1,025 | merged | #121, -910 |
+| W1.2 docs-history-purge | 3 | -5,987 | merged | #122, -6,003 |
+| W1.3 xterm-patch-trim | 2 | -5,010 | merged | #123, -565 |
+| W1.4 go-dead-surface | 9 | -430 | merged | #124, -498 |
+| W1.5 android-dead-surface | 7 | -295 | merged | #125, -302 |
+| W1.6 ops-ledgers | 5 | -1,392 | merged | #126, -1,339 |
+| W2.1 fleet-fixed-hub | 11 | -1,880 | running |  |
+| W2.2 install-fixed-paths | 4 | -745 | running |  |
 | W2.3 config-one-shape | 5 | -307 | planned |  |
 | W2.4 gateway-http | 8 | -620 | planned |  |
 | W2.5 logging-slog | 2 | -470 | planned |  |
 | W2.6 host-resources | 4 | -390 | planned |  |
-| W2.7 sessions-read-path | 8 | -745 | planned |  |
+| W2.7 sessions-read-path | 8 | -745 | running |  |
 | W2.8 recovery-simplify | 8 | -575 | planned |  |
 | W3.1 hub-attention | 22 | -4,875 | planned |  |
 | W3.2 quota-go-client | 3 | -165 | planned |  |
@@ -164,7 +173,7 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `host-fleet:tailnet-route-ownership` | Receipt plus serve-status inspection to own one fixed tailscale serve route | -140 | cut | W2.2 |
 | `host-fleet:release-validate-redundancy` | Installer re-proves signed-release invariants; ships unused 27 MB uv and 2.3 MB source per release | -55 | refactor | W2.2 |
 | `host-fleet:paths-duplicate` | State-directory resolution duplicated; notifications app flags shadow env and ignore XDG_DATA_HOME | -30 | refactor | W2.2 |
-| `host-fleet:machine-handle-file` | 125 LOC to create a 36-byte random id file whose value is also stored in identity.json | -140 | refactor | W2.2 |
+| `host-fleet:machine-handle-file` | 125 LOC to create a 36-byte random id file whose value is also stored in identity.json | -140 | refactor | W2.1 |
 | `host-fleet:hostconfig-triple-validation` | Config yaml parsed and validated three ways, plus a JSON-to-YAML re-parse on every receive | -140 | refactor | W2.3 |
 | `host-fleet:machine-overrides` | Per-machine override schema (shell/terminal/default_machine/profile command+home) where the live fleet uses... | -90 | cut | W2.3 |
 | `host-fleet:android-push-dual-struct` | Same four Firebase fields in two structs with two JSON casings, converters and a coherence check | -25 | refactor | W2.3 |
@@ -336,7 +345,12 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 
 ## trade-offs taken
 
-recorded per merged pr.
+- #121 rules: same-release consumers decode tolerantly, so a producer bug renders wrong data instead of crashing; drafts are canonicalized only by the host; `justify-*` grep markers go with the guards they decorate. a carve-out keeping signed-authority checks lasts until w2.1 removes signatures.
+- #122 docs: 60 historical docs deleted (git keeps them); unrun acceptance obligations collapsed into [one record](issues/unrun-acceptance.md).
+- #123 terminal: `terminal.lock` and its checker are gone; reproducibility is shown on demand by a rebuild and an empty `git diff`, not by a gate. the patch shrank only 565 lines because its lockfile pins are needed for byte-identical output; w3.5 deletes the rest.
+- #124 host: `/healthz` removed (no consumer); `handoff/status` and `local/refresh` now 404; wrong-hub errors lose `routing`; composition assertions become first-use nil dereferences; the observer flock is replaced by single-writer composition; int64 exhaustion guards removed.
+- #125 android: the debug seal gallery is deleted (restore from git for a seal redesign). press, back and dialog behaviour on device is `NOT_RUN`.
+- #126 ops: the catalogue has no pre-release check (the gateway loader rejects bad keys at startup); the ornament generator is deleted, so regeneration is manual; `scripts/build` is folded into `scripts/check`; the release path has not run end to end since, so the next release is its first live run.
 
 ## cross-repo cutover
 
@@ -348,3 +362,4 @@ obligations the next release must carry; none is deployed.
 - hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone decodes tolerantly and later wire additions stop requiring lockstep.
 - quota: the go client removes the native helper and the llm-calling pin from skid and dev-server (w3.2).
 - jarvis: check its use of `info --explain` output before w3.4 merges.
+- dev-server: `docs/gateway-separation-validation.md` links skid `docs/native-agent-qualification.md` on main, deleted by #122; pin it to `12b1516`.
