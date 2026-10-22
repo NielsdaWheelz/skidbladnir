@@ -181,9 +181,9 @@ reports a fact the app holds (`MachineState.canMutate`), never activity.
 Box(fillMaxSize, Ink, systemBarsPadding)
 |- Column(fillMaxSize)
 |  |- DashboardTopBar            <- title + summary; fixed 64dp; no click surface
-|  |- MachineFilters / MachineStrip* / notices / recovery
-|  `- PullToRefreshBox           <- P2R
-|     `- Box / LazyVerticalGrid  <- trailing content clearance 84dp
+|  |- view strip / machine notices / notices / recovery
+|  `- DwarfCollection            <- Box.pullToRefresh
+|     `- LazyVerticalGrid        <- trailing content clearance 84dp
 `- ForgeSeal(align = BottomEnd, padding 16dp)
       canForge -> field + metal
       click    -> controller.openForge()
@@ -192,11 +192,11 @@ Box(fillMaxSize, Ink, systemBarsPadding)
 ## API design
 
 ```kotlin
-// Theme.kt — one owner for the 29% cut expansion; DwarfPortrait and
+// Ornament.kt — one owner for the 29% cut expansion; DwarfPortrait and
 // ForgeSeal both consume it instead of open-coding vertices.
-internal fun octagonVertices(size: Size): List<Offset>
+private fun octagonVertices(size: Size): List<Offset>
 
-// Theme.kt — collapsed; see "Reuse and consolidation".
+// Ornament.kt — collapsed; see "Reuse and consolidation".
 internal fun DrawScope.drawFretBand(color: Color)
 
 // AngularIndication.kt — already shape-parameterised on main: the destructive
@@ -205,11 +205,11 @@ internal fun DrawScope.drawFretBand(color: Color)
 // and adds the third shape.
 internal data class AngularIndication(val shape: Shape) : IndicationNodeFactory
 
-// ForgeSeal.kt (new) — the mark in the control's unit box, exactly two
+// Ornament.kt — the mark in the control's unit box, exactly two
 // segments: the stave and the crossbar. One owner for the frozen fractions.
-internal val UnstruckMark: List<Pair<Offset, Offset>>
+private val UnstruckMark: List<Segment>
 
-// ForgeSeal.kt (new) — one consumer, so no size, label, or colour parameter,
+// Ornament.kt — one consumer, so no size, label, or colour parameter,
 // and no `modifier` either: the control is exactly its own 56dp square, so its
 // semantics bounds and its touch target are one rectangle (the frame's outer
 // half-stroke, 0.75dp, overhangs it). Placement is the caller's, in a padded
@@ -220,12 +220,7 @@ internal val UnstruckMark: List<Pair<Offset, Offset>>
 @Composable internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit)
 ```
 
-`UnstruckMark` lives in `ForgeSeal.kt`, where it belongs, which puts that file's
-class initialiser inside a pure-JVM proof. Every other top-level declaration
-there must therefore stay JVM-safe — the one `private val` holding
-`AngularIndication(NidavellirShapes.Octagon)` is; a top-level `Path`, `Paint`,
-or `Stroke` would not be, and would fail `ForgeSealTest` for a reason that has
-nothing to do with the mark.
+`UnstruckMark` lives in `Ornament.kt` with the other frozen geometry.
 
 Each consumer constructs its own indication inline, as
 `AngularIndication(NidavellirShapes.Card)` and

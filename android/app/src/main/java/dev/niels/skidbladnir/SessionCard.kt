@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.MaterialTheme
@@ -46,12 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
-// The compact roster card (docs/dashboard-compact-roster.md): work and status
-// lead, the dwarf signature flows beside status, and context uses the full
-// footer width. Verbs live behind the overflow, the clickable body's only
-// sibling. M3's `Card(onClick)` hardcodes its ripple, so
-// the body is a plain clickable with the angular press flash
-// (docs/chrome-tokens.md "Interaction states").
+/** The compact roster card: a plain clickable body (M3 Card(onClick) hardcodes its ripple) whose only sibling is the [actions] overflow. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SessionCard(
@@ -59,12 +53,8 @@ internal fun SessionCard(
     machine: MachineState,
     needsInputView: Boolean,
     motionEnabled: Boolean,
-    terminalControlPending: Boolean,
+    actions: List<MenuAction>,
     onOpen: () -> Unit,
-    onGroup: () -> Unit,
-    onStop: () -> Unit,
-    onTerminalClose: () -> Unit,
-    onClose: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val context = visibleSession.context
@@ -73,8 +63,6 @@ internal fun SessionCard(
     val status = sessionStatusContent(session, machine.canMutate, notification, showQueueReason = needsInputView)
     val tone = sessionStatusColor(status.tone)
     val availability = sessionAvailabilityContent(machine)
-    val actions = listOf(MenuAction("change group", machine.canMutate, destructive = false, onGroup)) +
-        terminalLifetimeActions(machine.canMutate && !terminalControlPending, onStop, onTerminalClose, onClose)
     // A plain pane has no runtime to name: its status line already reads `terminal`.
     val profile = when (context) {
         is ExecutionContext.Local -> session.agent?.let { agentLabel(it.provider, it.label) }
@@ -250,9 +238,7 @@ private fun CardFact(
     )
 }
 
-// The status line's leading facet: colour-only decoration beside the literal
-// label, which owns meaning. Fresh working status alone turns its
-// notch (design-language.md §12).
+/** The status line's colour-only leading facet; only fresh working status turns its notch. */
 @Composable
 private fun ActivityFacet(
     working: Boolean,
@@ -294,140 +280,7 @@ private fun ActivityFacet(
     }
 }
 
-internal fun abbreviatedDirectory(directory: String): String {
+private fun abbreviatedDirectory(directory: String): String {
     val segments = directory.split('/').filter(String::isNotEmpty)
     return if (segments.size <= 2) directory else "…/${segments.takeLast(2).joinToString("/")}"
-}
-
-// The Niðavellir seal (design-language.md §11, dwarf-seals.md): a
-// deterministic, pure function of `character.key` via `sealSpec`. Draw order
-// is frozen in dwarf-seals.md: mineral fill, facet planes, beard silhouette,
-// bind-rune, octagon frame, Bone initial.
-@Composable
-internal fun DwarfPortrait(character: CharacterSummary) {
-    val spec = sealSpec(character.key)
-    val metal = if (spec.metal == SealMetal.Gold) Gold else Bronze
-    val label = character.displayName.take(1).uppercase()
-    val density = LocalDensity.current
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .clip(NidavellirShapes.Octagon),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val side = size.minDimension
-
-            drawRect(SealMinerals[spec.mineral])
-
-            // Facet planes: two flat 45° highlight/shadow triangles.
-            drawPath(
-                Path().apply {
-                    moveTo(0f, 0f)
-                    lineTo(w, 0f)
-                    lineTo(0f, h)
-                    close()
-                },
-                Color.White.copy(alpha = 0.045f),
-            )
-            drawPath(
-                Path().apply {
-                    moveTo(w, h * 0.55f)
-                    lineTo(w, h)
-                    lineTo(w * 0.35f, h)
-                    close()
-                },
-                Color.Black.copy(alpha = 0.16f),
-            )
-
-            // Beard silhouette: a trapezoid whose bottom edge is cut with
-            // beardTeeth angular notches, tips shorter than valleys by
-            // beardDepthStep. No curve anywhere (design-language.md §11).
-            val beardTopY = h * 0.60f
-            val beardLeftX = w * 0.24f
-            val beardRightX = w * 0.76f
-            val valleyY = h * 0.88f
-            val tipY = valleyY - (0.10f + spec.beardDepthStep * 0.022f) * h
-            val toothSpan = spec.beardTeeth - 1
-            val toothWidth = (beardRightX - beardLeftX) / toothSpan
-            val beardPath = Path().apply {
-                moveTo(beardLeftX, beardTopY)
-                lineTo(beardRightX, beardTopY)
-                lineTo(beardRightX, tipY)
-                for (tooth in 1..toothSpan) {
-                    lineTo(beardRightX - (tooth - 0.5f) * toothWidth, valleyY)
-                    lineTo(beardRightX - tooth * toothWidth, tipY)
-                }
-                close()
-            }
-            drawPath(beardPath, Color.Black.copy(alpha = 0.34f))
-            drawPath(
-                beardPath,
-                Color.White.copy(alpha = 0.10f),
-                style = Stroke(width = 1f, cap = StrokeCap.Butt, join = StrokeJoin.Miter),
-            )
-
-            // Bind-rune: a shared vertical stave plus every drawn rune's
-            // segments, monoline in the seal's metal (design-language.md
-            // §8 — ornament, never text; carries no contentDescription).
-            val staveX = w * 0.5f
-            val staveTop = h * 0.15f
-            val staveBottom = h * 0.58f
-            val runeWidth = w * 0.30f
-            val bindRune = Path().apply {
-                moveTo(staveX, staveTop)
-                lineTo(staveX, staveBottom)
-                spec.runes.forEach { rune ->
-                    RuneSegments[rune].forEach { seg ->
-                        moveTo(staveX + seg.x0 * runeWidth, staveTop + seg.y0 * (staveBottom - staveTop))
-                        lineTo(staveX + seg.x1 * runeWidth, staveTop + seg.y1 * (staveBottom - staveTop))
-                    }
-                }
-            }
-            drawPath(
-                bindRune,
-                metal,
-                style = Stroke(width = side * 0.045f, cap = StrokeCap.Butt, join = StrokeJoin.Miter),
-            )
-
-            // Octagon frame: neutral base hairline on all 8 edges, Gold
-            // overlaid thicker on the edges set in facetMask. The vertices are
-            // the clip shape's own cut, expanded once in Theme.kt, so the two
-            // cannot drift; their order is what facetMask indexes.
-            val vertices = octagonVertices(size)
-            for (edge in vertices.indices) {
-                drawLine(
-                    color = Color(0xFF3A3E45),
-                    start = vertices[edge],
-                    end = vertices[(edge + 1) % vertices.size],
-                    strokeWidth = side * 0.012f,
-                    cap = StrokeCap.Butt,
-                )
-            }
-            for (edge in vertices.indices) {
-                if ((spec.facetMask shr edge) and 1 == 1) {
-                    drawLine(
-                        color = Gold,
-                        start = vertices[edge],
-                        end = vertices[(edge + 1) % vertices.size],
-                        strokeWidth = side * 0.025f,
-                        cap = StrokeCap.Butt,
-                    )
-                }
-            }
-        }
-        Text(
-            text = label,
-            color = Bone,
-            fontFamily = NidavellirType.Display,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
-            // The initial is part of the seal; the neighboring full name scales with text settings.
-            fontSize = with(density) { 12.dp.toSp() },
-            lineHeight = with(density) { 16.dp.toSp() },
-            style = MaterialTheme.typography.labelMedium,
-        )
-    }
 }

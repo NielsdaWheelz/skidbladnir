@@ -47,9 +47,9 @@ transient space, and preserve framework-owned interaction and truthful progress.
 
 ```text
 fixed dashboard chrome
-`- live target? PullToRefreshBox : inert collection
-   |- active-only collection-edge progress
-   `- one LazyVerticalGrid(top = 12dp)
+`- Box.pullToRefresh(enabled = a machine is Ready)
+   |- one LazyVerticalGrid(top = 12dp)
+   `- collection-edge progress while refreshing or pulled
 ```
 
 The progress band is `2dp` high, inset `12dp` from both horizontal edges, at
@@ -74,10 +74,10 @@ zero animator duration, checking renders the complete static band at
 
 ## Architecture and API design
 
-`DashboardScreen.kt` remains the sole presentation owner. Keep
-`PullToRefreshBox`, `PullToRefreshState`, and the private indicator composable;
-reuse Material's linear progress primitive and the existing `Gold` token.
-`DashboardDwarfGrid` owns its fixed `12dp` inset locally.
+`DashboardScreen.kt` remains the sole presentation owner. Its private
+`DwarfCollection` applies Material's `pullToRefresh` modifier and draws the
+indicator inline with Material's linear progress primitive and the existing
+`Gold` token; it owns its fixed `12dp` inset locally.
 
 The API-36 client observes the public Android animator-duration-scale boundary
 while the collection indicator is composed. It reads the initial value,

@@ -25,8 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// A surface lists its actions once, and its menu or sheet renders that list
-// through `ActionRows`, so order, label, enablement and tone have one source.
+// A surface lists its actions once; its menu or sheet renders that list through `ActionRows`.
 internal class MenuAction(
     val label: String,
     val enabled: Boolean,
@@ -34,9 +33,7 @@ internal class MenuAction(
     val perform: () -> Unit,
 )
 
-// The terminal lifetime controls in their one order (agent-control.md): the
-// unconfirmed interrupt, then the two confirmed closures, the most complete
-// last and farthest from the anchor.
+// The terminal lifetime verbs in their one order: the interrupt, then the two confirmed closures, most complete last.
 internal fun terminalLifetimeActions(
     enabled: Boolean,
     onStop: () -> Unit,
@@ -48,13 +45,8 @@ internal fun terminalLifetimeActions(
     MenuAction(TERMINAL_CLOSE_ACTION, enabled, destructive = true, onClose),
 )
 
-// The overflow: a 48dp target carrying a drawn mark, and the menu it anchors.
-// The mark has no text, so `description` names the control.
-// Enablement is derived, never passed: the trigger is live while any verb is.
-// An open menu follows its list as it recomposes, so a fence that lands while
-// it is open disables items in place rather than closing or retargeting them.
-// `markCenterY` aligns the mark to its caller's content; the target stays
-// a full 48dp square from the anchor's top.
+// A 48dp overflow trigger, live while any action is, and its menu. An open menu disables items in place as its
+// list recomposes. `markCenterY` aligns the mark to the caller's content; the target stays 48dp from the anchor's top.
 @Composable
 internal fun ActionMenuButton(
     description: String,
@@ -81,7 +73,7 @@ internal fun ActionMenuButton(
                 enabled -> Muted
                 else -> Muted.copy(alpha = NidavellirMotion.DisabledAlpha.Content)
             }
-            // Three struck studs, not round dots: §6 has no circles.
+            // Square studs: the design language has no circles.
             Canvas(Modifier.size(48.dp)) {
                 val stud = 3.dp.toPx()
                 val pitch = 6.dp.toPx()
@@ -92,12 +84,11 @@ internal fun ActionMenuButton(
                 }
             }
         }
-        // Carved, not printed: the menu is one tonal step up with no shadow.
+        // Carved, not printed: the theme's raised container and no shadow.
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             shape = NidavellirShapes.Card,
-            containerColor = RaisedSurface,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
         ) {
@@ -106,18 +97,15 @@ internal fun ActionMenuButton(
     }
 }
 
-// The rows of one action list, shared by menus and the terminal's session
-// sheet. Each row dismisses its surface before acting.
+// The rows of one action list for menus and the terminal's session sheet; each row dismisses its surface first.
 @Composable
 internal fun ActionRows(actions: List<MenuAction>, dismiss: () -> Unit) {
     actions.forEachIndexed { index, action ->
-        // The destructive run opens with a rule: the closures are a
-        // different kind of verb, and colour must not be their only cue.
+        // A rule opens the destructive run, so colour is not its only cue.
         if (action.destructive && actions.getOrNull(index - 1)?.destructive == false) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Bone.copy(alpha = 0.12f))
         }
-        // M3's DropdownMenuItem hardcodes a circular ripple (§12 forbids it), so the
-        // row is built here with the angular flash. Controls speak the body face (§9).
+        // M3's DropdownMenuItem hardcodes a circular ripple, so the row is built here with the angular flash.
         Box(
             modifier = Modifier
                 .fillMaxWidth()

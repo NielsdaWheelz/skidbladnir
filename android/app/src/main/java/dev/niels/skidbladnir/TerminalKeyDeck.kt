@@ -90,7 +90,7 @@ internal fun TerminalKeyDeck(
                                 modifier = Modifier
                                     .width(cellWidth)
                                     .heightIn(min = MINIMUM_KEY_SIZE),
-                                shape = NidavellirShapes.Key,
+                                shape = NidavellirShapes.Chip,
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     containerColor = if (armed) Gold.copy(alpha = 0.18f) else Color.Transparent,
                                     contentColor = if (armed) Gold else Bone,

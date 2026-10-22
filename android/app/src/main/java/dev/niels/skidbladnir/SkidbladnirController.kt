@@ -30,7 +30,7 @@ internal sealed interface SkidbladnirUiState {
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
         val close: CloseState?,
-        val groupEditor: GroupEditor? = null,
+        val groupEditor: SessionEdit? = null,
         val needsInputSettled: Boolean = true,
         val terminalControlPending: Boolean = false,
     ) : SkidbladnirUiState
@@ -44,7 +44,7 @@ internal sealed interface SkidbladnirUiState {
         val viewport: TerminalViewport,
         val textSize: TerminalTextSizeState,
         val close: CloseState?,
-        val rename: RenameState? = null,
+        val rename: SessionEdit? = null,
         val terminalControlPending: Boolean = false,
         val shellPending: Boolean = false,
     ) : SkidbladnirUiState
@@ -446,10 +446,6 @@ internal class SkidbladnirController(
         updateWorkingDirectoryPicker { picker -> setWorkingDirectoryHidden(picker, showHidden) }
     }
 
-    fun updateWorkingDirectoryViewport(viewport: DirectoryViewport) {
-        updateWorkingDirectoryPicker { picker -> updateWorkingDirectoryViewport(picker, viewport) }
-    }
-
     fun focusWorkingDirectory() {
         val forge = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return
         if (forge.directorySearch is DirectorySearchState.Loading || forge.directorySearch is DirectorySearchState.Ready) return
@@ -705,20 +701,19 @@ internal class SkidbladnirController(
         val machine = machines[target.machineHandle] ?: return
         if (!machine.canMutate) return
         val observed = machine.inventory.observedSession(target.session) ?: return
-        state = dashboard.copy(groupEditor = GroupEditor(target.copy(session = observed), observed.group?.text.orEmpty()))
+        state = dashboard.copy(groupEditor = beginGroupEdit(target.copy(session = observed)))
     }
 
     fun updateGroupDraft(draft: String) {
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
         val editor = dashboard.groupEditor ?: return
-        if (editor.phase == GroupPhase.Editing) {
-            state = dashboard.copy(groupEditor = editor.copy(draft = draft, error = null))
-        }
+        state = dashboard.copy(groupEditor = editor.withDraft(draft))
     }
 
     fun dismissGroupEditor() {
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
-        if (dashboard.groupEditor?.phase != GroupPhase.Sending) state = dashboard.copy(groupEditor = null)
+        val editor = dashboard.groupEditor ?: return
+        state = dashboard.copy(groupEditor = editor.dismissed())
     }
 
     fun submitGroup() {
@@ -726,16 +721,16 @@ internal class SkidbladnirController(
         val editor = dashboard.groupEditor ?: return
         val handle = editor.target.machineHandle
         val machine = machines[handle] ?: return
-        if (!groupSubmissionAdmissible(editor, machine) || !machines.canMutate(handle)) return
+        if (!editor.groupAdmits(machine) || !machines.canMutate(handle)) return
         val label = if (editor.draft.isEmpty()) null else checkNotNull(GroupLabel.fromDraft(editor.draft))
-        val sending = editor.copy(phase = GroupPhase.Sending, error = null)
+        val sending = editor.copy(phase = EditPhase.Sending, error = null)
         state = dashboard.copy(groupEditor = sending)
         machines.mutate(handle, Reservation.Metadata, { GatewayClient.setSessionGroup(it, editor.target, label) }) { fence, result ->
-            val completed = completeGroupHttp(sending, result)
-            if (completed.phase == GroupPhase.Editing) machines.settleMetadata(handle, fence)
+            val reply = sending.afterReply(result)
+            if (!reply.needsRead) machines.settleMetadata(handle, fence)
             val current = state as? SkidbladnirUiState.Dashboard
-            if (current?.groupEditor == sending) state = current.copy(groupEditor = completed)
-            if (completed.phase is GroupPhase.Checking) machines.refresh(handle)
+            if (current?.groupEditor == sending) state = current.copy(groupEditor = reply.edit)
+            if (reply.needsRead) machines.refresh(handle)
         }
     }
 
@@ -743,14 +738,11 @@ internal class SkidbladnirController(
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
         val editor = dashboard.groupEditor ?: return
         if (editor.target.machineHandle != handle) return
-        val machine = machines[handle] ?: return
-        val updated = reconcileGroupEditor(editor, machine)
-        val missing = machine.inventory.lastSnapshot()?.inventory?.sessions?.none {
-            it.sameLifetime(editor.target.session)
-        } == true
+        // The caller has just published this machine's Fresh snapshot, so absence means the lifetime ended.
+        val observed = (machines[handle] ?: return).inventory.observedSession(editor.target.session)
         state = dashboard.copy(
-            groupEditor = updated,
-            notice = if (missing) "that session lifetime is no longer available." else dashboard.notice,
+            groupEditor = editor.afterRead(observed),
+            notice = if (observed == null) "that session lifetime is no longer available." else dashboard.notice,
         )
     }
 
@@ -937,47 +929,41 @@ internal class SkidbladnirController(
     fun updateRenameDraft(draft: String) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val rename = current.rename ?: return
-        val updated = updateRenameDraft(rename, draft)
+        val updated = rename.withDraft(draft)
         if (updated != rename) state = current.copy(rename = updated)
     }
 
     fun dismissRename() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val rename = current.rename ?: return
-        val updated = dismissRename(rename)
+        val updated = rename.dismissed()
         if (updated != rename) state = current.copy(rename = updated)
     }
 
-    fun submitRename() = submitNaming(automatic = false)
+    fun submitRename() {
+        val rename = (state as? SkidbladnirUiState.Terminal)?.rename ?: return
+        submitNaming(SessionNaming.Manual(rename.draft))
+    }
 
-    fun useAutomaticTitle() = submitNaming(automatic = true)
+    fun useAutomaticTitle() = submitNaming(SessionNaming.Automatic)
 
-    private fun submitNaming(automatic: Boolean) {
+    private fun submitNaming(naming: SessionNaming) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val rename = current.rename ?: return
-        val sending = beginRenameSending(
-            state = rename,
-            automatic = automatic,
-            terminalTarget = current.target,
-            terminalActionsAdmissible = terminalActionAdmissible(current.machine.canMutate, current.connection),
-        ) ?: return
+        if (!rename.renameAdmits(naming, current.target, terminalActionAdmissible(current.machine.canMutate, current.connection))) return
+        val sending = rename.sendingRename(naming)
         val handle = current.target.machineHandle
         if (!machines.canMutate(handle)) return
         val attempt = current.attempt
         state = current.copy(rename = sending)
         machines.mutate(handle, Reservation.Metadata, {
-            GatewayClient.renameSession(it, sending.target, sending.expectedNaming, requireNotNull(sending.submittedNaming))
+            GatewayClient.renameSession(it, sending.target, sending.expectedNaming, naming)
         }) { fence, result ->
-            val transition = completeRenameHttp(sending, result)
-            if (transition.clearMutationFence) machines.settleMetadata(handle, fence)
+            val reply = sending.afterReply(result)
+            if (!reply.needsRead) machines.settleMetadata(handle, fence)
             val terminal = state as? SkidbladnirUiState.Terminal
-            val activeRename = terminal?.rename
-            if (terminal?.attempt == attempt && activeRename?.phase == RenamePhase.Sending &&
-                activeRename.target == sending.target && activeRename.draft == sending.draft
-            ) {
-                state = terminal.copy(rename = transition.state)
-            }
-            if (transition.requireInventoryRead) machines.refresh(handle)
+            if (terminal?.attempt == attempt && terminal.rename == sending) state = terminal.copy(rename = reply.edit)
+            if (reply.needsRead) machines.refresh(handle)
         }
     }
 
@@ -1132,9 +1118,16 @@ internal class SkidbladnirController(
     private fun advanceTerminalRename(handle: MachineHandle) {
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
         if (terminal.target.machineHandle != handle) return
-        val reconciled = reconcileTerminalRename(terminal)
-        if (reconciled.detachTransport) leaveTerminal()
-        state = reconciled.terminal
+        // The caller has just published this machine's Fresh snapshot, so absence means the lifetime ended.
+        val observed = terminal.machine.inventory.observedSession(terminal.target.session)
+        if (observed == null) {
+            if (terminal.rename == null) return
+            leaveTerminal()
+            state = terminal.copy(rename = null, connection = TerminalUiStatus.ReconnectRequired(
+                "${terminal.machine.machine.label.text}: that session lifetime is no longer available."))
+            return
+        }
+        state = terminal.copy(target = terminal.target.copy(session = observed), rename = terminal.rename?.afterRead(observed))
     }
 
     /** The machine is already downgraded and unpolled; this routes the ui away from it. */

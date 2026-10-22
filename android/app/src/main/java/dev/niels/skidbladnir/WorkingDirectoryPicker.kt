@@ -1,8 +1,8 @@
 package dev.niels.skidbladnir
 
+import androidx.compose.foundation.lazy.LazyListState
 import java.util.Locale
 
-private const val MAXIMUM_WORKING_DIRECTORY_FILTER_SCALARS = 256
 private const val MAXIMUM_WORKING_DIRECTORY_HISTORY = 32
 
 internal sealed interface ForgeFailure {
@@ -25,39 +25,16 @@ internal data class WorkingDirectoryPickerState(
 
 internal data class DirectoryView(
     val listing: DirectoryListing,
-    val filter: String,
-    val showHidden: Boolean,
-    val viewport: DirectoryViewport,
+    val filter: String = "",
+    val showHidden: Boolean = false,
+    /** This view's list position: new with each listing, kept in history and the forge for Back and app switches. */
+    val scroll: LazyListState = LazyListState(),
 )
 
-internal sealed interface DirectoryViewport {
-    data object Top : DirectoryViewport
-    data class Anchor(val directory: HomeDirectory, val offset: Int) : DirectoryViewport {
-        init {
-            require(offset >= 0)
-        }
-    }
-}
-
-internal sealed interface RetainedDirectoryView {
-    data object None : RetainedDirectoryView
-    data class Present(val view: DirectoryView) : RetainedDirectoryView
-}
-
 internal sealed interface DirectoryLoad {
-    data class Loading(
-        val sequence: Long,
-        val candidate: HomeDirectory,
-        val retained: RetainedDirectoryView,
-    ) : DirectoryLoad
-
+    data class Loading(val sequence: Long, val candidate: HomeDirectory, val retained: DirectoryView?) : DirectoryLoad
     data class Loaded(val view: DirectoryView) : DirectoryLoad
-
-    data class Failed(
-        val candidate: HomeDirectory,
-        val retained: RetainedDirectoryView,
-        val failure: DirectoryBrowseFailure,
-    ) : DirectoryLoad
+    data class Failed(val candidate: HomeDirectory, val retained: DirectoryView?, val failure: DirectoryBrowseFailure) : DirectoryLoad
 }
 
 internal enum class DirectoryBrowseFailure { Transport, Unavailable, TooLarge, Internal }
@@ -84,7 +61,7 @@ internal fun browseWorkingDirectoryHome(
         picker = WorkingDirectoryPickerState(
             instance = pickerInstance,
             machine = machine.machine,
-            load = DirectoryLoad.Loading(1, HomeDirectory.Home, RetainedDirectoryView.None),
+            load = DirectoryLoad.Loading(1, HomeDirectory.Home, null),
             history = emptyList(),
             nextSequence = 2,
         ),
@@ -98,13 +75,13 @@ internal fun openWorkingDirectoryChild(
 ): WorkingDirectoryRequestStart? {
     val view = picker.actionableDirectoryView() ?: return null
     if (view.listing.children.none { entry -> entry.directory == directory }) return null
-    return beginWorkingDirectoryRequest(picker, directory, RetainedDirectoryView.Present(view))
+    return beginWorkingDirectoryRequest(picker, directory, view)
 }
 
 internal fun openWorkingDirectoryParent(picker: WorkingDirectoryPickerState): WorkingDirectoryRequestStart? {
     val view = picker.actionableDirectoryView() ?: return null
     val parent = view.listing.parent as? ParentDirectory.Available ?: return null
-    return beginWorkingDirectoryRequest(picker, parent.directory, RetainedDirectoryView.Present(view))
+    return beginWorkingDirectoryRequest(picker, parent.directory, view)
 }
 
 internal fun retryWorkingDirectory(picker: WorkingDirectoryPickerState): WorkingDirectoryRequestStart? {
@@ -115,7 +92,7 @@ internal fun retryWorkingDirectory(picker: WorkingDirectoryPickerState): Working
 private fun beginWorkingDirectoryRequest(
     picker: WorkingDirectoryPickerState,
     directory: HomeDirectory,
-    retained: RetainedDirectoryView,
+    retained: DirectoryView?,
 ): WorkingDirectoryRequestStart {
     val sequence = picker.nextSequence
     return WorkingDirectoryRequestStart(
@@ -137,14 +114,9 @@ internal fun completeWorkingDirectoryRequest(
     if (picker.instance != request.pickerInstance || loading.sequence != request.sequence) return null
     return when (result) {
         is GatewayResult.Success -> picker.copy(
-            load = DirectoryLoad.Loaded(
-                DirectoryView(listing = result.value, filter = "", showHidden = false, viewport = DirectoryViewport.Top),
-            ),
-            history = when (val retained = loading.retained) {
-                RetainedDirectoryView.None -> picker.history
-                is RetainedDirectoryView.Present ->
-                    (picker.history + retained.view).takeLast(MAXIMUM_WORKING_DIRECTORY_HISTORY)
-            },
+            load = DirectoryLoad.Loaded(DirectoryView(result.value)),
+            history = loading.retained?.let { (picker.history + it).takeLast(MAXIMUM_WORKING_DIRECTORY_HISTORY) }
+                ?: picker.history,
         )
         is GatewayResult.Failure -> {
             val browse = when (val failure = result.failure) {
@@ -163,95 +135,34 @@ internal fun completeWorkingDirectoryRequest(
 internal fun updateWorkingDirectoryFilter(
     picker: WorkingDirectoryPickerState,
     filter: String,
-): WorkingDirectoryPickerState {
-    if (filter.codePointCount(0, filter.length) > MAXIMUM_WORKING_DIRECTORY_FILTER_SCALARS) return picker
-    return picker.updateVisibleDirectoryView { view ->
-        view.copy(filter = filter).withVisibleViewport()
-    }
-}
+): WorkingDirectoryPickerState = picker.updateVisibleDirectoryView { view -> view.copy(filter = filter) }
 
 internal fun setWorkingDirectoryHidden(
     picker: WorkingDirectoryPickerState,
     showHidden: Boolean,
-): WorkingDirectoryPickerState = picker.updateVisibleDirectoryView { view ->
-    view.copy(showHidden = showHidden).withVisibleViewport()
-}
-
-private fun DirectoryView.withVisibleViewport(): DirectoryView {
-    val anchor = viewport as? DirectoryViewport.Anchor ?: return this
-    return if (visibleWorkingDirectoryEntries(this).any { it.directory == anchor.directory }) {
-        this
-    } else {
-        copy(viewport = DirectoryViewport.Top)
-    }
-}
-
-internal fun updateWorkingDirectoryViewport(
-    picker: WorkingDirectoryPickerState,
-    viewport: DirectoryViewport,
-): WorkingDirectoryPickerState = picker.updateVisibleDirectoryView { view ->
-    if (viewport is DirectoryViewport.Anchor &&
-        view.listing.children.none { entry -> entry.directory == viewport.directory }
-    ) {
-        view
-    } else {
-        view.copy(viewport = viewport)
-    }
-}
+): WorkingDirectoryPickerState = picker.updateVisibleDirectoryView { view -> view.copy(showHidden = showHidden) }
 
 private fun WorkingDirectoryPickerState.updateVisibleDirectoryView(
     transform: (DirectoryView) -> DirectoryView,
-): WorkingDirectoryPickerState {
-    val updated = when (val load = load) {
-        is DirectoryLoad.Loaded -> load.copy(view = transform(load.view))
-        is DirectoryLoad.Loading -> load.copy(retained = load.retained.map(transform))
-        is DirectoryLoad.Failed -> load.copy(retained = load.retained.map(transform))
-    }
-    return copy(load = updated)
-}
+): WorkingDirectoryPickerState = copy(load = when (val load = load) {
+    is DirectoryLoad.Loaded -> load.copy(view = transform(load.view))
+    is DirectoryLoad.Loading -> load.copy(retained = load.retained?.let(transform))
+    is DirectoryLoad.Failed -> load.copy(retained = load.retained?.let(transform))
+})
 
-private fun RetainedDirectoryView.map(
-    transform: (DirectoryView) -> DirectoryView,
-): RetainedDirectoryView = when (this) {
-    RetainedDirectoryView.None -> this
-    is RetainedDirectoryView.Present -> copy(view = transform(view))
-}
-
-internal fun visibleWorkingDirectoryEntries(view: DirectoryView): List<DirectoryEntry> {
-    val visible = view.listing.children.withIndex().filter { indexed ->
-        view.showHidden || !indexed.value.directory.hidden
-    }
-    if (view.filter.isEmpty()) return visible.map { indexed -> indexed.value }
+/** The folders the view shows, each with its server ordinal as index. */
+internal fun visibleWorkingDirectoryEntries(view: DirectoryView): List<IndexedValue<DirectoryEntry>> {
+    val visible = view.listing.children.withIndex().filter { view.showHidden || !it.value.directory.hidden }
+    if (view.filter.isEmpty()) return visible
     val query = view.filter.lowercase(Locale.ROOT)
-    return visible.mapNotNull { indexed ->
-        val basename = indexed.value.directory.basename.lowercase(Locale.ROOT)
-        directoryMatchRank(basename, query)?.let { rank ->
-            RankedDirectoryEntry(
-                entry = indexed.value,
-                rank = rank,
-                basenameScalars = indexed.value.directory.basename.codePointCount(
-                    0,
-                    indexed.value.directory.basename.length,
-                ),
-                serverIndex = indexed.index,
-            )
+    // Rank, then fewer scalars in the basename; the sort is stable, so remaining ties keep server order.
+    return visible
+        .mapNotNull { entry ->
+            directoryMatchRank(entry.value.directory.basename.lowercase(Locale.ROOT), query)?.let { rank -> rank to entry }
         }
-    }.sortedWith(
-        compareBy<RankedDirectoryEntry> { it.rank }
-            .thenBy { it.basenameScalars }
-            .thenBy { it.serverIndex },
-    ).map(RankedDirectoryEntry::entry)
+        .sortedWith(compareBy({ it.first }, { it.second.value.directory.basename.run { codePointCount(0, length) } }))
+        .map { it.second }
 }
-
-internal fun workingDirectoryHasHiddenEntries(view: DirectoryView): Boolean =
-    view.listing.children.any { entry -> entry.directory.hidden }
-
-private data class RankedDirectoryEntry(
-    val entry: DirectoryEntry,
-    val rank: Int,
-    val basenameScalars: Int,
-    val serverIndex: Int,
-)
 
 private fun directoryMatchRank(candidate: String, query: String): Int? = when {
     candidate == query -> 0
@@ -279,34 +190,21 @@ internal fun workingDirectoryPickerAfterForegroundInvalidation(forge: ForgeState
     val cleared = forge.copy(directorySearch = DirectorySearchState.Idle)
     val surface = cleared.surface as? ForgeSurface.DirectoryPicker ?: return cleared
     val loading = surface.picker.load as? DirectoryLoad.Loading ?: return cleared
-    return when (val retained = loading.retained) {
-        RetainedDirectoryView.None -> cleared.copy(surface = ForgeSurface.Form)
-        is RetainedDirectoryView.Present -> cleared.copy(surface = surface.copy(
-            picker = surface.picker.copy(load = DirectoryLoad.Loaded(retained.view)),
-        ))
-    }
+    val retained = loading.retained ?: return cleared.copy(surface = ForgeSurface.Form)
+    return cleared.copy(surface = surface.copy(picker = surface.picker.copy(load = DirectoryLoad.Loaded(retained))))
 }
 
 internal fun workingDirectoryBack(forge: ForgeState): ForgeState {
     val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
     val picker = surface.picker
-    val retained = when (val load = picker.load) {
-        is DirectoryLoad.Loading -> load.retained
-        is DirectoryLoad.Failed -> load.retained
-        is DirectoryLoad.Loaded -> {
-            if (picker.history.isEmpty()) return forge.copy(surface = ForgeSurface.Form)
-            return forge.copy(surface = surface.copy(picker = picker.copy(
-                load = DirectoryLoad.Loaded(picker.history.last()),
-                history = picker.history.dropLast(1),
-            )))
+    val previous = when (val load = picker.load) {
+        is DirectoryLoad.Loading -> load.retained?.let { picker.copy(load = DirectoryLoad.Loaded(it)) }
+        is DirectoryLoad.Failed -> load.retained?.let { picker.copy(load = DirectoryLoad.Loaded(it)) }
+        is DirectoryLoad.Loaded -> picker.history.lastOrNull()?.let {
+            picker.copy(load = DirectoryLoad.Loaded(it), history = picker.history.dropLast(1))
         }
     }
-    return when (retained) {
-        RetainedDirectoryView.None -> forge.copy(surface = ForgeSurface.Form)
-        is RetainedDirectoryView.Present -> forge.copy(surface = surface.copy(
-            picker = picker.copy(load = DirectoryLoad.Loaded(retained.view)),
-        ))
-    }
+    return forge.copy(surface = previous?.let { surface.copy(picker = it) } ?: ForgeSurface.Form)
 }
 
 internal fun cancelWorkingDirectoryPicker(forge: ForgeState): ForgeState =
@@ -323,12 +221,11 @@ internal fun useCurrentWorkingDirectory(forge: ForgeState): ForgeState {
     )
 }
 
-internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean =
-    this is ForgeFailure.Definite &&
-        rejection.code in setOf(ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable)
-
+/** Choosing a folder clears a rejection of the previous one. */
 internal fun ForgeFailure.afterWorkingDirectoryChoice(): ForgeFailure =
-    if (isWorkingDirectoryRejection()) ForgeFailure.None else this
+    if (this is ForgeFailure.Definite &&
+        rejection.code in setOf(ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable)
+    ) ForgeFailure.None else this
 
 internal fun updateForgeState(forge: ForgeState, proposed: ForgeForm): ForgeState {
     val machineChanged = proposed.machineHandle != forge.form.machineHandle
@@ -344,8 +241,5 @@ internal fun updateForgeState(forge: ForgeState, proposed: ForgeForm): ForgeStat
 private fun WorkingDirectoryPickerState.actionableDirectoryView(): DirectoryView? = when (val load = load) {
     is DirectoryLoad.Loading -> null
     is DirectoryLoad.Loaded -> load.view
-    is DirectoryLoad.Failed -> when (val retained = load.retained) {
-        RetainedDirectoryView.None -> null
-        is RetainedDirectoryView.Present -> retained.view
-    }
+    is DirectoryLoad.Failed -> load.retained
 }

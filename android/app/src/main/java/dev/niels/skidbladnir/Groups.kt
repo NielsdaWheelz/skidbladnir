@@ -6,7 +6,6 @@ import java.security.MessageDigest
 import java.util.Locale
 
 internal const val GROUP_INVALID = "use 1–64 nfc characters; only interior ordinary spaces, without display controls."
-internal const val GROUP_OUTCOME_UNKNOWN = "group outcome unknown. review the current membership before another attempt."
 
 internal class GroupLabel private constructor(val text: String) {
     companion object {
@@ -115,6 +114,25 @@ internal fun observedGroups(machines: List<MachineState>): List<GroupLabel> = ma
     .mapNotNull(TmuxSession::group).distinct()
     .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
 
+/** The view strip's choices in order: needs input, all, observed groups (and a selected label not observed), an unresolved selected group, then unassigned when selected or present. */
+internal fun dashboardViews(machines: List<MachineState>, selected: DashboardViewSelection): List<DashboardViewSelection> {
+    val labels = observedGroups(machines).toMutableList()
+    val selectedGroup = selected as? DashboardViewSelection.Named
+    selectedGroup?.label?.let { if (it !in labels) labels.add(it) }
+    return buildList<DashboardViewSelection> {
+        add(DashboardViewSelection.NeedsInput)
+        add(DashboardViewSelection.All)
+        labels.sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
+            .forEach { add(DashboardViewSelection.Named(groupFingerprint(it), it)) }
+        if (selectedGroup != null && selectedGroup.label == null && none { it.key == selectedGroup.key }) {
+            add(selectedGroup)
+        }
+        if (selected == DashboardViewSelection.Unassigned || machines.any { machine ->
+                machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().any { it.group == null }
+            }) add(DashboardViewSelection.Unassigned)
+    }
+}
+
 internal data class GroupCandidates(val observed: List<GroupLabel>, val literal: GroupLabel?)
 
 internal fun groupCandidates(text: String, labels: List<GroupLabel>): GroupCandidates {
@@ -198,53 +216,5 @@ internal fun dashboardItems(
                 }
             }
         }
-    }
-}
-
-internal sealed interface GroupPhase {
-    data object Editing : GroupPhase
-    data object Sending : GroupPhase
-    data class Checking(val acknowledged: Boolean) : GroupPhase
-}
-
-internal data class GroupEditor(
-    val target: SessionTarget,
-    val draft: String,
-    val phase: GroupPhase = GroupPhase.Editing,
-    val error: String? = null,
-)
-
-internal fun groupSubmissionAdmissible(editor: GroupEditor, machine: MachineState): Boolean {
-    if (editor.phase != GroupPhase.Editing || !machine.canMutate ||
-        machine.machine.handle != editor.target.machineHandle) return false
-    val current = machine.inventory.observedSession(editor.target.session) ?: return false
-    val label = if (editor.draft.isEmpty()) null else GroupLabel.fromDraft(editor.draft) ?: return false
-    return label != current.group
-}
-
-internal fun completeGroupHttp(editor: GroupEditor, result: GatewayResult<Unit>): GroupEditor = when (result) {
-    is GatewayResult.Success -> editor.copy(phase = GroupPhase.Checking(acknowledged = true), error = null)
-    is GatewayResult.Failure -> {
-        val failure = result.failure
-        val notSent = failure is GatewayFailure.Api && failure.dispatch == MutationDispatch.NotSent
-        val validationRejected = notSent && failure.code in setOf(
-            ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge, ApiErrorCode.GroupInvalid,
-        )
-        editor.copy(
-            phase = if (validationRejected) GroupPhase.Editing else GroupPhase.Checking(acknowledged = false),
-            error = if (notSent) gatewayFailureMessage(failure) else GROUP_OUTCOME_UNKNOWN,
-        )
-    }
-}
-
-internal fun reconcileGroupEditor(editor: GroupEditor, machine: MachineState): GroupEditor? {
-    if (editor.phase == GroupPhase.Sending) return editor
-    val current = machine.inventory.observedSession(editor.target.session) ?: return null
-    return when (val phase = editor.phase) {
-        GroupPhase.Sending -> error("sending is handled before inventory reconciliation")
-        GroupPhase.Editing -> editor.copy(target = editor.target.copy(session = current))
-        is GroupPhase.Checking -> if (phase.acknowledged) null else editor.copy(
-            target = editor.target.copy(session = current), phase = GroupPhase.Editing,
-        )
     }
 }

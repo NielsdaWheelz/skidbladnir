@@ -15,22 +15,15 @@ import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-// The dwarven press flash (design-language.md §12): a circular ripple is
-// off-grammar, so this draws an inset copy of the component's own cut-corner
-// outline at Bone, fading in and out at the pressed state-layer alpha. §12
-// mandates one implementation used everywhere, so the shape is the caller's —
-// the card presses as a Card, the kill control as a Cleft, the Forge seal as
-// an Octagon.
-// A data class, not an object: structural equals/hashCode let a call site
-// construct `AngularIndication(NidavellirShapes.Cleft)` inline without
-// Modifier.clickable churning across recompositions, which is the guarantee
-// the singleton's identity equals used to provide.
+// The press flash: an inset Bone outline of the caller's own shape, never a ripple.
+// A data class so inline construction keeps `clickable` stable.
 internal data class AngularIndication(val shape: Shape) : IndicationNodeFactory {
     override fun create(interactionSource: InteractionSource): DelegatableNode =
         AngularIndicationNode(interactionSource, shape)
 }
 
 private val PressInset = 2.dp
+private const val PressedAlpha = 0.10f
 
 private class AngularIndicationNode(
     private val interactionSource: InteractionSource,
@@ -40,8 +33,7 @@ private class AngularIndicationNode(
 
     override fun onAttach() {
         coroutineScope.launch {
-            // Keyed by press instance: a synthetic press/release pair (TalkBack,
-            // keyboard activation) must not end a still-held physical press.
+            // Keyed by press, so a synthetic press/release pair cannot end a held physical press.
             val presses = mutableSetOf<PressInteraction.Press>()
             interactionSource.interactions.collect { interaction ->
                 val wasPressed = presses.isNotEmpty()
@@ -54,7 +46,7 @@ private class AngularIndicationNode(
                 if (pressed != wasPressed) {
                     launch {
                         alpha.animateTo(
-                            if (pressed) NidavellirMotion.StateLayer.Pressed else 0f,
+                            if (pressed) PressedAlpha else 0f,
                             NidavellirMotion.EffectsTween,
                         )
                     }

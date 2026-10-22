@@ -272,28 +272,8 @@ internal fun TerminalScreen(
             onConfirm = controller::confirmClose,
         )
     }
-    state.rename?.let { rename ->
-        SessionRenameSheet(
-            machine = state.machine.machine,
-            terminalTarget = state.target,
-            state = rename,
-            terminalActionsAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
-            onDraftChange = controller::updateRenameDraft,
-            onDismiss = controller::dismissRename,
-            onSubmit = controller::submitRename,
-            onAutomatic = controller::useAutomaticTitle,
-        )
-    }
-    terminalTextSizeSheet(state.textSize, state.connection)?.let { textSize ->
-        TerminalTextSizeSheet(
-            textSize = textSize,
-            connection = state.connection,
-            onDecrease = controller::decreaseTextSize,
-            onIncrease = controller::increaseTextSize,
-            onReset = controller::resetTextSize,
-            onDismiss = controller::dismissTextSize,
-        )
-    }
+    state.rename?.let { RenameSheet(it, state, controller) }
+    terminalTextSizeSheet(state.textSize, state.connection)?.let { TerminalTextSizeSheet(it, state.connection, controller) }
 }
 
 // The whole top chrome: one stratum, one row. Detach leads; the rest of the
@@ -383,9 +363,7 @@ private fun TerminalRail(
     }
 }
 
-// Everything the rail does not show. Rows reuse the existing sheets and
-// confirmations rather than re-rendering them, so each action keeps exactly
-// one owner; this sheet only routes to it.
+// Everything the rail does not show; each row routes to the sheet or confirmation that owns its action.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TerminalSessionSheet(
@@ -401,8 +379,7 @@ private fun TerminalSessionSheet(
     val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
     val status = sessionStatusContent(session, state.machine.canMutate, notification)
     val actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection)
-    // A reconciling rename keeps `rename` set after its sheet hides; every row
-    // whose controller entry would then refuse is disabled, never silently inert.
+    // A checking rename keeps `rename` set after its sheet hides; rows the controller would then refuse are disabled.
     val sheetFree = state.close == null && state.rename == null
     val renameEnabled = sheetFree && actionAdmissible
     val actionsEnabled = !state.terminalControlPending && sheetFree && actionAdmissible
@@ -427,14 +404,12 @@ private fun TerminalSessionSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = NidavellirShapes.Sheet,
-        containerColor = DeepSurface,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                // 4dp here plus each row's own 16dp puts every label, fact and
-                // action on the sheets' common 20dp text edge.
+                // 4dp plus each row's own 16dp lands on the sheets' 20dp text edge.
                 .padding(horizontal = 4.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -474,9 +449,7 @@ private fun TerminalSessionSheet(
                     modifier = Modifier.padding(horizontal = 16.dp))
             }
             Column(Modifier.padding(top = 12.dp)) {
-                // The card's lifetime verbs follow the session's own, through
-                // the card's rows (ActionMenu.kt), so order, labels and
-                // tone cannot drift between the two surfaces.
+                // terminalLifetimeActions and ActionRows are shared with the card menu, so the two cannot drift.
                 ActionRows(
                     listOf(
                         MenuAction("rename", renameEnabled, destructive = false, controller::openRename),
@@ -506,36 +479,20 @@ private fun TerminalSessionSheet(
 private fun TerminalTextSizeSheet(
     textSize: TerminalTextSizeState.Ready,
     connection: TerminalUiStatus,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit,
-    onReset: () -> Unit,
-    onDismiss: () -> Unit,
+    controller: SkidbladnirController,
 ) {
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = controller::dismissTextSize,
         shape = NidavellirShapes.Sheet,
-        containerColor = DeepSurface,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = "Text size",
-                style = MaterialTheme.typography.headlineSmall,
-                fontFamily = NidavellirType.Display,
-                fontWeight = FontWeight.SemiBold,
-            )
+        SheetForm {
+            SheetTitle("Text size")
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 OutlinedButton(
-                    onClick = onDecrease,
+                    onClick = controller::decreaseTextSize,
                     enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp - 1),
                     shape = NidavellirShapes.Chip,
                 ) {
@@ -547,7 +504,7 @@ private fun TerminalTextSizeSheet(
                     fontFamily = NidavellirType.Data,
                 )
                 OutlinedButton(
-                    onClick = onIncrease,
+                    onClick = controller::increaseTextSize,
                     enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp + 1),
                     shape = NidavellirShapes.Chip,
                 ) {
@@ -555,7 +512,7 @@ private fun TerminalTextSizeSheet(
                 }
             }
             OutlinedButton(
-                onClick = onReset,
+                onClick = controller::resetTextSize,
                 enabled = terminalTextSizeStepAdmissible(textSize, connection, TERMINAL_TEXT_SIZE_DEFAULT_SP),
                 shape = NidavellirShapes.Chip,
             ) {
@@ -570,7 +527,7 @@ private fun TerminalTextSizeSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                Button(onClick = onDismiss, shape = NidavellirShapes.Chip) {
+                Button(onClick = controller::dismissTextSize, shape = NidavellirShapes.Chip) {
                     Text("Done")
                 }
             }

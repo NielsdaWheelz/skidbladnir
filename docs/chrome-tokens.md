@@ -75,7 +75,6 @@ NidavellirColors (flat vals)
 internal object NidavellirShapes
   Card    = CutCornerShape(10.dp)
   Chip    = CutCornerShape(4.dp)
-  Key     = CutCornerShape(4.dp)
   Sheet   = CutCornerShape(topStart = 12.dp, topEnd = 12.dp)
   // Octagon (CutCornerShape(29) percent) lands with D3's seal — its first
   // consumer; not shipped speculatively here.
@@ -87,7 +86,6 @@ internal object NidavellirType
 internal object NidavellirMotion
   EffectsTween   = tween(100ms, standard easing)         // never a spring
   ForgeWarmIn    = tween(400ms)                          // the one ambient
-  StateLayer     = pressed .10f
   DisabledAlpha  = content .38f, container .12f
   // SpatialSpring and the hover/focus/dragged state-layer constants
   // (design language §12) join with their first consumer — nothing in this
@@ -153,12 +151,12 @@ Gold/Ember only on host-evaluated Warm/Hot exceptions.
 - **Kill dialog**: DeepSurface, `Card` shape, copy untouched, zero
   decoration.
 - **Terminal chrome and key deck**: top bar and deck bezel on tokens; keys
-  take the `Key` shape and Data labels; each armed modifier uses the existing
+  take the `Chip` shape and Data labels; each armed modifier uses the existing
   Gold-fill/Gold-content treatment. Equal cells remain at least 48dp with the
   key-deck spec's 2dp grid gaps; order, semantics, spoken state, and enablement
   remain owned there.
-- **Interaction states**: pressed/focus/hover/dragged use the StateLayer
-  alphas as Bone over the component surface. Pressed components adopt the
+- **Interaction states**: pressed uses a `.10` alpha (local to
+  `AngularIndication.kt`) as Bone over the component surface. Pressed components adopt the
   angular indication — an inset copy of the pressed component's own cut
   outline at pressed alpha, via one `IndicationNodeFactory` implementation
   (`AngularIndication.kt`) that takes the shape it is cut to, so the flash
