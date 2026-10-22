@@ -126,9 +126,15 @@ complete capture; never silently omit entries or truncate values.
 
 discover live session ids, then capture required tmux facts in one synchronous
 `source-file -` stdin queue, with source
-identity and completion markers. use native byte-length-prefixed raw fields, e.g.
-`#{n:session_name}:#{session_name}`, not delimiter splitting. bound output before
-decoding; validate the full graph and unchanged source lifetime before publishing.
+identity and completion markers. reuse inventory's quoted fields, e.g.
+`#{q:session_name}|`, and its byte decoder. evaluate each field once: cwd may
+change between native reads, so a separate length read cannot frame it safely.
+decode escaped bytes before recognizing field and record boundaries; preserve
+utf-8, newlines, pipes and backslashes. the existing 8 mib capture limit includes
+quoting overhead. linked windows repeat pane rows: require the same
+window/index/pane identity and retain the first cwd sample for that pane.
+bound output before decoding; validate the full graph and unchanged source
+lifetime before publishing.
 query session-local metadata with `show-options -q` in that same queue; format
 expansion would inherit global metadata. require discovered and captured ids to
 match. stdin avoids tmux's command-argument size bound at the accepted 256 sessions.
