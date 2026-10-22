@@ -17,6 +17,13 @@ evidence: 2026-10-21, macbook:
   with `Interactive` gave their children priority 20, 20 and 31.
 - under contention, a priority-20 busy thread got 74% of one core over 3 s.
 
+status: the source change and install check are done, unreleased. install
+also fails when no new serve appears within 5 s of bootstrap; a passing check
+prints serve's pid and priority. only the new release's own installer applies
+them (`scripts/install`, as dev-server's apply runs it). `skid install` or
+`skid update` from an older release's binary runs that release's installer,
+which writes the old plist and skips the check.
+
 resolved when the plist change in
 [the exec budget spec](../tmux-exec-budget.md#priority-macbook-capacity-d7) is
 released and installed, the installer's priority check passes, and after the

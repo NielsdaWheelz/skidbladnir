@@ -209,6 +209,11 @@ does not pay for the machinery.
 
 ## priority (macbook-capacity d7)
 
+status: the source change and install check landed, unreleased. install also
+fails when no new serve appears within 5 s of bootstrap. the
+[issue](issues/launchd-standard-priority.md) stays open until release, install
+and the maintenance window verify priority 31.
+
 - change: `internal/install/services.go` adds
   `<key>ProcessType</key><string>Interactive</string>` to the
   `dev.niels.skidbladnir` plist. the notifications job, which starts its app
