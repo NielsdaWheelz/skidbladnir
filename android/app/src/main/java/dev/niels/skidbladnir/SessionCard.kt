@@ -57,7 +57,6 @@ import androidx.compose.ui.unit.dp
 internal fun SessionCard(
     visibleSession: VisibleSession,
     machine: MachineState,
-    machines: List<MachineState>,
     needsInputView: Boolean,
     motionEnabled: Boolean,
     terminalControlPending: Boolean,
@@ -68,7 +67,6 @@ internal fun SessionCard(
     onClose: () -> Unit,
 ) {
     val session = visibleSession.target.session
-    val snapshot = machine.inventory.lastSnapshot() ?: return
     val context = visibleSession.context
     val terminalMachine = visibleSession.machine.label.text
     val notification = machine.notifications[NotificationKey(visibleSession.target)] ?: NotificationPresentation()
@@ -79,8 +77,8 @@ internal fun SessionCard(
         terminalLifetimeActions(machine.canMutate && !terminalControlPending, onStop, onTerminalClose, onClose)
     // A plain pane has no runtime to name: its status line already reads `terminal`.
     val profile = when (context) {
-        is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
-        is ExecutionContext.Remote -> context.agent?.let { remoteAgentLabel(context, machines) }
+        is ExecutionContext.Local -> session.agent?.let { agentLabel(it.provider, it.label) }
+        is ExecutionContext.Remote -> context.agent?.let { agentLabel(it.provider, it.label) }
         ExecutionContext.RemoteUnknown -> null
     }
     val directory = when (context) {
@@ -250,18 +248,6 @@ private fun CardFact(
         maxLines = maxLines,
         overflow = overflow,
     )
-}
-
-internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileChoice>): String? {
-    val agent = session.agent ?: return null
-    return agent.profile?.let { runtimeProfile ->
-        profiles.single {
-            it.key == runtimeProfile && it.provider == agent.provider
-        }.label
-    } ?: when (agent.provider) {
-        AgentProvider.Codex -> "Codex · profile unknown"
-        AgentProvider.Claude -> "Claude · profile unknown"
-    }
 }
 
 // The status line's leading facet: colour-only decoration beside the literal

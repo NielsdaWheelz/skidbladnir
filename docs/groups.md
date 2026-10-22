@@ -128,7 +128,8 @@ normalizers use different unicode tables and cannot own this wire contract.
 nfc means canonical normalization without stream-safe separator insertion. a
 valid long combining-mark sequence remains exact text; an explicitly authored
 u+034f remains present. go's whole-string `x/text/unicode/norm` normalizer inserts
-that character after 30 non-starters, so the small label owner instead reuses its
+that character after 30 non-starters and composes across a backward-combining
+starter (`s` u+1b35 u+0329 u+0301), so the small label owner instead reuses its
 per-scalar decomposition, combining classes, and pair composition. keep the
 unicode tables in the dependency; do not copy tables or add a general text layer.
 

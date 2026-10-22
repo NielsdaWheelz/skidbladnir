@@ -1,5 +1,5 @@
 // Package attention is the hub's notification contract: the state clients
-// reconcile against, the acknowledgement they return, and the copy both share.
+// reconcile against and the acknowledgement they return.
 // SingleLine, StateDirectory and ErrUnavailable also serve callers outside
 // notifications until they move (docs/issues/attention-shared-helpers.md).
 package attention
@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 var ErrUnavailable = errors.New("notifications unavailable")
@@ -72,36 +70,6 @@ type Handled struct {
 	Slot            string `json:"slot"`
 	Episode         int64  `json:"episode"`
 	ReadyGeneration int64  `json:"readyGeneration"`
-}
-
-// RequestText panics outside the request set: only admitted requests reach copy.
-func RequestText(request sessions.Interaction) string {
-	switch request {
-	case sessions.InteractionPermission:
-		return "needs permission"
-	case sessions.InteractionQuestion:
-		return "needs answer"
-	case sessions.InteractionSetup:
-		return "needs setup"
-	case sessions.InteractionConfirmation:
-		return "needs review"
-	case sessions.InteractionInput:
-		return "needs input"
-	default:
-		panic("request without content")
-	}
-}
-
-// NoticeText panics outside the attention notices: only admitted notices reach copy.
-func NoticeText(notice sessions.Notice) string {
-	switch notice {
-	case sessions.NoticeInterrupted:
-		return "interruption shown"
-	case sessions.NoticeError:
-		return "error shown"
-	default:
-		panic("notice without content")
-	}
 }
 
 func SingleLine(text string) string {

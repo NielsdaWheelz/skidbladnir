@@ -24,6 +24,7 @@ type Agent struct {
 	StartIdentity string `json:"startIdentity"`
 	Provider      string `json:"provider"`
 	Profile       string `json:"profile,omitempty"`
+	Label         string `json:"-"` // the host's configured label for Profile
 }
 type Connection struct {
 	Transport string `json:"transport"`
@@ -119,6 +120,10 @@ type recoveryJSON struct {
 	State   sessions.RecoveryState `json:"state"`
 	SavedAt *string                `json:"savedAt,omitempty"`
 	Failure *recoveryFailureJSON   `json:"failure,omitempty"`
+
+	// Notice is decoded and ignored: the phone's copy. Go clients render
+	// sessions.Recovery.Notice, and MarshalJSON never sets it.
+	Notice *sessions.RecoveryNotice `json:"notice,omitempty"`
 }
 
 type recoveryFailureJSON struct {
@@ -261,6 +266,7 @@ type hostAgent struct {
 	PID           int    `json:"pid"`
 	PaneID        string `json:"paneId"`
 	StartIdentity string `json:"startIdentity"`
+	Label         string `json:"label,omitempty"`
 }
 type hostSession struct {
 	TerminalStatus sessions.TerminalStatus  `json:"terminalStatus"`
@@ -283,6 +289,10 @@ type hostSession struct {
 	ActiveCommand   string      `json:"activeCommand,omitempty"`
 	AttachedClients *int        `json:"attachedClients"`
 	Group           groupField  `json:"group,omitzero"`
+
+	// Status is decoded and ignored: the phone's copy. Go clients render
+	// sessions.PresentStatus over TerminalStatus.
+	Status sessions.StatusPresentation `json:"status"`
 }
 type hostInventory struct {
 	Machine struct {
@@ -303,7 +313,7 @@ func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
 	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, TerminalFooter: s.TerminalFooter, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
 	if s.Agent != nil {
-		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
+		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, Label: s.Agent.Label, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
 	row.Ref = ref.Encode()
 	return row

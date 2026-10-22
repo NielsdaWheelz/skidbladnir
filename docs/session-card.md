@@ -21,10 +21,12 @@ visual values.
 
 ## status line
 
-`sessionStatusContent` owns visible status. ordinary optional detail ellipsizes
-on one line; the primary label and needs-input queue reasons wrap completely.
-the inference qualifier (`evidence`) is undrawn on cards; the terminal's session
-sheet shows it.
+the host renders each row's status copy (`status`); `sessionStatusContent`
+overlays only what the phone knows: staleness, the hub's pending ready and
+notification health. ordinary optional detail ellipsizes on one line; the
+primary label and needs-input queue reasons wrap completely. the inference
+qualifier (`evidence`) is undrawn on cards; the terminal's session sheet shows
+it.
 
 ## collection
 

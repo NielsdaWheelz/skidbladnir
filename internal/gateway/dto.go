@@ -75,6 +75,7 @@ type agentDTO struct {
 	Provider      string `json:"provider"`
 	PID           int    `json:"pid"`
 	Profile       string `json:"profile,omitempty"`
+	Label         string `json:"label,omitempty"`
 }
 
 type connectionDTO struct {
@@ -100,6 +101,8 @@ type sessionDTO struct {
 	CWD             string                   `json:"cwd,omitempty"`
 	ActiveCommand   string                   `json:"activeCommand,omitempty"`
 	AttachedClients int                      `json:"attachedClients"`
+
+	Status sessions.StatusPresentation `json:"status"` // the phone's copy of TerminalStatus
 }
 
 type machineDTO struct {
@@ -119,6 +122,8 @@ type recoveryDTO struct {
 	State   sessions.RecoveryState `json:"state"`
 	SavedAt string                 `json:"savedAt,omitempty"`
 	Failure *recoveryFailureDTO    `json:"failure,omitempty"`
+
+	Notice *sessions.RecoveryNotice `json:"notice,omitempty"` // the phone's copy of the fact
 }
 
 type recoveryFailureDTO struct {
@@ -223,8 +228,20 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
 		Profile:  string(agent.Profile),
+		Label:    profileLabel(profiles, agent.Profile),
 	}
 	return mapped, nil
+}
+
+// profileLabel is key's configured label; empty when key is empty or not
+// configured. Provider agreement is ValidateAgentRuntime's invariant.
+func profileLabel(profiles []agentruntime.Profile, key agentruntime.ProfileKey) string {
+	for _, profile := range profiles {
+		if profile.Key == key {
+			return profile.Label
+		}
+	}
+	return ""
 }
 
 func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sessionDTO, error) {
@@ -279,6 +296,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	if card.TerminalFooter != nil && (!card.TerminalFooter.ValidFor(card.TerminalStatus) || agent == nil || connection != nil) {
 		return sessionDTO{}, errors.New("invalid terminal footer attachment")
 	}
+	card.Status = sessions.PresentStatus(card.TerminalStatus, agent != nil && connection == nil)
 	return card, nil
 }
 
@@ -291,7 +309,7 @@ func mapSessionsResponse(
 	if err != nil {
 		return sessionsResponseDTO{}, errors.New("invalid inventory observation time")
 	}
-	recovery := recoveryDTO{State: inventory.Recovery.State}
+	recovery := recoveryDTO{State: inventory.Recovery.State, Notice: inventory.Recovery.Notice()}
 	if inventory.Recovery.SavedAt != nil {
 		recovery.SavedAt = inventory.Recovery.SavedAt.UTC().Format(time.RFC3339Nano)
 	}

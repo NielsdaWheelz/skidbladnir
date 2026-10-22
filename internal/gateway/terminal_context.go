@@ -9,6 +9,7 @@ import (
 type remoteAgentDTO struct {
 	Provider string `json:"provider"`
 	Profile  string `json:"profile,omitempty"`
+	Label    string `json:"label,omitempty"`
 }
 
 type terminalContextDTO struct {
@@ -41,7 +42,7 @@ func (gateway *Gateway) readTerminalContext(writer http.ResponseWriter, request 
 		}
 	}
 	if observed.Agent != nil {
-		result.Agent = &remoteAgentDTO{Provider: string(observed.Agent.Provider), Profile: string(observed.Agent.Profile)}
+		result.Agent = &remoteAgentDTO{Provider: string(observed.Agent.Provider), Profile: string(observed.Agent.Profile), Label: profileLabel(gateway.sessions.Profiles(), observed.Agent.Profile)}
 	}
 	if observed.Connection != nil {
 		result.Connection = &connectionDTO{Transport: observed.Connection.Transport, ID: observed.Connection.ID}

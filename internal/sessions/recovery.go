@@ -106,6 +106,76 @@ func (recovery Recovery) Valid() bool {
 	}
 }
 
+// RecoveryNotice is the owner-visible recovery copy without the machine label
+// and the save time, which each client renders in its own zone.
+type RecoveryNotice struct {
+	Summary string `json:"summary"`
+	Action  string `json:"action,omitempty"`
+}
+
+// Notice is nil while tracking. A delayed or broken recovery names its
+// failure's phase and cause; it panics outside those closed sets.
+func (recovery Recovery) Notice() *RecoveryNotice {
+	var status, action string
+	switch recovery.State {
+	case RecoveryTracking:
+		return nil
+	case RecoveryRecovered:
+		return &RecoveryNotice{Summary: "terminals restored as shells. resume conversations using the same provider account."}
+	case RecoveryDelayed:
+		status, action = "workspace saving delayed", "retrying automatically; live terminals remain usable."
+	case RecoveryBroken:
+		status, action = "workspace recovery stopped", "manual repair required; live terminals remain usable."
+	default:
+		panic("invalid recovery state") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
+	}
+	var phase string
+	switch recovery.Failure.Phase {
+	case RecoveryPhaseOwnership:
+		phase = "writer lock"
+	case RecoveryPhaseCheckpointRead:
+		phase = "checkpoint read"
+	case RecoveryPhaseSource:
+		phase = "tmux server check"
+	case RecoveryPhaseCapture:
+		phase = "workspace capture"
+	case RecoveryPhaseCheckpointWrite:
+		phase = "checkpoint save"
+	case RecoveryPhaseRestore:
+		phase = "workspace restore"
+	default:
+		panic("invalid recovery phase") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
+	}
+	var cause string
+	switch recovery.Failure.Cause {
+	case RecoveryCauseTimeout:
+		cause = "timed out"
+	case RecoveryCauseChanged:
+		cause = "workspace or server changed"
+	case RecoveryCauseUnavailable:
+		cause = "required resource unavailable"
+	case RecoveryCauseInvalid:
+		cause = "invalid data or configuration"
+	case RecoveryCauseLimit:
+		cause = "supported limit exceeded"
+	case RecoveryCauseBusy:
+		cause = "lock already held"
+	case RecoveryCausePermission:
+		cause = "access denied"
+	case RecoveryCauseNoSpace:
+		cause = "storage space exhausted"
+	case RecoveryCauseIO:
+		cause = "input/output error"
+	case RecoveryCauseAlreadyAttempted:
+		cause = "prior restore may be incomplete"
+	case RecoveryCauseNotEmpty:
+		cause = "replacement server has sessions"
+	default:
+		panic("invalid recovery cause") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
+	}
+	return &RecoveryNotice{Summary: status + ". " + phase + ": " + cause, Action: action}
+}
+
 // RecoveryChange carries only content-free evidence; the observer must not reenter Manager.
 type RecoveryChange struct {
 	At        time.Time

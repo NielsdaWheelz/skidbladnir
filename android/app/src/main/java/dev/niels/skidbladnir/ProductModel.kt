@@ -197,6 +197,8 @@ internal data class AgentRuntime(
     val paneId: String,
     val startIdentity: String,
     val profile: ProfileKey? = null,
+    /** The host's configured label for [profile]; absent when unset or unconfigured. */
+    val label: String?,
 ) {
     init {
         require(pid > 0)
@@ -248,6 +250,7 @@ internal data class TmuxSession(
     val attachedClients: Int,
     val agent: AgentRuntime? = null,
     val terminalStatus: TerminalStatus,
+    val status: StatusPresentation,
     val terminalUsage: TerminalUsage? = null,
     val terminalFooter: String? = null,
     val connection: RemoteConnection? = null,
@@ -261,7 +264,7 @@ internal data class TmuxSession(
 internal data class RemoteConnection(val transport: RemoteTransport, val id: String? = null) {
     init { require(id == null || id.matches(Regex("[0-9a-f]{32}"))) }
 }
-internal data class RemoteAgent(val provider: AgentProvider, val profile: ProfileKey?)
+internal data class RemoteAgent(val provider: AgentProvider, val profile: ProfileKey?, val label: String?)
 internal data class TerminalContext(
     val observedAt: Instant,
     val cwd: String?,
@@ -276,7 +279,7 @@ internal sealed interface ExecutionContext {
 }
 
 @Serializable private data class WireRemoteConnection(val transport: RemoteTransport, val id: String? = null)
-@Serializable private data class WireRemoteAgent(val provider: AgentProvider, val profile: String? = null)
+@Serializable private data class WireRemoteAgent(val provider: AgentProvider, val profile: String? = null, val label: String? = null)
 @Serializable private data class WireTerminalContext(
     @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
     val cwd: String? = null,
@@ -287,7 +290,7 @@ internal sealed interface ExecutionContext {
 internal fun decodeTerminalContext(encoded: String): TerminalContext = decodeProtocol {
     val element = strictJsonObject(encoded)
     element.requireAbsentOrNonNull(setOf("cwd", "agent", "connection"))
-    (element["agent"] as? JsonObject)?.requireAbsentOrNonNull(setOf("profile"))
+    (element["agent"] as? JsonObject)?.requireAbsentOrNonNull(setOf("profile", "label"))
     (element["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
     val wire = productJson.decodeFromJsonElement<WireTerminalContext>(element)
     require(wire.agent == null || wire.connection == null)
@@ -295,7 +298,7 @@ internal fun decodeTerminalContext(encoded: String): TerminalContext = decodePro
     TerminalContext(
         acceptProjectionInstant(wire.observedAt),
         wire.cwd,
-        wire.agent?.let { RemoteAgent(it.provider, it.profile?.let { key -> requireNotNull(ProfileKey.parse(key)) }) },
+        wire.agent?.let { RemoteAgent(it.provider, it.profile?.let { key -> requireNotNull(ProfileKey.parse(key)) }, it.label) },
         wire.connection?.let { RemoteConnection(it.transport, it.id) },
     )
 }
@@ -308,59 +311,25 @@ internal data class SessionsResponse(
     val sessions: List<TmuxSession>,
 )
 
-internal sealed interface WorkspaceRecovery {
-    data class Tracking(val savedAt: Instant?) : WorkspaceRecovery
-    data class Recovered(val savedAt: Instant) : WorkspaceRecovery
-    data class Delayed(val failure: WorkspaceRecoveryFailure, val savedAt: Instant?) : WorkspaceRecovery
-    data class Broken(val failure: WorkspaceRecoveryFailure, val savedAt: Instant?) : WorkspaceRecovery
-}
-
-internal data class WorkspaceRecoveryFailure(
-    val at: Instant,
-    val phase: WorkspaceRecoveryPhase,
-    val cause: WorkspaceRecoveryCause,
-)
-
-@Serializable internal enum class WorkspaceRecoveryPhase {
-    @kotlinx.serialization.SerialName("ownership") Ownership,
-    @kotlinx.serialization.SerialName("checkpoint_read") CheckpointRead,
-    @kotlinx.serialization.SerialName("source") Source,
-    @kotlinx.serialization.SerialName("capture") Capture,
-    @kotlinx.serialization.SerialName("checkpoint_write") CheckpointWrite,
-    @kotlinx.serialization.SerialName("restore") Restore,
-}
-
-@Serializable internal enum class WorkspaceRecoveryCause {
-    @kotlinx.serialization.SerialName("timeout") Timeout,
-    @kotlinx.serialization.SerialName("changed") Changed,
-    @kotlinx.serialization.SerialName("unavailable") Unavailable,
-    @kotlinx.serialization.SerialName("invalid") Invalid,
-    @kotlinx.serialization.SerialName("limit") Limit,
-    @kotlinx.serialization.SerialName("busy") Busy,
-    @kotlinx.serialization.SerialName("permission") Permission,
-    @kotlinx.serialization.SerialName("no_space") NoSpace,
-    @kotlinx.serialization.SerialName("io") IO,
-    @kotlinx.serialization.SerialName("already_attempted") AlreadyAttempted,
-    @kotlinx.serialization.SerialName("not_empty") NotEmpty,
-}
-
-@Serializable private enum class WireWorkspaceRecoveryState {
+@Serializable internal enum class WorkspaceRecoveryState {
     @kotlinx.serialization.SerialName("tracking") Tracking,
     @kotlinx.serialization.SerialName("recovered") Recovered,
     @kotlinx.serialization.SerialName("delayed") Delayed,
     @kotlinx.serialization.SerialName("broken") Broken,
 }
 
-@Serializable private data class WireWorkspaceRecoveryFailure(
-    @Serializable(with = IsoInstantSerializer::class) val at: Instant,
-    val phase: WorkspaceRecoveryPhase,
-    val cause: WorkspaceRecoveryCause,
-)
+/** The host's recovery copy without the machine label and the save time, which the phone renders in its own zone. */
+@Serializable internal data class RecoveryNotice(val summary: String, val action: String? = null)
 
+/** [notice] is absent exactly while the host is tracking. */
+internal data class WorkspaceRecovery(val state: WorkspaceRecoveryState, val savedAt: Instant?, val notice: RecoveryNotice?)
+
+// `failure` is declared for the strict decode and ignored: the phone shows the host's `notice`.
 @Serializable private data class WireWorkspaceRecovery(
-    val state: WireWorkspaceRecoveryState,
+    val state: WorkspaceRecoveryState,
     @Serializable(with = IsoInstantSerializer::class) val savedAt: Instant? = null,
-    val failure: WireWorkspaceRecoveryFailure? = null,
+    val failure: JsonObject? = null,
+    val notice: RecoveryNotice? = null,
 )
 
 @Serializable
@@ -385,6 +354,7 @@ private data class WireAgentRuntime(
     val paneId: String,
     val startIdentity: String,
     val profile: String? = null,
+    val label: String? = null,
 )
 
 @Serializable
@@ -403,6 +373,7 @@ private data class WireTmuxSession(
     val attachedClients: Int,
     val agent: WireAgentRuntime? = null,
     val terminalStatus: TerminalStatus,
+    val status: StatusPresentation,
     val terminalUsage: TerminalUsage? = null,
     val terminalFooter: String? = null,
     val connection: WireRemoteConnection? = null,
@@ -663,7 +634,9 @@ private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = strictJsonObject(encoded)
-    element.requiredObject("recovery").requireAbsentOrNonNull(setOf("savedAt", "failure"))
+    val recovery = element.requiredObject("recovery")
+    recovery.requireAbsentOrNonNull(setOf("savedAt", "failure", "notice"))
+    (recovery["notice"] as? JsonObject)?.requireAbsentOrNonNull(setOf("action"))
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
         (encodedSession as? JsonObject ?: throw SerializationException("session is not an object"))
             .requireSessionOptionalFields()
@@ -674,65 +647,6 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
-    val savedAt = wire.recovery.savedAt?.let(::acceptProjectionInstant)
-    val failure = wire.recovery.failure?.let { failure ->
-        val allowed = when (failure.phase) {
-            WorkspaceRecoveryPhase.Ownership -> setOf(
-                WorkspaceRecoveryCause.Busy, WorkspaceRecoveryCause.Permission,
-                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
-            )
-            WorkspaceRecoveryPhase.CheckpointRead -> setOf(
-                WorkspaceRecoveryCause.Permission, WorkspaceRecoveryCause.IO,
-                WorkspaceRecoveryCause.Invalid, WorkspaceRecoveryCause.Limit,
-                WorkspaceRecoveryCause.AlreadyAttempted,
-            )
-            WorkspaceRecoveryPhase.Source -> setOf(
-                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
-                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
-                WorkspaceRecoveryCause.Permission, WorkspaceRecoveryCause.IO,
-            )
-            WorkspaceRecoveryPhase.Capture -> setOf(
-                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
-                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
-                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
-                WorkspaceRecoveryCause.IO,
-            )
-            WorkspaceRecoveryPhase.CheckpointWrite -> setOf(
-                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
-                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
-            )
-            WorkspaceRecoveryPhase.Restore -> setOf(
-                WorkspaceRecoveryCause.Timeout, WorkspaceRecoveryCause.Changed,
-                WorkspaceRecoveryCause.Unavailable, WorkspaceRecoveryCause.Invalid,
-                WorkspaceRecoveryCause.Limit, WorkspaceRecoveryCause.Permission,
-                WorkspaceRecoveryCause.NoSpace, WorkspaceRecoveryCause.IO,
-                WorkspaceRecoveryCause.NotEmpty,
-            )
-        }
-        require(failure.cause in allowed)
-        WorkspaceRecoveryFailure(acceptProjectionInstant(failure.at), failure.phase, failure.cause)
-    }
-    val recovery = when (wire.recovery.state) {
-        WireWorkspaceRecoveryState.Tracking -> {
-            require(failure == null)
-            WorkspaceRecovery.Tracking(savedAt)
-        }
-        WireWorkspaceRecoveryState.Recovered -> {
-            require(failure == null)
-            WorkspaceRecovery.Recovered(requireNotNull(savedAt))
-        }
-        WireWorkspaceRecoveryState.Delayed -> {
-            requireNotNull(failure)
-            require(
-                failure.phase == WorkspaceRecoveryPhase.Capture ||
-                    failure.phase == WorkspaceRecoveryPhase.CheckpointWrite ||
-                    failure.phase == WorkspaceRecoveryPhase.Source && failure.cause == WorkspaceRecoveryCause.Timeout,
-            )
-            WorkspaceRecovery.Delayed(failure, savedAt)
-        }
-        WireWorkspaceRecoveryState.Broken ->
-            WorkspaceRecovery.Broken(requireNotNull(failure), savedAt)
-    }
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
     val profiles = wire.profiles.map { profile ->
         require(profile.label.isNotEmpty())
@@ -749,16 +663,11 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         session.launchProfile?.let { launchProfile ->
             profiles.single { choice -> choice.key == launchProfile }
         }
-        session.agent?.let { agent ->
-            agent.profile?.let { runtimeProfile ->
-                profiles.single { choice -> choice.key == runtimeProfile && (choice.provider == null || choice.provider == agent.provider) }
-            }
-        }
     }
     SessionsResponse(
         MachineSummary(handle, acceptMachinePlatform(wire.machine.platform)),
         observedAt,
-        recovery,
+        WorkspaceRecovery(wire.recovery.state, wire.recovery.savedAt?.let(::acceptProjectionInstant), wire.recovery.notice),
         profiles,
         sessions,
     )
@@ -861,13 +770,8 @@ internal fun MachineState.executionContext(session: TmuxSession): ExecutionConte
     else ExecutionContext.RemoteUnknown
 }
 
-internal fun remoteAgentLabel(context: ExecutionContext.Remote, machines: List<MachineState>): String {
-    val agent = context.agent ?: return "terminal"
-    val profiles = machines.singleOrNull { it.machine.handle == context.machine.handle }
-        ?.inventory?.lastSnapshot()?.inventory?.profiles.orEmpty()
-    return agent.profile?.let { key -> profiles.singleOrNull { it.key == key && it.provider == agent.provider }?.label }
-        ?: "${agent.provider.name} · profile unknown"
-}
+/** An agent's profile as the owner reads it: the host's configured [label], else its provider. */
+internal fun agentLabel(provider: AgentProvider, label: String?): String = label ?: "${provider.name} · profile unknown"
 
 /**
  * Single classifier for what a machine can currently do. Every machine-state message, colour,
@@ -916,6 +820,17 @@ internal fun availabilityTone(availability: MachineAvailability): NoticeTone = w
     -> NoticeTone.Degraded
 }
 
+/** The one word that names a machine's availability beside a card or a Forge machine choice. */
+internal fun availabilityWord(availability: MachineAvailability): String? = when (availability) {
+    MachineAvailability.Ready -> null
+    MachineAvailability.Refreshing -> "REFRESHING"
+    MachineAvailability.AuthRequired -> "AUTH REQUIRED"
+    MachineAvailability.IdentityChanged -> "IDENTITY CHANGED"
+    MachineAvailability.Reading -> "READING"
+    is MachineAvailability.Stale -> "STALE"
+    is MachineAvailability.Unavailable -> "UNAVAILABLE"
+}
+
 /**
  * Single owner of the retained-card availability marker. A card can remain visible while actions
  * are fenced, but the marker must name the actual reason instead of collapsing every fence into
@@ -923,15 +838,8 @@ internal fun availabilityTone(availability: MachineAvailability): NoticeTone = w
  */
 internal fun sessionAvailabilityContent(machine: MachineState): SessionAvailabilityContent? {
     val availability = machineAvailability(machine)
-    val label = when (availability) {
-        MachineAvailability.Ready -> return null
-        MachineAvailability.Refreshing -> "REFRESHING · actions disabled"
-        MachineAvailability.AuthRequired -> "AUTH REQUIRED · actions disabled"
-        MachineAvailability.IdentityChanged -> "IDENTITY CHANGED · actions disabled"
-        MachineAvailability.Reading, is MachineAvailability.Unavailable -> return null
-        is MachineAvailability.Stale -> "STALE · actions disabled"
-    }
-    return SessionAvailabilityContent(label, availabilityTone(availability))
+    if (availability == MachineAvailability.Reading || availability is MachineAvailability.Unavailable) return null
+    return availabilityWord(availability)?.let { SessionAvailabilityContent("$it · actions disabled", availabilityTone(availability)) }
 }
 
 /**
@@ -970,58 +878,16 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
 internal fun workspaceRecoveryNotice(machine: MachineState): MachineNotice? {
     if (machine.access != MachineAccess.Ready) return null
     val recovery = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.recovery ?: return null
+    val notice = recovery.notice ?: return null
     val label = machine.machine.label.text
-    val failure: WorkspaceRecoveryFailure
-    val savedAt: Instant?
-    val delayed: Boolean
-    when (recovery) {
-        is WorkspaceRecovery.Tracking -> return null
-        is WorkspaceRecovery.Recovered -> return MachineNotice(
-            "$label: terminals restored as shells. resume conversations using the same provider account.",
-            NoticeTone.Degraded,
-        )
-        is WorkspaceRecovery.Delayed -> {
-            failure = recovery.failure
-            savedAt = recovery.savedAt
-            delayed = true
-        }
-        is WorkspaceRecovery.Broken -> {
-            failure = recovery.failure
-            savedAt = recovery.savedAt
-            delayed = false
-        }
-    }
-    val phase = when (failure.phase) {
-        WorkspaceRecoveryPhase.Ownership -> "writer lock"
-        WorkspaceRecoveryPhase.CheckpointRead -> "checkpoint read"
-        WorkspaceRecoveryPhase.Source -> "tmux server check"
-        WorkspaceRecoveryPhase.Capture -> "workspace capture"
-        WorkspaceRecoveryPhase.CheckpointWrite -> "checkpoint save"
-        WorkspaceRecoveryPhase.Restore -> "workspace restore"
-    }
-    val cause = when (failure.cause) {
-        WorkspaceRecoveryCause.Timeout -> "timed out"
-        WorkspaceRecoveryCause.Changed -> "workspace or server changed"
-        WorkspaceRecoveryCause.Unavailable -> "required resource unavailable"
-        WorkspaceRecoveryCause.Invalid -> "invalid data or configuration"
-        WorkspaceRecoveryCause.Limit -> "supported limit exceeded"
-        WorkspaceRecoveryCause.Busy -> "lock already held"
-        WorkspaceRecoveryCause.Permission -> "access denied"
-        WorkspaceRecoveryCause.NoSpace -> "storage space exhausted"
-        WorkspaceRecoveryCause.IO -> "input/output error"
-        WorkspaceRecoveryCause.AlreadyAttempted -> "prior restore may be incomplete"
-        WorkspaceRecoveryCause.NotEmpty -> "replacement server has sessions"
-    }
-    val saved = savedAt?.let {
+    val tone = if (recovery.state == WorkspaceRecoveryState.Broken) NoticeTone.Failure else NoticeTone.Degraded
+    val action = notice.action ?: return MachineNotice("$label: ${notice.summary}", tone)
+    // The save time reads in this device's zone, which the host cannot know.
+    val saved = recovery.savedAt?.let {
         "last confirmed save: " + DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss 'utc'xxx", Locale.ROOT)
             .withZone(ZoneId.systemDefault()).format(it)
     } ?: "no confirmed save"
-    val status = if (delayed) "workspace saving delayed" else "workspace recovery stopped"
-    val action = if (delayed) "retrying automatically" else "manual repair required"
-    return MachineNotice(
-        "$label: $status. $phase: $cause. $saved. $action; live terminals remain usable.",
-        if (delayed) NoticeTone.Degraded else NoticeTone.Failure,
-    )
+    return MachineNotice("$label: ${notice.summary}. $saved. $action", tone)
 }
 
 internal data class VisibleSession(
@@ -1111,21 +977,33 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
-internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
-internal fun terminalRequestText(request: TerminalInteraction): String = when (request) {
-    TerminalInteraction.Permission -> "needs permission"
-    TerminalInteraction.Question -> "needs answer"
-    TerminalInteraction.Setup -> "needs setup"
-    TerminalInteraction.Confirmation -> "needs review"
-    TerminalInteraction.Input -> "needs input"
-    TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> error("request copy requires a response request")
+@Serializable internal enum class SessionStatusTone {
+    @kotlinx.serialization.SerialName("working") Working,
+    @kotlinx.serialization.SerialName("ready") Ready,
+    @kotlinx.serialization.SerialName("attention") Attention,
+    @kotlinx.serialization.SerialName("muted") Muted,
 }
-internal fun terminalNoticeText(notice: TerminalNotice): String = when (notice) {
-    TerminalNotice.Interrupted -> "interruption shown"
-    TerminalNotice.Error -> "error shown"
-    TerminalNotice.None -> error("notice copy requires a current notice")
+
+/**
+ * Human-collection membership, in needs-input order. On the wire it is the host's verdict before
+ * the phone's overlays, where Ready means only eligible; in [SessionStatusContent] it is final.
+ */
+@Serializable internal enum class SessionQueueCategory {
+    @kotlinx.serialization.SerialName("ready") Ready,
+    @kotlinx.serialization.SerialName("action") Action,
+    @kotlinx.serialization.SerialName("none") Excluded,
 }
-internal enum class SessionQueueCategory { Ready, Action, Excluded }
+
+/** The host's status copy for one observation, rendered as if fresh and not ready (terminal-observation.md §6). */
+@Serializable internal data class StatusPresentation(
+    val label: String,
+    val tone: SessionStatusTone,
+    val queue: SessionQueueCategory,
+    val detail: String? = null,
+    val evidence: String? = null,
+    val queueNotice: String? = null,
+)
+
 // `detail` tells one session's state from another's; `evidence` names how status was
 // known. The card shows only the first, since the qualifier is the same on every agent card.
 internal data class SessionStatusContent(
@@ -1135,70 +1013,30 @@ internal data class SessionStatusContent(
 )
 
 /**
- * Single status projection for the card and the terminal header (terminal-observation.md §6): the
- * first matching row wins. A response request, menu or current notice outranks visible work, which
- * then survives as `work continues`. Only a local agent's terminal sample makes an inference claim.
+ * Status for the card and the terminal header: the host's [StatusPresentation] under the phone's
+ * own knowledge. Staleness prefixes and mutes it, the hub's pending ready turns an eligible idle
+ * row `ready`, and notification health adds a secondary line. A plain local terminal shows its
+ * running command as detail.
  */
 internal fun sessionStatusContent(
     session: TmuxSession, fresh: Boolean, notification: NotificationPresentation, showQueueReason: Boolean = false,
 ): SessionStatusContent {
-    val status = session.terminalStatus
-    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
-    val request = when (status.interaction) {
-        TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Setup,
-        TerminalInteraction.Confirmation, TerminalInteraction.Input -> true
-        TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
-    }
-    val notice = when (status.notice) {
-        TerminalNotice.Interrupted, TerminalNotice.Error -> terminalNoticeText(status.notice)
-        TerminalNotice.None -> null
-    }
-    val ready = inferred && fresh && notification.ready && !notification.unavailable &&
-        status.activity == TerminalActivity.Idle && status.interaction == TerminalInteraction.None && status.notice == TerminalNotice.None
-    val queueCategory = when {
-        !inferred || !fresh -> SessionQueueCategory.Excluded
-        request || status.notice != TerminalNotice.None -> SessionQueueCategory.Action
-        ready -> SessionQueueCategory.Ready
-        else -> SessionQueueCategory.Excluded
-    }
-    val requestMenuOrNotice = when (status.interaction) {
-        TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Setup,
-        TerminalInteraction.Confirmation, TerminalInteraction.Input -> terminalRequestText(status.interaction) to SessionStatusTone.Attention
-        TerminalInteraction.Menu -> "menu open" to SessionStatusTone.Muted
-        TerminalInteraction.None, TerminalInteraction.Unknown -> when (status.notice) {
-            TerminalNotice.Interrupted -> terminalNoticeText(status.notice) to SessionStatusTone.Muted
-            TerminalNotice.Error -> terminalNoticeText(status.notice) to SessionStatusTone.Attention
-            TerminalNotice.None -> null
-        }
-    }
-    val (state, tone) = when {
-        status.source == TerminalStatusSource.Unavailable -> "status unavailable" to SessionStatusTone.Muted
-        !inferred -> "terminal" to SessionStatusTone.Muted
-        requestMenuOrNotice != null -> requestMenuOrNotice
-        else -> when (status.activity) {
-            TerminalActivity.Starting -> "starting" to SessionStatusTone.Working
-            TerminalActivity.Working -> "working" to SessionStatusTone.Working
-            // No request, menu or notice remains, so interaction is none or unknown here.
-            TerminalActivity.Idle -> when {
-                status.interaction == TerminalInteraction.Unknown -> "status unknown" to SessionStatusTone.Muted
-                ready -> "ready" to SessionStatusTone.Ready
-                else -> "idle" to SessionStatusTone.Muted
-            }
-            TerminalActivity.Unknown -> "status unknown" to SessionStatusTone.Muted
-        }
-    }
-    val workContinues = inferred && requestMenuOrNotice != null && status.activity == TerminalActivity.Working
-    val label = if (fresh) state else "last observed: $state"
-    val secondary = if (notification.unavailable) "notifications unavailable" else null
-    val queueNotice = notice.takeIf { showQueueReason && inferred && status.interaction == TerminalInteraction.Menu }
-    val detail = if (queueNotice != null || workContinues) {
-        listOfNotNull(queueNotice, "work continues".takeIf { workContinues }).joinToString(" · ")
-    } else session.activeCommand.takeIf { !inferred && session.connection == null }
+    val status = session.status
+    val ready = fresh && status.queue == SessionQueueCategory.Ready && notification.ready && !notification.unavailable
+    val queueNotice = status.queueNotice?.takeIf { showQueueReason }
     return SessionStatusContent(
-        label,
-        detail,
-        if (inferred) "inferred from terminal" else null,
-        if (fresh) tone else SessionStatusTone.Muted, secondary, queueCategory,
+        label = if (!fresh) "last observed: ${status.label}" else if (ready) "ready" else status.label,
+        detail = listOfNotNull(queueNotice, status.detail).joinToString(" · ").ifEmpty { null }
+            ?: session.activeCommand.takeIf { status.evidence == null && session.connection == null },
+        evidence = status.evidence,
+        tone = if (!fresh) SessionStatusTone.Muted else if (ready) SessionStatusTone.Ready else status.tone,
+        secondary = if (notification.unavailable) "notifications unavailable" else null,
+        queueCategory = when {
+            !fresh -> SessionQueueCategory.Excluded
+            status.queue == SessionQueueCategory.Action -> SessionQueueCategory.Action
+            ready -> SessionQueueCategory.Ready
+            else -> SessionQueueCategory.Excluded
+        },
         detailExplainsQueue = queueNotice != null,
     )
 }
@@ -1207,6 +1045,7 @@ private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
     if ("terminalFooter" in this) requiredString("terminalFooter")
     requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection", "terminalUsage", "terminalFooter"))
+    requiredObject("status").requireAbsentOrNonNull(setOf("detail", "evidence", "queueNotice"))
     if ("terminalUsage" in this) {
         val usage = requiredObject("terminalUsage")
         usage.requireAbsentOrNonNull(setOf("fiveHourUsedPercent", "sevenDayUsedPercent"))
@@ -1244,6 +1083,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     attachedClients = session.attachedClients,
     agent = session.agent?.let(::acceptAgentRuntime),
     terminalStatus = session.terminalStatus,
+    status = session.status,
     terminalUsage = session.terminalUsage,
     terminalFooter = session.terminalFooter,
     connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
@@ -1255,6 +1095,7 @@ private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentR
     paneId = runtime.paneId,
     startIdentity = runtime.startIdentity,
     profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
+    label = runtime.label,
 )
 
 private fun acceptSession(session: TmuxSession) {

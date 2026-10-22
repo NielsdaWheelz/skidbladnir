@@ -186,12 +186,12 @@ poll, navigation, or mutation.
 ## Architecture and capability contract
 
 ```text
-host sampler/classifier
-  -> strict gateway GET /v1/pressure
-  -> Android decoder/domain PressureState
-  -> PressurePresentation
-       -> collapsed PressureRailContent -> MachinePressureRail -> Dashboard
-       `-> PressureDetailsContent       -> MachinePressureDetailsSheet
+host sampler/classifier (sole policy owner)
+  -> gateway GET /v1/pressure (json.Marshal(Snapshot))
+  -> Pressure.kt: decode types and enums -> PressureState
+  -> MachinePressureRail.kt: total text/colour helpers
+       -> MachinePressureRail -> Dashboard
+       `-> MachinePressureDetails (sheet)
 ```
 
 Ownership is fixed:
@@ -199,8 +199,9 @@ Ownership is fixed:
 | Boundary | Owner | Contract |
 | --- | --- | --- |
 | Sampling, thresholds, hysteresis, recovery, reasons | Host pressure package | Sole pressure-meaning owner; unchanged |
-| Wire shape | Host pressure package (`Snapshot` json); the gateway serves it and Android decodes it strictly | Existing single `GET /v1/pressure` shape; unchanged |
-| Text, precision, order, marks, accents | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
+| Wire shape | Host pressure package (`Snapshot` json); the gateway serves it | Existing single `GET /v1/pressure` shape; unchanged |
+| Decode | `Pressure.kt` | Types and enums only; no platform, level, reason, missing or history re-derivation (the header's choice of which missing metric to name is presentation) |
+| Text, precision, order, marks, colours | `MachinePressureRail.kt` (private helpers) | Pure and total over every decoded snapshot; no I/O |
 | Rail geometry, spans, scrolling, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
 | placement and disclosure | `DashboardScreen.kt` | every accepted machine rail is reachable through machines; detail selection never filters cards |
 | History geometry | `PressureHistoryBand` | Frozen pixel contract |
@@ -211,23 +212,18 @@ The external API remains exactly one strict shape:
 missing variant. Add no endpoint, field, version, nullable fallback, tolerant
 decoder, feature negotiation, or legacy payload path.
 
-Hard-cut the internal presentation schema to:
-
-```text
-PressureRailContent(
-  header: PressureRailHeaderContent,
-  metrics: List<PressureRailMetricContent>,
-)
-PressureRailHeaderContent(machineLabel, statusText, accent)
-PressureRailMetricContent(shortLabel, value, stateMark, accent)
-PressureRailAccent = None | Gold | Ember | Muted
-```
-
-`None` is the quiet informational/normal path; it never resolves to Frost or
-Moss in the collapsed rail. The details model keeps its current full-state
-colour roles. `MachinePressureRail` and `MachinePressureDetailsSheet` keep their
-current composable signatures. Do not add a view model, controller state, DTO,
-cache, service, or reusable telemetry framework.
+Android decodes types and enums; presentation is total. A snapshot the host
+should never send (recovering at `Normal`, `Unknown` with no missing metric, an
+absent signal) renders literally (`RECOVERING FROM NORMAL`, bare `UNKNOWN`,
+`NO DATA ?`) instead of becoming a protocol error. The rail has five fixed slots;
+`MEM` shows RAM available, else native memory pressure. Details list every
+metric not in `unsupported`. `UNKNOWN · <METRIC>` names the first missing metric
+other than CPU and swap in wire order, not the host's bytewise-sorted `missing`.
+Collapsed values and marks are Bone/Muted for `Informational`/`Normal`,
+Gold/Gold for `Warm`, Ember/Ember for `Hot`, Muted/Muted when absent; detail
+words are Frost, Moss, Gold, Ember and Muted respectively. `MachinePressureRail`
+and `MachinePressureDetails` keep their composable signatures. Do not add a view
+model, controller state, DTO, cache, service, or reusable telemetry framework.
 
 ## Hard cut and cleanup
 
@@ -254,7 +250,7 @@ broken Kotlin compilation unit or a forbidden compatibility path.
 | Order | Owner | Exclusive paths | Proof |
 | --- | --- | --- | --- |
 | 1 | Root integrator, docs only | `docs/machine-pressure-rail.md`, pressure wording in `docs/architecture.md`, `docs/roadmap.md`, `docs/design-language.md`, `docs/chrome-tokens.md` | Canonical target agreement; no runtime claim |
-| 2 | Android pressure builder | `android/app/src/main/java/dev/niels/skidbladnir/PressurePresentation.kt`, `android/app/src/main/java/dev/niels/skidbladnir/MachinePressureRail.kt`, `android/app/src/test/java/dev/niels/skidbladnir/PressurePresentationTest.kt`, pressure test in `android/app/src/androidTest/java/dev/niels/skidbladnir/MultiMachineUiInstrumentedTest.kt` | Owns and observes the compile-complete pure and real-Compose reds before the atomic production hard cut |
+| 2 | Android pressure builder | `android/app/src/main/java/dev/niels/skidbladnir/MachinePressureRail.kt`, pressure test in `android/app/src/androidTest/java/dev/niels/skidbladnir/MultiMachineUiInstrumentedTest.kt` | Owns and observes the compile-complete pure and real-Compose reds before the atomic production hard cut |
 | 3 | Verifier, read-only | none | Diff/contract/gate review; writes no test or production file |
 
 For the original typographic-row hard cut, no owner changes
@@ -303,7 +299,7 @@ residue; rerun the focused proofs after cleanup.
 
 Verification shape:
 
-- focused `PressurePresentationTest` red/green;
+- focused pure presentation test red/green;
 - one separately approved focused instrumentation workflow containing the
   Compose red/green and exact signed-app restoration checks;
 - `scripts/test verify` after confirming its composition still executes no tmux

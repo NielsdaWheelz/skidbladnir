@@ -67,7 +67,14 @@ TerminalStatus = {
           observation_timeout | capture_failed | process_failed
 }
 Detection = {status: TerminalStatus, composer: empty | draft | blocked | unknown}
+StatusPresentation = {label, tone: working | attention | muted,
+  queue: none | ready | action, detail?, evidence?, queueNotice?}
 ```
+
+each inventory and creation row also carries `status: StatusPresentation`, the
+host's rendering of `terminalStatus` as if fresh and not ready (§6). queue
+`ready` means eligible: a client keeps it only while fresh and while the hub
+holds a pending ready. optional members are omitted, never null or empty.
 
 | field/value | exact meaning |
 | --- | --- |
@@ -101,9 +108,9 @@ inference, not unrelated transcript. recognized means both activity and
 interaction classified; partial means one; layout_unknown means neither.
 no failed stage may be converted to successful ambiguity.
 
-`sessions` owns these domain types/invariants. gateway serializes them;
-go/kotlin clients validate once at ingress. reject the former `state` shape,
-unknown enum values and invalid combinations. no dual reader or native alias.
+`sessions` owns these domain types/invariants. gateway serializes them; the go
+client validates once at ingress and kotlin decodes the closed enums. reject the
+former `state` shape, unknown enum values and, in go, invalid combinations. no dual reader or native alias.
 inventory freshness remains the only status clock; no confidence percentage,
 status expiry, transition timestamp or inference history.
 
@@ -328,8 +335,11 @@ the selected row's facts read `checking; last observed: <label>`
 no repeated announcement, pulse or sound for unchanged polls. retain secondary
 `notifications unavailable` independently of live status.
 
-reuse android `SessionStatusContent` for the card and the terminal session
-sheet, and one equivalent go projection for desktop/cli. labels, tone and
+one go projection, `sessions.PresentStatus`, renders this copy as if fresh and
+not ready: the gateway sends it as each inventory row's `status` member, and
+the desktop and cli call it on the row they hold. android's
+`SessionStatusContent` (card and terminal session sheet) reads `status` and adds
+only staleness, ready and notification health. labels, tone and
 predicates must derive from the same facts; never compare rendered strings to choose behavior. preserve status
 before cwd at narrow sizes. no badge stack, new palette or approve/answer action.
 

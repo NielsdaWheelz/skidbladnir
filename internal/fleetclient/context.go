@@ -16,6 +16,7 @@ type RemoteContext struct {
 type RemoteAgent struct {
 	Provider string `json:"provider"`
 	Profile  string `json:"profile,omitempty"`
+	Label    string `json:"label,omitempty"`
 }
 
 func validConnectionID(id string) bool {
@@ -41,22 +42,9 @@ func (session Session) Current(peer Peer) ExecutionContext {
 	}
 	result := ExecutionContext{Kind: "local", Machine: peer.Machine, Label: peer.Label, CWD: session.CWD}
 	if session.Agent != nil {
-		result.Agent = &ExecutionAgent{
-			Provider: session.Agent.Provider,
-			Profile:  session.Agent.Profile,
-			Label:    profileLabel(peer.Profiles, session.Agent.Profile),
-		}
+		result.Agent = &ExecutionAgent{Provider: session.Agent.Provider, Profile: session.Agent.Profile, Label: session.Agent.Label}
 	}
 	return result
-}
-
-func profileLabel(profiles []Profile, key string) string {
-	for _, profile := range profiles {
-		if profile.Key == key {
-			return profile.Label
-		}
-	}
-	return ""
 }
 
 // ContextObservation changes display context only, for the exact source capture.
@@ -74,10 +62,8 @@ func (client *Client) EnrichContexts(parent context.Context, source Peer, catalo
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	var cache sync.Map
-	profiles := make(map[string][]Profile, len(catalogues))
 	unavailable := make(map[string]bool)
 	for _, catalogue := range catalogues {
-		profiles[catalogue.Machine] = catalogue.Profiles
 		unavailable[catalogue.Machine] = catalogue.Error != nil && !catalogue.OK
 	}
 	rows := []Session{}
@@ -112,7 +98,7 @@ func (client *Client) EnrichContexts(parent context.Context, source Peer, catalo
 				}
 				observation.Execution = ExecutionContext{Kind: "remote", Machine: match.peer.Machine, Label: match.peer.Label, CWD: match.context.CWD}
 				if agent := match.context.Agent; agent != nil {
-					label := profileLabel(profiles[match.peer.Machine], agent.Profile)
+					label := agent.Label
 					if label == "" {
 						label = agent.Profile
 					}

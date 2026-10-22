@@ -5,74 +5,26 @@ import (
 	"time"
 )
 
-// RecoveryNotice only projects fresh inventory; retained rows make no recovery claim.
+// RecoveryNotice only projects fresh inventory; retained rows make no recovery
+// claim. The host words the notice; the client adds its label and the save
+// time in the local zone.
 func RecoveryNotice(peer Peer) (text string, failure bool) {
 	if !peer.OK || peer.Recovery == nil {
 		return "", false
 	}
-	r := peer.Recovery.fact
-	switch r.State {
-	case sessions.RecoveryTracking:
+	notice := peer.Recovery.fact.Notice()
+	if notice == nil {
 		return "", false
-	case sessions.RecoveryRecovered:
-		return peer.Label + ": terminals restored as shells. resume conversations using the same provider account.", false
-	case sessions.RecoveryDelayed, sessions.RecoveryBroken:
-		savedAt := "no confirmed save"
-		if r.SavedAt != nil {
-			savedAt = "last confirmed save: " + r.SavedAt.In(time.Local).Format("2006-01-02 15:04:05 utc-07:00")
-		}
-		var phase string
-		switch r.Failure.Phase {
-		case sessions.RecoveryPhaseOwnership:
-			phase = "writer lock"
-		case sessions.RecoveryPhaseCheckpointRead:
-			phase = "checkpoint read"
-		case sessions.RecoveryPhaseSource:
-			phase = "tmux server check"
-		case sessions.RecoveryPhaseCapture:
-			phase = "workspace capture"
-		case sessions.RecoveryPhaseCheckpointWrite:
-			phase = "checkpoint save"
-		case sessions.RecoveryPhaseRestore:
-			phase = "workspace restore"
-		default:
-			panic("invalid recovery phase") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
-		}
-		var cause string
-		switch r.Failure.Cause {
-		case sessions.RecoveryCauseTimeout:
-			cause = "timed out"
-		case sessions.RecoveryCauseChanged:
-			cause = "workspace or server changed"
-		case sessions.RecoveryCauseUnavailable:
-			cause = "required resource unavailable"
-		case sessions.RecoveryCauseInvalid:
-			cause = "invalid data or configuration"
-		case sessions.RecoveryCauseLimit:
-			cause = "supported limit exceeded"
-		case sessions.RecoveryCauseBusy:
-			cause = "lock already held"
-		case sessions.RecoveryCausePermission:
-			cause = "access denied"
-		case sessions.RecoveryCauseNoSpace:
-			cause = "storage space exhausted"
-		case sessions.RecoveryCauseIO:
-			cause = "input/output error"
-		case sessions.RecoveryCauseAlreadyAttempted:
-			cause = "prior restore may be incomplete"
-		case sessions.RecoveryCauseNotEmpty:
-			cause = "replacement server has sessions"
-		default:
-			panic("invalid recovery cause") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
-		}
-		status, action := "workspace saving delayed", "retrying automatically"
-		if r.State == sessions.RecoveryBroken {
-			status, action = "workspace recovery stopped", "manual repair required"
-		}
-		return peer.Label + ": " + status + ". " + phase + ": " + cause + ". " + savedAt + ". " + action + "; live terminals remain usable.", r.State == sessions.RecoveryBroken
-	default:
-		panic("invalid recovery state") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
 	}
+	text = peer.Label + ": " + notice.Summary
+	if notice.Action != "" {
+		save := "no confirmed save"
+		if savedAt := peer.Recovery.fact.SavedAt; savedAt != nil {
+			save = "last confirmed save: " + savedAt.In(time.Local).Format("2006-01-02 15:04:05 utc-07:00")
+		}
+		text += ". " + save + ". " + notice.Action
+	}
+	return text, peer.Recovery.fact.State == sessions.RecoveryBroken
 }
 
 // ErrorMessage is shared by command output and the desktop browser.

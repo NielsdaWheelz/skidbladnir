@@ -464,7 +464,6 @@ private fun DashboardDwarfGrid(
                             SessionCard(
                                 visible,
                                 machine,
-                                state.machines,
                                 needsInputView = needsInputView,
                                 motionEnabled = motionEnabled,
                                 terminalControlPending = state.terminalControlPending,
@@ -797,17 +796,8 @@ internal fun dashboardInventoryWaitCopy(machines: List<MachineState>): MachineNo
     return MachineNotice(waiting.joinToString(" ") { it.first }, tone)
 }
 
-internal fun forgeMachineChoiceLabel(machine: MachineState): String = machine.machine.label.text + when (
-    machineAvailability(machine)
-) {
-    MachineAvailability.Ready -> ""
-    MachineAvailability.Refreshing -> " · REFRESHING"
-    MachineAvailability.AuthRequired -> " · AUTH REQUIRED"
-    MachineAvailability.IdentityChanged -> " · IDENTITY CHANGED"
-    MachineAvailability.Reading -> " · READING"
-    is MachineAvailability.Stale -> " · STALE"
-    is MachineAvailability.Unavailable -> " · UNAVAILABLE"
-}
+internal fun forgeMachineChoiceLabel(machine: MachineState): String =
+    machine.machine.label.text + availabilityWord(machineAvailability(machine))?.let { " · $it" }.orEmpty()
 
 // Its own prose, not machineNotice's: the Forge names the disabled draft fields
 // where the strip names the machine. The tone is NOT its own — it defers to
