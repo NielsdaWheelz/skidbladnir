@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -33,11 +32,20 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (resu
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stopRecovery := gateway.sessions.StartRecovery(ctx, func(change sessions.RecoveryChange) {
-		event, err := logging.NewWorkspaceRecoveryChanged(change)
-		if err != nil {
-			panic("invalid workspace recovery log event") // justify-defect: sessions owns the closed recovery change before invoking its observer.
+		attrs := []any{"skidbladnir.recovery.at", change.At.UTC().Format(time.RFC3339Nano), "skidbladnir.recovery.state", string(change.Recovery.State)}
+		if savedAt := change.Recovery.SavedAt; savedAt != nil {
+			attrs = append(attrs, "skidbladnir.recovery.saved_at", savedAt.UTC().Format(time.RFC3339Nano))
 		}
-		gateway.log(event)
+		if failure := change.Recovery.Failure; failure != nil {
+			attrs = append(attrs, "skidbladnir.recovery.failure_at", failure.At.UTC().Format(time.RFC3339Nano), "skidbladnir.recovery.phase", string(failure.Phase), "skidbladnir.recovery.cause", string(failure.Cause))
+		}
+		if change.Operation != "" {
+			attrs = append(attrs, "skidbladnir.recovery.operation", change.Operation)
+		}
+		if change.Errno != 0 {
+			attrs = append(attrs, "skidbladnir.recovery.errno", uint64(change.Errno)) // slog writes an Errno as its text
+		}
+		gateway.logger.Info("Workspace.RecoveryChanged", attrs...)
 	})
 	defer func() {
 		if err := stopRecovery(); err != nil {
@@ -52,7 +60,7 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (resu
 		MaxHeaderBytes:    int(MaximumBodyBytes),
 	}
 	serveResult := make(chan error, 1)
-	gateway.log(logging.NewGatewayStarted())
+	gateway.logger.Info("Gateway.Started")
 	go func() {
 		serveResult <- server.Serve(listener)
 	}()

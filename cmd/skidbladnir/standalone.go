@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -38,7 +39,7 @@ import (
 // serveStandalone runs one gateway process. Machine identity and hub role are
 // constants of the process: when fleet commits a trust change or fails a write,
 // serve returns its error and the supervisor restarts it.
-func serveStandalone(logOutput io.Writer) (result error) {
+func serveStandalone(stdout io.Writer) (result error) {
 	directories, err := install.Paths()
 	if err != nil {
 		return err
@@ -51,6 +52,11 @@ func serveStandalone(logOutput io.Writer) (result error) {
 	name = strings.TrimSuffix(name, ".local")
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	// systemd journals serve's stdout; launchd discards it, so the mac keeps a bounded file.
+	logOutput := stdout
+	if runtime.GOOS == "darwin" {
+		logOutput = logging.BoundedFile(filepath.Join(state, "serve.log"))
+	}
 	logger := logging.New(logOutput)
 	networkCtx, stopNetwork := context.WithTimeout(ctx, 2*time.Second)
 	origin, _, networkErr := networkOrigin(networkCtx)
@@ -175,7 +181,7 @@ func serveStandalone(logOutput io.Writer) (result error) {
 type notificationHost struct {
 	observer *notifier.Observer
 	failed   atomic.Bool
-	logger   logging.Logger
+	logger   *slog.Logger
 }
 
 func (host *notificationHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +199,7 @@ func (host *notificationHost) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 }
 func (host *notificationHost) fail() {
 	if !host.failed.Swap(true) {
-		_ = host.logger.Write(logging.NewNotificationsUnavailable()) // diagnostics must not interrupt local terminals
+		host.logger.Info("Notifications.Unavailable")
 	}
 }
 

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
-	"os"
 	pathpkg "path"
 	"strings"
 	"sync"
@@ -17,7 +17,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
@@ -35,7 +34,7 @@ type Config struct {
 	Pressure      *pressure.Monitor
 	Fleet         *fleet.Service
 	Notifications http.Handler
-	Logger        logging.Logger
+	Logger        *slog.Logger // the process's one logging.New; its doc is the event-line contract
 	Machine       machine.Handle
 	Platform      platform.Descriptor
 }
@@ -47,11 +46,10 @@ type Gateway struct {
 	pressure      *pressure.Monitor
 	fleet         *fleet.Service
 	notifications http.Handler
-	logger        logging.Logger
+	logger        *slog.Logger
 	machine       machine.Handle
 	platform      platform.Descriptor
 	routes        *http.ServeMux
-	logMutex      sync.Mutex
 
 	// The declared pressure capability is constant for one running gateway, so
 	// it is projected onto the wire union once, here, instead of per request.
@@ -117,16 +115,16 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if tracked.status == 0 {
 			return
 		}
-		method := logging.MethodOther
+		method := "OTHER"
 		switch request.Method {
 		case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			method = logging.Method(request.Method)
+			method = request.Method
 		}
-		event, err := logging.NewRequestCompleted(method, logging.Route(route), tracked.status, time.Since(startedAt), tracked.errorCode)
-		if err != nil {
-			panic("invalid request-completion log event") // justify-defect: this handler closes every event field.
+		attrs := []any{"http.request.method", method, "http.response.status_code", tracked.status, "http.route", route, "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds()}
+		if tracked.errorCode != "" {
+			attrs = append(attrs, "skidbladnir.error.code", tracked.errorCode)
 		}
-		gateway.log(event)
+		gateway.logger.Info("Request.Completed", attrs...)
 	}()
 	if request.URL.RawPath != "" || !strings.HasPrefix(path, "/v1") {
 		writeError(tracked, errorInvalidRequest)
@@ -139,8 +137,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			route = "/v1/local/{operation}"
 		}
 		gateway.fleet.Handler().ServeHTTP(tracked, request)
-		if tracked.status >= 400 && tracked.errorCode == logging.ErrorNone {
-			tracked.errorCode = logging.ErrorFleet
+		if tracked.status >= 400 && tracked.errorCode == "" {
+			tracked.errorCode = "FleetError"
 		}
 		return
 	}
@@ -184,8 +182,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 		defer gateway.unregister(connection, nil)
 		gateway.notifications.ServeHTTP(tracked, request.WithContext(ctx))
-		if tracked.status >= 400 && tracked.errorCode == logging.ErrorNone {
-			tracked.errorCode = logging.ErrorNotifications
+		if tracked.status >= 400 && tracked.errorCode == "" {
+			tracked.errorCode = "NotificationsUnavailable"
 		}
 		return
 	}
@@ -246,9 +244,9 @@ func (gateway *Gateway) authenticate(writer *trackedResponseWriter, request *htt
 	}
 	var failure *fleet.Error
 	if errors.As(err, &failure) {
-		writer.errorCode = logging.ErrorFleet
+		writer.errorCode = "FleetError"
 		if failure.Code == "Unauthenticated" {
-			writer.errorCode = logging.ErrorUnauthenticated
+			writer.errorCode = "Unauthenticated"
 		}
 		if failure.Status == http.StatusUnauthorized {
 			writer.Header().Set("WWW-Authenticate", "Bearer")
@@ -268,65 +266,23 @@ func (gateway *Gateway) machineDTO() machineDTO {
 }
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
-	response, err := gateway.observeSessions(request.Context())
+	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
+	defer cancel()
+	inventory, err := gateway.sessions.List(ctx)
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	writeJSON(writer, http.StatusOK, response, nil)
-}
-
-func (gateway *Gateway) observeSessions(parent context.Context) (sessionsResponseDTO, error) {
-	startedAt := time.Now()
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
-	defer cancel()
-	observation := logging.SessionsObservation{Outcome: logging.ObservationFailed}
-	defer func() {
-		observation.Total = time.Since(startedAt)
-		if errors.Is(parent.Err(), context.Canceled) {
-			observation.Outcome = logging.ObservationCanceled
-			observation.Count = 0
-			if observation.Phase == logging.ObservationComplete {
-				observation.Phase = logging.ObservationProjection
-			}
-		}
-		event, err := logging.NewSessionsObserved(observation)
-		if err != nil {
-			panic("invalid sessions-observed log event") // justify-defect: phases and durations come from the closed local observation pipeline.
-		}
-		gateway.log(event)
-	}()
-	inventory, diagnostics, err := gateway.sessions.List(ctx)
-	observation.Admission, observation.Capture = diagnostics.Admission, diagnostics.Capture
-	observation.Normalize, observation.Foreground = diagnostics.Normalize, diagnostics.Foreground
-	observation.Phase = logging.ObservationPhase(diagnostics.Phase)
-	if err != nil {
-		return sessionsResponseDTO{}, err
-	}
-	observation.Phase = logging.ObservationTerminal
-	terminalStarted := time.Now()
 	for _, failure := range gateway.agents.Enrich(ctx, inventory.Sessions) {
 		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
 	}
-	terminalElapsed := time.Since(terminalStarted)
-	observation.Terminal = &terminalElapsed
-	if err := ctx.Err(); err != nil {
-		return sessionsResponseDTO{}, err
-	}
-	observation.Phase = logging.ObservationProjection
-	projectionStarted := time.Now()
 	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
-	projectionElapsed := time.Since(projectionStarted)
-	observation.Projection = &projectionElapsed
-	if err != nil {
-		return sessionsResponseDTO{}, err
+	// The five-second budget covers enrichment and projection: a late inventory fails whole.
+	if err != nil || ctx.Err() != nil {
+		writeError(writer, errorInternal)
+		return
 	}
-	if err := ctx.Err(); err != nil {
-		return sessionsResponseDTO{}, err
-	}
-	observation.Outcome, observation.Phase = logging.ObservationSuccess, logging.ObservationComplete
-	observation.Count = uint64(len(response.Sessions))
-	return response, nil
+	writeJSON(writer, http.StatusOK, response, nil)
 }
 
 func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.Request) {
@@ -406,10 +362,7 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		return
 	}
 	// Session.Created times creation alone; the status observation below is response latency.
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
-	}
+	elapsed := time.Since(startedAt)
 	observed := []sessions.Session{created.Session}
 	for _, failure := range gateway.agents.Enrich(ctx, observed) {
 		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
@@ -423,7 +376,11 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		writeError(writer, failure)
 		return
 	}
-	gateway.log(event)
+	attrs := []any{"skidbladnir.duration.ms", elapsed.Milliseconds(), "skidbladnir.session.tmux_id", created.Session.TmuxID}
+	if created.Session.LaunchProfile != "" {
+		attrs = append(attrs, "skidbladnir.session.launch_profile", string(created.Session.LaunchProfile))
+	}
+	gateway.logger.Info("Session.Created", attrs...)
 	writeJSON(writer, http.StatusCreated, response, nil)
 }
 
@@ -528,16 +485,7 @@ func (gateway *Gateway) readPressure(writer http.ResponseWriter, _ *http.Request
 		}
 		history[index] = mapped
 	}
-	level, reasons, err := pressureLogValues(snapshot.Current)
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	event, eventErr := logging.NewPressureSampled(level, reasons, time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid pressure-sampled log event") // justify-defect: pressure values were exhaustively mapped.
-	}
-	gateway.log(event)
+	gateway.logger.Info("Pressure.Sampled", "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds(), "skidbladnir.pressure.level", current.Level, "skidbladnir.pressure.reasons", current.Reasons)
 	writeJSON(writer, http.StatusOK, pressureResponseDTO{Unsupported: gateway.unsupportedMetrics, Current: current, History: history}, nil)
 }
 
@@ -619,14 +567,14 @@ func writeJSON(writer http.ResponseWriter, status int, value any, tooLarge *apiE
 	_, _ = writer.Write(payload) // justify-ignore-error: a client disconnect after headers cannot be repaired.
 }
 
-// writeError fills an absent dispatch from the request's default, records the log code and
-// writes the envelope.
+// writeError fills an absent dispatch from the request's default, records the code for the
+// request log and writes the envelope.
 func writeError(writer http.ResponseWriter, failure apiError) {
 	tracked := writer.(*trackedResponseWriter)
 	if failure.Dispatch == "" {
 		failure.Dispatch = tracked.dispatch
 	}
-	tracked.errorCode = failure.logCode
+	tracked.errorCode = failure.Code
 	writeJSON(writer, failure.Status, failure, nil)
 }
 
@@ -634,7 +582,7 @@ func writeError(writer http.ResponseWriter, failure apiError) {
 type trackedResponseWriter struct {
 	http.ResponseWriter
 	status    int
-	errorCode logging.ErrorCode
+	errorCode string // set with every status >= 400: the gateway's envelope code, else FleetError or NotificationsUnavailable
 	dispatch  string // the envelope's default dispatch, decided from the method and path
 }
 
@@ -665,24 +613,5 @@ func (writer *trackedResponseWriter) Flush() {
 }
 
 func (gateway *Gateway) logObservationFailure(tmuxID string, reason sessions.StatusReason, elapsed time.Duration) {
-	event, err := logging.NewTerminalObservationFailed(tmuxID, reason, elapsed)
-	if err != nil {
-		panic("invalid terminal-observation-failed log event") // justify-defect: only a valid unavailable status of a canonical session reaches this event.
-	}
-	gateway.log(event)
-}
-
-func (gateway *Gateway) log(event logging.Event) {
-	gateway.logMutex.Lock()
-	defer gateway.logMutex.Unlock()
-	err := gateway.logger.Write(event)
-	if err == nil {
-		return
-	}
-	var writeError *logging.WriteError
-	if errors.As(err, &writeError) {
-		_, _ = io.WriteString(os.Stderr, "{\"event.name\":\"Logging.WriteFailed\"}\n") // justify-ignore-error: observability cannot become product authority.
-		return
-	}
-	panic("invalid structured log event") // justify-defect: only a programming/configuration error reaches this branch.
+	gateway.logger.Info("Terminal.ObservationFailed", "skidbladnir.duration.ms", elapsed.Milliseconds(), "skidbladnir.observation.reason", string(reason), "skidbladnir.session.tmux_id", tmuxID)
 }

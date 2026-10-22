@@ -12,7 +12,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
@@ -26,7 +25,6 @@ type apiError struct {
 	Code     string            `json:"code"`
 	Message  string            `json:"message"`
 	Status   int               `json:"-"`
-	logCode  logging.ErrorCode
 }
 
 type createdTargetDTO struct {
@@ -36,31 +34,31 @@ type createdTargetDTO struct {
 }
 
 var (
-	errorUnauthenticated             = admissionError(auth.AdmissionUnauthenticated, logging.ErrorUnauthenticated)
-	errorInvalidRequest              = admissionError(auth.AdmissionInvalid, logging.ErrorInvalidRequest)
-	errorRequestTooLarge             = admissionError(auth.AdmissionTooLarge, logging.ErrorRequestTooLarge)
-	errorWorkingDirectoryInvalid     = apiError{Code: "WorkingDirectoryInvalid", Message: "Choose a valid working directory.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryInvalid}
-	errorWorkingDirectoryUnavailable = apiError{Code: "WorkingDirectoryUnavailable", Message: "That directory does not exist or cannot be opened.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryUnavailable}
-	errorDirectoryListingUnavailable = apiError{Code: "DirectoryListingUnavailable", Message: "This directory cannot be browsed. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingUnavailable}
-	errorDirectoryListingTooLarge    = apiError{Code: "DirectoryListingTooLarge", Message: "This directory has too many folders to show. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingTooLarge}
-	errorDirectorySearchUnavailable  = apiError{Code: "DirectorySearchUnavailable", Message: "Directory search is unavailable on this machine.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectorySearchUnavailable}
-	errorDirectorySearchTooLarge     = apiError{Code: "DirectorySearchTooLarge", Message: "Too many directory search results. Narrow the search.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectorySearchTooLarge}
-	errorTerminalContextUnavailable  = apiError{Code: "TerminalContextUnavailable", Message: "Remote context is unavailable.", Status: http.StatusNotFound, logCode: logging.ErrorTerminalContextUnavailable}
-	errorProfileUnknown              = apiError{Code: "ProfileUnknown", Message: "Choose an available profile.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorProfileUnknown}
-	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
-	errorSessionNameChanged          = apiError{Code: "SessionNameChanged", Message: "the session name changed. review and save again.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameChanged}
-	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "another session on this machine uses that name.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
-	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
-	errorGroupInvalid                = apiError{Code: "GroupInvalid", Message: group.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorGroupInvalid}
-	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
-	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
-	errorMachineIdentityMismatch     = admissionError(auth.AdmissionMachineMismatch, logging.ErrorMachineIdentityMismatch)
-	errorInternal                    = admissionError(auth.AdmissionUnavailable, logging.ErrorInternal)
+	errorUnauthenticated             = admissionError(auth.AdmissionUnauthenticated)
+	errorInvalidRequest              = admissionError(auth.AdmissionInvalid)
+	errorRequestTooLarge             = admissionError(auth.AdmissionTooLarge)
+	errorWorkingDirectoryInvalid     = apiError{Code: "WorkingDirectoryInvalid", Message: "Choose a valid working directory.", Status: http.StatusUnprocessableEntity}
+	errorWorkingDirectoryUnavailable = apiError{Code: "WorkingDirectoryUnavailable", Message: "That directory does not exist or cannot be opened.", Status: http.StatusUnprocessableEntity}
+	errorDirectoryListingUnavailable = apiError{Code: "DirectoryListingUnavailable", Message: "This directory cannot be browsed. Enter the path instead.", Status: http.StatusUnprocessableEntity}
+	errorDirectoryListingTooLarge    = apiError{Code: "DirectoryListingTooLarge", Message: "This directory has too many folders to show. Enter the path instead.", Status: http.StatusUnprocessableEntity}
+	errorDirectorySearchUnavailable  = apiError{Code: "DirectorySearchUnavailable", Message: "Directory search is unavailable on this machine.", Status: http.StatusUnprocessableEntity}
+	errorDirectorySearchTooLarge     = apiError{Code: "DirectorySearchTooLarge", Message: "Too many directory search results. Narrow the search.", Status: http.StatusUnprocessableEntity}
+	errorTerminalContextUnavailable  = apiError{Code: "TerminalContextUnavailable", Message: "Remote context is unavailable.", Status: http.StatusNotFound}
+	errorProfileUnknown              = apiError{Code: "ProfileUnknown", Message: "Choose an available profile.", Status: http.StatusUnprocessableEntity}
+	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number.", Status: http.StatusUnprocessableEntity}
+	errorSessionNameChanged          = apiError{Code: "SessionNameChanged", Message: "the session name changed. review and save again.", Status: http.StatusConflict}
+	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "another session on this machine uses that name.", Status: http.StatusConflict}
+	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity}
+	errorGroupInvalid                = apiError{Code: "GroupInvalid", Message: group.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity}
+	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound}
+	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict}
+	errorMachineIdentityMismatch     = admissionError(auth.AdmissionMachineMismatch)
+	errorInternal                    = admissionError(auth.AdmissionUnavailable)
 )
 
-func admissionError(code auth.AdmissionCode, logCode logging.ErrorCode) apiError {
+func admissionError(code auth.AdmissionCode) apiError {
 	status, message := code.Response()
-	return apiError{Code: string(code), Message: message, Status: status, logCode: logCode}
+	return apiError{Code: string(code), Message: message, Status: status}
 }
 
 type profileDTO struct {
@@ -594,24 +592,4 @@ func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pr
 		set[metric] = struct{}{}
 	}
 	return mapped, set
-}
-
-func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging.PressureReason, error) {
-	level := logging.PressureLevel(sample.Status)
-	switch level {
-	case logging.PressureNormal, logging.PressureWarm, logging.PressureHot, logging.PressureUnknown:
-	default:
-		return "", nil, errors.New("invalid pressure log level")
-	}
-	reasons := make([]logging.PressureReason, len(sample.Reasons))
-	for index, reason := range sample.Reasons {
-		mapped := logging.PressureReason(reason)
-		switch mapped {
-		case logging.ReasonMemory, logging.ReasonDisk, logging.ReasonLoad, logging.ReasonCPUPSI, logging.ReasonMemoryPSI, logging.ReasonIOPSI:
-			reasons[index] = mapped
-		default:
-			return "", nil, errors.New("invalid pressure log reason")
-		}
-	}
-	return level, reasons, nil
 }

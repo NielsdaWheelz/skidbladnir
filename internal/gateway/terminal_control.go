@@ -10,14 +10,13 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 var (
-	errorTerminalTargetChanged = apiError{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again.", Status: http.StatusConflict, logCode: logging.ErrorTerminalTargetChanged, Dispatch: "not_sent"}
-	errorTerminalUnavailable   = apiError{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again.", Status: http.StatusConflict, logCode: logging.ErrorTerminalUnavailable, Dispatch: "not_sent"}
-	errorTerminalInputBlocked  = apiError{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys.", Status: http.StatusConflict, logCode: logging.ErrorTerminalInputBlocked, Dispatch: "not_sent"}
+	errorTerminalTargetChanged = apiError{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again.", Status: http.StatusConflict, Dispatch: "not_sent"}
+	errorTerminalUnavailable   = apiError{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again.", Status: http.StatusConflict, Dispatch: "not_sent"}
+	errorTerminalInputBlocked  = apiError{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys.", Status: http.StatusConflict, Dispatch: "not_sent"}
 )
 
 type terminalRequest struct {

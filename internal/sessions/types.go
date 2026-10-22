@@ -124,11 +124,6 @@ type TerminalContext struct {
 	Connection *Connection
 }
 
-type ListDiagnostics struct {
-	Phase                                     string
-	Admission, Capture, Normalize, Foreground *time.Duration
-}
-
 type Inventory struct {
 	ObservedAt time.Time
 	Sessions   []Session
