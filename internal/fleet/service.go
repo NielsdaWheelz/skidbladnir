@@ -149,10 +149,9 @@ func (s *Service) newFleet(base document, c hostconfig.Config) (document, error)
 	device := randomID("d-")
 	base.Fleet = membership{DeviceID: device, Bearer: bearer, State: state{
 		FleetID: hex.EncodeToString(id), Hub: base.Machine, StateRevision: 1, ConfigRevision: 1,
-		Machines:    []Machine{{base.Machine, base.Name, s.origin}},
-		AndroidPush: publicAndroidPush(c.AndroidPush),
-		Members:     []Member{{device, "computer", base.Machine, verifier}},
-		Settings:    &c,
+		Machines: []Machine{{base.Machine, base.Name, s.origin}},
+		Members:  []Member{{device, "computer", base.Machine, verifier}},
+		Settings: &c,
 	}}
 	base.Authority = &authority{Invites: []invite{}, Reports: map[string]SelfReport{}}
 	return base, resetObserver(s.options.ObserverPath)

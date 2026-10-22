@@ -4,15 +4,11 @@ package fcmpush
 import (
 	"bytes"
 	"context"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"sync"
 	"time"
 
@@ -50,52 +46,26 @@ type Client struct {
 	token       *oauth2.Token
 }
 
+// Load reads the credential for project, a hostconfig.AndroidPush.Validate
+// project id; the send url is built from it.
 func Load(path, project string) (*Client, error) {
 	unavailable := errors.New("android_push_credentials_unavailable")
-	if !regexp.MustCompile(`^[a-z][a-z0-9-]{4,62}$`).MatchString(project) {
-		return nil, unavailable
-	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() > 64<<10 {
 		return nil, unavailable
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, unavailable
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, (64<<10)+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > 64<<10 {
-		return nil, unavailable
-	}
+	data, err := os.ReadFile(path)
 	var account struct {
-		Type        string `json:"type"`
 		ProjectID   string `json:"project_id"`
 		PrivateKey  string `json:"private_key"`
 		ClientEmail string `json:"client_email"`
 		TokenURI    string `json:"token_uri"`
 	}
-	if json.Unmarshal(data, &account) != nil || account.Type != "service_account" || account.ProjectID != project || account.ClientEmail == "" || account.TokenURI != "https://oauth2.googleapis.com/token" {
+	if err != nil || json.Unmarshal(data, &account) != nil || account.ProjectID != project || account.PrivateKey == "" || account.ClientEmail == "" || account.TokenURI != "https://oauth2.googleapis.com/token" {
 		return nil, unavailable
 	}
-	block, rest := pem.Decode([]byte(account.PrivateKey))
-	if block == nil || len(bytes.TrimSpace(rest)) != 0 {
-		return nil, unavailable
-	}
-	if block.Type != "PRIVATE KEY" {
-		return nil, unavailable
-	}
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, unavailable
-	}
-	key, ok := parsed.(*rsa.PrivateKey)
-	if !ok {
-		return nil, unavailable
-	}
-	if key.Validate() != nil {
-		return nil, unavailable
-	}
+	// the library refuses any type but service_account; oauth2/jwt parses the key
+	// (pem pkcs8 or pkcs1, rsa) at each token fetch.
 	credentials, err := google.JWTConfigFromJSON(data, "https://www.googleapis.com/auth/firebase.messaging")
 	if err != nil {
 		return nil, unavailable

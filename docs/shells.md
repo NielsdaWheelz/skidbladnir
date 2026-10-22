@@ -133,23 +133,26 @@ source creation, in order:
    new session have independent lifetimes.
 
 terminal startup uses one private `terminal-exec` entrypoint in the existing
-binary, dispatched before normal gateway/cli initialization. resolve that binary
-with `os.Executable`; preserve its literal path through tmux's argv grammar.
-invoke it as direct tmux argv. carry absolute cwd and configured tmux executable
-as raw base64url arguments, plus the existing socket selector; decode/validate
-once with existing path/socket primitives. terminal creation omits tmux `-c` and sets only the tmux
-creation subprocess's `exec.Cmd.Dir` to the validated cwd. this preserves tmux's
-stored session cwd for later windows without format parsing; never change the
-gateway process cwd. the helper re-enters the required directory before executing
-user code. no shell interpolation.
+binary, dispatched before normal gateway/cli initialization.
+`tmux.TerminalCommand` resolves that binary with `os.Executable` and passes it as
+direct tmux argv with three arguments: the base64url absolute cwd, the opaque
+encoded agent launch (or empty) and the base64url resolved shell. terminal
+creation omits tmux `-c` and sets only the tmux creation subprocess's
+`exec.Cmd.Dir` to the validated cwd. this preserves tmux's stored session cwd for
+later windows without format parsing; never change the gateway process cwd. no
+shell interpolation.
 
-the helper uses the exact configured tmux executable/socket to read global
-`default-shell` after its new session exists. this handles first creation with
-no existing server. require an absolute executable shell; failure exits with a
-fixed content-free terminal-local error. never substitute another shell. change
-directory, set `PWD` and `SHELL` accordingly, then `exec` that shell with login
-argv[0] (`-` plus its basename), inherited terminal fds, and ordinary tmux
-environment. no `-c` payload, shell-specific flag guessing, daemon, or handshake.
+the helper trusts its one producer: it decodes, sets `SHELL` and the
+`SKIDBLADNIR_*` startup environment, then `exec`s the shell with login argv[0]
+(`-` plus its basename), inherited terminal fds and ordinary tmux environment.
+`hostconfig.Resolve` validated that shell when this host applied its settings:
+absolute bash or zsh, a regular file this user can execute. a shell removed later
+fails only the `exec`, with the fixed content-free `terminal startup failed`; the
+gateway keeps serving, existing panes stay reachable, and the next settings
+commit (apply, restart or member sync) reports `invalid_host`. never substitute
+another shell.
+the shell's startup hook enters the directory and decodes the launch through
+`agent-exec`. no `-c` payload, shell-specific flag guessing, daemon, or handshake.
 
 this small helper is necessary: [tmux](https://raw.githubusercontent.com/tmux/tmux/3.4/spawn.c)
 expands cwd formats, falls back after failed directory entry, and substitutes an

@@ -66,13 +66,6 @@ profiles:
 # shell: /bin/zsh
 # terminal: apple-terminal
 # default_machine: devbox
-machines:
-  macbook:
-    terminal: ghostty
-    profiles:
-      work:
-        command: codex-work
-        home: ~/.codex-work
 ```
 
 | field | exact meaning |
@@ -84,21 +77,27 @@ machines:
 | `terminal?` | mac notification adapter: `apple-terminal` or `ghostty`; new mac default apple terminal; no installer dependency on ghostty |
 | `default_machine?` | existing desktop default selection, by enrolled name; omitted uses self for a new installation; phone retains its local selection |
 | `android_push?` | optional public firebase fields only, defined in §6; omission disables android background push |
-| `machines?` | sparse overrides keyed by enrolled name: `shell`, `terminal`, `default_machine`, and profile `command`/`home`; no second roster/profile list |
 
 machine names reuse existing case-insensitive uniqueness and display validation;
-stable `mh-` identity is separate. preserve existing display spelling. unknown
-override machines/profiles are errors. removed machines are not retained, so a
-removed machine still named in `machines:` or `default_machine` makes the next
-apply `ConfigInvalid` until the yaml drops it; meanwhile a desktop default naming
-it resolves to self. there is no `hub` key. never rewrite human yaml automatically.
+stable `mh-` identity is separate. preserve existing display spelling. every host
+reads the same top-level `shell`, `terminal` and `default_machine`; there is no
+`hub` or `machines` key. removed machines are not retained, so a removed machine
+still named in `default_machine` makes the next apply `ConfigInvalid` until the
+yaml drops it; meanwhile a desktop default naming it resolves to self. never
+rewrite human yaml automatically.
 membership commands own names/order;
 append new machines. no yaml include, env interpolation, executable config,
 credentials, endpoint overrides or provider command preflight. `command` alone
 uses shell expansion. resolve `~` for metadata on the destination.
 use one strict yaml decoder with the existing 64 kib input limit; no custom yaml
 parser. the maintained [go yaml package](https://pkg.go.dev/go.yaml.in/yaml/v3)
-provides typed decoding; explicitly reject aliases/merge keys and duplicate fields.
+decodes one document into the typed config with unknown fields refused, then the
+semantic rules run. unknown and duplicate keys, extra documents and wrong value
+types are errors, though a null key is skipped; aliases and merge keys expand; a
+scalar in a string field keeps its literal text; a float `version` truncates;
+null or empty leaves a field unset and a null list item is dropped. decode errors
+carry the yaml package's `line N: …` text and go type names; semantic errors keep
+field paths.
 
 generated private state uses existing xdg paths, directories `0700`, files `0600`;
 reuse machine handles, bearer generation, atomic replacement and notification stores.
@@ -116,14 +115,15 @@ existing device files           retained acknowledgement
 
 ```text
 state:     {fleetId, hub, stateRevision, configRevision,
-            machines:[{machine,name,origin?}], androidPush?,
+            machines:[{machine,name,origin?}], androidPush? (phone view only),
             members?:[{deviceId,kind,machine?,verifier}], settings?}
 authority: {invites:[{verifier,expiresAt}], reports:{deviceId: report}}
 ```
 
 `state` is the one wire and cache type: the hub persists it as authority, serves
 it from `GET /v1/fleet` and the join reply (phones get it without `members` and
-`settings`), and members cache it. `authority` exists only on the hub; its
+`settings`, plus `androidPush` derived from `settings.android_push`), and members
+cache it. `authority` exists only on the hub; its
 presence is the hub role, read once per process. `fleetId` is 32 random bytes as
 64 lowercase hex. `stateRevision` increases on membership, origin and settings
 changes; `configRevision` on accepted settings changes. `machines` lists the hub
@@ -198,7 +198,7 @@ and run skid connect there`.
 | `skid connect` | refuse when the service version differs from the cli; configure the tailscale origin and serve route and report the origin; request a five-minute single-use invite from the hub; print one pasteable line, a qr only on a tty; never permanent credentials |
 | `skid join [--name NAME]` | read one invite line from stdin/prompt; the service posts a fresh device id and verifier to the invite's hub with no staging, and on success replaces this host's fleet in one write and restarts; failure leaves state untouched; local `config.yaml` stays untouched, no inactive copy |
 | `skid remove DEVICE_ID` | remove that device at the hub; refuse the hub's own device; no pending list |
-| `skid recover` | new fleet with this host as hub from its cached accepted settings (no `machines:` overrides, default machine self); new fleet id, printed; the service restarts and its startup apply adopts this host's `config.yaml` when valid; re-join computers and re-pair phones |
+| `skid recover` | new fleet with this host as hub from its cached accepted settings (default machine self); new fleet id, printed; the service restarts and its startup apply adopts this host's `config.yaml` when valid; re-join computers and re-pair phones |
 | `skid apply` | request application of the hub's own yaml without opening the interactive browser |
 | `skid status` | `{version, fleetId, hub, stateRevision, configRevision, members:[{deviceId,kind,machine?}], applications:[{deviceId,name,report:{origin?,version,application}}], message?}`; no terminal or account contents |
 
@@ -355,14 +355,15 @@ android_push:
   api_key: your-public-android-client-key
 ```
 
-all four fields are required, bounded nonempty firebase identifiers; reject
-unknown/duplicate/null fields through the existing decoder. no machine overrides,
-credential fields, backend selector or enable flag. omission is disabled.
+all four fields are required, bounded nonempty firebase identifiers, and
+`project_id` is a firebase project id (5–63 lowercase letters, digits or hyphens,
+starting with a letter); the config decoder rejects unknown and duplicate fields.
+no credential fields, backend selector or enable flag. omission or null is disabled.
 `application_id` is firebase's android app id, not the apk package name. the
 firebase android app must use `dev.niels.skidbladnir`; users install the ordinary
 signed apk, never build their own. public client keys are not sender authority.
 
-publish accepted public options as `androidPush` in the hub's fleet state:
+publish accepted public options as `androidPush` in the phones' fleet view:
 `{id,projectId,applicationId,senderId,apiKey}`. `id` is lowercase sha256 of exact
 UTF-8 `skidbladnir.android-push.v1\nPROJECT\nAPPLICATION\nSENDER\nAPIKEY`, with
 no final newline; identifiers cannot contain newlines. use this identity in all
@@ -373,7 +374,9 @@ private credential: fixed local
 `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/android-push-credentials.json`, regular
 `0600` google service-account export inside the existing private config directory.
 read at startup/ordinary apply, at most64kib; require `type:service_account`,
-matching project_id and a usable private key. use explicit oauth2/google json
+matching project_id, client_email, the google token uri and a nonempty private
+key; oauth2 parses the key (pkcs8 or pkcs1 rsa) at each token fetch, so a bad key
+reads `unavailable` after the first send. use explicit oauth2/google json
 credentials with firebase.messaging scope; never ambient adc, shared yaml,
 command-line key values, fleet cache or phone payloads. grant
 only `cloudmessaging.messages.create`; document firebase API/project creation,

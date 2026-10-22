@@ -38,9 +38,6 @@ type Manager struct {
 }
 
 func New(config Config) (*Manager, error) {
-	if err := validateShell(config.ShellPath); err != nil {
-		return nil, err
-	}
 	if err := requireExecutable(config.TmuxPath); err != nil {
 		return nil, fmt.Errorf("tmux executable: %w", err)
 	}
@@ -89,9 +86,6 @@ func (manager *Manager) ApplySettings(ctx context.Context, profiles []agentrunti
 	if err != nil {
 		return err
 	}
-	if err := validateShell(shellPath); err != nil {
-		return err
-	}
 	if err := manager.acquire(ctx); err != nil {
 		return err
 	}
@@ -105,18 +99,6 @@ func (manager *Manager) ApplySettings(ctx context.Context, profiles []agentrunti
 		byKey[p.Key] = p
 	}
 	manager.settings.Store(&runtimeSettings{profiles: validated, byKey: byKey, shellPath: shellPath, revision: manager.SettingsRevision() + 1})
-	return nil
-}
-func validateShell(path string) error {
-	if !filepath.IsAbs(path) {
-		return errors.New("shell must be an absolute bash or zsh executable")
-	}
-	if filepath.Base(path) != "bash" && filepath.Base(path) != "zsh" {
-		return errors.New("shell must be bash or zsh")
-	}
-	if err := requireExecutable(path); err != nil {
-		return fmt.Errorf("shell executable: %w", err)
-	}
 	return nil
 }
 

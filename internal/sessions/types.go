@@ -14,7 +14,7 @@ import (
 
 type Config struct {
 	TmuxPath       string
-	ShellPath      string
+	ShellPath      string // a hostconfig.Resolve shell; sessions trusts it
 	SocketName     string
 	Workdir        *workdir.Service
 	CataloguePath  string

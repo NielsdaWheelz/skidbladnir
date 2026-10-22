@@ -9,14 +9,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
+	"syscall"
 	"unicode"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
 
-const MaximumBytes = 64 * 1024
 const DefaultYAML = `version: 1
 profiles: []
 # shell: /bin/zsh
@@ -37,16 +39,6 @@ type Profile struct {
 	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
 	Home     string `yaml:"home,omitempty" json:"home,omitempty"`
 }
-type ProfileOverride struct {
-	Command *string `yaml:"command,omitempty" json:"command,omitempty"`
-	Home    *string `yaml:"home,omitempty" json:"home,omitempty"`
-}
-type Override struct {
-	Shell          string                     `yaml:"shell,omitempty" json:"shell,omitempty"`
-	Terminal       string                     `yaml:"terminal,omitempty" json:"terminal,omitempty"`
-	DefaultMachine string                     `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
-	Profiles       map[string]ProfileOverride `yaml:"profiles,omitempty" json:"profiles,omitempty"`
-}
 
 // AndroidPush contains public Firebase client options, never sender credentials.
 type AndroidPush struct {
@@ -60,9 +52,15 @@ func (p AndroidPush) ID() string {
 	sum := sha256.Sum256([]byte("skidbladnir.android-push.v1\n" + p.ProjectID + "\n" + p.ApplicationID + "\n" + p.SenderID + "\n" + p.APIKey))
 	return hex.EncodeToString(sum[:])
 }
+
+// Validate is the one check of these options. project_id also names the fcm send
+// url, which fcmpush builds from it unchecked.
 func (p AndroidPush) Validate() error {
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]{4,62}$`).MatchString(p.ProjectID) {
+		return errors.New("android_push.project_id: expected a firebase project id: 5–63 lowercase letters, digits or hyphens, starting with a letter")
+	}
 	for _, field := range []struct{ name, value string }{
-		{"project_id", p.ProjectID}, {"application_id", p.ApplicationID}, {"sender_id", p.SenderID}, {"api_key", p.APIKey},
+		{"application_id", p.ApplicationID}, {"sender_id", p.SenderID}, {"api_key", p.APIKey},
 	} {
 		valid := len(field.value) > 0 && len(field.value) <= 256
 		for _, c := range []byte(field.value) {
@@ -75,15 +73,16 @@ func (p AndroidPush) Validate() error {
 	return nil
 }
 
+// Config is config.yaml. Its json form is the fleet's accepted settings.
 type Config struct {
-	AndroidPush    *AndroidPush        `yaml:"android_push,omitempty" json:"android_push,omitempty"`
-	Version        int                 `yaml:"version" json:"version"`
-	Profiles       []Profile           `yaml:"profiles" json:"profiles"`
-	Shell          string              `yaml:"shell,omitempty" json:"shell,omitempty"`
-	Terminal       string              `yaml:"terminal,omitempty" json:"terminal,omitempty"`
-	DefaultMachine string              `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
-	Machines       map[string]Override `yaml:"machines,omitempty" json:"machines,omitempty"`
+	AndroidPush    *AndroidPush `yaml:"android_push,omitempty" json:"android_push,omitempty"`
+	Version        int          `yaml:"version" json:"version"`
+	Profiles       []Profile    `yaml:"profiles" json:"profiles"`
+	Shell          string       `yaml:"shell,omitempty" json:"shell,omitempty"`
+	Terminal       string       `yaml:"terminal,omitempty" json:"terminal,omitempty"`
+	DefaultMachine string       `yaml:"default_machine,omitempty" json:"default_machine,omitempty"`
 }
+
 type Settings struct {
 	Shell          string    `json:"shell"`
 	Terminal       string    `json:"terminal"`
@@ -91,81 +90,40 @@ type Settings struct {
 	Profiles       []Profile `json:"profiles"`
 }
 
+// Parse admits config.yaml: at most 64 KiB, one yaml document decoded strictly
+// into Config (unknown or duplicate keys and wrong value types are errors), then
+// the rules the types cannot express. A scalar in a string field keeps its
+// literal text, null or "" leaves a field unset, and aliases and merge keys expand.
 func Parse(data []byte) (Config, error) {
-	if len(data) > MaximumBytes {
+	if len(data) > 64<<10 {
 		return Config{}, errors.New("config: exceeds 64 kib")
 	}
-	var document yaml.Node
+	var c Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	if e := decoder.Decode(&document); e != nil {
-		return Config{}, errors.New("config: invalid yaml")
+	decoder.KnownFields(true)
+	err := decoder.Decode(&c)
+	var typeErr *yaml.TypeError
+	if errors.As(err, &typeErr) {
+		return Config{}, errors.New("config: " + strings.Join(typeErr.Errors, "; "))
 	}
-	var extra yaml.Node
-	if e := decoder.Decode(&extra); !errors.Is(e, io.EOF) {
+	if err != nil && !errors.Is(err, io.EOF) { // an empty file is an empty Config
+		return Config{}, fmt.Errorf("config: %w", err)
+	}
+	if !errors.Is(decoder.Decode(new(yaml.Node)), io.EOF) {
 		return Config{}, errors.New("config: expected one yaml document")
 	}
-	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
-		return Config{}, errors.New("config: expected a mapping")
+	if err := validate(&c); err != nil {
+		return Config{}, err
 	}
-	if e := validateShape(document.Content[0], "config"); e != nil {
-		return Config{}, e
-	}
-	if e := validateNode(document.Content[0], ""); e != nil {
-		return Config{}, e
-	}
-	var config Config
-	typed := yaml.NewDecoder(bytes.NewReader(data))
-	typed.KnownFields(true)
-	if e := typed.Decode(&config); e != nil {
-		return Config{}, errors.New("config: unknown field or invalid field type")
-	}
-	if e := validate(&config); e != nil {
-		return Config{}, e
-	}
-	return config, nil
+	return c, nil
 }
-func validateNode(node *yaml.Node, path string) error {
-	if node.Kind == yaml.AliasNode || node.Tag == "!!merge" {
-		return fmt.Errorf("%s: yaml aliases and merge keys are unsupported", fieldPath(path, "config"))
-	}
-	if node.Tag == "!!null" {
-		return fmt.Errorf("%s: null is unsupported", fieldPath(path, "config"))
-	}
-	if node.Kind == yaml.MappingNode {
-		seen := map[string]bool{}
-		for i := 0; i < len(node.Content); i += 2 {
-			key := node.Content[i]
-			if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Value == "<<" {
-				return fmt.Errorf("%s: invalid mapping key", fieldPath(path, "config"))
-			}
-			child := fieldPath(path, key.Value)
-			if seen[key.Value] {
-				return fmt.Errorf("%s: duplicate field", child)
-			}
-			seen[key.Value] = true
-			if e := validateNode(node.Content[i+1], child); e != nil {
-				return e
-			}
-		}
-	} else {
-		for i, child := range node.Content {
-			if e := validateNode(child, fmt.Sprintf("%s[%d]", path, i)); e != nil {
-				return e
-			}
-		}
-	}
-	return nil
-}
-func fieldPath(path, key string) string {
-	if path == "" {
-		return key
-	}
-	return path + "." + key
-}
+
+// validate holds the rules the types cannot express and fills each blank label
+// with its profile name.
 func validate(c *Config) error {
 	if c.AndroidPush != nil {
-		if e := c.AndroidPush.Validate(); e != nil {
-			return e
+		if err := c.AndroidPush.Validate(); err != nil {
+			return err
 		}
 	}
 	if c.Version != 1 {
@@ -174,28 +132,32 @@ func validate(c *Config) error {
 	if c.Profiles == nil {
 		return errors.New("profiles: required ordered list")
 	}
-	if e := validateOptions(c.Shell, c.Terminal, "config"); e != nil {
-		return e
+	if c.Shell != "" && !supportedShell(c.Shell) {
+		return errors.New("config.shell: expected absolute bash or zsh path")
 	}
-	keys := map[string]bool{}
+	if c.Terminal != "" && c.Terminal != "apple-terminal" && c.Terminal != "ghostty" {
+		return errors.New("config.terminal: expected apple-terminal or ghostty")
+	}
+	name := regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+	names := map[string]bool{}
 	for i := range c.Profiles {
 		p := &c.Profiles[i]
 		prefix := fmt.Sprintf("profiles[%d]", i)
-		if !validKey(p.Name) {
+		if !name.MatchString(p.Name) {
 			return fmt.Errorf("%s.name: use 1–32 lowercase letters, digits, underscores or hyphens; start with a letter", prefix)
 		}
-		if keys[p.Name] {
+		if names[p.Name] {
 			return fmt.Errorf("%s.name: duplicate profile", prefix)
 		}
-		keys[p.Name] = true
+		names[p.Name] = true
 		if p.Label == "" {
 			p.Label = p.Name
 		}
-		if !validLabel(p.Label) {
+		if !utf8.ValidString(p.Label) || utf8.RuneCountInString(p.Label) > 64 || strings.TrimSpace(p.Label) == "" || strings.IndexFunc(p.Label, unicode.IsControl) >= 0 {
 			return fmt.Errorf("%s.label: use 1–64 visible characters", prefix)
 		}
-		if e := validateCommand(p.Command, prefix+".command"); e != nil {
-			return e
+		if strings.TrimSpace(p.Command) == "" || !utf8.ValidString(p.Command) || strings.ContainsRune(p.Command, 0) {
+			return fmt.Errorf("%s.command: required command without nul bytes", prefix)
 		}
 		if p.Provider != "" && p.Provider != "codex" && p.Provider != "claude" {
 			return fmt.Errorf("%s.provider: expected codex or claude", prefix)
@@ -203,132 +165,35 @@ func validate(c *Config) error {
 		if p.Home != "" && p.Provider == "" {
 			return fmt.Errorf("%s.home: requires provider", prefix)
 		}
-		if p.Home != "" && !validHome(p.Home) {
+		if p.Home != "" && ((!filepath.IsAbs(p.Home) && !strings.HasPrefix(p.Home, "~/")) || !utf8.ValidString(p.Home) || strings.ContainsRune(p.Home, 0)) {
 			return fmt.Errorf("%s.home: expected absolute path or ~/…", prefix)
 		}
 	}
-	for name, o := range c.Machines {
-		prefix := "machines." + name
-		if e := validateOptions(o.Shell, o.Terminal, prefix); e != nil {
-			return e
-		}
-		for key, p := range o.Profiles {
-			if !keys[key] {
-				return fmt.Errorf("%s.profiles.%s: unknown profile", prefix, key)
-			}
-			if p.Command != nil {
-				if e := validateCommand(*p.Command, prefix+".profiles."+key+".command"); e != nil {
-					return e
-				}
-			}
-			if p.Home != nil {
-				provider := ""
-				for _, profile := range c.Profiles {
-					if profile.Name == key {
-						provider = profile.Provider
-					}
-				}
-				if provider == "" || !validHome(*p.Home) {
-					return fmt.Errorf("%s.profiles.%s.home: requires provider and absolute path or ~/…", prefix, key)
-				}
-			}
-		}
-	}
 	return nil
-}
-func validateOptions(shell, terminal, path string) error {
-	if shell != "" && (!filepath.IsAbs(shell) || (filepath.Base(shell) != "bash" && filepath.Base(shell) != "zsh") || strings.ContainsRune(shell, 0)) {
-		return fmt.Errorf("%s.shell: expected absolute bash or zsh path", path)
-	}
-	if terminal != "" && terminal != "apple-terminal" && terminal != "ghostty" {
-		return fmt.Errorf("%s.terminal: expected apple-terminal or ghostty", path)
-	}
-	return nil
-}
-func validateCommand(command, path string) error {
-	if strings.TrimSpace(command) == "" || !utf8.ValidString(command) || strings.ContainsRune(command, 0) {
-		return fmt.Errorf("%s: required command without nul bytes", path)
-	}
-	return nil
-}
-func validKey(v string) bool {
-	if len(v) == 0 || len(v) > 32 {
-		return false
-	}
-	for i, c := range []byte(v) {
-		if c >= 'a' && c <= 'z' {
-			continue
-		}
-		if i > 0 && (c >= '0' && c <= '9' || c == '_' || c == '-') {
-			continue
-		}
-		return false
-	}
-	return true
-}
-func validLabel(v string) bool {
-	return utf8.ValidString(v) && utf8.RuneCountInString(v) <= 64 && strings.TrimSpace(v) != "" && strings.IndexFunc(v, unicode.IsControl) < 0
-}
-func validHome(v string) bool {
-	return (filepath.IsAbs(v) || strings.HasPrefix(v, "~/")) && utf8.ValidString(v) && !strings.ContainsRune(v, 0)
 }
 
-// ValidateMachines admits sparse overrides against the fleet's machine names.
+// supportedShell is the startup integration's rule: an absolute bash or zsh path.
+func supportedShell(path string) bool {
+	base := filepath.Base(path)
+	return filepath.IsAbs(path) && (base == "bash" || base == "zsh") && !strings.ContainsRune(path, 0)
+}
+
+// ValidateMachines checks the config's one machine reference, default_machine,
+// against the fleet's machine names with the fleet's case-insensitive rule.
 func (c Config) ValidateMachines(names []string) error {
-	known := map[string]bool{}
-	for _, n := range names {
-		known[strings.ToLower(n)] = true
-	}
-	seen := map[string]bool{}
-	for n, o := range c.Machines {
-		if seen[strings.ToLower(n)] {
-			return fmt.Errorf("machines.%s: duplicate machine override", n)
-		}
-		seen[strings.ToLower(n)] = true
-		if !known[strings.ToLower(n)] {
-			return fmt.Errorf("machines.%s: unknown machine", n)
-		}
-		if o.DefaultMachine != "" && !known[strings.ToLower(o.DefaultMachine)] {
-			return fmt.Errorf("machines.%s.default_machine: unknown machine", n)
-		}
-	}
-	if c.DefaultMachine != "" && !known[strings.ToLower(c.DefaultMachine)] {
+	if c.DefaultMachine != "" && !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, c.DefaultMachine) }) {
 		return errors.New("default_machine: unknown machine")
 	}
 	return nil
 }
+
+// Resolve derives this host's settings: an empty shell is the login shell, an
+// empty terminal apple-terminal, an empty default this host. It is the one check
+// of the shell panes exec: a supported path to a regular file this user can
+// execute ("" when there is no login shell fails it). Provider homes default and
+// expand against home.
 func Resolve(c Config, name, home, loginShell string) (Settings, error) {
 	s := Settings{Shell: c.Shell, Terminal: c.Terminal, DefaultMachine: c.DefaultMachine, Profiles: append([]Profile{}, c.Profiles...)}
-	var override Override
-	hasOverride := false
-	for key, value := range c.Machines {
-		if strings.EqualFold(key, name) {
-			override = value
-			hasOverride = true
-		}
-	}
-	if o, ok := override, hasOverride; ok {
-		if o.Shell != "" {
-			s.Shell = o.Shell
-		}
-		if o.Terminal != "" {
-			s.Terminal = o.Terminal
-		}
-		if o.DefaultMachine != "" {
-			s.DefaultMachine = o.DefaultMachine
-		}
-		for i := range s.Profiles {
-			p := &s.Profiles[i]
-			if override, ok := o.Profiles[p.Name]; ok {
-				if override.Command != nil {
-					p.Command = *override.Command
-				}
-				if override.Home != nil {
-					p.Home = *override.Home
-				}
-			}
-		}
-	}
 	if s.Shell == "" {
 		s.Shell = loginShell
 	}
@@ -338,15 +203,9 @@ func Resolve(c Config, name, home, loginShell string) (Settings, error) {
 	if s.DefaultMachine == "" {
 		s.DefaultMachine = name
 	}
-	if e := validateOptions(s.Shell, s.Terminal, "local"); e != nil {
-		return Settings{}, e
-	}
-	if s.Shell == "" {
-		return Settings{}, errors.New("local.shell: login shell unavailable; configure an absolute bash or zsh path")
-	}
-	info, e := os.Stat(s.Shell)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return Settings{}, errors.New("local.shell: executable unavailable; fix shell on this host")
+	info, err := os.Stat(s.Shell)
+	if !supportedShell(s.Shell) || err != nil || !info.Mode().IsRegular() || syscall.Access(s.Shell, 1) != nil { // 1 is X_OK
+		return Settings{}, errors.New("local.shell: no executable bash or zsh on this host")
 	}
 	for i := range s.Profiles {
 		p := &s.Profiles[i]
@@ -367,100 +226,4 @@ func Resolve(c Config, name, home, loginShell string) (Settings, error) {
 		}
 	}
 	return s, nil
-}
-
-// validateShape forbids yaml's implicit scalar conversions before typed decode.
-func validateShape(n *yaml.Node, path string) error {
-	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: expected mapping", path)
-	}
-	for i := 0; i < len(n.Content); i += 2 {
-		k, v := n.Content[i].Value, n.Content[i+1]
-		p := path + "." + k
-		shape := "string"
-		switch path {
-		case "config":
-			switch k {
-			case "version":
-				shape = "integer"
-			case "profiles":
-				shape = "profiles"
-			case "machines":
-				shape = "machines"
-			case "android_push":
-				shape = "android_push"
-			case "shell", "terminal", "default_machine":
-			default:
-				return fmt.Errorf("%s: unknown field", p)
-			}
-		case "android_push":
-			switch k {
-			case "project_id", "application_id", "sender_id", "api_key":
-			default:
-				return fmt.Errorf("%s: unknown field", p)
-			}
-		case "profile":
-			switch k {
-			case "name", "label", "command", "provider", "home":
-			default:
-				return fmt.Errorf("%s: unknown field", p)
-			}
-		case "override":
-			switch k {
-			case "shell", "terminal", "default_machine":
-			case "profiles":
-				shape = "overrides"
-			default:
-				return fmt.Errorf("%s: unknown field", p)
-			}
-		case "profile override":
-			if k != "command" && k != "home" {
-				return fmt.Errorf("%s: unknown field", p)
-			}
-		}
-		switch shape {
-		case "android_push":
-			if e := validateShape(v, "android_push"); e != nil {
-				return e
-			}
-		case "string":
-			if v.Kind != yaml.ScalarNode || v.Tag != "!!str" {
-				return fmt.Errorf("%s: expected string", p)
-			}
-			if v.Value == "" {
-				return fmt.Errorf("%s: expected nonempty string", p)
-			}
-
-		case "integer":
-			if v.Kind != yaml.ScalarNode || v.Tag != "!!int" {
-				return fmt.Errorf("%s: expected integer", p)
-			}
-		case "profiles":
-			if v.Kind != yaml.SequenceNode {
-				return fmt.Errorf("%s: expected ordered list", p)
-			}
-			for j, c := range v.Content {
-				if e := validateShape(c, "profile"); e != nil {
-					return fmt.Errorf("profiles[%d]: %w", j, e)
-				}
-			}
-		case "machines", "overrides":
-			if v.Kind != yaml.MappingNode {
-				return fmt.Errorf("%s: expected mapping", p)
-			}
-			for j := 0; j < len(v.Content); j += 2 {
-				if v.Content[j].Tag != "!!str" {
-					return fmt.Errorf("%s: expected string key", p)
-				}
-				next := "override"
-				if shape == "overrides" {
-					next = "profile override"
-				}
-				if e := validateShape(v.Content[j+1], next); e != nil {
-					return fmt.Errorf("%s.%s: %w", p, v.Content[j].Value, e)
-				}
-			}
-		}
-	}
-	return nil
 }
