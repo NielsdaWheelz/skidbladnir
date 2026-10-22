@@ -3,7 +3,7 @@ theme picker. `paint.py claude.txt <id>` paints one; `capture.py` regenerates ob
 replays it. grammar: docs/terminal-observation-claude.md. frames marked _source follow the source; their placement
 was not observed live.
 header: === <id> w=<W> h=<H> alt=<0|1> <renderer> [bclip=<row>] [tclip=<row>] expect=<activity>/<interaction>/<notice>
-        <composer> reason=<reason> rules=<id>[@top|@compound],...|none (decision order; regions default to bottom).
+        <composer> reason=<reason> rules=<id>,...|none (decision order).
         optional usage5h=<integer> usage7d=<integer>; omitted windows are absent, including both when no usage is read.
         optional final footer=<JSON string|null> asserts the literal footer or its absence; omission leaves it unchecked.
 unparseable=<row> prefixes that captured row with unsupported CSI, a synthetic writer-change observation.
@@ -483,7 +483,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 12|«d»─{80}«/»
 13|  «f2»⏸ plan mode«f» · enter to return · space to reply · ? for shortcuts«/f»
 
-=== F28_sr_idle w=80 h=8 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+=== F28_sr_idle w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 02|you: dummy prompt
 03|claude: Dummy reply.
@@ -492,7 +492,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 06|effort: medium · /effort
 07|$⍽
 
-=== F28b_sr_auto_idle w=80 h=9 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+=== F28b_sr_auto_idle w=80 h=9 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 02|you: dummy prompt
 03|claude: Dummy reply.
 04|Brewed for 33s · done 2:09 PM
@@ -501,14 +501,14 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|reattach for focus tracking
 08|$
 
-=== F29_sr_working w=80 h=6 alt=0 sr expect=working/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.hint_sr,claude.composer.empty
+=== F29_sr_working w=80 h=6 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: dummy prompt
 02|claude: Dummy partial reply
 03|Pollinating…
 04|manual mode on  ·  esc to interrupt
 05|$⍽
 
-=== F29b_sr_draft_during_work w=80 h=7 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+=== F29b_sr_draft_during_work w=80 h=7 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: dummy prompt
 02|claude: Dummy reply Dummy reply Dummy reply Dummy reply Dummy reply Dummy reply
 03|Dummy reply Dummy reply
@@ -516,13 +516,13 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|auto mode on (shift+tab to cycle)
 06|$⍽ x
 
-=== F29c_sr_retry_draft w=80 h=6 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+=== F29c_sr_retry_draft w=80 h=6 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 02|you: dummy prompt
 03|500 dummy failure  · Retrying in 10s · attempt 5/10
 04|auto mode on (shift+tab to cycle)
 05|$⍽ y
 
-=== F29d_sr_fresh_header w=80 h=8 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+=== F29d_sr_fresh_header w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 01|Claude Code v0.0.0
 02|Dummy · API Usage Billing
@@ -531,7 +531,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|effort: medium · /effort
 06|$
 
-=== F30_sr_permission w=80 h=12 alt=0 sr expect=unknown/permission/none blocked reason=partial rules=claude.permission.sr,claude.composer.blocked
+=== F30_sr_permission w=80 h=12 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|tool: Bash (touch dummy-made.txt)
 01|Waiting…
 02|Permission Required: Bash command
@@ -544,7 +544,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 09|Select with numbers [1-3]. Then Enter to submit or Escape to cancel:
 10|Esc to cancel · Tab to amend
 
-=== F31_sr_question w=80 h=10 alt=0 sr expect=unknown/question/none blocked reason=partial rules=claude.question.sr,claude.composer.blocked
+=== F31_sr_question w=80 h=10 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|claude: Let me ask.
 01|←   ☐ Color   ☐ Sizes   ✔ Submit   →
 02|> Which dummy color should we use?
@@ -560,7 +560,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 06|«f2»─{80}«/f»
 07|  «f2»! for shell mode«/f»
 
-=== F33_sr_startup w=80 h=8 alt=0 sr expect=starting/unknown/none unknown reason=partial rules=claude.activity.starting_sr
+=== F33_sr_startup w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 
 === F34_full_subagent_view w=100 h=13 alt=1 full expect=working/menu/none blocked reason=recognized rules=claude.layout.composer,claude.menu.subagent,claude.activity.background,claude.composer.blocked
@@ -655,7 +655,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 09|«f»─{80}«/f»
 10|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
 
-=== F42_classic_tall_top_region w=80 h=100 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer@top,claude.activity.idle@top,claude.composer.empty@top
+=== F42_classic_tall_top_region w=80 h=100 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
 00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
 03|«f»─{80}«/f»
 04|❯⍽«i» «/»
@@ -795,7 +795,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  dummy-status line one
 08|  ⏸ manual mode on · ← for agents
 
-=== N17_sr_draft_claude_neighbour w=80 h=6 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+=== N17_sr_draft_claude_neighbour w=80 h=6 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 02|you: dummy prompt
 03|claude: Dummy partial reply.
 04|manual mode on
@@ -846,7 +846,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 12|«f2»❯«/f» «f2»4. Chat about this«/f»
 14|«f»Enter to select · ↑/↓ to navigate · Esc to cancel«/f»
 
-=== F33b_sr_startup_after_shell w=80 h=10 alt=0 sr expect=starting/unknown/none unknown reason=partial rules=claude.activity.starting_sr
+=== F33b_sr_startup_after_shell w=80 h=10 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|dummy line one
 01|dummy line two
 02|$ claude --dummy-flag
@@ -1020,7 +1020,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|«f»─{80}«/f»
 08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
 
-=== F50_sr_shell_pill_idle w=80 h=8 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+=== F50_sr_shell_pill_idle w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: run a dummy background sleep
 02|tool: Bash (sleep 613)
 03|Running in the background (↓ to manage)
@@ -1091,7 +1091,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  «f»dummy-status line two · 42%«/f»
 09|  «f»⏸ manual mode on · ← for agents«/f»
 
-=== N26_sr_wrapped_mode_row w=34 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.sr
+=== N26_sr_wrapped_mode_row w=34 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|claude: Dummy reply.
 02|Churned for 0s · done 3:22 PM · 1
 03|shell still running
@@ -1099,7 +1099,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|to manage
 06|$
 
-=== N27_sr_pill_quoted_chrome w=80 h=8 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+=== N27_sr_pill_quoted_chrome w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: show the old screen
 02|claude: The old screen showed:
 03|Worked for 3s · done 1:00 PM
@@ -1167,7 +1167,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 13|    «f2»server«/f»
 15|  «it»«f»Enter to confirm · Esc to cancel«/»
 
-=== F51_sr_setup_apikey_yn w=80 h=9 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+=== F51_sr_setup_apikey_yn w=80 h=9 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 01|Welcome to Claude Code v0.0.0
 02|Detected a custom API key in your environment
@@ -1178,7 +1178,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|Enter y/n:
 08|Enter to confirm · Esc to cancel
 
-=== F54_pre_tall100_trust_top w=80 h=100 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust@top,claude.composer.blocked@top
+=== F54_pre_tall100_trust_top w=80 h=100 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust,claude.composer.blocked
 01|«f2»─{80}«/f»
 02| «b»«f2»Accessing workspace:«/»
 04| «b»/dummy/workspace«/»
@@ -1191,7 +1191,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 15|   Yes, I trust this folder
 17| «f»Enter to confirm · Esc to cancel«/f»
 
-=== F55_pre_tall70_trust_straddle w=80 h=70 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust@compound,claude.composer.blocked@compound
+=== F55_pre_tall70_trust_straddle w=80 h=70 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust,claude.composer.blocked
 01|«f2»─{80}«/f»
 02| «b»«f2»Accessing workspace:«/»
 04| «b»/dummy/workspace«/»
@@ -1204,7 +1204,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 15|   Yes, I trust this folder
 17| «f»Enter to confirm · Esc to cancel«/f»
 
-=== F55b_classic_tall70_composer_straddle w=80 h=70 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer@compound,claude.activity.idle@compound,claude.composer.empty
+=== F55b_classic_tall70_composer_straddle w=80 h=70 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
 00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
 01|«f2»▝▜█████▛▘«/f»  «f»Dummy · API Usage Billing«/f»
 02|«f2» ▝▝   ▝▝ «/f»  «f»/dummy/workspace«/f»
@@ -1322,7 +1322,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 14|«d»─{100}«/»
 15|  «f2»dialog waiting«/f»«f» · Showing detailed transcript · ctrl+o to toggle · ? for shortcuts«/f»
 
-=== F62_sr_setup_theme w=80 h=14 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+=== F62_sr_setup_theme w=80 h=14 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 01|Welcome to Claude Code v0.0.0
 02|Let's get started.
@@ -1338,7 +1338,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 12|Select with numbers [1-7]. Then Enter to submit:
 13| Syntax theme: Monokai Extended (ctrl+t to disable)
 
-=== F63_sr_setup_security w=80 h=10 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+=== F63_sr_setup_security w=80 h=10 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 01|Welcome to Claude Code v0.0.0
 02|Security notes:
@@ -1349,7 +1349,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|Learn more: https://example.invalid/security
 09|Press Enter to continue…
 
-=== F64_sr_setup_trust w=80 h=12 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+=== F64_sr_setup_trust w=80 h=12 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 00|[Screen Reader Mode: on via env]
 01|Permission Required: Accessing workspace:
 02|/dummy/workspace
@@ -1776,7 +1776,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  «f»⏸ manual mode on«/f»
 09|  «f»tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and re…«/f»
 
-=== N51_sr_w40_notice_tail_under_cut w=40 h=8 alt=0 sr bclip=5 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped,claude.layout.sr
+=== N51_sr_w40_notice_tail_under_cut w=40 h=8 alt=0 sr bclip=5 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped
 01|claude: Dummy reply.
 02|Brewed for 33s · done 2:09 PM
 03|manual mode on
@@ -1806,7 +1806,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f»resets 3pm«/f»
 08|  «f»⏸ manual mode on«/f»
 
-=== N54_sr_limit_wait_pinned_working_source w=80 h=7 alt=0 sr expect=working/unknown/none unknown reason=partial rules=claude.layout.sr,claude.limit.wait,claude.activity.hint_sr
+=== N54_sr_limit_wait_pinned_working_source w=80 h=7 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|claude: Dummy reply.
 02|Pollinating…
 03|⚠ Usage limit reached · limit resets 3pm
@@ -1814,7 +1814,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|manual mode on  ·  esc to interrupt
 06|$⍽
 
-=== N54b_sr_limit_next_line_only_pinned_source w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.sr,claude.limit.wait
+=== N54b_sr_limit_next_line_only_pinned_source w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|claude: Dummy reply.
 02|Worked for 3s · done 2:59 PM
 03|⚠ Dummy wrap-up lead · resets 3pm
@@ -1823,7 +1823,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 06|effort: medium · /effort
 07|$
 
-=== N55_sr_w40_limit_wait_lead_under_cut_source w=40 h=9 alt=0 sr bclip=4 expect=working/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped,claude.layout.sr,claude.activity.hint_sr
+=== N55_sr_w40_limit_wait_lead_under_cut_source w=40 h=9 alt=0 sr bclip=4 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped
 01|claude: Dummy reply.
 02|Pollinating…
 03|⚠ Usage limit reached · limit resets 3pm
@@ -1832,7 +1832,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 06|manual mode on  ·  esc to interrupt
 07|$⍽
 
-=== N56_sr_pinned_notice_idle_lost w=80 h=9 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+=== N56_sr_pinned_notice_idle_lost w=80 h=9 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: dummy prompt
 02|claude: Dummy reply.
 03|Sautéed for 0s · done 11:53 PM
@@ -1842,7 +1842,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|effort: medium · /effort
 08|$
 
-=== N57_sr_quoted_lead_beyond_bound w=80 h=25 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+=== N57_sr_quoted_lead_beyond_bound w=80 h=25 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=none
 01|you: dummy prompt
 02|claude: The old footer read:
 03|⚠ Dummy pinned notice from an earlier screen
@@ -2193,7 +2193,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
 08|  unknown footer
 
-=== U32_quota_screen_reader w=80 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty footer=null
+=== U32_quota_screen_reader w=80 h=8 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=none footer=null
 02|claude: Dummy reply.
 05|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
 06|bypass permissions on

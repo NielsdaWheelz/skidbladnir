@@ -413,39 +413,13 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 	case "terminal_inspect", "terminal_explain":
 		// Pointers expose omitted members; nonNullJSON has already rejected null.
 		var value *struct {
-			TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
-			Diagnostics    *struct {
-				Rules   []agentcontrol.DiagnosticRule `json:"rules"`
-				Capture *struct {
-					Width         int   `json:"width"`
-					Height        int   `json:"height"`
-					Alternate     *bool `json:"alternate"`
-					TopClipped    *bool `json:"topClipped"`
-					BottomClipped *bool `json:"bottomClipped"`
-				} `json:"capture"`
-				ElapsedMs *agentcontrol.StageElapsed `json:"elapsedMs"`
-			} `json:"diagnostics"`
+			TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
+			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics"`
 		}
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.TerminalStatus.Valid() || (value.Diagnostics != nil) != (operation == "terminal_explain") {
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.TerminalStatus.Valid() || (value.Diagnostics != nil) != (operation == "terminal_explain") || value.Diagnostics != nil && value.Diagnostics.Rules == nil {
 			return nil, false
 		}
-		result := TerminalInspectResult{TerminalStatus: value.TerminalStatus}
-		if diagnostics := value.Diagnostics; diagnostics != nil {
-			if diagnostics.Rules == nil || diagnostics.ElapsedMs == nil {
-				return nil, false
-			}
-			result.Diagnostics = &agentcontrol.Diagnostics{Rules: diagnostics.Rules, ElapsedMs: *diagnostics.ElapsedMs}
-			if capture := diagnostics.Capture; capture != nil {
-				if capture.Alternate == nil || capture.TopClipped == nil || capture.BottomClipped == nil {
-					return nil, false
-				}
-				result.Diagnostics.Capture = &agentcontrol.CaptureDiagnostics{Width: capture.Width, Height: capture.Height, Alternate: *capture.Alternate, TopClipped: *capture.TopClipped, BottomClipped: *capture.BottomClipped}
-			}
-			if !result.Diagnostics.Valid() {
-				return nil, false
-			}
-		}
-		return result, true
+		return TerminalInspectResult{TerminalStatus: value.TerminalStatus, Diagnostics: value.Diagnostics}, true
 	default:
 		return nil, false
 	}

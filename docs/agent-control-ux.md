@@ -188,11 +188,9 @@ and an indented `status evidence` block come from that one inspect sample;
 `observed:` is the client time its response arrived; other facts come from
 inventory. the block's `reason:` replaces the
 `status reason:` line. the block lists activity, interaction and notice
-separately, then reason copy, rules (`id (region)`, or `none`), capture
-(`W × H`, `main screen` or `alternate screen`, then `clipped: ` with `top`,
-`bottom`, `top, bottom` or `none`; or `not collected`) and per-stage timing
-(`resolve N ms`, or `resolve not collected`). reason copy for `status unknown`
-and `status unavailable` ends with `; open the terminal to inspect`.
+separately, then reason copy and rules (ids joined by `, `, or `none`). reason
+copy for `status unknown` and `status unavailable` ends with `; open the
+terminal to inspect`.
 start without a prompt does not claim readiness. with a prompt, its receipt only
 confirms written bytes when the guarded initial send succeeds, never provider
 acceptance or completion; trust/setup dialogs are not answered automatically.

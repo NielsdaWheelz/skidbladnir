@@ -15,8 +15,7 @@ import (
 // detectClaude reads a claude 2.1.286 screen, and 2.1.284's numbered theme
 // picker, by the frozen grammar of docs/terminal-observation-claude.md sections
 // 2-3, whose section numbers the comments below cite. It finds the lowest drawn
-// row and tries the surfaces in order: screen-reader startup, the screen-reader
-// input row, a screen-reader request, the composer, then the request and menu
+// row and tries the surfaces in order: the composer, then the request and menu
 // families.
 // Idle comes only from a complete current ready layout; a request or menu
 // never reports activity, because it replaces the spinner, pill and panel.
@@ -32,15 +31,6 @@ func detectClaude(parsed screen) reading {
 			return screen.clipped()
 		}
 		return unknownReading(causeUnrecognized)
-	}
-	if read, ok := claudeStartupSR(screen, last); ok {
-		return read
-	}
-	if read, ok := claudeSurfaceSR(screen, last); ok {
-		return read
-	}
-	if read, ok := claudeRequestSR(screen, last); ok {
-		return read
 	}
 	if read, ok := claudeComposer(screen, last); ok {
 		return read
@@ -131,36 +121,8 @@ func (screen *claudeScreen) find(from int, match func(claudeLine) bool) (int, bo
 // clipped is the reading of a screen whose deciding rows were not captured.
 func (screen *claudeScreen) clipped() reading {
 	read := unknownReading(causeClipped)
-	read.rules = []DiagnosticRule{screen.clippedRule()}
+	read.rules = []string{"claude.region.clipped"}
 	return read
-}
-
-// clippedRule names the captured row just below the cut, or the bottom
-// region, which always ends at the last row, when it kept no row at all.
-func (screen *claudeScreen) clippedRule() DiagnosticRule {
-	if screen.floor == len(screen.lines) {
-		return DiagnosticRule{ID: "claude.region.clipped", Region: DiagnosticBottom}
-	}
-	return screen.rule("claude.region.clipped", screen.floor, screen.floor)
-}
-
-// backgroundRule names the row whose background work makes the pane working.
-func (screen *claudeScreen) backgroundRule(row int) DiagnosticRule {
-	return screen.rule("claude.activity.background", row, row)
-}
-
-// composerRule names a composer value that has its own rule.
-func (screen *claudeScreen) composerRule(value composer, first, last int) DiagnosticRule {
-	switch value {
-	case composerEmpty:
-		return screen.rule("claude.composer.empty", first, last)
-	case composerDraft:
-		return screen.rule("claude.composer.draft", first, last)
-	case composerBlocked:
-		return screen.rule("claude.composer.blocked", first, last)
-	default:
-		panic("claude composer without a rule") // justify-defect: callers name only empty, draft or blocked.
-	}
 }
 
 // ruleRow is a row of `─` exactly the pane width wide.
@@ -211,19 +173,11 @@ func claudeDigits(text string) int {
 	return len(text) - len(strings.TrimLeft(text, "0123456789"))
 }
 
-// claudeNotification is a right-aligned notification or a tmux notice at
-// column 2: the only rows the composer margin and footer tail may hold.
+// claudeNotification is a right-aligned notification or one of claude's two
+// notices about the tmux it runs in, at column 2: the only rows the composer
+// margin and footer tail may hold.
 func claudeNotification(line claudeLine) bool {
-	return line.col >= 8 || line.col == 2 && slices.ContainsFunc(claudeTmuxNotices, func(notice string) bool {
-		head, _, _ := strings.Cut(notice, " · ")
-		return strings.HasPrefix(line.plain, "  "+head+" · ")
-	})
-}
-
-// claudeTmuxNotices are claude's two notices about the tmux it runs in.
-var claudeTmuxNotices = []string{
-	"tmux detected · scroll with PgUp/PgDn · or add 'set -g mouse on' to ~/.tmux.conf for wheel scroll",
-	"tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking",
+	return line.col >= 8 || line.col == 2 && (strings.HasPrefix(line.plain, "  tmux detected · ") || strings.HasPrefix(line.plain, "  tmux focus-events off · "))
 }
 
 // blockTop is the top row of the logical block at column c ending at row end
@@ -277,21 +231,20 @@ func (screen *claudeScreen) above(c, row int) (text string, top, end int, ok boo
 	return screen.joined(top, end), top, end, true
 }
 
-// textBlock finds the nearest block at and above end whose top row is at
-// exactly c and whose text matches: the dialog's own text, below any
-// transcript that quotes it.
-func (screen *claudeScreen) textBlock(c, end int, match func(string) bool) (int, bool) {
+// textBlock reports whether a block at and above end, whose top row is at
+// exactly c, matches.
+func (screen *claudeScreen) textBlock(c, end int, match func(string) bool) bool {
 	for r := end; ; r-- {
 		line, ok := screen.line(r)
 		if !ok {
-			return 0, false
+			return false
 		}
 		if line.blank() || line.col < c-1 || line.col > c+1 {
 			continue
 		}
 		if text, top, ok := screen.block(c, r); ok {
 			if match(text) {
-				return top, true
+				return true
 			}
 			r = top
 		}
@@ -401,218 +354,19 @@ func (screen *claudeScreen) unnumbered(c, from int) (text string, top int, ok bo
 }
 
 // titled finds a dialog title above row: the first drawn row left of
-// column 2 reads exactly title and has a full rule directly above it. It
-// returns the rule's row.
-func (screen *claudeScreen) titled(row int, title string) (int, bool) {
+// column 2 reads exactly title and has a full rule directly above it.
+func (screen *claudeScreen) titled(row int, title string) bool {
 	found, ok := screen.find(row-1, func(line claudeLine) bool { return !line.blank() && line.col < 2 })
 	if !ok || screen.lines[found].plain != title {
-		return 0, false
+		return false
 	}
 	rule, ok := screen.line(found - 1)
-	return found - 1, ok && screen.ruleRow(rule)
+	return ok && screen.ruleRow(rule)
 }
 
 // claudeWords reports phrase in text between word boundaries.
 func claudeWords(text, phrase string) bool {
 	return strings.Contains(" "+text+" ", " "+phrase+" ")
-}
-
-// claudeStartupSR is the screen reader's startup quiet: its banner is the
-// lowest row until the first layout mounts.
-func claudeStartupSR(screen *claudeScreen, last int) (reading, bool) {
-	switch screen.lines[last].plain {
-	case "[Screen Reader Mode: on via flag]", "[Screen Reader Mode: on via env]",
-		"[Screen Reader Mode: on via settings]", "[Screen Reader Mode: on]":
-		return reading{
-			activity: sessions.ActivityStarting, interaction: sessions.InteractionUnknown,
-			rules: []DiagnosticRule{screen.rule("claude.activity.starting_sr", last, last)},
-		}, true
-	}
-	return reading{}, false
-}
-
-// claudeEffortSR is the screen reader's effort notification (2.5).
-var claudeEffortSR = regexp.MustCompile(`^effort: (?:low|medium|high|xhigh|max)(?: · ultracode)? · /effort$`)
-
-// claudeSurfaceSR reads the screen reader's input row `$`, the notification
-// blocks above it, its flattened mode row and the pinned column above that
-// (2.5).
-func claudeSurfaceSR(screen *claudeScreen, last int) (reading, bool) {
-	input := screen.lines[last]
-	if input.presence != rowParsed || input.cells[0].text != "$" || len(input.cells) > 1 && input.cells[1].text != "\u00a0" {
-		return reading{}, false
-	}
-	mode := last - 1
-	for {
-		line, ok := screen.line(mode)
-		if !ok {
-			break
-		}
-		if claudeEffortSR.MatchString(line.plain) {
-			mode--
-			continue
-		}
-		// A tmux notice wraps over at most three rows.
-		notice, joined := 0, line.plain
-		for rows := 1; ; rows++ {
-			if slices.Contains(claudeTmuxNotices, joined) {
-				notice = rows
-				break
-			}
-			if rows == 3 {
-				break
-			}
-			upper, ok := screen.line(mode - rows)
-			if !ok {
-				// A notice's tail under the cut: its head, and the mode row
-				// above it, lie in the cut.
-				tail := " " + joined
-				if screen.clippedAt(mode-rows) && slices.ContainsFunc(claudeTmuxNotices, func(notice string) bool { return strings.HasSuffix(notice, tail) }) {
-					notice = rows
-				}
-				break
-			}
-			joined = upper.plain + " " + joined
-		}
-		if notice == 0 {
-			break
-		}
-		mode -= notice
-	}
-	line, ok := screen.line(mode)
-	first := mode
-	if !ok {
-		first++ // only the notification rows were read
-	}
-	layout := screen.rule("claude.layout.sr", first, last)
-	unknown := unknownReading(causeUnrecognized)
-	if !ok && screen.clippedAt(mode) {
-		unknown = screen.clipped()
-	}
-	unknown.rules = append(unknown.rules, layout)
-	segments, parsed := claudeModeSR(line.plain)
-	if !ok || !parsed {
-		return unknown, true
-	}
-	var classes uint16
-	for _, segment := range segments {
-		classes |= 1 << claudeExactSegment(segment)
-	}
-	if classes&(1<<claudeUnlisted) != 0 {
-		return unknown, true
-	}
-
-	read := reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionNone, composer: composerDraft}
-	if input.plain == "$" {
-		read.composer = composerEmpty
-	}
-	// Claude draws its pinned notices, then the usage-limit wait, in one column
-	// above the mode row and any statusline rows. Each item starts `⚠ ` and
-	// wraps below its start, so the rows from the lowest such start down to
-	// the mode row hold any wait. The 16-row bound keeps a quoted `⚠ ` row in
-	// the transcript out of the read.
-	lead, bound := mode-1, max(mode-16, 0)
-	for lead >= bound && !screen.clippedAt(lead) && !strings.HasPrefix(screen.lines[lead].plain, "⚠ ") {
-		lead--
-	}
-	var limit DiagnosticRule
-	switch {
-	case lead < bound:
-		// No pinned column.
-	case screen.clippedAt(lead):
-		// The column's start, and so a wait, may lie in the cut.
-		read.interaction, read.interactionCause, read.composer = sessions.InteractionUnknown, causeClipped, composerUnknown
-	case claudeLimitCopy.MatchString(screen.joined(lead, mode-1)):
-		read.interaction, read.composer, limit = sessions.InteractionUnknown, composerUnknown, screen.rule("claude.limit.wait", lead, mode-1)
-	}
-	var activity DiagnosticRule
-	switch {
-	case classes&(1<<claudeWork) != 0:
-		read.activity, activity = sessions.ActivityWorking, screen.backgroundRule(mode)
-	case classes&(1<<claudeInterrupt) != 0:
-		read.activity, activity = sessions.ActivityWorking, screen.rule("claude.activity.hint_sr", mode, mode)
-	case classes&(1<<claudeUnknownPill) == 0 && read.composer == composerEmpty:
-		if above, ok := screen.line(mode - 1); ok && (claudeCompletion(above.plain) || strings.HasPrefix(above.plain, "claude: ")) {
-			read.activity, activity = sessions.ActivityIdle, screen.rule("claude.activity.idle_sr", mode-1, last)
-		}
-	}
-	if read.interactionCause == causeClipped {
-		read.rules = append(read.rules, screen.clippedRule())
-	}
-	for _, rule := range [...]DiagnosticRule{layout, limit, activity} {
-		if rule.ID != "" {
-			read.rules = append(read.rules, rule)
-		}
-	}
-	if read.composer != composerUnknown {
-		read.rules = append(read.rules, screen.composerRule(read.composer, last, last))
-	}
-	return read, true
-}
-
-// The screen reader's live request row and the anchors of a setup, a
-// permission and a question (its tab row, its header, or its `> …?` prompt)
-// (2.5).
-var (
-	claudeRequestRowSR = regexp.MustCompile(`^(?:Select with numbers \[1-\d+\]|Enter text for option \d+ |Enter y/n:$|Press Enter to continue…$)`)
-	claudeSetupSR      = regexp.MustCompile(`^(?:Permission Required: )?(?:Accessing workspace:|Detected a custom API key in your environment|` +
-		`WARNING: Claude Code running in Bypass Permissions mode|New MCP server found in this project: |Select login method:|` +
-		`Let's get started\.|Security notes:|Settings Error)`)
-	claudeProceedSR  = regexp.MustCompile(`^Do you want to .+\?$`)
-	claudeQuestionSR = regexp.MustCompile(`^(?:←\s+[☐☒✔]| [☐☒✔] \S|> .+\?$)`)
-)
-
-// claudeRequestSR reads a screen-reader request: its request row is the
-// lowest row, or the row above a trailing hint or theme preview, and its kind
-// comes from anchor rows above it. Claude draws the request row only while a
-// request is live, so a quoted anchor can only change the kind.
-func claudeRequestSR(screen *claudeScreen, last int) (reading, bool) {
-	request := last
-	if plain := screen.lines[last].plain; plain == "Esc to cancel · Tab to amend" || plain == "Enter to confirm · Esc to cancel" ||
-		strings.HasPrefix(plain, " Syntax theme: ") {
-		request--
-	}
-	line, ok := screen.line(request)
-	if !ok || !claudeRequestRowSR.MatchString(line.plain) {
-		return reading{}, false
-	}
-	setup, permission, question, proceed := -1, -1, -1, false
-	r := request - 1
-	for ; ; r-- {
-		line, ok := screen.line(r)
-		if !ok {
-			break
-		}
-		if claudeSetupSR.MatchString(line.plain) {
-			setup = r
-		}
-		if strings.HasPrefix(line.plain, "Permission Required: ") {
-			permission = r
-		}
-		proceed = proceed || claudeProceedSR.MatchString(line.plain)
-		if claudeQuestionSR.MatchString(line.plain) {
-			question = r
-		}
-	}
-	var id string
-	var interaction sessions.Interaction
-	var first int
-	switch {
-	case setup >= 0:
-		id, interaction, first = "claude.setup.sr", sessions.InteractionSetup, setup
-	case permission >= 0 && proceed:
-		id, interaction, first = "claude.permission.sr", sessions.InteractionPermission, permission
-	case question >= 0:
-		id, interaction, first = "claude.question.sr", sessions.InteractionQuestion, question
-	case screen.clippedAt(r):
-		return screen.clipped(), true
-	default:
-		return unknownReading(causeUnrecognized), true
-	}
-	return reading{
-		activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked,
-		rules: []DiagnosticRule{screen.rule(id, first, last), screen.composerRule(composerBlocked, first, last)},
-	}, true
 }
 
 // claudeComposer reads the composer surface (2.3): the input row
@@ -669,13 +423,13 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 		return reading{}, false
 	}
 
-	layout := screen.rule("claude.layout.composer", top, last)
+	layout := "claude.layout.composer"
 	footer := claudeReadFooter(screen, bottom, last, bash)
 	if footer.kind == claudeFooterVoid {
 		// Anything the grammar cannot account for may be drawn over this
 		// surface: a dead process's frame, autocomplete, a focused panel.
 		read := unknownReading(causeUnrecognized)
-		read.rules = []DiagnosticRule{layout}
+		read.rules = []string{layout}
 		return read, true
 	}
 	slot, kind := claudeSlot(screen, top)
@@ -701,89 +455,76 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 		read.usage = claudeReadUsage(screen, bottom, footer.mode)
 		read.footer = claudeReadTerminalFooter(screen, bottom, footer.mode)
 	}
-	var activity DiagnosticRule
+	var activity string
 	// The panel, the waiting row and a work pill are independent of the
 	// chevron and the slot, so they decide before any conflict.
 	switch {
-	case footer.work >= 0:
-		read.activity, activity = sessions.ActivityWorking, screen.backgroundRule(footer.work)
-	case kind == claudeSlotWait:
-		read.activity, activity = sessions.ActivityWorking, screen.backgroundRule(slot)
-	case footer.classes&(1<<claudeWork) != 0:
-		read.activity, activity = sessions.ActivityWorking, screen.backgroundRule(footer.mode)
+	case footer.work, kind == claudeSlotWait, footer.classes&(1<<claudeWork) != 0:
+		read.activity, activity = sessions.ActivityWorking, "claude.activity.background"
 	case corroborator && ready:
-		first, end := chevron, chevron
-		if kind == claudeSlotSpinner || kind == claudeSlotRetry {
-			first = slot
-		}
-		if interrupt {
-			end = footer.mode
-		}
-		read.activityCause, activity = causeConflict, screen.rule("claude.activity.conflict", first, end)
+		read.activityCause, activity = causeConflict, "claude.activity.conflict"
 	case loading && kind == claudeSlotSpinner:
-		read.activity, activity = sessions.ActivityWorking, screen.rule("claude.activity.spinner", slot, chevron)
+		read.activity, activity = sessions.ActivityWorking, "claude.activity.spinner"
 	case loading && kind == claudeSlotRetry:
-		read.activity, activity = sessions.ActivityWorking, screen.rule("claude.activity.retry", slot, chevron)
+		read.activity, activity = sessions.ActivityWorking, "claude.activity.retry"
 	case interrupt:
-		read.activity, activity = sessions.ActivityWorking, screen.rule("claude.activity.hint", chevron, footer.mode)
+		read.activity, activity = sessions.ActivityWorking, "claude.activity.hint"
 	case corroborator:
 		// Spinner chrome under a chevron whose style says nothing: unknown.
 	case kind == claudeSlotClipped:
 		read.activityCause = causeClipped
 	case complete:
-		first := top
-		if kind == claudeSlotOther {
-			first = slot
-		}
-		read.activity, activity = sessions.ActivityIdle, screen.rule("claude.activity.idle", first, last)
+		read.activity, activity = sessions.ActivityIdle, "claude.activity.idle"
 	}
 
-	var family DiagnosticRule
+	var family string
 	switch {
 	case waiting:
-		read.interaction, family = sessions.InteractionUnknown, screen.rule("claude.limit.wait", bottom+1, last)
+		read.interaction, family = sessions.InteractionUnknown, "claude.limit.wait"
 	case !ordinary:
 		read.interaction = sessions.InteractionUnknown
-	case footer.viewed >= 0:
-		read.interaction, family = sessions.InteractionMenu, screen.rule("claude.menu.subagent", footer.viewed, footer.viewed)
+	case footer.viewed:
+		read.interaction, family = sessions.InteractionMenu, "claude.menu.subagent"
 	case footer.kind == claudeFooterHelp:
-		read.interaction, family = sessions.InteractionMenu, screen.rule("claude.menu.help", bottom+1, last)
+		read.interaction, family = sessions.InteractionMenu, "claude.menu.help"
 	default:
 		read.interaction = sessions.InteractionNone
 	}
 
-	var composerRule DiagnosticRule
+	var composerRule string
 	switch {
 	case read.interaction == sessions.InteractionMenu:
-		read.composer, composerRule = composerBlocked, screen.composerRule(composerBlocked, chevron, chevron)
+		read.composer, composerRule = composerBlocked, "claude.composer.blocked"
 	case read.interaction == sessions.InteractionUnknown:
 	case kind == claudeSlotOther && claudeBandLegend.MatchString(screen.lines[slot].plain):
-		composerRule = screen.rule("claude.composer.band", slot, slot)
+		composerRule = "claude.composer.band"
 	case bash:
-		read.composer, composerRule = composerDraft, screen.composerRule(composerDraft, chevron, bottom-1)
+		read.composer, composerRule = composerDraft, "claude.composer.draft"
 	default:
-		read.composer = claudeInput(screen, chevron, bottom)
-		composerRule = screen.composerRule(read.composer, chevron, bottom-1)
+		read.composer, composerRule = claudeInput(screen, chevron, bottom), "claude.composer.empty"
+		if read.composer == composerDraft {
+			composerRule = "claude.composer.draft"
+		}
 	}
 
 	// Notice (2.8): the latest turn's interruption or error marker.
-	var notice DiagnosticRule
-	switch marker, row := claudeNotice(screen, top); marker {
+	var notice string
+	switch marker := claudeNotice(screen, top); marker {
 	case noticeNone:
 	case noticeInterrupted:
-		read.notice, notice = marker, screen.rule("claude.notice.interrupted", row, row)
+		read.notice, notice = marker, "claude.notice.interrupted"
 	case noticeError:
-		read.notice, notice = marker, screen.rule("claude.notice.error", row, row)
+		read.notice, notice = marker, "claude.notice.error"
 	default:
 		panic("unknown claude notice") // justify-defect: claudeNotice returns only the closed notices.
 	}
 
 	if read.activityCause == causeClipped {
-		read.rules = append(read.rules, screen.clippedRule())
+		read.rules = append(read.rules, "claude.region.clipped")
 	}
 	read.rules = append(read.rules, layout)
-	for _, rule := range [...]DiagnosticRule{family, activity, composerRule, notice} {
-		if rule.ID != "" {
+	for _, rule := range [...]string{family, activity, composerRule, notice} {
+		if rule != "" {
 			read.rules = append(read.rules, rule)
 		}
 	}
@@ -797,7 +538,7 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 // text share one explicit colour; replies, tool calls and agent notices never
 // colour both alike. A later prompt or turn moves an older marker away from the
 // composer, so only the latest one counts.
-func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
+func claudeNotice(screen *claudeScreen, top int) turnNotice {
 	row := top - 1
 	for skipped := 0; skipped < 6; skipped++ {
 		line, ok := screen.line(row)
@@ -811,10 +552,10 @@ func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
 	}
 	line, ok := screen.line(row)
 	if !ok {
-		return noticeNone, -1
+		return noticeNone
 	}
 	if line.col == 2 && strings.HasPrefix(line.plain, "  ⎿  Interrupted") {
-		return noticeInterrupted, row
+		return noticeInterrupted
 	}
 	if line.col == 0 && strings.HasPrefix(line.plain, "✻ ") && claudeCompletion(line.plain[len("✻ "):]) {
 		row--
@@ -830,15 +571,15 @@ func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
 		row--
 	}
 	if !ok || line.col != 0 || !strings.HasPrefix(line.plain, "⏺ ") {
-		return noticeNone, -1
+		return noticeNone
 	}
 	glyph := line.cells[0].style.fg
 	if glyph.kind == colorDefault || slices.ContainsFunc(line.cells[2:], func(cell cell) bool {
 		return cell.text != " " && cell.text != "" && cell.style.fg != glyph
 	}) {
-		return noticeNone, -1
+		return noticeNone
 	}
-	return noticeError, row
+	return noticeError
 }
 
 // claudeInput reads the ordinary composer's input row and its continuation
@@ -973,7 +714,7 @@ func claudeCompletion(text string) bool {
 }
 
 // claudeLimitCopy is the usage-limit wait's fixed status copy, every default
-// wrap-up lead and the default next-line copy (2.3, 2.5).
+// wrap-up lead and the default next-line copy (2.3).
 var claudeLimitCopy = regexp.MustCompile(`Usage limit reached|Your usage limit has reset|Continuing automatically |Continuing shortly · esc to cancel|Press enter to continue`)
 
 // claudeBandLegend is the legend of an optional prompt drawn above the
@@ -1002,8 +743,8 @@ type claudeFooter struct {
 	mode    int    // the mode row of an ordinary footer
 	classes uint16 // the classes of the mode row's segments, one bit each
 	proven  bool   // the mode row proves that no task pill is hidden
-	work    int    // a panel row with a running status, or -1
-	viewed  int    // a viewed panel row other than main, or -1
+	work    bool   // a panel row has a running status
+	viewed  bool   // a panel row other than main is viewed
 	extra   bool   // a panel row other than main
 }
 
@@ -1023,7 +764,7 @@ var (
 // optionally one blank row and the agent panel), bash mode's footer, or the
 // help grid. Anything else leaves the surface void.
 func claudeReadFooter(screen *claudeScreen, bottom, last int, bash bool) claudeFooter {
-	void := claudeFooter{mode: -1, work: -1, viewed: -1}
+	void := claudeFooter{mode: -1}
 	if bottom == last {
 		return void
 	}
@@ -1085,12 +826,8 @@ func claudeReadFooter(screen *claudeScreen, bottom, last int, bash bool) claudeF
 		case claudePanelSummary.MatchString(plain), claudePanelMore.MatchString(plain):
 		case agent != nil:
 			// An agent row, or a workflow row, which shares the agent's `◯`.
-			if agent[1] != "◯" && footer.viewed < 0 {
-				footer.viewed = p
-			}
-			if footer.work < 0 && claudeRunningStatus.MatchString(plain) {
-				footer.work = p
-			}
+			footer.viewed = footer.viewed || agent[1] != "◯"
+			footer.work = footer.work || claudeRunningStatus.MatchString(plain)
 		case claudePanelPaused.MatchString(plain):
 			// A workflow paused on a rate limit: no work claim.
 		default:
@@ -1232,17 +969,6 @@ func claudeTokenInstance(label, token string, prefix bool) bool {
 	return token == ""
 }
 
-// claudeExactSegment is the class of the label segment is an exact instance
-// of, or unlisted.
-func claudeExactSegment(segment string) claudeSegmentClass {
-	for _, label := range claudeFooterLabels {
-		if claudeInstance(label.text, segment, false) {
-			return label.class
-		}
-	}
-	return claudeUnlisted
-}
-
 // claudeIndicatorShape is `◆ ` and one to six cells: claude cuts the footer
 // indicator itself.
 func claudeIndicatorShape(segment string) bool {
@@ -1279,8 +1005,10 @@ func claudeCutHintClasses(text string) uint16 {
 // cut bare. A cut segment takes the one class it could have been cut from, or
 // none.
 func claudeSegment(segment string, last bool) (class claudeSegmentClass, exact bool) {
-	if class := claudeExactSegment(segment); class != claudeUnlisted {
-		return class, true
+	for _, label := range claudeFooterLabels {
+		if claudeInstance(label.text, segment, false) {
+			return label.class, true
+		}
 	}
 	if !last {
 		if claudeIndicatorShape(segment) {
@@ -1319,30 +1047,27 @@ type claudeModeRow struct {
 }
 
 // claudeModeItem cuts the mode item from the start of text: an optional vim
-// prefix, the mode glyph (not in the screen reader), the mode and an optional
-// cycle hint. The screen reader never cuts the hint and manual mode never
-// draws it; elsewhere the item is one text wrapping in a box one row high, so
-// a narrow row shows only its first line: the hint cut, read like a cut
-// segment (earlier tokens whole, the last a character prefix), or wrapped away
-// whole. That line keeps its trailing space and the box is as wide as the
+// prefix, the mode glyph, the mode and an optional cycle hint. Manual mode
+// never draws the hint; elsewhere the item is one text wrapping in a box one
+// row high, so a narrow row shows only its first line: the hint cut, read like
+// a cut segment (earlier tokens whole, the last a character prefix), or
+// wrapped away whole. That line keeps its trailing space and the box is as wide as the
 // text's widest line, so blank cells, at least two counting the separator's
 // own, precede the next `·`.
-func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest string, ok bool) {
+func claudeModeItem(text string) (mode claudeModeRow, rest string, ok bool) {
 	for _, vim := range [...]string{"-- INSERT -- ", "-- VISUAL -- ", "-- VISUAL LINE -- "} {
 		if after, found := strings.CutPrefix(text, vim); found {
 			text = after
 			break
 		}
 	}
-	if !screenReader {
-		after, pause := strings.CutPrefix(text, "⏸ ")
-		if !pause {
-			if after, ok = strings.CutPrefix(text, "⏵⏵ "); !ok {
-				return mode, "", false
-			}
+	after, pause := strings.CutPrefix(text, "⏸ ")
+	if !pause {
+		if after, ok = strings.CutPrefix(text, "⏵⏵ "); !ok {
+			return mode, "", false
 		}
-		text = after
 	}
+	text = after
 	for _, name := range [...]string{"manual mode", "plan mode", "accept edits", "auto mode", "bypass permissions", "don't ask"} {
 		after, found := strings.CutPrefix(text, name+" on")
 		if !found {
@@ -1363,7 +1088,7 @@ func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest st
 		if !hinted && !(strings.HasPrefix(after, "  ") && strings.HasPrefix(strings.TrimLeft(after, " "), "·")) {
 			return mode, after, true
 		}
-		if screenReader || mode.manual {
+		if mode.manual {
 			return claudeModeRow{}, "", false
 		}
 		first, rest := after, ""
@@ -1390,7 +1115,7 @@ func claudeModeFull(line claudeLine, width int) (claudeModeRow, bool) {
 	if !padded {
 		return claudeModeRow{}, false
 	}
-	mode, items, ok := claudeModeItem(text, false)
+	mode, items, ok := claudeModeItem(text)
 	if !ok {
 		return mode, false
 	}
@@ -1454,27 +1179,6 @@ func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
 	return classes, proven || !mode.cut && lastExact && mode.blanks >= room
 }
 
-// claudeSeparatorSR is a separator of the screen reader's flattened boxes.
-var claudeSeparatorSR = regexp.MustCompile(`\s+·\s+`)
-
-// claudeModeSR parses the screen reader's mode row into its segments: its
-// boxes join with one space, so their separators read `  ·  `; it never cuts
-// an item.
-func claudeModeSR(plain string) ([]string, bool) {
-	_, rest, ok := claudeModeItem(claudeSeparatorSR.ReplaceAllString(plain, " · "), true)
-	if !ok {
-		return nil, false
-	}
-	if rest == "" {
-		return nil, true
-	}
-	body, separated := strings.CutPrefix(rest, " · ")
-	if !separated {
-		return nil, false
-	}
-	return strings.Split(body, " · "), true
-}
-
 // claudeFamily reads the request and menu families (2.6), which
 // replace the composer, in their table order. Their hint block or options end
 // at the hint row, the lowest row once at most two trailing right-aligned rows
@@ -1491,13 +1195,13 @@ func claudeFamily(screen *claudeScreen, last int) (reading, bool) {
 			return reading{}, false
 		}
 	}
-	for _, family := range [...]func(*claudeScreen, int) (string, sessions.Interaction, int, bool){
+	for _, family := range [...]func(*claudeScreen, int) (string, sessions.Interaction, bool){
 		claudeViewer, claudeMenu, claudePermission, claudeQuestion, claudeElicitation, claudePlan, claudeSetup,
 	} {
-		if id, interaction, first, ok := family(screen, hint); ok {
+		if id, interaction, ok := family(screen, hint); ok {
 			return reading{
 				activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked,
-				rules: []DiagnosticRule{screen.rule(id, first, hint), screen.composerRule(composerBlocked, first, hint)},
+				rules: []string{id, "claude.composer.blocked"},
 			}, true
 		}
 	}
@@ -1512,53 +1216,53 @@ var (
 
 // claudeViewer reads the viewer footers: the transcript viewer, with a dialog
 // waiting behind it or not, and the agents view.
-func claudeViewer(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudeViewer(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	text, top, ok := screen.block(2, hint)
 	switch {
 	case !ok:
 	case strings.HasPrefix(text, "dialog waiting · Showing detailed transcript · "):
-		return "claude.input.dialog_waiting", sessions.InteractionInput, top, true
+		return "claude.input.dialog_waiting", sessions.InteractionInput, true
 	case strings.HasPrefix(text, "Showing detailed transcript · "):
-		return "claude.menu.transcript", sessions.InteractionMenu, top, true
+		return "claude.menu.transcript", sessions.InteractionMenu, true
 	case claudeAgentsViewHint.MatchString(text):
-		if row, found := screen.find(top-1, func(line claudeLine) bool { return claudeAgentsViewCounts.MatchString(line.plain) }); found {
-			return "claude.menu.agents_view", sessions.InteractionMenu, row, true
+		if _, found := screen.find(top-1, func(line claudeLine) bool { return claudeAgentsViewCounts.MatchString(line.plain) }); found {
+			return "claude.menu.agents_view", sessions.InteractionMenu, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // claudeSettingsTabs is the settings menu's tab row.
 var claudeSettingsTabs = regexp.MustCompile(`^   Settings +Status +Config +Usage`)
 
 // claudeMenu reads the model, settings, theme, resume and side-question menus.
-func claudeMenu(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudeMenu(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	if text, _, ok := screen.block(3, hint); ok {
 		switch {
 		case strings.HasPrefix(text, "Enter to set as default · "):
-			if row, found := screen.find(hint-1, screen.edge); found {
-				return "claude.menu.model", sessions.InteractionMenu, row, true
+			if _, found := screen.find(hint-1, screen.edge); found {
+				return "claude.menu.model", sessions.InteractionMenu, true
 			}
 		case strings.HasPrefix(text, "Type to filter · ") || strings.HasPrefix(text, "Enter/Space to change · "):
-			if row, found := screen.find(hint-1, func(line claudeLine) bool { return claudeSettingsTabs.MatchString(line.plain) }); found {
-				return "claude.menu.settings", sessions.InteractionMenu, row, true
+			if _, found := screen.find(hint-1, func(line claudeLine) bool { return claudeSettingsTabs.MatchString(line.plain) }); found {
+				return "claude.menu.settings", sessions.InteractionMenu, true
 			}
 		case text == "Enter to select · Esc to cancel":
-			if row, found := screen.find(hint-1, func(line claudeLine) bool { return strings.HasPrefix(line.plain, "    Syntax theme: ") }); found {
-				return "claude.menu.theme", sessions.InteractionMenu, row, true
+			if _, found := screen.find(hint-1, func(line claudeLine) bool { return strings.HasPrefix(line.plain, "    Syntax theme: ") }); found {
+				return "claude.menu.theme", sessions.InteractionMenu, true
 			}
 		}
 	}
-	if text, top, ok := screen.block(5, hint); ok && strings.Contains(text, "to show all projects") && strings.HasSuffix(text, "Esc to cancel") {
-		return "claude.menu.resume", sessions.InteractionMenu, top, true
+	if text, _, ok := screen.block(5, hint); ok && strings.Contains(text, "to show all projects") && strings.HasSuffix(text, "Esc to cancel") {
+		return "claude.menu.resume", sessions.InteractionMenu, true
 	}
 	if text, top, ok := screen.block(4, hint); ok && strings.HasSuffix(text, "Esc to close") {
 		_, question := screen.find(top-1, func(line claudeLine) bool { return strings.HasPrefix(line.plain, "    /btw ") })
-		if row, found := screen.find(top-1, screen.edge); found && question {
-			return "claude.menu.btw", sessions.InteractionMenu, row, true
+		if _, found := screen.find(top-1, screen.edge); found && question {
+			return "claude.menu.btw", sessions.InteractionMenu, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // The tool and workflow permission hints; a <chord> is any one token.
@@ -1569,7 +1273,7 @@ var (
 
 // claudePermission reads the tool permission dialog (options and hint at
 // column 1) and the dynamic workflow permission (column 2, titled at column 1).
-func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	if text, top, ok := screen.block(1, hint); ok && claudePermissionHint.MatchString(text) {
 		options, optionsTop, ok := screen.options(1, top-1)
 		if ok && strings.HasPrefix(options[0].label, "Yes") {
@@ -1577,7 +1281,7 @@ func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interact
 				for r := end; r >= questionTop; r-- {
 					if strings.HasPrefix(screen.lines[r].plain[screen.lines[r].col:], "Do you want to ") {
 						if strings.HasSuffix(screen.joined(r, end), "?") {
-							return "claude.permission.dialog", sessions.InteractionPermission, r, true
+							return "claude.permission.dialog", sessions.InteractionPermission, true
 						}
 						break
 					}
@@ -1588,17 +1292,17 @@ func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interact
 	if text, top, ok := screen.block(2, hint); ok && claudeWorkflowHint.MatchString(text) {
 		options, optionsTop, ok := screen.options(2, top-1)
 		if ok && options[0].label == "Yes, run it" && options[len(options)-1].label == "No" {
-			if rule, found := screen.titled(optionsTop, " Run a dynamic workflow?"); found {
-				return "claude.permission.workflow", sessions.InteractionPermission, rule, true
+			if screen.titled(optionsTop, " Run a dynamic workflow?") {
+				return "claude.permission.workflow", sessions.InteractionPermission, true
 			}
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // claudeQuestion reads the question form, the question with option previews,
 // and the submit review.
-func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	if text, top, ok := screen.block(0, hint); ok && strings.HasPrefix(text, "Enter to select · ") && screen.blankAt(top-1) {
 		chat, chatOK := screen.line(top - 2)
 		rule, ruleOK := screen.line(top - 3)
@@ -1606,18 +1310,18 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interactio
 			switch {
 			case strings.Contains(text, " · n to add notes · ") && strings.HasSuffix(text, "Esc to cancel") &&
 				(chat.plain == "❯ Chat about this" || chat.plain == "  Chat about this"):
-				if first, ok := claudePreview(screen, top-3, strings.HasPrefix(chat.plain, "❯")); ok {
-					return "claude.question.preview", sessions.InteractionQuestion, first, true
+				if claudePreview(screen, top-3, strings.HasPrefix(chat.plain, "❯")) {
+					return "claude.question.preview", sessions.InteractionQuestion, true
 				}
 			case strings.Contains(text, " to navigate") && strings.HasSuffix(text, "to cancel") && !strings.Contains(text, "n to add notes"):
 				number, label, pointer, start := claudeOptionStart(chat.plain, 0)
-				options, optionsTop, ok := screen.options(0, top-4)
+				options, _, ok := screen.options(0, top-4)
 				if start && label == "Chat about this" && number > 0 && ok {
 					for _, option := range options {
 						pointer = pointer || option.selected
 					}
 					if pointer {
-						return "claude.question.form", sessions.InteractionQuestion, optionsTop, true
+						return "claude.question.form", sessions.InteractionQuestion, true
 					}
 				}
 			}
@@ -1625,21 +1329,21 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interactio
 	}
 	options, _, ok := screen.options(0, hint)
 	if ok && len(options) == 2 && options[0].label == "Submit answers" && options[1].label == "Cancel" {
-		_, ready := screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Ready to submit your answers?") })
-		if review, found := screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Review your answers") }); found && ready {
-			return "claude.question.review", sessions.InteractionQuestion, review, true
+		if screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Ready to submit your answers?") }) &&
+			screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Review your answers") }) {
+			return "claude.question.review", sessions.InteractionQuestion, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // claudePreview reads a question's side-by-side options and preview box above
 // its rule. The box's corner `┌` is on the row of option 1, the block's first
 // row; a lower `┌` belongs to a box the preview's own markdown draws, so the
 // corner is the lowest one whose cells to its left start option 1. The cells
-// left of the corner's column, from its row down, are the options. It returns
-// the corner's row, and holds when a pointer marks an option or the chat row.
-func claudePreview(screen *claudeScreen, rule int, chatPointer bool) (int, bool) {
+// left of the corner's column, from its row down, are the options. It holds
+// when a pointer marks an option or the chat row.
+func claudePreview(screen *claudeScreen, rule int, chatPointer bool) bool {
 	left := func(r, column int) claudeLine {
 		cut := screen.lines[r].row
 		cut.cells = cut.cells[:min(column, len(cut.cells))]
@@ -1648,7 +1352,7 @@ func claudePreview(screen *claudeScreen, rule int, chatPointer bool) (int, bool)
 	for corner := rule - 1; ; corner-- {
 		line, ok := screen.line(corner)
 		if !ok {
-			return 0, false
+			return false
 		}
 		column := slices.IndexFunc(line.cells, func(cell cell) bool { return cell.text == "┌" })
 		if column < 0 {
@@ -1667,12 +1371,12 @@ func claudePreview(screen *claudeScreen, rule int, chatPointer bool) (int, bool)
 		}
 		options, ok := claudeParseOptions(lefts, 0)
 		if !ok {
-			return 0, false
+			return false
 		}
 		for _, option := range options {
 			chatPointer = chatPointer || option.selected
 		}
-		return corner, chatPointer
+		return chatPointer
 	}
 }
 
@@ -1685,7 +1389,7 @@ var claudeElicitationTitle = regexp.MustCompile(`^MCP server “.*?” (.*)$`)
 // cutting the server name and then the title's ending to a prefix and `…`. A
 // task's elicitation appends ` (task <id>)` to the ending, which fullscreen
 // draws only when it fits uncut, so a space and more text may follow it.
-func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	if text, _, ok := screen.block(2, hint); ok && strings.HasPrefix(text, "Esc to cancel · ") {
 		title := func(text string) bool {
 			match := claudeElicitationTitle.FindStringSubmatch(text)
@@ -1697,18 +1401,18 @@ func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interac
 				return strings.HasPrefix(match[1]+" ", ending+" ") || cut && strings.HasPrefix(ending, rest)
 			})
 		}
-		if row, found := screen.textBlock(2, hint, title); found {
-			return "claude.input.elicitation", sessions.InteractionInput, row, true
+		if screen.textBlock(2, hint, title) {
+			return "claude.input.elicitation", sessions.InteractionInput, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // claudePlanEditHint is plan approval's optional editor hint.
 var claudePlanEditHint = regexp.MustCompile(`^\S+ to edit in `)
 
 // claudePlan reads plan approval and the exit- and enter-plan decisions.
-func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	end := hint
 	if text, top, ok := screen.block(3, hint); ok && claudePlanEditHint.MatchString(text) {
 		end = top - 1
@@ -1718,22 +1422,22 @@ func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, i
 		for _, option := range options {
 			change = change || strings.HasPrefix(option.label, "Tell Claude what to change")
 		}
-		if text, top, _, ok := screen.above(3, optionsTop); ok && change && strings.HasPrefix(text, "Claude has written up a plan and is ready to execute.") {
-			return "claude.confirmation.plan", sessions.InteractionConfirmation, top, true
+		if text, _, _, ok := screen.above(3, optionsTop); ok && change && strings.HasPrefix(text, "Claude has written up a plan and is ready to execute.") {
+			return "claude.confirmation.plan", sessions.InteractionConfirmation, true
 		}
 	}
 	if options, optionsTop, ok := screen.options(4, hint); ok && strings.HasPrefix(options[0].label, "Yes, and switch to ") && options[len(options)-1].label == "No" {
-		if text, top, _, ok := screen.above(4, optionsTop); ok && text == "Claude wants to exit plan mode" {
-			return "claude.confirmation.exit_plan", sessions.InteractionConfirmation, top, true
+		if text, _, _, ok := screen.above(4, optionsTop); ok && text == "Claude wants to exit plan mode" {
+			return "claude.confirmation.exit_plan", sessions.InteractionConfirmation, true
 		}
 	}
 	// Entering plan mode draws no hint; its confirm label names the mode.
 	if options, optionsTop, ok := screen.unnumbered(2, hint); ok && strings.HasSuffix(options, "No, start implementing now") {
-		if rule, found := screen.titled(optionsTop, " Enter plan mode?"); found {
-			return "claude.confirmation.enter_plan", sessions.InteractionConfirmation, rule, true
+		if screen.titled(optionsTop, " Enter plan mode?") {
+			return "claude.confirmation.enter_plan", sessions.InteractionConfirmation, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // The multi-server approval's hint and title, and an unnumbered theme choice.
@@ -1746,27 +1450,27 @@ var (
 // claudeSetup reads the dialogs before and around the first prompt. Trust is
 // drawn at column 1; claude's shared dialog draws its options and hint at
 // column 2 under a full rule, and its variants differ by their anchors.
-func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
+func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
 	const confirm = "Enter to confirm · Esc to cancel"
 	hint1, top1, ok1 := screen.block(1, hint)
 	hint2, top2, ok2 := screen.block(2, hint)
 	if ok1 && hint1 == confirm {
 		options, optionsTop, ok := screen.unnumbered(1, top1-1)
-		_, workspace := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Accessing workspace:") })
+		workspace := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Accessing workspace:") })
 		if ok && workspace && claudeWords(options, "No, exit") && claudeWords(options, "Yes, I trust this folder") {
-			if rule, found := screen.find(optionsTop-1, screen.ruleRow); found {
-				return "claude.setup.trust", sessions.InteractionSetup, rule, true
+			if _, found := screen.find(optionsTop-1, screen.ruleRow); found {
+				return "claude.setup.trust", sessions.InteractionSetup, true
 			}
 		}
 	}
 	if ok2 && hint2 == confirm {
-		_, apiKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Detected a custom API key in your environment") })
-		_, useKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Do you want to use this API key?") })
-		_, bypass := screen.textBlock(2, hint, func(text string) bool {
+		apiKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Detected a custom API key in your environment") })
+		useKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Do you want to use this API key?") })
+		bypass := screen.textBlock(2, hint, func(text string) bool {
 			return strings.HasPrefix(text, "WARNING: Claude Code running in Bypass Permissions mode")
 		})
-		_, server := screen.textBlock(2, hint, func(text string) bool { return strings.HasPrefix(text, "New MCP server found in this project: ") })
-		_, settings := screen.textBlock(2, hint, func(text string) bool { return strings.HasPrefix(text, "Settings Error") })
+		server := screen.textBlock(2, hint, func(text string) bool { return strings.HasPrefix(text, "New MCP server found in this project: ") })
+		settings := screen.textBlock(2, hint, func(text string) bool { return strings.HasPrefix(text, "Settings Error") })
 		options, optionsTop, unnumbered := screen.unnumbered(2, top2-1)
 		numbered, numberedTop, ok := screen.options(2, top2-1)
 		labels := map[string]bool{}
@@ -1785,15 +1489,14 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 			id, optionsTop = "claude.setup.settings_error", numberedTop
 		}
 		if id != "" {
-			if rule, found := screen.find(optionsTop-1, screen.ruleRow); found {
-				return id, sessions.InteractionSetup, rule, true
+			if _, found := screen.find(optionsTop-1, screen.ruleRow); found {
+				return id, sessions.InteractionSetup, true
 			}
 		}
 	}
 	if ok1 && claudeServerHint.MatchString(hint1) && claudeServerApproval(screen, top1) {
-		_, found := screen.textBlock(2, hint, claudeServersTitle.MatchString)
-		if rule, ruled := screen.find(top1-1, screen.ruleRow); found && ruled {
-			return "claude.setup.mcp_servers", sessions.InteractionSetup, rule, true
+		if _, ruled := screen.find(top1-1, screen.ruleRow); ruled && screen.textBlock(2, hint, claudeServersTitle.MatchString) {
+			return "claude.setup.mcp_servers", sessions.InteractionSetup, true
 		}
 	}
 	if ok2 && strings.HasPrefix(hint2, "Syntax theme: ") {
@@ -1823,23 +1526,23 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 			choices := screen.lines[top : bottom+1]
 			_, fromOne := claudeParseOptions(choices, 1)
 			oneForm := fromOne || !slices.ContainsFunc(choices, func(line claudeLine) bool { return numberedRow(line) || line.col >= 6 })
-			_, started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
+			started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
 			if started && oneForm && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
-				return "claude.setup.theme", sessions.InteractionSetup, top, true
+				return "claude.setup.theme", sessions.InteractionSetup, true
 			}
 		}
 	}
-	if options, optionsTop, ok := screen.options(1, hint); ok && strings.HasPrefix(options[0].label, "Claude account with subscription") {
-		if row, found := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Select login method:") }); found {
-			return "claude.setup.login", sessions.InteractionSetup, min(row, optionsTop), true
+	if options, _, ok := screen.options(1, hint); ok && strings.HasPrefix(options[0].label, "Claude account with subscription") {
+		if screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Select login method:") }) {
+			return "claude.setup.login", sessions.InteractionSetup, true
 		}
 	}
 	if ok1 && hint1 == "Press Enter to continue…" {
-		if row, found := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Security notes:") }); found {
-			return "claude.setup.security", sessions.InteractionSetup, row, true
+		if screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Security notes:") }) {
+			return "claude.setup.security", sessions.InteractionSetup, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", false
 }
 
 // claudeServerOption is a server's checkbox row.

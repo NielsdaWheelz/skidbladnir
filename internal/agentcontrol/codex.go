@@ -74,7 +74,7 @@ func detectCodex(parsed screen) reading {
 
 // codexOverlay is the reading of a surface that hides the composer: activity
 // starts unknown and nothing is carried forward (2.0 step 5).
-func codexOverlay(interaction sessions.Interaction, rules ...DiagnosticRule) reading {
+func codexOverlay(interaction sessions.Interaction, rules ...string) reading {
 	return reading{activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked, rules: rules}
 }
 
@@ -123,13 +123,12 @@ func codexApproval(screen screen, end int) (reading, bool) {
 	}
 	switch last := labels[len(labels)-1]; {
 	case dim && (last == "to cancel" || last == "to open thread"):
-		selected, found := codexOptionScan(screen, first-1)
-		if !found {
+		if _, found := codexOptionScan(screen, first-1); !found {
 			return reading{}, false
 		}
-		return codexOverlay(sessions.InteractionPermission, screen.rule("codex.permission.overlay", selected, end)), true
+		return codexOverlay(sessions.InteractionPermission, "codex.permission.overlay"), true
 	case plain && slices.Equal(labels, []string{"to confirm", "to go back"}):
-		return codexOverlay(sessions.InteractionQuestion, screen.rule("codex.question.legacy_confirm", first, end)), true
+		return codexOverlay(sessions.InteractionQuestion, "codex.question.legacy_confirm"), true
 	default:
 		// `to confirm` alone (cancel unbound), reserve's `to continue working`
 		// and login's `to continue` fall through.
@@ -163,11 +162,11 @@ func codexForm(screen screen, end int) (reading, bool) {
 	fields := has(" to submit all", " to submit answer", " to navigate fields", " change field")
 	switch {
 	case legacy:
-		return codexOverlay(sessions.InteractionQuestion, screen.rule("codex.question.legacy", first, end)), true
+		return codexOverlay(sessions.InteractionQuestion, "codex.question.legacy"), true
 	case mcp && !fields && codexApprovalActions(screen, first-1):
-		return codexOverlay(sessions.InteractionPermission, screen.rule("codex.permission.mcp_approval", first, end)), true
+		return codexOverlay(sessions.InteractionPermission, "codex.permission.mcp_approval"), true
 	case mcp:
-		return codexOverlay(sessions.InteractionInput, screen.rule("codex.input.mcp_form", first, end)), true
+		return codexOverlay(sessions.InteractionInput, "codex.input.mcp_form"), true
 	default:
 		return reading{}, false
 	}
@@ -209,11 +208,11 @@ func codexAsyncEditor(screen screen, end int) (reading, bool) {
 	if first < 0 || !slices.Contains(labels, " submit") || !slices.Contains(labels, " skip") {
 		return reading{}, false
 	}
-	read := codexOverlay(sessions.InteractionQuestion, screen.rule("codex.question.async_editor", first, end))
+	read := codexOverlay(sessions.InteractionQuestion, "codex.question.async_editor")
 	switch scan := codexScan(screen, first-1); {
-	case scan.status >= 0:
+	case scan.status:
 		read.activity = sessions.ActivityWorking
-		read.rules = append(read.rules, screen.rule("codex.activity.status_row", scan.status, scan.status))
+		read.rules = append(read.rules, "codex.activity.status_row")
 	case scan.ending == codexUnproven:
 		read.activityCause = causeClipped
 	}
@@ -283,7 +282,7 @@ func codexResume(screen screen, end int) (reading, bool) {
 	key := codexKey(first)
 	switch label := cellText(first[key:]); {
 	case key > 0 && (label == " resume" || label == " fork" || label == " restore"):
-		return codexOverlay(sessions.InteractionMenu, screen.rule("codex.menu.resume", ruleRow, end)), true
+		return codexOverlay(sessions.InteractionMenu, "codex.menu.resume"), true
 	default:
 		return reading{}, false
 	}
@@ -314,11 +313,11 @@ func codexPager(screen screen, end int) (reading, bool) {
 	}
 	switch strings.TrimRight(title, "/ ") {
 	case "E X E C", "P A T C H", "P E R M I S S I O N S", "E L I C I T A T I O N", "U S E R  V E R I F I C A T I O N":
-		return codexOverlay(sessions.InteractionPermission, screen.rule("codex.permission.details_pager", 0, end)), true
+		return codexOverlay(sessions.InteractionPermission, "codex.permission.details_pager"), true
 	case "What we detected":
-		return codexOverlay(sessions.InteractionConfirmation, screen.rule("codex.confirmation.details_pager", 0, end)), true
+		return codexOverlay(sessions.InteractionConfirmation, "codex.confirmation.details_pager"), true
 	default:
-		return codexOverlay(sessions.InteractionMenu, screen.rule("codex.menu.pager", 0, end)), true
+		return codexOverlay(sessions.InteractionMenu, "codex.menu.pager"), true
 	}
 }
 
@@ -349,7 +348,7 @@ func codexWarnings(screen screen, end int) (reading, bool) {
 	if len(labels) < 2 || labels[0] != " keep & next" || labels[1] != " dismiss & close" {
 		return reading{}, false
 	}
-	return codexOverlay(sessions.InteractionMenu, screen.rule("codex.menu.warnings", end, end)), true
+	return codexOverlay(sessions.InteractionMenu, "codex.menu.warnings"), true
 }
 
 // codexLogin is rule 8, the first login screen (2.8): `Press K to continue`
@@ -369,7 +368,7 @@ func codexLogin(screen screen, end int) (reading, bool) {
 		marker.cell(0).style.fg != codexCyan || marker.cell(1).text != " " {
 		return reading{}, false
 	}
-	return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.login", selected, end)), true
+	return codexOverlay(sessions.InteractionSetup, "codex.setup.login"), true
 }
 
 // codexPicker is rule 9 (2.6): an option scan from E finds the selected row,
@@ -381,7 +380,7 @@ func codexPicker(screen screen, end int) (reading, bool) {
 	}
 	footered := codexKeyHintFooter(screen.rows[end])
 	// Title lookup: a column-0 row or pane row 0 ends it without a title.
-	titleRow, title := selected, ""
+	title := ""
 	for index := selected - 1; index >= 0; index-- {
 		row := screen.rows[index]
 		if row.presence != rowParsed {
@@ -404,7 +403,7 @@ func codexPicker(screen screen, end int) (reading, bool) {
 			break
 		}
 		if head := row.cell(2); codexIndented(row) && head.text != " " && head.style.bold && !head.style.dim {
-			titleRow, title = index, cellText(codexCells(row, 2))
+			title = cellText(codexCells(row, 2))
 			break
 		}
 	}
@@ -413,7 +412,7 @@ func codexPicker(screen screen, end int) (reading, bool) {
 	}
 	if !footered {
 		if titled("Background server has incompatible feature settings", "Cannot use the background server") {
-			return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.daemon_recovery", titleRow, end)), true
+			return codexOverlay(sessions.InteractionSetup, "codex.setup.daemon_recovery"), true
 		}
 		// Precaution, safety buffering, usage progress and reserve fall
 		// through; the composer rule rejects their selected row.
@@ -421,19 +420,19 @@ func codexPicker(screen screen, end int) (reading, bool) {
 	}
 	switch {
 	case titled("Implement this plan?"):
-		return codexOverlay(sessions.InteractionConfirmation, screen.rule("codex.confirmation.plan", titleRow, end)), true
+		return codexOverlay(sessions.InteractionConfirmation, "codex.confirmation.plan"), true
 	case titled("Approaching rate limits", "Resume paused goal?", "Usage limit reached", "You've reached your workspace credit limit"):
-		return codexOverlay(sessions.InteractionConfirmation, screen.rule("codex.confirmation.provider_picker", titleRow, end)), true
+		return codexOverlay(sessions.InteractionConfirmation, "codex.confirmation.provider_picker"), true
 	case titled("Folder access"):
-		return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.trust", titleRow, end)), true
+		return codexOverlay(sessions.InteractionSetup, "codex.setup.trust"), true
 	case titled("Update available"):
-		return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.update", titleRow, end)), true
+		return codexOverlay(sessions.InteractionSetup, "codex.setup.update"), true
 	case titled("Codex just got an upgrade"):
-		return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.migration", titleRow, end)), true
+		return codexOverlay(sessions.InteractionSetup, "codex.setup.migration"), true
 	case titled("Hooks need review"):
-		return codexOverlay(sessions.InteractionSetup, screen.rule("codex.setup.hooks_review", titleRow, end)), true
+		return codexOverlay(sessions.InteractionSetup, "codex.setup.hooks_review"), true
 	default:
-		return codexOverlay(sessions.InteractionMenu, screen.rule("codex.menu.picker", titleRow, end)), true
+		return codexOverlay(sessions.InteractionMenu, "codex.menu.picker"), true
 	}
 }
 
@@ -602,51 +601,51 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		read.composer = composerUnknown
 	}
 	if side {
-		read.rules = append(read.rules, screen.rule("codex.scope.side", inputRow, inputRow))
+		read.rules = append(read.rules, "codex.scope.side")
 	}
 	if editor {
-		read.rules = append(read.rules, screen.rule("codex.composer.external_editor", hint, hint))
+		read.rules = append(read.rules, "codex.composer.external_editor")
 	}
 
 	// Interaction (2.1): the elements between the transcript's stop and the band.
 	scan := codexScan(screen, start)
 	switch {
-	case scan.otherThread >= 0:
+	case scan.otherThread:
 		read.interaction = sessions.InteractionPermission
-		read.rules = append(read.rules, screen.rule("codex.permission.other_thread", scan.otherThread, scan.otherThread))
-	case scan.questions >= 0:
+		read.rules = append(read.rules, "codex.permission.other_thread")
+	case scan.questions:
 		read.interaction = sessions.InteractionQuestion
-		read.rules = append(read.rules, screen.rule("codex.question.async_collapsed", scan.questions, scan.questions))
-	case scan.banner >= 0:
+		read.rules = append(read.rules, "codex.question.async_collapsed")
+	case scan.banner:
 		read.interaction = sessions.InteractionConfirmation
-		read.rules = append(read.rules, screen.rule("codex.confirmation.inline_banner", scan.banner, scan.banner))
+		read.rules = append(read.rules, "codex.confirmation.inline_banner")
 	case dimmed:
 		read.interaction = sessions.InteractionMenu
-		read.rules = append(read.rules, screen.rule("codex.menu.transcript_footer", inputRow, end))
+		read.rules = append(read.rules, "codex.menu.transcript_footer")
 	case scan.information:
 		read.interaction = sessions.InteractionUnknown
 	default:
 		read.interaction = sessions.InteractionNone
-		read.rules = append(read.rules, screen.rule("codex.interaction.none", inputRow, end))
+		read.rules = append(read.rules, "codex.interaction.none")
 	}
 
 	// Activity (3): the hint-row override, the status row, then a run-state
 	// word when SL carries one. Idle comes from the screen itself (step 4):
 	// codex hides the status row while it streams a final answer, so only a
 	// settled transcript under a qualified band proves no turn is running.
-	if scan.status >= 0 {
-		read.rules = append(read.rules, screen.rule("codex.activity.status_row", scan.status, scan.status))
+	if scan.status {
+		read.rules = append(read.rules, "codex.activity.status_row")
 	}
 	read.activity = sessions.ActivityUnknown
 	switch {
 	case disconnected:
-		read.rules = append(read.rules, screen.rule("codex.activity.disconnected", hint, hint))
-		if scan.status >= 0 || state != codexNoRunState {
+		read.rules = append(read.rules, "codex.activity.disconnected")
+		if scan.status || state != codexNoRunState {
 			read.activityCause = causeConflict
 		}
-	case scan.status >= 0 && state == codexReady:
+	case scan.status && state == codexReady:
 		read.activityCause = causeConflict
-	case scan.status >= 0 || state == codexWorking:
+	case scan.status || state == codexWorking:
 		read.activity = sessions.ActivityWorking
 	case state == codexStarting:
 		read.activity = sessions.ActivityStarting
@@ -654,11 +653,11 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		// No idle without the composer qualifications (3 step 4.1, 4.2).
 	case statusLine >= 0 && codexGoalActive(screen.rows[statusLine]):
 		read.activityCause = causeConflict
-		read.rules = append(read.rules, screen.rule("codex.activity.goal_active", statusLine, statusLine))
+		read.rules = append(read.rules, "codex.activity.goal_active")
 	case scan.ending == codexOpen:
 		// A prompt ends the transcript with no status row: the submit window,
 		// a final answer streaming, or a turn that ended without a terminator.
-		read.rules = append(read.rules, screen.rule("codex.activity.prompt_pending", scan.stop, inputRow))
+		read.rules = append(read.rules, "codex.activity.prompt_pending")
 		if state == codexReady {
 			read.activityCause = causeConflict
 		}
@@ -668,18 +667,18 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		// An unparseable row hides the transcript's end: unknown, not clipped.
 	case scan.ending == codexSettled:
 		read.activity = sessions.ActivityIdle
-		read.rules = append(read.rules, screen.rule("codex.activity.idle", scan.stop, inputRow))
+		read.rules = append(read.rules, "codex.activity.idle")
 	default:
 		panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open, unproven or unreadable.
 	}
 	switch state {
 	case codexNoRunState:
 	case codexStarting:
-		read.rules = append(read.rules, screen.rule("codex.run_state.starting", statusLine, statusLine))
+		read.rules = append(read.rules, "codex.run_state.starting")
 	case codexReady:
-		read.rules = append(read.rules, screen.rule("codex.run_state.ready", statusLine, statusLine))
+		read.rules = append(read.rules, "codex.run_state.ready")
 	case codexWorking:
-		read.rules = append(read.rules, screen.rule("codex.run_state.working", statusLine, statusLine))
+		read.rules = append(read.rules, "codex.run_state.working")
 	default:
 		panic("unknown codex run state") // justify-defect: codexReadRunState returns only the closed states.
 	}
@@ -689,9 +688,9 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		switch read.notice = codexNotice(screen.rows[scan.stop]); read.notice {
 		case noticeNone:
 		case noticeInterrupted:
-			read.rules = append(read.rules, screen.rule("codex.notice.interrupted", scan.stop, scan.stop))
+			read.rules = append(read.rules, "codex.notice.interrupted")
 		case noticeError:
-			read.rules = append(read.rules, screen.rule("codex.notice.error", scan.stop, scan.stop))
+			read.rules = append(read.rules, "codex.notice.error")
 		default:
 			panic("unknown codex notice") // justify-defect: codexNotice returns only the closed notices.
 		}
@@ -755,14 +754,14 @@ const (
 
 // codexTranscript is what the upward transcript scan found: how the
 // transcript ends and where, and the bottom-pane elements it passed over on
-// the way. Rows are -1 when absent.
+// the way. stop is -1 when no stop was found.
 type codexTranscript struct {
 	ending      codexEnding
 	stop        int
-	status      int // the status row nearest the band
-	otherThread int // `! Approval needed in …`
-	questions   int // collapsed async questions
-	banner      int // an inline banner's `Press a number to choose` hint
+	status      bool // a status row
+	otherThread bool // `! Approval needed in …`
+	questions   bool // collapsed async questions
+	banner      bool // an inline banner's `Press a number to choose` hint
 	information bool
 }
 
@@ -772,7 +771,7 @@ type codexTranscript struct {
 // be the stop, so it ends the scan: unproven when dropped, unreadable when
 // unparseable.
 func codexScan(screen screen, start int) codexTranscript {
-	scan := codexTranscript{ending: codexUnproven, stop: -1, status: -1, otherThread: -1, questions: -1, banner: -1}
+	scan := codexTranscript{ending: codexUnproven, stop: -1}
 	for index := start; index >= 0; index-- {
 		row := screen.rows[index]
 		if row.presence != rowParsed {
@@ -789,9 +788,7 @@ func codexScan(screen screen, start int) codexTranscript {
 			scan.ending, scan.stop = codexSettled, index
 			return scan
 		}
-		if scan.status < 0 && codexStatusRow(row) {
-			scan.status = index
-		}
+		scan.status = scan.status || codexStatusRow(row)
 		if !codexIndented(row) {
 			continue
 		}
@@ -799,13 +796,13 @@ func codexScan(screen screen, start int) codexTranscript {
 		text := cellText(label)
 		switch {
 		case strings.HasPrefix(text, "! Approval needed") && label[0].style.bold && label[0].style.fg == codexRed:
-			scan.otherThread = index
+			scan.otherThread = true
 		case strings.HasPrefix(text, "? ") && label[0].style.dim &&
 			codexQuestionCount.MatchString(cellText(label[2:2+codexKey(label[2:])])):
-			scan.questions = index
+			scan.questions = true
 		case codexDim(label) && strings.HasPrefix(text, "Press a number to choose"):
 			if _, found := codexOptionScan(screen, index-1); found {
-				scan.banner = index
+				scan.banner = true
 			}
 		case codexDim(label) && strings.HasPrefix(text, "esc to dismiss"):
 			scan.information = true

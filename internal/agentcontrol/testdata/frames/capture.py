@@ -5,7 +5,7 @@ regions, apply the frame's declared byte-cap drops, and store the frame's expect
 
 Run from this directory: `python3 capture.py`. It uses a fresh random tmux socket with `-f /dev/null`,
 creates and kills its own server, and needs tmux 3.4 or newer. Expectations live in the authored headers:
-codex `expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id@region>,...|none`, claude
+codex `expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id>,...|none`, claude
 `expect=<activity>/<interaction>/<notice> <composer> reason=<reason> rules=...`.
 An optional final `footer=<JSON string|null>` asserts displayed text or absence.
 """

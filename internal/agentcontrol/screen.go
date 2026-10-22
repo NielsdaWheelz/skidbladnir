@@ -21,7 +21,6 @@ type screen struct {
 // row is one physical row, parsed on its own from the default style.
 type row struct {
 	presence presence
-	region   tmuxclient.RegionKind // captured rows only
 	// cells holds one cell per display column, from column 0 to the last cell
 	// tmux wrote: trailing spaces, even styled ones, may be absent, and cell()
 	// reads past the end as a default space. Columns are measured by grapheme
@@ -80,7 +79,7 @@ func parseScreen(observation tmuxclient.PaneObservation) screen {
 	parsed := screen{width: observation.Width, rows: make([]row, observation.Height)}
 	for _, region := range observation.Regions {
 		for index, text := range region.Rows {
-			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, observation.Width, text)
+			parsed.rows[region.FirstRow+index] = parseRow(observation.Width, text)
 		}
 	}
 	return parsed
@@ -91,9 +90,9 @@ func parseScreen(observation tmuxclient.PaneObservation) screen {
 // hyperlinks and the SO/SI charset shifts. Anything else, such as another
 // escape or control byte, or an SGR or hyperlink outside tmux's writer, makes
 // the row unparseable.
-func parseRow(region tmuxclient.RegionKind, width int, text string) row {
-	parsed := row{presence: rowParsed, region: region}
-	unparseable := row{presence: rowUnparseable, region: region}
+func parseRow(width int, text string) row {
+	parsed := row{presence: rowParsed}
+	unparseable := row{presence: rowUnparseable}
 	var current style
 	for text != "" {
 		switch {
@@ -256,25 +255,4 @@ func (row row) cell(column int) cell {
 		return row.cells[column]
 	}
 	return cell{text: " "}
-}
-
-// rule names a matched rule by the region of its decisive rows first..last:
-// compound when they span both regions.
-func (screen screen) rule(id string, first, last int) DiagnosticRule {
-	upper, lower := screen.rows[first], screen.rows[last]
-	if upper.presence == rowAbsent || lower.presence == rowAbsent {
-		panic("rule decided by an absent row") // justify-defect: grammars decide only on captured rows.
-	}
-	var region DiagnosticRegion
-	switch {
-	case upper.region != lower.region:
-		region = DiagnosticCompound
-	case upper.region == tmuxclient.RegionTop:
-		region = DiagnosticTop
-	case upper.region == tmuxclient.RegionBottom:
-		region = DiagnosticBottom
-	default:
-		panic("unknown screen region") // justify-defect: tmux has exactly two region kinds.
-	}
-	return DiagnosticRule{ID: id, Region: region}
 }

@@ -192,7 +192,7 @@ optional animation and remapped keys without treating arbitrary text as controls
 | --- | --- |
 | codex | activity with/without glyph, remapped interrupt, suffix and wrapped details; background-terminal waiting remains working; a run-state word when the user's status line shows one; idle from a settled transcript, never from the footer alone |
 | codex | permission overlay including open-thread footer; legacy single/multi/free-text questions; collapsed/expanded async questions; plan implementation decision; trust/update setup; ordinary pickers and transcript views |
-| claude | generation/tools/retry; background agent/task/workflow/mcp activity; default/custom multiline statusline and missing interruption hint; ordinary and screen-reader layouts |
+| claude | generation/tools/retry; background agent/task/workflow/mcp activity; default/custom multiline statusline and missing interruption hint; fullscreen and classic layouts |
 | claude | permissions; questions with navigation between confirm/cancel hints; free-text/multiple questions; plan approval; mcp elicitation; trust/login/setup; model/settings/viewer and side-question overlays |
 | both | current interruption/error structures when distinguishable; empty/draft/blocked/unknown composer; active work with historical request/error text as negatives |
 
@@ -267,11 +267,7 @@ reuse `POST /v1/sessions/{id}/terminal/inspect`:
 ```text
 request  = {identityToken, paneId, explain?: boolean} // absent = false; no null
 response = {terminalStatus, diagnostics?}           // present iff explain=true
-diagnostics = {
-  rules: [{id, region: top | bottom | compound}],
-  capture: {width, height, alternate, topClipped, bottomClipped}?,
-  elapsedMs: {resolve?, capture?, classify?}
-}
+diagnostics = {rules: [id]}
 ```
 
 add `skid info HANDLE --explain` for terminal handles/captured terminal references;
@@ -281,16 +277,10 @@ status/reason without a second sample. observation failures after target admissi
 must return unavailable status plus same-sample diagnostics; target/auth/identity failures
 remain errors. wait still maps unavailable to its existing failure.
 
-diagnostics have at most eight rule entries, ids of at most 48 ascii
-`[a-z0-9_.-]` characters, no raw fragments, titles, paths, prompts, account data
-or provider ids. rules follow the grammar's decision order, capped at eight; a
-successful sample may match none. a rule's region holds its decisive rows,
-`compound` when they span both regions; [terminal control
-§4](terminal-agent-control.md#4-api-and-client-commands) names the bounds' code
-owner and its ingress check. omit unavailable capture
-dimensions and unperformed stages; elapsed values are integer milliseconds in
-`0..2147483647`, not task duration. render missing measurements as
-`not collected`, no matched rules as `none`.
+rule ids are string literals of `[a-z0-9_.-]` written in the grammars, never
+built from screen text: no raw fragments, titles, paths, prompts, account data
+or provider ids. rules follow the grammar's decision order; a successful sample
+may match none, printed `none`.
 reuse content-free logging for failure stage/duration;
 no new metrics service or trace store. successful partial classification explains
 which dimensions matched; a classifier defect is not disguised as unavailable.
@@ -360,7 +350,7 @@ the narrower explicit-response-request predicate above. selection, restoration
 and creation transitions belong to the session-views contract.
 
 diagnostic heading: `status evidence`. show activity, interaction and notice
-separately, then reason, matched rules, capture and timing. exact reason copy:
+separately, then reason and matched rules. exact reason copy:
 
 | reason | copy |
 | --- | --- |
@@ -426,7 +416,7 @@ existing engineering checks. do not recreate a retired gate or production seam.
 | full product | real gateway→cli/desktop and gateway→physical phone: work, each request label, concurrent work, stale/unavailable, filter membership/order, visits, return restoration, accessibility/large text |
 | attention | use the separately accepted [attention acceptance](reply-notifications.md#acceptance); prior attention results qualify the former policy only |
 | controls | empty ordinary composer send succeeds; draft/dialog/menu/unknown/clipped/changed target refuses without bytes; explicit text/keys and stop/close unchanged |
-| diagnostics/cost | reason and same-sample explanation agree; logs/envelopes contain no content; 1 and 16 represented sessions on each host platform fit the existing two-second enrichment budget with no induced timeouts; compare per-stage timing before/after |
+| diagnostics/cost | reason and same-sample explanation agree; logs/envelopes contain no content; 1 and 16 represented sessions on each host platform fit the existing two-second enrichment budget with no induced timeouts |
 
 16 is a qualification workload, not a session limit; include the actual peak
 concurrency too if larger. investigate cost at its owner before changing budgets.
@@ -497,13 +487,14 @@ explicit costs:
   an interruption row or a failure block (api error, model or usage limit) ending
   the transcript is a notice; idle is lost for
   unproven pill slots, footer links, non-ordinary footers, non-work panel rows,
-  usage-limit copy, colour level 0 and screen-reader sessions without a completion
-  neighbour; remotely configured usage-limit copy without a default anchor reads
-  idle; plugin render hooks are unsupported, and an `AbovePrompt` band is
-  undetectable, so a single-character guarded send can reach it; vim NORMAL mode
-  and a screen-reader draft of only spaces read as an empty composer, so guarded
-  send is admitted there; `← N agents` keeps interaction none; request dialogs
-  without a qualified rule read unknown.
+  usage-limit copy and colour level 0; remotely configured usage-limit copy
+  without a default anchor reads idle; plugin render hooks are unsupported, and
+  an `AbovePrompt` band is undetectable, so a single-character guarded send can
+  reach it; vim NORMAL mode reads as an empty composer, so guarded send is
+  admitted there; `← N agents` keeps interaction none; request dialogs without a
+  qualified rule read unknown; screen-reader mode is unsupported and reads
+  unknown, so those sessions lose status, attention, ready, guarded send and
+  `start --stdin` admission.
 - tall panes: one capture holds at most 256 rows, so rows `192..h−65` of a taller
   pane are clipped evidence, and idle there needs the transcript tail within the
   bottom 64 rows.
@@ -529,7 +520,7 @@ the needs-input filter; and a request read as another request subtype
 and rule id): every client treats all request subtypes alike for wait, the
 needs-input filter, attention, ready and guarded send. the accepted
 send-admission exposures are codex's displayed-thread scope and claude's
-`AbovePrompt` band, vim NORMAL mode and screen-reader whitespace drafts. no other
+`AbovePrompt` band and vim NORMAL mode. no other
 cost justifies false idle, weaker input admission or silent scope expansion.
 
 complete when the matrix passes at its stated boundaries, independent reviews
