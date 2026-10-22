@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
@@ -637,7 +638,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 		}
 	case "read":
-		value := result.Value.(fleetclient.ReadResult)
+		value := result.Value.(api.ReadResult)
 		fmt.Fprintf(stderr, "target: %s; source: %s; scope: %s; truncated: %t", targetText(command.request, command.machines), value.Source, value.Scope, value.Truncated)
 		fmt.Fprintln(stderr)
 		io.WriteString(stdout, value.Text)
@@ -646,7 +647,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if value, ok := result.Value.(fleetclient.TerminalCloseResult); ok {
 			fmt.Fprintln(stdout, "terminal "+value.Terminal+"; work shared elsewhere or running remotely may continue.")
 		} else {
-			value := result.Value.(fleetclient.CloseResult)
+			value := result.Value.(api.CloseResult)
 			fmt.Fprintf(stdout, "interruption: %s; terminal: %s; work shared elsewhere or running remotely may continue.\n", value.Interrupt, value.Terminal)
 		}
 	case "group":
@@ -675,13 +676,13 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	case "send":
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
-		value := result.Value.(fleetclient.WriteResult)
+		value := result.Value.(api.WriteResult)
 		fmt.Fprintf(stdout, "terminal input: %s; provider acceptance unconfirmed.\n", value.Outcome)
 		if value.Outcome == "unknown" {
 			fmt.Fprintln(stderr, "inspect the terminal before further input; never replay an uncertain write")
 		}
 	default:
-		value := result.Value.(fleetclient.WriteResult)
+		value := result.Value.(api.WriteResult)
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
 		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, operation, value.Outcome, fleetclient.WriteText(operation, value))
 	}

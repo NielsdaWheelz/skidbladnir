@@ -3,15 +3,9 @@ package gateway
 import (
 	"net/http"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
 )
-
-type profileUsageDTO struct {
-	profileDTO
-	ReadState string        `json:"readState"`
-	Report    *quota.Report `json:"report,omitempty"`
-}
 
 func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *http.Request) {
 	observed, err := quota.Observe(request.Context(), gateway.sessions)
@@ -19,28 +13,14 @@ func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *ht
 		writeError(writer, errorInternal)
 		return
 	}
-	configured := make([]agentruntime.Profile, len(observed.Profiles))
+	// make, not append: quota returns nil without a codex profile and the wire needs [].
+	document := api.ProfileUsageReport{Machine: gateway.apiMachine(), ObservedAt: observed.ObservedAt.UTC(), Profiles: make([]api.ProfileUsage, len(observed.Profiles))}
 	for index, usage := range observed.Profiles {
-		configured[index] = usage.Profile
-	}
-	profiles := mapProfiles(configured)
-	mapped := make([]profileUsageDTO, len(profiles))
-	for index, profile := range profiles {
-		report := observed.Profiles[index].Report
 		readState := "ok"
-		if report == nil {
+		if usage.Report == nil {
 			readState = "unavailable"
 		}
-		mapped[index] = profileUsageDTO{profileDTO: profile, ReadState: readState, Report: report}
+		document.Profiles[index] = api.ProfileUsage{Profile: apiProfile(usage.Profile), ReadState: readState, Report: usage.Report}
 	}
-	stamp, err := formatProjectionInstant(observed.ObservedAt)
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	writeJSON(writer, http.StatusOK, struct {
-		Machine    machineDTO        `json:"machine"`
-		ObservedAt string            `json:"observedAt"`
-		Profiles   []profileUsageDTO `json:"profiles"`
-	}{gateway.machineDTO(), stamp, mapped}, &errorInternal)
+	writeJSON(writer, http.StatusOK, document, &errorInternal)
 }

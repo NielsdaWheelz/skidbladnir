@@ -95,7 +95,36 @@ func (interaction Interaction) Request() bool {
 	case InteractionNone, InteractionMenu, InteractionUnknown:
 		return false
 	}
-	panic("invalid terminal interaction") // justify-defect: callers ask only of a Valid status.
+	panic("invalid terminal interaction") // justify-defect: callers ask only of a Known status.
+}
+
+// Known reports that every dimension is a value of its closed set, the check a
+// consumer of a peer's status makes before branching on it; Valid also checks
+// the combination.
+func (status TerminalStatus) Known() bool {
+	switch status.Activity {
+	case ActivityStarting, ActivityWorking, ActivityIdle, ActivityUnknown:
+	default:
+		return false
+	}
+	switch status.Notice {
+	case NoticeNone, NoticeInterrupted, NoticeError:
+	default:
+		return false
+	}
+	switch status.Source {
+	case SourceTerminal, SourceUnavailable:
+	default:
+		return false
+	}
+	switch status.Reason {
+	case ReasonRecognized, ReasonPartial, ReasonLayoutUnknown, ReasonEvidenceClipped, ReasonEvidenceConflict,
+		ReasonProviderUnrecognized, ReasonRemoteContext, ReasonForegroundChanged,
+		ReasonObservationTimeout, ReasonCaptureFailed, ReasonProcessFailed:
+	default:
+		return false
+	}
+	return status.Interaction.Valid()
 }
 
 // RequestText names a request; it panics outside the request set: only
@@ -134,17 +163,7 @@ func (notice Notice) Text() string {
 // unavailable; recognized, partial and layout_unknown count the classified
 // dimensions; clipping and conflict must have cost at least one dimension.
 func (status TerminalStatus) Valid() bool {
-	switch status.Activity {
-	case ActivityStarting, ActivityWorking, ActivityIdle, ActivityUnknown:
-	default:
-		return false
-	}
-	if !status.Interaction.Valid() {
-		return false
-	}
-	switch status.Notice {
-	case NoticeNone, NoticeInterrupted, NoticeError:
-	default:
+	if !status.Known() {
 		return false
 	}
 	activity := status.Activity != ActivityUnknown
@@ -225,8 +244,8 @@ type StatusPresentation struct {
 // the terminal itself can settle. The idle row is reached only for a local
 // terminal sample without a notice, so it is exactly ready-eligible.
 func PresentStatus(status TerminalStatus, localAgent bool) StatusPresentation {
-	if !status.Valid() {
-		panic("invalid terminal status") // justify-defect: gateway mapSession and fleetclient decode admit only Valid statuses.
+	if !status.Known() {
+		panic("unknown terminal status") // justify-defect: agentcontrol produces only Valid statuses and fleetclient admits only Known ones.
 	}
 	view := StatusPresentation{Tone: ToneMuted, Queue: QueueNone}
 	inferred := localAgent && status.Source == SourceTerminal

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -27,9 +28,9 @@ func (gateway *Gateway) listDirectory(writer http.ResponseWriter, request *http.
 		return
 	}
 	writeJSON(writer, http.StatusOK, struct {
-		Machine machineDTO `json:"machine"`
+		Machine api.Machine `json:"machine"`
 		workdir.Listing
-	}{gateway.machineDTO(), listing}, &errorDirectoryListingTooLarge)
+	}{gateway.apiMachine(), listing}, &errorDirectoryListingTooLarge)
 }
 
 func (gateway *Gateway) searchDirectories(writer http.ResponseWriter, request *http.Request) {

@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"errors"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -156,26 +155,6 @@ type Inventory struct {
 type ObservedSession struct {
 	ObservedAt time.Time
 	Session    Session
-}
-
-// ValidProjectionInstant closes observation clocks at the same four-digit UTC
-// year boundary as Go's RFC3339 JSON encoder.
-func ValidProjectionInstant(value time.Time) bool {
-	if value.IsZero() {
-		return false
-	}
-	_, err := value.UTC().MarshalJSON()
-	return err == nil
-}
-
-// ParseProjectionInstant admits exactly the writer's UTC RFC3339Nano spelling.
-// time.Parse alone normalizes offsets and noncanonical fractional seconds.
-func ParseProjectionInstant(raw string) (time.Time, error) {
-	value, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil || !ValidProjectionInstant(value) || raw != value.UTC().Format(time.RFC3339Nano) {
-		return time.Time{}, errors.New("invalid projection instant")
-	}
-	return value, nil
 }
 
 type ErrorCode string

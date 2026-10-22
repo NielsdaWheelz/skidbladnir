@@ -3,7 +3,6 @@ package terminal
 import (
 	"encoding/json"
 	"errors"
-	"strconv"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
@@ -128,71 +127,27 @@ func ParseClientText(encoded []byte) (ClientFrame, error) {
 	return ClientFrame{}, ErrInvalidFrame
 }
 
-// ParseServerText strictly decodes one gateway frame for the desktop client. An
-// Error's message is the gateway's copy and is shown as sent.
+// ParseServerText reads one gateway frame for the desktop client: tolerant, as rules.md asks of a
+// same-release document. Only the kind is checked; the client branches on it. An Error's message
+// is the gateway's copy and is shown as sent.
 func ParseServerText(encoded []byte) (ServerFrame, error) {
-	var envelope struct {
-		Kind string `json:"kind"`
+	var frame struct {
+		Kind            string      `json:"kind"`
+		AttachedClients int         `json:"attachedClients"`
+		PaneID          string      `json:"paneId"`
+		Foreground      *Foreground `json:"foreground"`
+		Error           ErrorFrame  `json:"error"`
 	}
-	if json.Unmarshal(encoded, &envelope) != nil {
+	if json.Unmarshal(encoded, &frame) != nil {
 		return nil, ErrInvalidFrame
 	}
-	switch envelope.Kind {
+	switch frame.Kind {
 	case "Hello":
-		var frame struct {
-			Kind            string          `json:"kind"`
-			AttachedClients int             `json:"attachedClients"`
-			PaneID          string          `json:"paneId"`
-			Foreground      json.RawMessage `json:"foreground"`
-		}
-		if strictjson.Decode(encoded, &frame) != nil || frame.AttachedClients < 1 || !validPaneID(frame.PaneID) {
-			return nil, ErrInvalidFrame
-		}
-		hello := HelloFrame{AttachedClients: frame.AttachedClients, PaneID: frame.PaneID}
-		if frame.Foreground != nil { // present, including null, which fails validForeground
-			hello.Foreground = &Foreground{}
-			if strictjson.Decode(frame.Foreground, hello.Foreground) != nil || !validForeground(*hello.Foreground) {
-				return nil, ErrInvalidFrame
-			}
-		}
-		return hello, nil
+		return HelloFrame{AttachedClients: frame.AttachedClients, PaneID: frame.PaneID, Foreground: frame.Foreground}, nil
 	case "Presence":
-		var frame struct {
-			Kind            string `json:"kind"`
-			AttachedClients int    `json:"attachedClients"`
-		}
-		if strictjson.Decode(encoded, &frame) != nil || frame.AttachedClients < 1 {
-			return nil, ErrInvalidFrame
-		}
 		return PresenceFrame{AttachedClients: frame.AttachedClients}, nil
 	case "Error":
-		var frame struct {
-			Kind  string     `json:"kind"`
-			Error ErrorFrame `json:"error"`
-		}
-		if strictjson.Decode(encoded, &frame) != nil || errorMessages[frame.Error.Code] == "" {
-			return nil, ErrInvalidFrame
-		}
 		return frame.Error, nil
-	default:
-		return nil, ErrInvalidFrame
 	}
-}
-
-func validPaneID(paneID string) bool {
-	if len(paneID) < 2 || paneID[0] != '%' {
-		return false
-	}
-	for _, character := range paneID[1:] {
-		if character < '0' || character > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func validForeground(foreground Foreground) bool {
-	start, err := strconv.ParseUint(foreground.StartIdentity, 10, 64)
-	return (foreground.Provider == "Codex" || foreground.Provider == "Claude") && foreground.PID > 0 &&
-		err == nil && start > 0 && strconv.FormatUint(start, 10) == foreground.StartIdentity
+	return nil, ErrInvalidFrame
 }

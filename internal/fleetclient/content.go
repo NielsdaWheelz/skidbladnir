@@ -1,8 +1,10 @@
 package fleetclient
 
 import (
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 // RecoveryNotice only projects fresh inventory; retained rows make no recovery
@@ -12,19 +14,19 @@ func RecoveryNotice(peer Peer) (text string, failure bool) {
 	if !peer.OK || peer.Recovery == nil {
 		return "", false
 	}
-	notice := peer.Recovery.fact.Notice()
+	notice := peer.Recovery.Notice()
 	if notice == nil {
 		return "", false
 	}
 	text = peer.Label + ": " + notice.Summary
 	if notice.Action != "" {
 		save := "no confirmed save"
-		if savedAt := peer.Recovery.fact.SavedAt; savedAt != nil {
+		if savedAt := peer.Recovery.SavedAt; savedAt != nil {
 			save = "last confirmed save: " + savedAt.In(time.Local).Format("2006-01-02 15:04:05 utc-07:00")
 		}
 		text += ". " + save + ". " + notice.Action
 	}
-	return text, peer.Recovery.fact.State == sessions.RecoveryBroken
+	return text, peer.Recovery.State == sessions.RecoveryBroken
 }
 
 // ErrorMessage is shared by command output and the desktop browser.
@@ -71,7 +73,7 @@ func ErrorMessage(failure Failure, request Request) string {
 	}
 }
 
-func WriteText(operation string, receipt WriteResult) string {
+func WriteText(operation string, receipt api.WriteResult) string {
 	if receipt.Outcome == "unknown" {
 		return "could not confirm terminal input. inspect the terminal before trying again."
 	}
@@ -85,7 +87,7 @@ func WriteText(operation string, receipt WriteResult) string {
 	}
 }
 
-func CloseText(receipt CloseResult) string {
+func CloseText(receipt api.CloseResult) string {
 	if receipt.Terminal == "closed" {
 		if receipt.Interrupt != "written" {
 			return "terminal closed; interruption unconfirmed."

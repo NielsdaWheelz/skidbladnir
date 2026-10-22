@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -53,7 +54,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return sampled
 		}
 		matched := false
-		status := sampled.Value.(TerminalInspectResult).TerminalStatus
+		status := sampled.Value.(api.Inspect).TerminalStatus
 		if status.Source == sessions.SourceUnavailable {
 			return Failed("TerminalUnavailable", "not_sent")
 		}

@@ -5,34 +5,9 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 )
-
-type RemoteContext struct {
-	ObservedAt string       `json:"observedAt"`
-	CWD        string       `json:"cwd,omitempty"`
-	Agent      *RemoteAgent `json:"agent,omitempty"`
-	Connection *Connection  `json:"connection,omitempty"`
-}
-
-type RemoteAgent struct {
-	Provider string `json:"provider"`
-	Profile  string `json:"profile,omitempty"`
-	Label    string `json:"label,omitempty"`
-}
-
-func validConnectionID(id string) bool {
-	if len(id) != 32 {
-		return false
-	}
-	for _, digit := range []byte(id) {
-		if digit < '0' || digit > '9' {
-			if digit < 'a' || digit > 'f' {
-				return false
-			}
-		}
-	}
-	return true
-}
 
 func (session Session) Current(peer Peer) ExecutionContext {
 	if session.Execution != nil {
@@ -59,7 +34,7 @@ func (client *Client) EnrichContexts(parent context.Context, source Peer, peers 
 	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
-	var lookups sync.Map // connection id -> func() (peer, *RemoteContext)
+	var lookups sync.Map // connection id -> func() (peer, *api.TerminalContext)
 	skip := make(map[string]bool, len(peers))
 	for _, peer := range peers {
 		skip[peer.Machine] = peer.Error != nil && !peer.OK
@@ -81,8 +56,8 @@ func (client *Client) EnrichContexts(parent context.Context, source Peer, peers 
 				}
 				seen[id] = true
 				key := id
-				lookup, _ := lookups.LoadOrStore(key, sync.OnceValues(func() (peer, *RemoteContext) { return client.lookupContext(ctx, key, skip) }))
-				target, remote := lookup.(func() (peer, *RemoteContext))()
+				lookup, _ := lookups.LoadOrStore(key, sync.OnceValues(func() (peer, *api.TerminalContext) { return client.lookupContext(ctx, key, skip) }))
+				target, remote := lookup.(func() (peer, *api.TerminalContext))()
 				if remote == nil {
 					return
 				}
@@ -108,9 +83,9 @@ func (client *Client) EnrichContexts(parent context.Context, source Peer, peers 
 
 // lookupContext asks every peer not skipped for one connection id. Exactly one
 // answering peer is a match; none or several is not found (nil).
-func (client *Client) lookupContext(ctx context.Context, id string, skip map[string]bool) (peer, *RemoteContext) {
+func (client *Client) lookupContext(ctx context.Context, id string, skip map[string]bool) (peer, *api.TerminalContext) {
 	peers := client.peerSnapshot()
-	answers := make([]*RemoteContext, len(peers))
+	answers := make([]*api.TerminalContext, len(peers))
 	var pending sync.WaitGroup
 	for index, target := range peers {
 		if skip[target.Machine] {
@@ -119,7 +94,7 @@ func (client *Client) lookupContext(ctx context.Context, id string, skip map[str
 		pending.Go(func() {
 			result := client.call(ctx, target, "terminal_context", id, nil)
 			if result.OK {
-				answer := result.Value.(RemoteContext)
+				answer := result.Value.(api.TerminalContext)
 				answers[index] = &answer
 			}
 		})

@@ -54,56 +54,17 @@ const (
 )
 
 type RecoveryFailure struct {
-	At    time.Time
-	Phase RecoveryPhase
-	Cause RecoveryCause
-}
-
-func (failure RecoveryFailure) Valid() bool {
-	if !ValidProjectionInstant(failure.At) || failure.At.Location() != time.UTC {
-		return false
-	}
-	switch failure.Phase {
-	case RecoveryPhaseOwnership:
-		return failure.Cause == RecoveryCauseBusy || failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseNoSpace || failure.Cause == RecoveryCauseIO
-	case RecoveryPhaseCheckpointRead:
-		return failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseIO || failure.Cause == RecoveryCauseInvalid || failure.Cause == RecoveryCauseLimit || failure.Cause == RecoveryCauseAlreadyAttempted
-	case RecoveryPhaseSource:
-		return failure.Cause == RecoveryCauseTimeout || failure.Cause == RecoveryCauseChanged || failure.Cause == RecoveryCauseUnavailable || failure.Cause == RecoveryCauseInvalid || failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseIO
-	case RecoveryPhaseCapture:
-		return failure.Cause == RecoveryCauseTimeout || failure.Cause == RecoveryCauseChanged || failure.Cause == RecoveryCauseUnavailable || failure.Cause == RecoveryCauseInvalid || failure.Cause == RecoveryCauseLimit || failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseIO
-	case RecoveryPhaseCheckpointWrite:
-		return failure.Cause == RecoveryCauseLimit || failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseNoSpace || failure.Cause == RecoveryCauseIO
-	case RecoveryPhaseRestore:
-		return failure.Cause == RecoveryCauseTimeout || failure.Cause == RecoveryCauseChanged || failure.Cause == RecoveryCauseUnavailable || failure.Cause == RecoveryCauseInvalid || failure.Cause == RecoveryCauseLimit || failure.Cause == RecoveryCausePermission || failure.Cause == RecoveryCauseNoSpace || failure.Cause == RecoveryCauseIO || failure.Cause == RecoveryCauseNotEmpty
-	default:
-		return false
-	}
+	At    time.Time     `json:"at"`
+	Phase RecoveryPhase `json:"phase"`
+	Cause RecoveryCause `json:"cause"`
 }
 
 // Recovery is a passive capability fact, never saved inventory or a control.
+// It is also the inventory's wire recovery document.
 type Recovery struct {
-	State   RecoveryState
-	SavedAt *time.Time
-	Failure *RecoveryFailure
-}
-
-func (recovery Recovery) Valid() bool {
-	if recovery.SavedAt != nil && (!ValidProjectionInstant(*recovery.SavedAt) || recovery.SavedAt.Location() != time.UTC) {
-		return false
-	}
-	switch recovery.State {
-	case RecoveryTracking:
-		return recovery.Failure == nil
-	case RecoveryRecovered:
-		return recovery.Failure == nil && recovery.SavedAt != nil
-	case RecoveryDelayed:
-		return recovery.Failure != nil && recovery.Failure.Valid() && (recovery.Failure.Phase == RecoveryPhaseCapture || recovery.Failure.Phase == RecoveryPhaseCheckpointWrite || recovery.Failure.Phase == RecoveryPhaseSource && recovery.Failure.Cause == RecoveryCauseTimeout)
-	case RecoveryBroken:
-		return recovery.Failure != nil && recovery.Failure.Valid()
-	default:
-		return false
-	}
+	State   RecoveryState    `json:"state"`
+	SavedAt *time.Time       `json:"savedAt,omitempty"`
+	Failure *RecoveryFailure `json:"failure,omitempty"`
 }
 
 // RecoveryNotice is the owner-visible recovery copy without the machine label
@@ -113,9 +74,52 @@ type RecoveryNotice struct {
 	Action  string `json:"action,omitempty"`
 }
 
+var recoveryPhaseText = map[RecoveryPhase]string{
+	RecoveryPhaseOwnership:       "writer lock",
+	RecoveryPhaseCheckpointRead:  "checkpoint read",
+	RecoveryPhaseSource:          "tmux server check",
+	RecoveryPhaseCapture:         "workspace capture",
+	RecoveryPhaseCheckpointWrite: "checkpoint save",
+	RecoveryPhaseRestore:         "workspace restore",
+}
+
+var recoveryCauseText = map[RecoveryCause]string{
+	RecoveryCauseTimeout:          "timed out",
+	RecoveryCauseChanged:          "workspace or server changed",
+	RecoveryCauseUnavailable:      "required resource unavailable",
+	RecoveryCauseInvalid:          "invalid data or configuration",
+	RecoveryCauseLimit:            "supported limit exceeded",
+	RecoveryCauseBusy:             "lock already held",
+	RecoveryCausePermission:       "access denied",
+	RecoveryCauseNoSpace:          "storage space exhausted",
+	RecoveryCauseIO:               "input/output error",
+	RecoveryCauseAlreadyAttempted: "prior restore may be incomplete",
+	RecoveryCauseNotEmpty:         "replacement server has sessions",
+}
+
+// Known reports that Notice can word the fact: a known state and, with a
+// failure, a known phase and cause. It is a consumer's check of a peer's
+// recovery; the producer also upholds which combinations occur.
+func (recovery Recovery) Known() bool {
+	switch recovery.State {
+	case RecoveryTracking, RecoveryRecovered, RecoveryDelayed, RecoveryBroken:
+	default:
+		return false
+	}
+	if recovery.Failure == nil {
+		return true
+	}
+	_, phase := recoveryPhaseText[recovery.Failure.Phase]
+	_, cause := recoveryCauseText[recovery.Failure.Cause]
+	return phase && cause
+}
+
 // Notice is nil while tracking. A delayed or broken recovery names its
-// failure's phase and cause; it panics outside those closed sets.
+// failure's phase and cause; sessions always gives it one.
 func (recovery Recovery) Notice() *RecoveryNotice {
+	if !recovery.Known() {
+		panic("unknown recovery") // justify-defect: sessions publishes and fleetclient admits only Known recoveries.
+	}
 	var status, action string
 	switch recovery.State {
 	case RecoveryTracking:
@@ -126,54 +130,11 @@ func (recovery Recovery) Notice() *RecoveryNotice {
 		status, action = "workspace saving delayed", "retrying automatically; live terminals remain usable."
 	case RecoveryBroken:
 		status, action = "workspace recovery stopped", "manual repair required; live terminals remain usable."
-	default:
-		panic("invalid recovery state") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
 	}
-	var phase string
-	switch recovery.Failure.Phase {
-	case RecoveryPhaseOwnership:
-		phase = "writer lock"
-	case RecoveryPhaseCheckpointRead:
-		phase = "checkpoint read"
-	case RecoveryPhaseSource:
-		phase = "tmux server check"
-	case RecoveryPhaseCapture:
-		phase = "workspace capture"
-	case RecoveryPhaseCheckpointWrite:
-		phase = "checkpoint save"
-	case RecoveryPhaseRestore:
-		phase = "workspace restore"
-	default:
-		panic("invalid recovery phase") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
+	if failure := recovery.Failure; failure != nil {
+		status += ". " + recoveryPhaseText[failure.Phase] + ": " + recoveryCauseText[failure.Cause]
 	}
-	var cause string
-	switch recovery.Failure.Cause {
-	case RecoveryCauseTimeout:
-		cause = "timed out"
-	case RecoveryCauseChanged:
-		cause = "workspace or server changed"
-	case RecoveryCauseUnavailable:
-		cause = "required resource unavailable"
-	case RecoveryCauseInvalid:
-		cause = "invalid data or configuration"
-	case RecoveryCauseLimit:
-		cause = "supported limit exceeded"
-	case RecoveryCauseBusy:
-		cause = "lock already held"
-	case RecoveryCausePermission:
-		cause = "access denied"
-	case RecoveryCauseNoSpace:
-		cause = "storage space exhausted"
-	case RecoveryCauseIO:
-		cause = "input/output error"
-	case RecoveryCauseAlreadyAttempted:
-		cause = "prior restore may be incomplete"
-	case RecoveryCauseNotEmpty:
-		cause = "replacement server has sessions"
-	default:
-		panic("invalid recovery cause") // justify-defect: sessions publishes and fleetclient admits only Valid recoveries.
-	}
-	return &RecoveryNotice{Summary: status + ". " + phase + ": " + cause, Action: action}
+	return &RecoveryNotice{Summary: status, Action: action}
 }
 
 // RecoveryChange carries only content-free evidence; the observer must not reenter Manager.
@@ -277,7 +238,7 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 		recipe, failure = manager.readCheckpoint()
 		if recipe != nil {
 			manager.recovery.recipe = recipe
-			savedAt := recipe.SavedAt
+			savedAt := recipe.SavedAt.UTC() // the wire instant is UTC whatever offset the file spelled
 			manager.recovery.fact.SavedAt = &savedAt
 		}
 	}

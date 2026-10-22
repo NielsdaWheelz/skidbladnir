@@ -57,8 +57,9 @@ follows from this capability; there is no `source` member or claude variant.
 `ok` without a report or with no windows is successful absence. `unavailable`
 carries no new report. ordinary failures affect only their profile;
 auth/machine/request errors and owned-data defects retain existing policies.
-the strict go consumer and host change together; legacy native replies are
-rejected. the shared session schema changes with android under terminal usage.
+the go consumer decodes the shared report tolerantly, checking only machine,
+provider and read state. the shared session schema changes with android under
+terminal usage.
 
 percentages are finite and nonnegative. preserve precision and valid values
 above 100; never infer admission. optional facts are omitted, never null or zero

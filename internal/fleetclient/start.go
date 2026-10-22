@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -106,7 +107,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 			value.Failure = inspected.Error
 			return finish()
 		}
-		status := inspected.Value.(TerminalInspectResult).TerminalStatus
+		status := inspected.Value.(api.Inspect).TerminalStatus
 		if status.Source == sessions.SourceUnavailable {
 			value.Failure = &Failure{Code: "TerminalUnavailable", Dispatch: "not_sent"}
 			return finish()
@@ -126,7 +127,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 					value.Prompt = "unknown"
 				}
 			} else {
-				value.Prompt = sent.Value.(WriteResult).Outcome
+				value.Prompt = sent.Value.(api.WriteResult).Outcome
 			}
 			return finish()
 		}
