@@ -4,8 +4,10 @@ problem: the cleanup campaign changes wire and durable state without converters
 or old-format readers. w2.1 (fleet-fixed-hub) replaces `identity.json`,
 `host-state.json`, `resolved.json` and `authority.json` with one `fleet.json` per
 host, drops signatures and the yaml `hub:` key, and gives the phone a new store.
-the next release is therefore a fresh fleet, installed in lockstep across
-dev-server, three hosts and the phone. this record holds every cross-repo cutover
+w2.2-w2.8 add the installer receipt, the `machines:` cut, the mac serve log, the
+compiled-in catalogue and a new terminal-context record format. the next release
+is therefore a fresh fleet, installed in lockstep across dev-server, three hosts
+and the phone. this record holds every cross-repo cutover
 obligation of the campaign.
 
 impact: a skipped step leaves a host exiting at every start (yaml rejected at
@@ -83,13 +85,18 @@ steps:
    android refuses an in-place downgrade, so uninstall the new apk (clearing app
    data), install the previous one, scan a qr from the rolled-back fleet and
    `skid remove` the phone's old device. hub notification memory is lost either
-   way.
+   way. terminal-context records under `~/.cache/skidbladnir/terminal-contexts`
+   change format: the previous release cannot read new ones and drops them at its
+   first registration, so reopen those terminals. it also refuses a workspace
+   checkpoint above its old caps (256 sessions, 512 windows, 1024 panes) as
+   `limit` until the next save.
 8. residue, once satisfied: from each state directory
    (`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`) delete `identity.json`,
    `host-state.json`, `resolved.json`, `authority.json`, `enrollment-*.json` and
    `notification-observer-v1.json.recovered-*`; on macbook and arch also
    `notification-observer-v1.json` (inert on a member); on macbook also
-   `gateway.log` (249 MB, the dev-server-era event log; nothing writes it); from
+   `gateway.log` (249 MB, the dev-server-era event log; nothing writes it); on
+   every host `~/.cache/skidbladnir/terminal-contexts/.lock`; from
    each config directory delete `config.yaml.inactive`. the phone's `fleet-v1.json` stays as
    inert app data. confirm each host has no `install-owned.json` and exactly one
    `releases/` entry, the one `current` names; then delete the two
