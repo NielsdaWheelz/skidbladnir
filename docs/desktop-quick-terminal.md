@@ -140,7 +140,7 @@ follow [testing policy](rules.md#testing). use disposable tests against the
 actual model/events/rendering and browser/pty → production client → loopback
 gateways → owned isolated tmux. use two dummy machines, default different from
 the selected destination; terminal-only fixtures suffice. reuse the
-[documented isolated composition](issues/desktop-browser-runtime-acceptance.md#session-row-qualification).
+[documented isolated composition](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/issues/desktop-browser-runtime-acceptance.md#session-row-qualification).
 no production test seams, retained harness or new gate.
 
 1. **red:** root authors probes before production edits. designer fixes content
@@ -220,5 +220,5 @@ startup, browser/event loop/pty and separate owned tmux sockets.
 
 `scripts/check verify host`, diff checks and local documentation links pass
 after probe deletion. release/deployment/installed acceptance: `NOT_RUN`.
-the broader [desktop acceptance issue](issues/desktop-browser-runtime-acceptance.md)
+the broader [desktop acceptance issue](issues/unrun-acceptance.md)
 retains unrelated boundaries; deleted probes provide no retained regression gate.

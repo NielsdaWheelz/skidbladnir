@@ -20,7 +20,7 @@ evidence:
 - the [stock npm codex launcher](https://github.com/openai/codex/blob/main/codex-cli/bin/codex.js)
   spawns the native binary with inherited stdio and waits for it instead of
   replacing the launcher. this is static source evidence, not new live qualification.
-- existing [qualification](../terminal-agent-control-qualification.md) explicitly
+- existing [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md) explicitly
   recorded npm-led codex as a generic terminal under the previous acceptance.
 
 resolved when separately accepted scope and actual darwin/linux evidence show

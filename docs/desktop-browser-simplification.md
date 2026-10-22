@@ -13,7 +13,7 @@ its [v0.17.2 deployment and installed readability review](#location-refinement-i
 pass. the owner accepts the revised rows.
 this contract supersedes the machine-scope,
 selected-footer, remote-row attribution and affected creation-copy clauses in
-[desktop browser](desktop-browser.md), [session rows](desktop-session-rows.md),
+[desktop browser](desktop-browser.md), [session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md),
 [session views](session-views.md), [terminal continuity](terminal-continuity.md)
 and [terminal usage](terminal-usage.md), including affected group/design clauses.
 their other contracts and historical
@@ -197,7 +197,7 @@ lost-reply oracle: withhold one successful creation response, observe exactly on
 created session, then allow inventory refreshes; no second creation or automatic
 attachment occurs. a later deliberate user command is not automatic replay.
 
-reuse the documented [isolated-browser composition](issues/desktop-browser-runtime-acceptance.md#session-row-qualification):
+reuse the documented [isolated-browser composition](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/issues/desktop-browser-runtime-acceptance.md#session-row-qualification):
 `sessions.New` with unique `SocketName`, `gateway.New`, temporary client/config/
 credentials/directories, and isolated browser-grid socket if needed. no default
 socket, provider accounts, phone or installed-fleet mutation. tmux requires
@@ -208,7 +208,8 @@ assertions stay in memory; evidence contains no terminal bytes or credentials.
 unexecuted boundaries are `NOT_RUN`; engineering checks prove no live behavior.
 
 record source/platform, red/green outcomes, designer/verifier conclusions and
-cleanup in this spec and [desktop acceptance](issues/desktop-browser-runtime-acceptance.md).
+cleanup in this spec; unobserved boundaries keep their line in
+[unrun acceptance](issues/unrun-acceptance.md).
 delete resolved row/cwd records only after their source and installed criteria
 pass; removing the footer alone does not resolve them. the v0.17.2 installed
 qualification below closes both records. preserve unrelated outstanding acceptance.

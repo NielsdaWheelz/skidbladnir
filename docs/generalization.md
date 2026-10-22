@@ -32,8 +32,8 @@ no license choice is made here.
 | --- | --- |
 | terminal creation/control, exact targets, input uncertainty, and unsupported-program behavior, except the explicitly agreed launch changes | [terminal control](terminal-agent-control.md) and [terminal continuity](terminal-continuity.md) |
 | notification causes, display copy, device-local acknowledgement/dismissal, foreground suppression, exact-session clicks, and current-state reconciliation | [native notifications](native-notifications.md), with [session latency](session-latency.md) amendments |
-| service startup and preservation of accounts, histories, identities, and running tmux sessions during installation | [deployment contract](dev-server-handoff.md); move installation ownership to skid |
-| signed/checksummed immutable releases, coordinated matching-version updates, and verification boundaries | [distribution](public-fleet-distribution.md) as amended by [testing policy](rules.md#testing) |
+| service startup and preservation of accounts, histories, identities, and running tmux sessions during installation | [deployment contract](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/dev-server-handoff.md); move installation ownership to skid |
+| signed/checksummed immutable releases, coordinated matching-version updates, and verification boundaries | [distribution](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/public-fleet-distribution.md) as amended by [testing policy](rules.md#testing) |
 
 engineering should choose concrete implementation details that preserve these
 contracts. ask the owner only when a necessary adaptation forces a material
@@ -488,7 +488,7 @@ preventing terminal use.
 | displayed model and effort | [terminal footer](terminal-model-effort.md) | retain terminal extraction. current native inspection does not provide these fields; adding a different native meaning is new work, not a benefit obtained by merely retaining the daemon. |
 | terminal status and notifications | recognized foreground process and captured screen | retain terminal evidence. a saved native conversation may differ from what the terminal currently displays. |
 | ordinary rendered read | [terminal read](terminal-agent-control.md) | preserve the existing screen/scrollback contract and terminal source. no native-history substitution or new generic read facade. |
-| native history and results | [captured native conversation](native-agent-observation.md) | retain exact-target semantics. a terminal screen cannot satisfy a request for saved conversation history or finalized native output. report unavailable when the requested native capability is absent. |
+| native history and results | [captured native conversation](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-agent-observation.md) | retain exact-target semantics. a terminal screen cannot satisfy a request for saved conversation history or finalized native output. report unavailable when the requested native capability is absent. |
 | ordinary send and stop | terminal input; separate explicit native operations also exist today | agreed: ordinary prompt submission and interruption use tmux. automatic native preference never applies to writes. retain exact-target guards, terminal delivery receipts, and no replay after uncertainty. |
 
 quota is scoped to an account, so it does not need a terminal-to-conversation
@@ -632,6 +632,6 @@ enrollment, hub transfer/recovery, and phone delivery across sleep/outage.
 size the checks to the failure's consequences and keep source/build evidence
 separate from installed-host and physical-device behavior.
 
-the [qualification record](generalization-qualification.md) separates completed
+the [qualification record](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md) separates completed
 source/probes from this direction's new runtime proof and deferred installation.
 the android13 compatibility waiver and two-phone deferral remain explicit.

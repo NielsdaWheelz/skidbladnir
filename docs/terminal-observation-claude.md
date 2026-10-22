@@ -4,7 +4,7 @@ status: implemented in `internal/agentcontrol/claude.go`, whose comments cite
 the sections below. qualified live for claude 2.1.286 on darwin and claude
 2.1.284 on linux as §1 records; §2.6 rule 24 (theme setup) is qualified on both
 versions, except the narrow widths §5 c18 accepts. the
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
 holds the evidence and its limits, and [the spec](terminal-observation.md) owns
 the status contract this grammar feeds.
 
@@ -33,8 +33,7 @@ classified with the evidence dropped from the real capture (on darwin also by a
 real byte cap): capture and parser mechanics only. `source-only` means `S`/`D`
 and authored rows only. an `R` row is `NOT_RUN` on every platform it does not
 name, and each such `NOT_RUN` is a blocker under spec §8
-([darwin](issues/claude-observation-darwin-coverage.md),
-[linux](issues/terminal-observation-linux-coverage.md),
+([unrun acceptance](issues/unrun-acceptance.md),
 [unruled dialogs](issues/claude-unruled-request-dialogs.md)). a `P` row's
 `NOT_RUN` is informative.
 
@@ -1096,9 +1095,8 @@ every record is content-free.
    c15 dialogs), author frames from the bundle and paint them through real tmux:
    that proves parser mechanics only, so the family stays `NOT_RUN`. pair each new
    rule with a negative and confirm a mutation of the rule flips it.
-6. update §1's qualified column and versions, record the run in the
-   [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
-   and file each new `NOT_RUN` required family as an issue.
+6. update §1's qualified column and versions; [unrun acceptance](issues/unrun-acceptance.md)
+   tracks every required row that column leaves unqualified.
 
 ## 7. displayed footer extension
 

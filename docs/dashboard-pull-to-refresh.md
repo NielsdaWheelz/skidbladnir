@@ -17,7 +17,7 @@ manual verification snapshots every live fleet inventory poller, including hosts
 with no previously observed membership in the selected group. view selection
 changes neither request/completion ordering nor pressure polling. its strip
 stays outside the pull owner. the
-evidence below predates groups. its source is implemented; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
+evidence below predates groups. its source is implemented; [groups/shells hands-on acceptance](issues/unrun-acceptance.md)
 remains open.
 
 Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and

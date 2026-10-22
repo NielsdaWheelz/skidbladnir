@@ -2,15 +2,15 @@
 
 2026-10-20: merged and deployed in v0.18.0; source behavior was qualified on
 `codex/session-latency` in an isolated worktree.
-[qualification](session-latency-qualification.md) records evidence and limits.
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md) records evidence and limits.
 this cutover follows the [architecture](architecture.md),
 [rules](rules.md) and [temporary-test policy](rules.md#testing). v4 reset
 identity and bounded isolated-tmux/real-phone acceptance are explicitly approved;
-[v0.18.0 installed qualification](v0.18.0-installed-qualification.md) separately
+[v0.18.0 installed qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/v0.18.0-installed-qualification.md) separately
 records the coordinated rollout and its unperformed production-entry boundary.
 
 diagnosis: serial native work, fleet publication barriers and terminal entry
-dependencies; [the evidence](session-latency-qualification.md#diagnosis-and-red)
+dependencies; [the evidence](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md#diagnosis-and-red)
 records their correction. a preexisting canceled-input dependency race is
 [explicitly deferred](issues/bubbletea-canceled-input-race.md).
 

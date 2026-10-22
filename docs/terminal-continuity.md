@@ -10,10 +10,10 @@ status: shipped in immutable `v0.10.3` from source
 `e5906e4df4244c166eb868e678f738f47b893e86`. matching gateways run on
 macbook, arch, and devbox. isolated mac zsh/bash, ssh/mosh, and the named
 physical-phone journey passed. broader remote lifecycle paths remain
-`NOT_RUN` in the [remote](issues/terminal-continuity-remote-qualification.md)
+`NOT_RUN` in the [remote](issues/unrun-acceptance.md)
 issue. one unrelated session lifetime disappeared during the phone test window;
 its cause remains unknown in the
-[phone](issues/terminal-continuity-phone-qualification.md) issue.
+[phone](issues/unrun-acceptance.md) issue.
 
 ## 1. scope and decisions
 
@@ -25,7 +25,7 @@ its cause remains unknown in the
 | combined stop | retain, labelled `stop agent and close terminal` | preserve native claude halt plus terminal closure; `/exit` remains provider input |
 
 this document owns the implementation delta to [architecture](architecture.md),
-[shells](shells.md), [identity](agent-identity-projection.md),
+[shells](shells.md), [identity](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/agent-identity-projection.md),
 [agent control](agent-control.md), [desktop](desktop-browser.md) and
 [directory selection](working-directory-chooser.md). root updates their affected
 clauses at cutover; do not maintain contradictory final contracts. retain
@@ -145,8 +145,8 @@ absolute `HOME/.codex` only after a complete successful read. never use the
 gateway's home, launch metadata, ancestors, provider files or terminal text.
 qualify linux and darwin separately. retain claude registration unchanged.
 only native executables matching a configured signature are recognized; the
-[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
-matching, including npm's node launcher. retain the profile catalogue: it also
+[deployment schema](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/dev-server-handoff.md#host-config-and-validator)
+owned matching then, including npm's node launcher. retain the profile catalogue: it also
 supplies foreground signatures. this narrowly supersedes the current ban on codex
 home projection and other-process environment observation; it adds no codex hook.
 

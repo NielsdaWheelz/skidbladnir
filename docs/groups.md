@@ -15,7 +15,7 @@ creation under [the composition plan](groups-and-shells.md).
 the groups cutover changes product and wire names in one coordinated release.
 the tmux option and phone saved-state encodings in sections 4 and 10 retain their
 old spelling because they are persistent formats, not compatibility paths.
-[the roadmap](roadmap.md) indexes delivery; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
+[the roadmap](roadmap.md) indexes delivery; [groups/shells hands-on acceptance](issues/unrun-acceptance.md)
 remains `NOT_RUN`. automated phone results do not establish that human review.
 
 [architecture.md](architecture.md) incorporates this scope and acceptance;

@@ -3,7 +3,7 @@
 2026-10-16: implemented, source/live qualified and [deployed in v0.17.3](#installed-qualification).
 installed owner readability review remains `NOT_RUN`. this spec owns row geometry, hierarchy and overflow
 rules in [desktop browser](desktop-browser.md), [browser simplification](desktop-browser-simplification.md),
-[session rows](desktop-session-rows.md) and [design language §19](design-language.md#19-terminal-browser).
+[session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) and [design language §19](design-language.md#19-terminal-browser).
 their other behavior and source-attributed qualification remain independent.
 [architecture](architecture.md), [rules](rules.md) and
 [testing policy](rules.md#testing) govern implementation. no product question remains open.
@@ -165,7 +165,7 @@ unrelated working-tree changes. implementation was authorized on 2026-10-16.
 | viewport/identity | first/middle/last selection, body capacities 0–5, intact group transitions, footer growth/shrinkage, tail backfill, resize across former breakpoints, offscreen long name, same lifetime after refresh and colliding displayed labels; full info and captured action reference agree with selection |
 | live composition | actual browser/event loop → pty → production client → one loopback tls gateway → owned isolated tmux on darwin and linux at 80×24/160×24; terminal-only dummy sessions spanning a group boundary plus enough rows to scroll; inspect real grids, scroll/resize, space info, exact attachment, detach/first navigation, refresh and original cwd/lifetime survival |
 
-reuse [the isolated composition](issues/desktop-browser-runtime-acceptance.md#session-row-qualification);
+reuse [the isolated composition](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/issues/desktop-browser-runtime-acceptance.md#session-row-qualification);
 add no harness or production seam. agent observations belong in rendered
 integration; provider/account/phone work is unnecessary. live work requires
 execution-turn approval under [AGENTS.md](../AGENTS.md): only recorded owned
@@ -174,7 +174,8 @@ keep assertions in memory; evidence contains no terminal bytes, prompts,
 credentials or account data. missing boundaries are `NOT_RUN`.
 
 record source/platform, red/green outcomes, designer/verifier conclusions and
-cleanup here and in the [row issue](issues/desktop-single-line-rows.md); unrelated
+cleanup here; the owner review keeps its line in
+[unrun acceptance](issues/unrun-acceptance.md); unrelated
 findings get separate records. installed acceptance needs separate deployment
 and owner review; previous qualification does not transfer.
 
@@ -263,4 +264,4 @@ with needs-input/all tabs. no pairing reset or phone terminal operation occurred
 
 independent release/deployment review passes. disposable probes and snapshots are
 removed after owned browser exit. installed theme/readability acceptance still needs
-the owner's 80×24/160×24 review, tracked in the [row issue](issues/desktop-single-line-rows.md).
+the owner's 80×24/160×24 review, tracked in the [row issue](issues/unrun-acceptance.md).

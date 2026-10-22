@@ -19,7 +19,7 @@ content-free contributor/admission facts; explain the observed state and verify
 that a completed successful one-contributor refresh presents its usage. after
 policy rollout, disappearance of the label alone does not prove normal refresh.
 
-2026-10-20: the correction is [deployed in v0.18.0](../v0.18.0-installed-qualification.md).
+2026-10-20: the correction is [deployed in v0.18.0](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/v0.18.0-installed-qualification.md).
 fresh installed desktop smokes show no usage conflict; this does not explain the
 historical symptom or prove its prior contributor/admission state.
 

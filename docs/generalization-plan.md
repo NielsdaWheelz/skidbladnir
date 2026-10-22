@@ -7,7 +7,7 @@ and existing terminal observation remain. the earlier native clauses are histori
 
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
-reviewed. [qualification](generalization-qualification.md) separates passing
+reviewed. [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md) separates passing
 isolated boundaries from deferred installed/background acceptance.
 completed unrelated source/proof is retained.
 source audited: `d34b6897d7938c301cdfed07d8c792f11beb06a1`.
@@ -662,7 +662,7 @@ content. missing/unrun boundaries are `NOT_RUN`. release requires passing proof
 or explicit owner waivers; engineering checks are not behavioral acceptance.
 android 13 compatibility qualification remains waived, not passed.
 2026-10-20: the owner separately deferred
-[two-physical-phone acceptance](issues/android-two-phone-push-acceptance.md).
+[two-physical-phone acceptance](issues/unrun-acceptance.md).
 retain multi-device behavior and synthetic independent-principal proof; do not
 substitute that proof for the deferred physical rows. single-phone real push
 and installed cutover qualification remain required.

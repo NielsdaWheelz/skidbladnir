@@ -42,7 +42,7 @@ retain immutable references, draft/setup refusal, uncertain-write no-replay and
 separate close facts. no native conversation fallback, permission override,
 unbounded model campaign or weakened admission. delete disposable proof code.
 
-[qualification](../terminal-only-control-qualification.md) records source and
+[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records source and
 limits. 13 content-free logs and cleanup receipt remain under
 `/tmp/terminal-only-supported-results`; temporary probes/stages/owned sockets are
 removed. no installed cutover, phone or native OS delivery is claimed. jarvis's

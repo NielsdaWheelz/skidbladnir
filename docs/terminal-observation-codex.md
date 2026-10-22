@@ -2,7 +2,7 @@
 
 status: implemented in `internal/agentcontrol/codex.go`, whose comments cite the
 sections below. qualified live for codex-cli 0.159.2 on darwin and on linux as
-§1 records; the [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+§1 records; the [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
 holds the evidence and its limits, and [the spec](terminal-observation.md) owns
 the status contract this grammar feeds.
 
@@ -64,9 +64,7 @@ provider behaviour, and it applies only to rows about dropped evidence.
 `source-only` means upstream source and authored rows only. an RP or AC row is
 `NOT_RUN` on every platform it does not name, and each such `NOT_RUN` is a
 blocker under spec §8
-([darwin](issues/codex-observation-darwin-coverage.md),
-[linux](issues/terminal-observation-linux-coverage.md),
-[server-driven](issues/codex-server-driven-families.md)). a PU `NOT_RUN` is
+([unrun acceptance](issues/unrun-acceptance.md)). a PU `NOT_RUN` is
 informative. cue-less timing windows are not families; §6 holds them.
 
 | family / variant | class | values | rule id | qualified | basis |
@@ -974,7 +972,7 @@ under the conditions it names; spec §9 lists those. the costs:
   pre-session screen near the top reads unknown/unknown, `evidence_clipped`.
 - **c8** npm's node launcher leads the foreground group, so a codex started through it
   is a generic terminal; managed launches and `codex` typed in a skid shell run
-  the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
+  the native executable ([launcher issue](issues/provider-wrapper-recognition.md)).
 - **c9** idle with surviving background terminals stays idle. that is no false
   claim: spec §2 makes idle the provider's ready-state evidence and a surviving
   process or task count insufficient for working, and §3 says idle does not mean
@@ -1087,9 +1085,8 @@ every record is content-free.
    directory (`/tmp/codex-daemon-<uid>/`), touching no other entry. if a codex
    call slipped past the probe home, remove only the `codex-arg0*` directories
    that call created (its birth time and link targets attribute them).
-7. update §1's qualified column and versions, record the run in the
-   [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
-   and file each new `NOT_RUN` required family as an issue.
+7. update §1's qualified column and versions; [unrun acceptance](issues/unrun-acceptance.md)
+   tracks every required row that column leaves unqualified.
 
 ## 8. displayed footer extension
 

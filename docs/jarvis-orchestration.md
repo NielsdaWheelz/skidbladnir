@@ -134,7 +134,7 @@ phone launch-option ui or notification service.
 
 ## current contract and invariants
 
-[terminal control](terminal-agent-control.md) and [native interaction](native-agent-observation.md)
+[terminal control](terminal-agent-control.md) and [native interaction](terminal-only-control.md)
 remain distinct capabilities. terminal references capture machine, session
 lifetime and pane. they deliberately survive provider exit/restart/resume in
 that pane. native references capture account/history scope/conversation; existing
@@ -285,8 +285,8 @@ do not silently clear, translate or substitute the other field.
 raw means provider values, not arbitrary argv, configuration expressions, homes,
 permission flags or commands. each value is nonempty valid utf-8, at most 256
 bytes, with no whitespace or controls; reject rather than trim. lower through
-fixed provider argument positions and preserve the literal value. qualify the
-installed providers' lowering in [launch options](jarvis-launch-options-qualification.md).
+fixed provider argument positions and preserve the literal value. [launch options](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/jarvis-launch-options-qualification.md)
+recorded the providers' isolated lowering.
 locally known provider incompatibility rejects before launch; a syntactically
 admissible model later rejected by the account remains a launch failure, without fallback.
 do not create a duplicate model catalogue to promise account availability.
@@ -475,8 +475,7 @@ no new native identity or turn-result retrieval is selected for this release.
 
 baseline gaps have source repairs and isolated live qualification; installed
 artifact/cutover work stays explicit:
-[cli contract](jarvis-cli-contract-qualification.md),
-[options](jarvis-launch-options-qualification.md),
+[terminal-only live cells](issues/terminal-only-live-qualification.md),
 [readiness](issues/jarvis-launch-readiness.md),
 [capture receipts](issues/jarvis-launch-receipts.md).
 

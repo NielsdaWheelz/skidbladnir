@@ -1,7 +1,7 @@
 # optional android background notifications
 
-status: target setup; runtime feasibility and production integration are tracked
-in [qualification](generalization-qualification.md). installed cutover is deferred.
+status: target setup. isolated [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md)
+records runtime feasibility; the installed round trip remains [unrun](issues/unrun-acceptance.md).
 
 skip this guide to use desktop/mobile session management without firebase.
 mac notifications also work independently. skid runs no notification backend.

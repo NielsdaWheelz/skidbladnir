@@ -20,7 +20,7 @@ shell input readiness remains unpromised without the explicit guarded-input path
 
 implemented: standalone terminal and new terminal here, following [groups](groups.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected
-real-phone journeys passed on their recorded sources; [hands-on acceptance](issues/groups-shells-hands-on.md)
+real-phone journeys passed on their recorded sources; [hands-on acceptance](issues/unrun-acceptance.md)
 remains `NOT_RUN`.
 
 2026-09-17: [pr 3](desktop-browser.md) changes only desktop presentation and the

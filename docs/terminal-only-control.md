@@ -1,8 +1,8 @@
 # terminal controls, ordinary launches, account quota
 
 status: source merged and released in v0.20.0 on 2026-10-21.
-[isolated qualification](terminal-only-control-qualification.md) owns its actual
-results and remaining live acceptance; [installed qualification](v0.20.0-installed-qualification.md)
+[isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records its actual
+results; [live cells](issues/terminal-only-live-qualification.md) remain open; [installed qualification](v0.20.0-installed-qualification.md)
 owns the separately authorized fleet rollout.
 this is one cross-repository change, not a rollback to an old skid release.
 amends [architecture](architecture.md), [terminal control](terminal-agent-control.md),

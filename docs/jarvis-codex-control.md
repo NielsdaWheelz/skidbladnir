@@ -4,8 +4,8 @@ current worker contract: jarvis uses the installed skid cli for `agent.list`,
 `agent.info`, `agent.start`, `agent.read`, `agent.send`, `agent.text`, `agent.keys`,
 `agent.stop` and `agent.close`. jarvis deployment supplies its private skid client
 config; skid's human fleet provisioning does not write jarvis's service config.
-the current [deployment boundary](dev-server-handoff.md#owned-installation-and-runtime)
-and [native interaction](native-agent-observation.md) supersede the worker
+the current [deployment boundary](generalization-plan.md#7-installer-cutover-and-removal)
+and [terminal-only control](terminal-only-control.md) supersede the worker
 integration and cutover directions below, which remain historical.
 
 skid owns opaque references, native conversation control and explicit terminal

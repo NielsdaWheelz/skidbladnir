@@ -132,7 +132,7 @@ only root changes shared specifications/indexes. keep user changes intact.
 | captured dispatch | test-only loopback effect receiver observes original machine header, session path, identity token and pane after refresh/rename/reorder/pane change; cancel/scroll send nothing; unavailable/replaced lifetime sends nothing; no production seam |
 | isolated live | actual browser/event loop → real pty → production client → loopback production gateway → owned isolated tmux, on darwin and linux at 80×24/160×24; dummy terminals only; list, full info, both confirmations, paging, resize, cancel and clean quit; sessions/lifetimes remain intact until owned cleanup |
 
-reuse [the isolated composition](issues/desktop-browser-runtime-acceptance.md#session-row-qualification).
+reuse [the isolated composition](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/issues/desktop-browser-runtime-acceptance.md#session-row-qualification).
 use owned tmux as the browser grid renderer on a second unique `-L` socket;
 add no emulator/dependency or retained harness. choose a live dummy name long
 enough to require paging at both widths. live confirmation is cancel-only;
@@ -161,7 +161,7 @@ visible text through reflow. zero fact capacity requires more terminal space.
 deleted tests provide change-specific evidence without retained regressions.
 
 the confirmation issue is resolved and removed. the
-[row issue](issues/desktop-single-line-rows.md) retains the separate installed
+[row issue](issues/unrun-acceptance.md) retains the separate installed
 owner readability review.
 
 ## qualification

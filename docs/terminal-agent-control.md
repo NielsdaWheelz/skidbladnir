@@ -18,17 +18,17 @@ its existing schema; `info --explain` clears the earlier inventory quota when
 replacing status/time. send, wait, stop and close retain their contracts.
 
 status: orchestration implemented; the observation cutover is implemented in
-source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
+source ([roadmap](roadmap.md)). [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md)
 records the full terminal checks and composition limits on the earlier
 `{state, source}` source, then the observation cutover: capture, recognition,
 classification and cost on darwin and linux, its send-admission and wait changes
 on darwin only at that qualification. the 2026-10-02
 [orchestration qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance)
 adds current-artifact linux launch/input/read/wait/refusal/stop/close through a real
-isolated gateway and public cli. remaining [linux rows](issues/terminal-observation-linux-coverage.md)
+isolated gateway and public cli. remaining [linux rows](issues/unrun-acceptance.md)
 and the physical phone remain `NOT_RUN`. this owns the hard cutover of ordinary terminal
 orchestration. it supersedes conflicting session-target behavior in
-[native interaction](native-agent-observation.md), [agent control](agent-control.md),
+[native interaction](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-agent-observation.md), [agent control](agent-control.md),
 and [client controls](agent-control-ux.md) at implementation cutover. retain
 native integration as a separate capability.
 
@@ -134,11 +134,10 @@ unavailable result, from inventory, creation/shell responses or inspect, logs on
 content-free `Terminal.ObservationFailed` event with its reason and the
 milliseconds since the observing call began.
 
-a local provider is recognized only from fresh kernel facts that match a
-configured foreground signature; the
-[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
-matching, including npm's node launcher. a process matching more than one
-provider is unrecognized.
+a local provider is recognized only from fresh kernel facts about the foreground
+process; `ClassifyForeground` in `internal/agentruntime` owns matching, and a
+provider behind npm's node launcher stays [unrecognized](issues/provider-wrapper-recognition.md).
+a process matching more than one provider is unrecognized.
 
 [observation §4](terminal-observation.md#4-provider-adapters-and-managed-displays)
 owns the provider grammars and rule ids. quoted
