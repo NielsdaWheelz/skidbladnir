@@ -44,7 +44,7 @@ case "$gate" in
     run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
     shell_scripts=(
       scripts/build scripts/build-host-archive scripts/build-host-binary
-      scripts/build-mac-app scripts/build-mac-icon
+      scripts/build-mac-app scripts/build-mac-icon scripts/build-terminal-xterm
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
       scripts/check-release scripts/check-release-source scripts/check-release-repository
       scripts/install-android scripts/release scripts/render-release-notes
@@ -65,10 +65,8 @@ case "$gate" in
       'import pathlib, sys
 for name in sys.argv[1:]:
     compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
-      scripts/build-terminal-xterm scripts/check-catalogue \
-      scripts/check-terminal-assets scripts/gen-ornament deployment/install/build-native.py
+      scripts/check-catalogue scripts/gen-ornament deployment/install/build-native.py
     run catalogue ./scripts/check-catalogue
-    run terminal-assets ./scripts/check-terminal-assets
     run ornament ./scripts/gen-ornament --check
     if [[ "$scope" == all || "$scope" == host ]]; then
       run go-mod-verify go mod verify

@@ -35,7 +35,7 @@ jobs:
             while IFS= read -r -d '' path; do
               case "$path" in
                 *.go | go.mod | go.sum | deployment/*) host=true ;;
-                android/* | scripts/gen-ornament | scripts/build-terminal-xterm | scripts/check-terminal-assets) android=true ;;
+                android/* | scripts/gen-ornament | scripts/build-terminal-xterm) android=true ;;
                 docs/* | evidence/* | AGENTS.md | release-pin.json) ;;
                 *) host=true; android=true ;;
               esac

@@ -197,9 +197,8 @@ reuse the current measured grid, button, modifier helper, reducer and bridge.
 no generic key framework or broad file cleanup is justified.
 
 `SkidbladnirController.kt`, `TerminalConnection.kt`, host production code,
-xterm vendor/patch/lock, public schemas, dependencies and `scripts/check`
-composition need no production changes. the terminal asset checker owns vendor
-digests; editing `terminal.js` requires no checksum regeneration.
+xterm vendor/patch, public schemas, dependencies and `scripts/check`
+composition need no production changes.
 
 ## sequence and acceptance
 
