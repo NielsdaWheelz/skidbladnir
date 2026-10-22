@@ -4,6 +4,7 @@ package macnotifications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,277 +14,232 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 )
 
-// Run starts the sole mac state writer. Its caller must remain on the original
-// main goroutine; native callbacks and state work never synchronously wait on
-// each other across the main-thread boundary.
+// app is the notification app's state. Only loop touches its fields, except
+// hints and hinted, which the event stream signals.
+type app struct {
+	configPath, skidPath string
+	client               *fleetclient.Client // nil: setup required
+	alerted              map[string]int64    // slot -> episode audibly posted by this process
+	authorizationFailed  bool
+	hints                chan struct{} // cap 1
+	hinted               atomic.Uint64 // bumped by the stream on every event
+}
+
+// Run is the notification app. Its caller stays on the original main thread,
+// which AppKit owns until the app quits or ctx ends.
 func Run(ctx context.Context, configPath, skidPath string) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if !filepath.IsAbs(configPath) || !filepath.IsAbs(skidPath) {
 		return errors.New("notification app paths must be absolute")
 	}
-	client, err := fleetclient.Open(configPath)
-	if err != nil {
-		client = nil
-	}
-	store, err := fleetclient.DefaultNotificationStore()
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	owner, err := newOwner(ctx, client, store, configPath, skidPath)
-	if err != nil {
-		return err
-	}
 	listener, lock, err := listenSocket()
 	if err != nil {
 		return err
 	}
-	defer lock.Close() // justify-ignore-error: releasing process ownership happens after its joined work.
+	defer lock.Close()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	app := &app{configPath: configPath, skidPath: skidPath, alerted: make(map[string]int64), hints: make(chan struct{}, 1)}
 	var workers sync.WaitGroup
-	var authorizationFailed atomic.Bool
-	workers.Go(owner.run)
-	workers.Go(func() { owner.serve(listener) })
-	workers.Go(func() { owner.nativeEffects(&authorizationFailed) })
-	workers.Go(func() { owner.nativeEvents(cancel, &authorizationFailed) })
+	workers.Go(func() { serve(ctx, listener) })
+	workers.Go(func() { app.loop(ctx, cancel) })
 	stop := context.AfterFunc(ctx, nativeStop)
 	nativeLoop()
 	stop()
 	cancel()
-	_ = listener.Close() // justify-ignore-error: cancellation closes admission before joining owned work.
 	bridge.close()
 	workers.Wait()
 	return nil
 }
 
-func (owner *owner) nativeEffects(authorizationFailed *atomic.Bool) {
-	for {
-		select {
-		case <-owner.ctx.Done():
+// loop is the app's single owner: it syncs after every hint and native event,
+// one sync at a time, and owns the event stream and click launches.
+func (app *app) loop(ctx context.Context, quit context.CancelFunc) {
+	var workers sync.WaitGroup
+	defer workers.Wait()
+	stopStream := func() {}
+	open := func() {
+		stopStream()
+		app.client, _ = fleetclient.Open(app.configPath)
+		if app.client == nil {
 			return
-		case <-owner.effects:
 		}
-		var observation inspection
-		observation.known = bridge.call(owner.ctx, "inspect", struct{}{}, &observation.notices) == nil
-		needed, err := owner.request(owner.ctx, "focus-needed", 0, nil)
-		if err != nil {
-			return
-		}
-		if needed.(bool) { // justify-assertion: the owner returns this operation's boolean.
-			var focus struct {
-				ID string `json:"id"`
-			}
-			if bridge.call(owner.ctx, "focus", struct{}{}, &focus) == nil {
-				observation.focus = focus.ID
-			}
-		}
-		var permission struct {
-			Allowed      bool `json:"allowed"`
-			Undetermined bool `json:"undetermined"`
-		}
-		observation.permission = bridge.call(owner.ctx, "permission", struct{}{}, &permission) == nil
-		observation.allowed = permission.Allowed
-		value, err := owner.request(owner.ctx, "plan", 0, observation)
-		if err != nil {
-			continue
-		}
-		plan := value.([]nativeEffect) // justify-assertion: only the owning native planner returns this typed effect list.
-		confirmReset := false
-		for len(plan) != 0 {
-			effect := plan[0]
-			plan = plan[1:]
-			if effect.rename {
-				var notices []nativeNotice
-				if bridge.call(owner.ctx, "inspect", struct{}{}, &notices) != nil {
-					continue
-				}
-				present := false
-				for _, notice := range notices {
-					if notice.Slot == effect.notice.Slot && notice.Epoch == effect.notice.Epoch && notice.Episode == effect.notice.Episode {
-						present = true
-					}
-				}
-				if !present {
-					_, _ = owner.request(owner.ctx, "absent", 0, nativeEvent{Slot: effect.notice.Slot, Epoch: effect.notice.Epoch, Episode: effect.notice.Episode}) // justify-ignore-error: the next inspection repeats absence admission if persistence fails.
-					continue
-				}
-			}
-			value, err := owner.request(owner.ctx, "submit", 0, effect)
-			if err != nil {
-				return
-			}
-			receipt := value.(*nativeReceipt) // justify-assertion: submission returns its completion receipt, or a typed nil when ineligible.
-			if receipt == nil {
-				continue
-			}
-			// Await completion even after a new intent supersedes this one. An
-			// uncertain old add must finish before cancellation or a successor add.
-			if err := bridge.await(owner.ctx, receipt, nil); err != nil {
-				if errors.Is(err, errNativeRejected) && !effect.cancel {
-					_, _ = owner.request(owner.ctx, "rejected", 0, effect) // justify-ignore-error: process shutdown discards the unresolved copy.
-				}
-				continue
-			}
-			value, err = owner.request(owner.ctx, "settle", 0, effect)
-			if err != nil {
-				continue
-			}
-			if value.(bool) { // justify-assertion: settlement reports whether that completed old effect needs cancellation.
-				plan = append([]nativeEffect{{notice: effect.notice, cancel: true}}, plan...)
-			}
-			confirmReset = confirmReset || effect.confirmReset
-		}
-		if confirmReset {
-			var confirmed inspection
-			confirmed.known = bridge.call(owner.ctx, "inspect", struct{}{}, &confirmed.notices) == nil
-			if confirmed.known {
-				_, _ = owner.request(owner.ctx, "plan", 0, confirmed) // justify-ignore-error: one confirmation may finish reset; remaining cancellation waits for an existing explicit wake.
-			}
-		}
-		health, err := owner.request(owner.ctx, "health", 0, nil)
-		if err == nil {
-			text := health.(string) // justify-assertion: health copy is owned by the state actor.
-			if observation.permission && permission.Allowed {
-				authorizationFailed.Store(false)
-			}
-			if !observation.permission || authorizationFailed.Load() {
-				text = "notification delivery unavailable."
-			} else if permission.Undetermined {
-				text = "allow notifications for needs input."
-			} else if !permission.Allowed {
-				text = "notifications are blocked in system settings."
-			}
-			_ = bridge.call(owner.ctx, "health", struct {
-				Text string `json:"text"`
-			}{text}, nil) // justify-ignore-error: the next setup/effect cycle refreshes a quiet disclosure.
-		}
+		streamCtx, cancel := context.WithCancel(ctx)
+		stopStream = cancel
+		client := app.client
+		workers.Go(func() { app.stream(streamCtx, client) })
 	}
-}
-
-func (owner *owner) nativeEvents(cancel context.CancelFunc, authorizationFailed *atomic.Bool) {
-	var launches sync.WaitGroup
-	defer launches.Wait()
+	open()
 	for {
+		due := false
 		select {
-		case <-owner.ctx.Done():
+		case <-ctx.Done():
 			return
+		case <-app.hints:
+			due = true
 		case <-bridge.wake:
 			for _, event := range bridge.drain() {
 				switch event.Kind {
-				case "ready", "wake", "setup", "permission":
-					if event.Kind == "permission" {
-						var result struct {
-							Allowed     bool   `json:"allowed"`
-							ErrorDomain string `json:"errorDomain"`
-							ErrorCode   int    `json:"errorCode"`
-						}
-						if attention.Decode(event.Value, &result) != nil {
-							authorizationFailed.Store(true)
-							fmt.Fprintln(os.Stderr, "notification authorization completion unavailable")
-						} else {
-							authorizationFailed.Store(result.ErrorDomain != "")
-							if result.ErrorDomain != "" {
-								fmt.Fprintf(os.Stderr, "notification authorization failed: %s (%d)\n", result.ErrorDomain, result.ErrorCode)
-							}
-						}
+				case "ready": // the app finished launching
+				case "permission":
+					var result struct {
+						ErrorDomain string `json:"errorDomain"`
+						ErrorCode   int    `json:"errorCode"`
 					}
-					if event.Kind == "setup" || event.Kind == "wake" {
-						_, _ = owner.request(owner.ctx, "reload", 0, nil) // justify-ignore-error: reload failure is disclosed as setup required.
+					app.authorizationFailed = json.Unmarshal(event.Value, &result) != nil || result.ErrorDomain != ""
+					if app.authorizationFailed {
+						fmt.Fprintf(os.Stderr, "notification authorization failed: %s (%d)\n", result.ErrorDomain, result.ErrorCode)
 					}
-					select {
-					case owner.refresh <- struct{}{}:
-					default:
+				case "wake", "setup":
+					open()
+				case "dismiss", "click":
+					if event.Kind == "click" {
+						workers.Go(func() { app.openSession(ctx, event.Ref) })
 					}
-					owner.signalEffects()
-				case "reset":
-					_, _ = owner.request(owner.ctx, "reset", 0, nil) // justify-ignore-error: a failed reset leaves state intact and health remains unavailable.
-				case "dismiss":
-					_, _ = owner.request(owner.ctx, "dismiss", 0, event) // justify-ignore-error: inspection observes dismissal if its state write failed.
-				case "click":
-					_, _ = owner.request(owner.ctx, "dismiss", 0, event) // justify-ignore-error: click navigation is independent of notification memory availability.
-					launches.Go(func() { owner.openSession(event.Ref) })
+					// The owner has seen this episode: this process never posts it again,
+					// even when it was an earlier process's notice or the ack fails.
+					app.alerted[event.Slot] = event.Episode
+					if app.client != nil && app.client.NotificationHandled(ctx, attention.Handled{Slot: event.Slot, Episode: event.Episode}) != nil {
+						fmt.Fprintln(os.Stderr, "notification acknowledgement unavailable")
+					}
 				case "quit":
-					cancel()
+					quit()
 				default:
 					panic("unsupported native notification callback")
 				}
+				due = true
+			}
+		}
+		if due {
+			app.sync(ctx)
+		}
+	}
+}
+
+// sync reconciles the notification center with one hub state read and
+// refreshes the setup window's health line. It inspects the notification
+// center before reading the hub: a notice dismissed during the read is then
+// still a same-episode copy, never an absent one that would post again.
+func (app *app) sync(ctx context.Context) {
+	var delivered []notice
+	inspectErr := bridge.call(ctx, "inspect", struct{}{}, &delivered)
+	var permission struct {
+		Allowed      bool `json:"allowed"`
+		Undetermined bool `json:"undetermined"`
+	}
+	permissionErr := bridge.call(ctx, "permission", struct{}{}, &permission)
+	var state attention.State
+	var fetchErr error
+	if app.client != nil {
+		hinted := app.hinted.Load()
+		state, fetchErr = app.client.NotificationState(ctx)
+		if fetchErr == nil && app.hinted.Load() != hinted {
+			return // overtaken by a hint, whose pending token syncs again
+		}
+	}
+	if app.client != nil && fetchErr == nil && inspectErr == nil && permissionErr == nil {
+		for _, effect := range reconcile(state, delivered, app.alerted, permission.Allowed) {
+			if effect.cancel {
+				if bridge.call(ctx, "cancel", struct {
+					Slot string `json:"slot"`
+				}{effect.notice.Slot}, nil) == nil {
+					delete(app.alerted, effect.notice.Slot)
+				}
+				continue
+			}
+			if bridge.call(ctx, "post", struct {
+				notice
+				Silent bool `json:"silent"`
+			}{effect.notice, !effect.audible}, nil) == nil && effect.audible {
+				app.alerted[effect.notice.Slot] = effect.notice.Episode
 			}
 		}
 	}
+	if permissionErr == nil && permission.Allowed {
+		app.authorizationFailed = false
+	}
+	health := "allow notifications for needs input."
+	switch {
+	case permissionErr != nil || app.authorizationFailed:
+		health = "notification delivery unavailable."
+	case permission.Undetermined: // the allow button is the next step
+	case !permission.Allowed:
+		health = "notifications are blocked in system settings."
+	case app.client == nil:
+		health = "notification setup required."
+	case fetchErr != nil || inspectErr != nil:
+		health = "notification delivery unavailable."
+	}
+	_ = bridge.call(ctx, "health", struct {
+		Text string `json:"text"`
+	}{health}, nil)
 }
 
-func (owner *owner) openSession(ref string) {
-	value, err := owner.request(owner.ctx, "launch", 0, ref)
-	if err != nil {
-		_ = bridge.call(owner.ctx, "error", struct {
-			Text string `json:"text"`
-		}{"notification delivery unavailable."}, nil) // justify-ignore-error: a failed native dialog has no secondary surface.
-		return
-	}
-	launch := value.(struct {
-		Nonce    string
-		Script   string
-		Terminal string
-	}) // justify-assertion: creator admission owns the launch shape.
-	var surface struct {
-		ID string `json:"id"`
-	}
-	err = bridge.call(owner.ctx, "launch", struct {
-		Script string `json:"script"`
-	}{launch.Script}, &surface)
-	if err != nil {
-		surface.ID = ""
-	}
-	_, _ = owner.request(owner.ctx, "launched", 0, launchResult{launch.Nonce, surface.ID}) // justify-ignore-error: app shutdown retires its ephemeral launch associations.
-	if err != nil {
-		text := "could not open terminal. open the session from skid."
-		if launch.Terminal == "ghostty" {
-			text = "could not open ghostty. open the session from skid."
+// stream holds the hub's notification event stream open, so a changed state
+// syncs within one round trip. It reconnects after 1 s, doubling to 30 s and
+// resetting after a stream that lasted 30 s, and stops with ctx.
+func (app *app) stream(ctx context.Context, client *fleetclient.Client) {
+	const maximumDelay = 30 * time.Second
+	backoff := time.Second
+	for {
+		started := time.Now()
+		_ = client.NotificationEvents(ctx, func() {
+			app.hinted.Add(1)
+			select {
+			case app.hints <- struct{}{}:
+			default:
+			}
+		})
+		if time.Since(started) >= maximumDelay {
+			backoff = time.Second
 		}
-		_ = bridge.call(owner.ctx, "error", struct {
-			Text string `json:"text"`
-		}{text}, nil) // justify-ignore-error: a failed native dialog has no secondary surface.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(2*backoff, maximumDelay)
 	}
 }
 
-func ghosttyScript(skidPath, configPath, ref, nonce string) (string, error) {
-	directory, err := attention.StateDirectory()
-	if err != nil {
-		return "", attention.ErrUnavailable
+// openSession opens the clicked session's exact lifetime in the configured
+// terminal, or explains why it could not.
+func (app *app) openSession(ctx context.Context, ref string) {
+	text := "notification delivery unavailable."
+	if local, err := fleet.ReadLocal(app.configPath); err == nil {
+		// AppleScript string escaping and shell argument escaping are separate boundaries.
+		quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+		command := strconv.Quote(quote(app.skidPath) + " --config " + quote(app.configPath) + " enter --ref " + quote(ref))
+		script := ""
+		switch local.Settings.Terminal {
+		case "ghostty":
+			text = "could not open ghostty. open the session from skid."
+			script = "with timeout of 2 seconds\ntell application id \"com.mitchellh.ghostty\"\n" +
+				"set cfg to new surface configuration\nset command of cfg to " + command + "\n" +
+				"set wait after command of cfg to true\nset created to new window with configuration cfg\n" +
+				"activate window created\nend tell\nend timeout"
+		case "apple-terminal":
+			text = "could not open terminal. open the session from skid."
+			script = "with timeout of 2 seconds\ntell application id \"com.apple.Terminal\"\n" +
+				"do script " + command + "\nactivate\nend tell\nend timeout"
+		}
+		if script != "" && bridge.call(ctx, "launch", struct {
+			Script string `json:"script"`
+		}{script}, nil) == nil {
+			return
+		}
 	}
-	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-	command := quote(skidPath) + " --config " + quote(configPath) + " enter --ref " + quote(ref)
-	// AppleScript string escaping and shell argument escaping are separate
-	// boundaries. Surface configuration launches no names or terminal text.
-	return "with timeout of 2 seconds\ntell application id \"com.mitchellh.ghostty\"\n" +
-		"set cfg to new surface configuration\nset command of cfg to " + strconv.Quote(command) + "\n" +
-		"set environment variables of cfg to {" + strconv.Quote("SKID_NOTIFICATION_LAUNCH="+nonce) + ", " + strconv.Quote("XDG_STATE_HOME="+filepath.Dir(directory)) + "}\n" +
-		"set wait after command of cfg to true\nset created to new window with configuration cfg\n" +
-		"activate window created\nreturn id of focused terminal of selected tab of created\nend tell\nend timeout", nil
-}
-
-// appleTerminalScript captures the window and tab returned by this launch.
-// No title or pre-existing tab is used to associate a session with a surface.
-func appleTerminalScript(skidPath, configPath, ref, nonce string) (string, error) {
-	directory, err := attention.StateDirectory()
-	if err != nil {
-		return "", attention.ErrUnavailable
-	}
-	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-	command := "SKID_NOTIFICATION_LAUNCH=" + quote(nonce) + " XDG_STATE_HOME=" + quote(filepath.Dir(directory)) + " " + quote(skidPath) + " --config " + quote(configPath) + " enter --ref " + quote(ref)
-	return "with timeout of 2 seconds\ntell application id \"com.apple.Terminal\"\n" +
-		"set created to do script " + strconv.Quote(command) + "\n" +
-		"repeat 40 times\nset createdTTY to tty of created\nif createdTTY is not \"\" then\n" +
-		"repeat with createdWindow in windows\nrepeat with candidate in tabs of createdWindow\n" +
-		"if tty of candidate is createdTTY then\nset createdWindowID to id of createdWindow\nset selected tab of createdWindow to candidate\nset index of createdWindow to 1\nactivate\n" +
-		"return \"apple-terminal:\" & (createdWindowID as text) & \":\" & createdTTY\n" +
-		"end if\nend repeat\nend repeat\nend if\ndelay 0.025\nend repeat\nerror \"created terminal unavailable\"\nend tell\nend timeout", nil
+	_ = bridge.call(ctx, "error", struct {
+		Text string `json:"text"`
+	}{text}, nil)
 }
 
 func DefaultPaths() (configPath, skidPath string, err error) {

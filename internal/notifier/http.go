@@ -2,203 +2,186 @@ package notifier
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
-	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
+// ServeHTTP serves /v1/notifications/* behind the gateway's admission (bearer,
+// machine, path, query and body cap); it authenticates again only to learn the
+// member's kind, which the gateway does not pass on.
 func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if request.URL.RawPath != "" || request.URL.RawQuery != "" || request.URL.ForceQuery {
-		writeError(writer, "InvalidRequest")
-		return
-	}
 	member, err := observer.fleet.Authenticate(request)
 	if err != nil {
-		writeFleetError(writer, err)
+		writer.Header().Set("WWW-Authenticate", "Bearer")
+		writeError(writer, http.StatusUnauthorized, "Unauthenticated", "authentication required")
 		return
 	}
-	if code := auth.BindMachine(request, observer.machine.String()); code != "" {
-		writeError(writer, string(code))
-		return
-	}
-
+	bodiless := request.ContentLength == 0 && len(request.TransferEncoding) == 0
 	switch {
-	case request.Method == http.MethodGet && request.URL.Path == "/v1/notifications/state":
-		if request.ContentLength != 0 || len(request.TransferEncoding) != 0 {
-			writeError(writer, "InvalidRequest")
-			return
-		}
-		observer.state(writer)
-	case request.Method == http.MethodGet && request.URL.Path == "/v1/notifications/events":
-		if request.ContentLength != 0 || len(request.TransferEncoding) != 0 {
-			writeError(writer, "InvalidRequest")
-			return
-		}
-		observer.events(writer, request, member.DeviceID)
-	case (request.Method == http.MethodGet || request.Method == http.MethodPut) && request.URL.Path == "/v1/notifications/receivers/me":
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/notifications/state" && bodiless:
+		observer.state(writer, member)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/notifications/events" && bodiless:
+		observer.events(writer, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/notifications/handled":
+		observer.handled(writer, request)
+	case request.Method == http.MethodPut && request.URL.Path == "/v1/notifications/receivers/me":
 		if member.Kind != "phone" {
-			writeError(writer, "Forbidden")
+			writeError(writer, http.StatusForbidden, "Forbidden", "phone membership required")
 			return
 		}
-		if request.Method == http.MethodGet {
-			if request.ContentLength != 0 || len(request.TransferEncoding) != 0 {
-				writeError(writer, "InvalidRequest")
-				return
-			}
-			observer.receiverState(writer, member.DeviceID)
-		} else {
-			observer.register(writer, request, member.DeviceID)
-		}
-	case request.Method == http.MethodPost && request.URL.Path == "/v1/notifications/receivers/me/confirm":
-		if member.Kind != "phone" {
-			writeError(writer, "Forbidden")
-			return
-		}
-		observer.confirm(writer, request, member.DeviceID)
+		observer.register(writer, request, member.DeviceID)
 	default:
-		writeError(writer, "InvalidRequest")
+		writeError(writer, http.StatusBadRequest, "InvalidRequest", "the request is not valid")
 	}
 }
-func (observer *Observer) state(writer http.ResponseWriter) {
+
+// state serves the projection; a phone also reads its own push delivery.
+func (observer *Observer) state(writer http.ResponseWriter, member fleet.Member) {
+	response := struct {
+		attention.State
+		Receiver *receiverStatus `json:"receiver,omitempty"`
+	}{}
 	observer.mutex.Lock()
-	data, err := json.Marshal(observer.snapshot)
 	unavailable := observer.unavailable
+	response.State = observer.served
+	if member.Kind == "phone" {
+		status := observer.status(member.DeviceID)
+		response.Receiver = &status
+	}
 	observer.mutex.Unlock()
-	if unavailable || err != nil || len(data) > attention.MaximumSnapshotBytes {
-		writeError(writer, "NotificationsUnavailable")
+	if unavailable {
+		WriteUnavailable(writer)
 		return
 	}
+	data, _ := json.Marshal(response) // plain fields always encode
 	writer.Header().Set("Content-Type", "application/json")
 	writer.Header().Set("Cache-Control", "no-store")
-	_, _ = writer.Write(data) // justify-ignore-error: disconnected read has no recoverable effect.
+	_, _ = writer.Write(data) // a disconnected client cannot be answered
 }
-func (observer *Observer) events(writer http.ResponseWriter, request *http.Request, device string) {
-	if _, ok := writer.(http.Flusher); !ok {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	subscriber := make(chan struct{}, 1)
+
+// events hints one client: "changed" at connect and on every projection
+// change, and a keepalive comment every minute so a dead stream is noticed.
+func (observer *Observer) events(writer http.ResponseWriter, request *http.Request) {
+	stream := make(chan struct{}, 1)
+	stream <- struct{}{}
 	observer.mutex.Lock()
-	if observer.unavailable {
-		observer.mutex.Unlock()
-		writeError(writer, "NotificationsUnavailable")
+	unavailable := observer.unavailable
+	if !unavailable {
+		observer.streams[stream] = struct{}{}
+	}
+	observer.mutex.Unlock()
+	if unavailable {
+		WriteUnavailable(writer)
 		return
 	}
-	observer.subscribers[subscriber] = struct{}{}
-	observer.mutex.Unlock()
 	defer func() {
 		observer.mutex.Lock()
-		delete(observer.subscribers, subscriber)
+		delete(observer.streams, stream)
 		observer.mutex.Unlock()
 	}()
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-store")
 	controller := http.NewResponseController(writer)
+	keepalive := time.NewTicker(time.Minute)
+	defer keepalive.Stop()
 	for {
-		observer.mutex.Lock()
-		hint := attention.Hint{Schema: 1, Epoch: observer.file.Epoch, Revision: observer.file.Revision}
-		unavailable := observer.unavailable
-		if index := observer.receiverIndex(device); index >= 0 && observer.file.Receivers[index].Removed {
-			unavailable = true
-		}
-		observer.mutex.Unlock()
-		if unavailable {
-			return
-		}
-		data, err := json.Marshal(hint)
-		if err != nil {
-			panic("encode current revision hint")
-		} // justify-defect: fixed fields always encode.
-		if controller.SetWriteDeadline(time.Now().Add(5*time.Second)) != nil {
-			return
-		}
-		if _, err = io.WriteString(writer, "event: revision\ndata: "+string(data)+"\n\n"); err != nil {
-			return
-		}
-		if controller.Flush() != nil {
-			return
-		}
+		line := ": keepalive\n\n"
 		select {
-		case <-subscriber:
+		case <-stream:
+			line = "data: changed\n\n"
+		case <-keepalive.C:
 		case <-request.Context().Done():
 			return
 		}
+		if controller.SetWriteDeadline(time.Now().Add(5*time.Second)) != nil {
+			return
+		}
+		if _, err := io.WriteString(writer, line); err != nil || controller.Flush() != nil {
+			return
+		}
 	}
-}
-func writeError(writer http.ResponseWriter, code string) {
-	var status int
-	var message string
-	switch code {
-	case string(auth.AdmissionInvalid), string(auth.AdmissionUnauthenticated), string(auth.AdmissionUnavailable), string(auth.AdmissionMachineMismatch), string(auth.AdmissionTooLarge):
-		status, message = auth.AdmissionCode(code).Response()
-	case "NotificationsUnavailable":
-		status, message = http.StatusServiceUnavailable, "notifications unavailable"
-	case "Forbidden":
-		status, message = http.StatusForbidden, "phone membership required"
-	case "ReceiverConflict":
-		status, message = http.StatusConflict, "receiver generation changed"
-	default:
-		panic("unhandled notification error") // justify-defect: routes supply their closed error set.
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(status)
-	data, err := json.Marshal(struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}{code, message})
-	if err != nil {
-		panic("encode notification error")
-	} // justify-defect: string fields always encode.
-	_, _ = writer.Write(data) // justify-ignore-error: client disconnect after headers cannot be repaired.
 }
 
-func writeJSON(writer http.ResponseWriter, value any) {
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(writer).Encode(value) // justify-ignore-error: a disconnected response cannot be repaired.
-}
-func writeFleetError(writer http.ResponseWriter, err error) {
-	var value *fleet.Error
-	if !errors.As(err, &value) {
-		writeError(writer, "NotificationsUnavailable")
+// handled records the owner's acknowledgement. A field applies only while it
+// names the session's current episode or ready generation; a stale, superseded
+// or unknown one is a no-op, so the hub's equality is the identity fence.
+func (observer *Observer) handled(writer http.ResponseWriter, request *http.Request) {
+	var input attention.Handled
+	if !readBody(writer, request, &input) {
 		return
 	}
-	if value.Status == http.StatusUnauthorized {
-		writer.Header().Set("WWW-Authenticate", "Bearer")
+	if input.Slot == "" || input.Episode < 0 || input.ReadyGeneration < 0 {
+		writeError(writer, http.StatusBadRequest, "InvalidRequest", "the request is not valid")
+		return
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(value.Status)
-	_ = json.NewEncoder(writer).Encode(struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}{value.Code, value.Message}) // justify-ignore-error: a disconnected response cannot be repaired.
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.unavailable {
+		WriteUnavailable(writer)
+		return
+	}
+	index := slices.IndexFunc(observer.file.Records, func(stored record) bool { return slotID(stored.Key) == input.Slot })
+	if index >= 0 {
+		next := observer.file.Records[index]
+		if input.Episode != 0 && input.Episode == next.AttentionEpisode {
+			next.HandledEpisode = input.Episode
+		}
+		if input.ReadyGeneration != 0 && input.ReadyGeneration == next.ReadyGeneration {
+			next.AckedReadyGeneration = input.ReadyGeneration
+		}
+		if next != observer.file.Records[index] {
+			file := observer.file
+			file.Records = slices.Clone(file.Records)
+			file.Records[index] = next
+			if observer.save(file) != nil {
+				WriteUnavailable(writer)
+				return
+			}
+			observer.publish(false)
+		}
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }
-func readRegistration(writer http.ResponseWriter, request *http.Request, value any) bool {
+
+// readBody strictly decodes one bounded json request body into value.
+func readBody(writer http.ResponseWriter, request *http.Request, value any) bool {
 	media, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
-		writeError(writer, "InvalidRequest")
+		writeError(writer, http.StatusBadRequest, "InvalidRequest", "the request is not valid")
 		return false
 	}
-	if request.ContentLength > attention.MaximumRegistrationBytes {
-		writeError(writer, "RequestTooLarge")
+	data, err := io.ReadAll(io.LimitReader(request.Body, 4097))
+	switch {
+	case err == nil && len(data) > 4096:
+		writeError(writer, http.StatusRequestEntityTooLarge, "RequestTooLarge", "the request is too large")
 		return false
-	}
-	data, err := io.ReadAll(io.LimitReader(request.Body, attention.MaximumRegistrationBytes+1))
-	if err != nil || len(data) > attention.MaximumRegistrationBytes {
-		writeError(writer, "RequestTooLarge")
-		return false
-	}
-	if attention.Decode(data, value) != nil {
-		writeError(writer, "InvalidRequest")
+	case err != nil || strictjson.Decode(data, value) != nil:
+		writeError(writer, http.StatusBadRequest, "InvalidRequest", "the request is not valid")
 		return false
 	}
 	return true
+}
+
+// WriteUnavailable answers 503 for notification state that failed to load or
+// save; the hub answers it until the process restarts.
+func WriteUnavailable(writer http.ResponseWriter) {
+	writeError(writer, http.StatusServiceUnavailable, "NotificationsUnavailable", "notification state unavailable; repair its state and restart the skid service")
+}
+
+func writeError(writer http.ResponseWriter, status int, code, message string) {
+	data, _ := json.Marshal(struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}{code, message}) // plain fields always encode
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(status)
+	_, _ = writer.Write(data) // a disconnected client cannot be answered
 }

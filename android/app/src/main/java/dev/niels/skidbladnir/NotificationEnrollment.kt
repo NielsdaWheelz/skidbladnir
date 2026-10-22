@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Durable registration reconciliation; only a matching FCM possession proof activates delivery.
+/** Durable registration reconciliation; an authenticated PUT of the current registration activates delivery.
  * Registration capabilities never enter WorkManager's input or output.
  */
 class NotificationEnrollment(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {

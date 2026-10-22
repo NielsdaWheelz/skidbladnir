@@ -11,6 +11,10 @@ deployment remains separate.
 presentation priority; [terminal control](terminal-agent-control.md) owns exact
 targeting. this document owns notification memory, visits, storage, and the
 implementation plan. codex and claude follow the same rule on both clients.
+[native notifications](native-notifications.md) supersedes its device-local
+memory, storage, visit and acknowledgement clauses: the hub's notifier owns
+records and the owner's acknowledgements. this document still owns the
+transition predicates.
 
 ## behavior
 
@@ -224,7 +228,8 @@ terminal text is parsed to manufacture the missing history.
 
 another desktop process may observe while this one is visiting. its committed
 state is shared through the device-local store; active focus is not shared.
-end-visit preserves that state. another device remains entirely independent.
+end-visit preserves that state. other devices learn the visit's acknowledgement
+from the hub ([native notifications](native-notifications.md#projection-and-acknowledgement)).
 direct tmux attachment outside skid emits no local acknowledgement event.
 
 ## content and removal

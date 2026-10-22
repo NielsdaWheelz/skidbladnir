@@ -13,25 +13,16 @@ import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.launch
 
 private const val NEEDS_INPUT_CHANNEL = "needs-input"
-private const val NOTICE_EPISODE = "skid.episode"
-private const val NOTICE_REFERENCE = "skid.reference"
+private const val NOTIFICATION_OPEN = "dev.niels.skidbladnir.NOTIFICATION_OPEN"
 private const val NOTICE_SLOT = "skid.slot"
-private const val NOTICE_EPOCH = "skid.epoch"
-private const val NOTICE_READY_GENERATION = "skid.ready-generation"
-internal data class NativeNotice(
-    val slot: String, val episode: Long, val epoch: String, val ref: String,
-    val title: String, val body: String, val readyGeneration: Long,
-) {
-    fun sameIdentity(other: NativeNotice): Boolean = slot == other.slot && episode == other.episode &&
-        epoch == other.epoch && ref == other.ref && readyGeneration == other.readyGeneration
-}
-internal data class NativeInspection(val observed: List<NativeNotice>?, val unresolved: List<NativeNotice>)
-internal data class NotificationClick(val ref: String, val slot: String, val episode: Long, val epoch: String)
+private const val NOTICE_MACHINE = "skid.machine"
+private const val NOTICE_REFERENCE = "skid.reference"
+private const val NOTICE_EPISODE = "skid.episode"
+internal data class NotificationClick(val ref: String, val slot: String, val episode: Long)
 
-/** The application owner's ordered effect lane owns all submission state. */
+/** The os notification shade, one notice per slot (tag = slot, id 0). Only the owner's sync loop calls it. */
 internal class NativeNotifications(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
-    private val unresolved = mutableMapOf<String, NativeNotice>()
     init {
         manager.createNotificationChannel(NotificationChannel(
             NEEDS_INPUT_CHANNEL, "needs input", NotificationManager.IMPORTANCE_HIGH,
@@ -41,78 +32,50 @@ internal class NativeNotifications(private val context: Context) {
     fun allowed(): Boolean = manager.areNotificationsEnabled() &&
         manager.getNotificationChannel(NEEDS_INPUT_CHANNEL).importance != NotificationManager.IMPORTANCE_NONE
 
-    /** notify-return precedes OS visibility; only the exact observed copy settles a submission. */
-    fun inspect(): NativeInspection {
-        val observed = notices()
-        if (observed != null) unresolved.entries.removeAll { it.value in observed }
-        return NativeInspection(observed, unresolved.values.toList())
-    }
+    /** A missing extra reads as empty, so an older build's notices reconcile away. */
+    fun delivered(): List<NotificationNotice>? = try {
+        manager.activeNotifications.filter { it.id == 0 && it.notification.channelId == NEEDS_INPUT_CHANNEL }.map { status ->
+            val extras = status.notification.extras
+            NotificationNotice(status.tag.orEmpty(), extras.getString(NOTICE_MACHINE).orEmpty(), extras.getString(NOTICE_REFERENCE).orEmpty(),
+                extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
+                extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(), extras.getLong(NOTICE_EPISODE))
+        }
+    } catch (_: SecurityException) { null }
 
-    private fun notices(): List<NativeNotice>? = try {
-        manager.activeNotifications.filter { it.id == 0 && it.notification.channelId == NEEDS_INPUT_CHANNEL }
-            .map { status ->
-                val extras = status.notification.extras
-                NativeNotice(status.tag, extras.getLong(NOTICE_EPISODE), extras.getString(NOTICE_EPOCH).orEmpty(), extras.getString(NOTICE_REFERENCE).orEmpty(),
-                    extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
-                    extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(), extras.getLong(NOTICE_READY_GENERATION))
-            }
-    } catch (_: SecurityException) {
-        null
-    }
-
-    fun post(row: NotificationRow, epoch: String, silent: Boolean, readyGeneration: Long, rename: NativeNotice? = null): NativeNotice {
-        val slot = row.record.key.slot
-        val episode = rename?.episode ?: row.record.attentionEpisode
-        val ref = rename?.ref ?: row.ref
-        val expected = NativeNotice(slot, episode, epoch, ref, notificationTitle(row.name),
-            rename?.body ?: checkNotNull(row.record.cause).text, readyGeneration)
+    fun post(notice: NotificationNotice, silent: Boolean) {
         val click = Intent(context, MainActivity::class.java).apply {
-            action = "dev.niels.skidbladnir.NOTIFICATION_OPEN"
-            data = Uri.Builder().scheme("skid-notice").authority("open").appendPath(slot).appendPath(epoch).appendPath(episode.toString()).build()
+            action = NOTIFICATION_OPEN
+            data = Uri.Builder().scheme("skid-notice").authority("open").appendPath(notice.slot).appendPath(notice.episode.toString()).build()
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(NOTICE_SLOT, slot)
-            putExtra(NOTICE_EPISODE, episode)
-            putExtra(NOTICE_REFERENCE, ref)
-            putExtra(NOTICE_EPOCH, epoch)
+            putExtra(NOTICE_SLOT, notice.slot)
+            putExtra(NOTICE_EPISODE, notice.episode)
+            putExtra(NOTICE_REFERENCE, notice.ref)
         }
         val dismiss = Intent(context, NotificationDismissReceiver::class.java).apply {
-            data = Uri.Builder().scheme("skid-notice").authority("dismiss").appendPath(slot).appendPath(epoch).appendPath(episode.toString()).build()
-            putExtra(NOTICE_SLOT, slot)
-            putExtra(NOTICE_EPISODE, episode)
-            putExtra(NOTICE_EPOCH, epoch)
+            data = Uri.Builder().scheme("skid-notice").authority("dismiss").appendPath(notice.slot).appendPath(notice.episode.toString()).build()
+            putExtra(NOTICE_SLOT, notice.slot)
+            putExtra(NOTICE_EPISODE, notice.episode)
         }
         val pendingFlags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val notification = NotificationCompat.Builder(context, NEEDS_INPUT_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setContentTitle(expected.title)
-            .setContentText(expected.body)
+            .setContentTitle(notice.title)
+            .setContentText(notice.body)
             .setContentIntent(PendingIntent.getActivity(context, 0, click, pendingFlags))
             .setDeleteIntent(PendingIntent.getBroadcast(context, 0, dismiss, pendingFlags))
             .setAutoCancel(false)
             .setSilent(silent)
             .setOnlyAlertOnce(silent)
             .setExtras(android.os.Bundle().apply {
-                putString(NOTICE_SLOT, slot)
-                putLong(NOTICE_EPISODE, episode)
-                putString(NOTICE_REFERENCE, ref)
-                putString(NOTICE_EPOCH, epoch)
-                putLong(NOTICE_READY_GENERATION, readyGeneration)
+                putString(NOTICE_MACHINE, notice.machine)
+                putString(NOTICE_REFERENCE, notice.ref)
+                putLong(NOTICE_EPISODE, notice.episode)
             })
             .build()
-        manager.notify(slot, 0, notification)
-        unresolved[slot] = expected
-        return expected
+        manager.notify(notice.slot, 0, notification)
     }
 
-    fun cancel(notice: NativeNotice) {
-        val pending = unresolved[notice.slot]
-        // cancel addresses the whole slot; an older visible copy cannot authorize cancelling its successor.
-        if (pending != null && !pending.sameIdentity(notice)) return
-        if (pending != null || notices()?.any { it.sameIdentity(notice) } == true) {
-            manager.cancel(notice.slot, 0)
-            unresolved.remove(notice.slot)
-        }
-    }
+    fun cancel(slot: String) = manager.cancel(slot, 0)
 
     fun settingsIntent(): Intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
         putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -120,36 +83,22 @@ internal class NativeNotifications(private val context: Context) {
     }
 }
 
-internal fun notificationTitle(name: String): String = buildString {
-    name.codePoints().forEach { codePoint ->
-        if (Character.isISOControl(codePoint) || Character.getType(codePoint) == Character.FORMAT.toInt() ||
-            Character.getType(codePoint) == Character.LINE_SEPARATOR.toInt() || Character.getType(codePoint) == Character.PARAGRAPH_SEPARATOR.toInt()) {
-            append(' ')
-        } else appendCodePoint(codePoint)
-    }
-}
-
 internal fun notificationClick(intent: Intent): NotificationClick? {
-    if (intent.action != "dev.niels.skidbladnir.NOTIFICATION_OPEN") return null
+    if (intent.action != NOTIFICATION_OPEN) return null
     val ref = intent.getStringExtra(NOTICE_REFERENCE) ?: return null
     val slot = intent.getStringExtra(NOTICE_SLOT) ?: return null
-    val episode = intent.getLongExtra(NOTICE_EPISODE, 0)
-    val epoch = intent.getStringExtra(NOTICE_EPOCH) ?: return null
-    val key = try { notificationReference(ref) } catch (_: IllegalArgumentException) { return null }
-        catch (_: kotlinx.serialization.SerializationException) { return null }
-    return if (key.slot == slot && episode > 0 && epoch.matches(Regex("[0-9a-f]{32}"))) NotificationClick(ref, slot, episode, epoch) else null
+    return NotificationClick(ref, slot, intent.getLongExtra(NOTICE_EPISODE, 0))
 }
 
+/** A swipe acknowledges the episode for the owner on every device. */
 class NotificationDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val slot = intent.getStringExtra(NOTICE_SLOT) ?: return
         val episode = intent.getLongExtra(NOTICE_EPISODE, 0)
-        val epoch = intent.getStringExtra(NOTICE_EPOCH) ?: return
-        if (episode <= 0) return
         val pending = goAsync()
         val owner = context.notificationOwner()
         owner.scope.launch {
-            try { owner.dismiss(slot, episode, epoch) } finally { pending.finish() }
+            try { owner.handled(slot, episode) } finally { pending.finish() }
         }
     }
 }

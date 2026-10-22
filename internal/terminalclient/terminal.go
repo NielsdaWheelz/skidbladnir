@@ -29,20 +29,7 @@ type Result struct {
 }
 
 // Run owns one exact terminal visit. Notification failures remain secondary.
-func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, seed *attention.ReadySeed, input, output *os.File) (result Result) {
-	nonce := os.Getenv("SKID_NOTIFICATION_LAUNCH")
-	var visit *entryVisit
-	defer func() {
-		if visit != nil {
-			result.NotificationErr = visit.close()
-		} else {
-			result.NotificationErr = abandonLaunch(context.WithoutCancel(ctx), nonce)
-		}
-	}()
-	ref, err := fleetclient.DecodeReference(encodedRef)
-	if err != nil {
-		return Result{Err: errors.New("enter requires an exact terminal reference")}
-	}
+func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, input, output *os.File) (result Result) {
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return Result{Err: errors.New("enter requires stdin and stdout ttys")}
 	}
@@ -58,7 +45,13 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, see
 	}
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
-	visit = startEntryVisit(ctx, ref, seed, nonce)
+	presented := make(chan struct{})
+	acknowledged := make(chan error, 1)
+	go func() { acknowledged <- acknowledgeVisit(ctx, client, encodedRef, presented) }()
+	defer func() {
+		cancel()
+		result.NotificationErr = <-acknowledged
+	}()
 	connection, failure := client.OpenTerminal(ctx, fleetclient.Request{Operation: "enter", Ref: encodedRef})
 	if failure != nil {
 		return Result{Err: errors.New(failure.Code)}
@@ -86,12 +79,45 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, see
 			result.Err = errors.Join(result.Err, errors.New("terminal restoration failed"))
 		}
 	}()
-	result.Err = stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, visit)
+	result.Err = stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, presented)
 	return result
 }
 
+// acknowledgeVisit acknowledges the hub row read at entry, its episode and
+// pending ready generation, once the visit has shown output. The read runs
+// concurrently with dialing and never delays output. If the pane or agent was
+// replaced since, the hub's record changed and it ignores the stale capture.
+func acknowledgeVisit(ctx context.Context, client *fleetclient.Client, encodedRef string, presented <-chan struct{}) error {
+	state, err := client.NotificationState(context.WithoutCancel(ctx))
+	select {
+	case <-presented:
+	case <-ctx.Done():
+		select {
+		case <-presented:
+		default:
+			return nil
+		}
+	}
+	if err != nil {
+		return err
+	}
+	for _, machine := range state.Machines {
+		for _, row := range machine.Sessions {
+			if row.Ref != encodedRef {
+				continue
+			}
+			if row.Episode == 0 && row.ReadyGeneration == 0 {
+				return nil
+			}
+			return client.NotificationHandled(context.WithoutCancel(ctx), attention.Handled{Slot: row.Slot, Episode: row.Episode, ReadyGeneration: row.ReadyGeneration})
+		}
+	}
+	return nil
+}
+
 // stream cancels and joins both readers before returning ownership of stdin.
-func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), visit *entryVisit) (result error) {
+// It closes presented after the first nonempty output is written.
+func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), presented chan<- struct{}) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
@@ -111,11 +137,8 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	if err != nil || kind != websocket.MessageText {
 		return errors.New("invalid terminal greeting")
 	}
-	var hello terminal.HelloFrame
 	switch frame := frame.(type) {
 	case terminal.HelloFrame:
-		hello = frame
-		visit.greet(hello)
 	case terminal.ErrorFrame:
 		return errors.New(frame.Message)
 	default:
@@ -165,7 +188,6 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	}()
 	defer func() { cancel(); reader.Cancel(); connection.CloseNow(); workers.Wait(); reader.Close() }()
 	prefix := false
-	presentedOutput := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -186,18 +208,14 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 				return errors.New("terminal connection ended; work may continue")
 			}
 			if event.kind == websocket.MessageBinary {
-				var frozen attention.ReadySeed
-				if len(event.body) > 0 && !presentedOutput {
-					frozen = visit.freeze(hello)
-				}
 				if len(event.body) > 0 {
 					if _, err := output.Write(event.body); err != nil {
 						return errors.New("terminal output unavailable")
 					}
-				}
-				if len(event.body) > 0 && !presentedOutput {
-					presentedOutput = true
-					visit.written <- frozen
+					if presented != nil {
+						close(presented)
+						presented = nil
+					}
 				}
 				continue
 			}

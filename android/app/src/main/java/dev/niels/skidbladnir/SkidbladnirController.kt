@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.RejectedExecutionException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -407,10 +408,10 @@ internal class SkidbladnirController(
     private var notificationsUnavailable = false
     internal var notificationHealth by mutableStateOf(NotificationHealth.SetupRequired)
         private set
-    private var notificationVisitSeed: NotificationVisitSeed? = null
-    private var notificationVisitToken: NotificationVisitToken? = null
     private var pendingNotificationReference: String? = null
-    @Volatile private var notificationVisit: NotificationKey? = null
+    // This connection's capture at entry, acknowledged once its first output is presented.
+    private var notificationVisit: Deferred<NotificationRow?>? = null
+    private var notificationPresented = false
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
@@ -441,7 +442,7 @@ internal class SkidbladnirController(
             notifications.view.collect { snapshot ->
                 notificationSnapshot = snapshot
                 notificationHealth = snapshot.health
-                notificationsUnavailable = snapshot.observerUnavailable || snapshot.health == NotificationHealth.ResetRequired
+                notificationsUnavailable = snapshot.state == null
                 publishNotifications()
             }
         }
@@ -1220,8 +1221,8 @@ internal class SkidbladnirController(
             pendingNotificationReference = ref
             return
         }
-        val key = notificationReference(ref)
-        val handle = checkNotNull(MachineHandle.parse(key.machine))
+        val key = notificationReference(ref) ?: return
+        val handle = MachineHandle.parse(key.machine) ?: return
         val credential = credentials[handle]
         val runtime = polling[handle]
         if (credential == null || runtime == null) {
@@ -1362,7 +1363,7 @@ internal class SkidbladnirController(
         val attempt = current.attempt
         val owner = Any()
         terminalOwner = owner
-        notificationVisitSeed = notifications.captureVisit(current.target)
+        notificationVisit = notifications.beginVisit(NotificationKey(current.target))
         val connection = TerminalConnection(
             client,
             credential,
@@ -1373,9 +1374,6 @@ internal class SkidbladnirController(
                 override fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?) {
                     val terminal = state as? SkidbladnirUiState.Terminal ?: return
                     if (terminal.attempt != attempt || terminalOwner !== owner) return
-                    val seed = notificationVisitSeed ?: return
-                    notificationVisitToken = notifications.qualifyVisit(seed, current.target, paneId, foreground)
-                    notifications.beginVisit(checkNotNull(notificationVisitToken))
                     state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
                 }
                 override fun onPresence(attachedClients: Int) {
@@ -1618,7 +1616,7 @@ internal class SkidbladnirController(
     }
 
     fun detachToSessions() {
-        val presented = notificationVisit != null
+        val presented = notificationPresented
         leaveTerminal()
         publishDashboard()
         if (!presented) verifyVisibleInventory()
@@ -1950,11 +1948,10 @@ internal class SkidbladnirController(
 
     fun terminalOutputPresented(attempt: Int, page: TerminalPage) {
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (!foreground || terminal.attempt != attempt || terminalPage !== page || terminalOwner == null || notificationVisit != null) return
-        val token = notificationVisitToken ?: return
-        notificationVisit = token.key
-        notifications.outputPresented(token)
-        publishNotifications()
+        if (!foreground || terminal.attempt != attempt || terminalPage !== page || terminalOwner == null || notificationPresented) return
+        val visit = notificationVisit ?: return
+        notificationPresented = true
+        notifications.presented(visit)
     }
 
     private fun retireContext(runtime: PollRuntime) {
@@ -2300,18 +2297,15 @@ internal class SkidbladnirController(
     }
 
     private fun leaveTerminal() {
-        val visited = notificationVisit
+        if (!notificationPresented) notificationVisit?.cancel()
         notificationVisit = null
+        notificationPresented = false
         terminalOwner = null
         createdTerminalAdmission = null
         val connection = terminalConnection
         val page = terminalPage
         terminalConnection = null
         terminalPage = null
-        notifications.endVisit(notificationVisitToken)
-        notificationVisitToken = null
-        notificationVisitSeed = null
-        if (visited != null) updateMachine(checkNotNull(MachineHandle.parse(visited.machine))) { it }
         page?.resetInputState()
         connection?.detach()
     }

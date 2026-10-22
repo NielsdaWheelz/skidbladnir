@@ -697,9 +697,9 @@ func (m *model) opensGroup(index int) bool {
 }
 
 // statusView projects a row's terminal status. A row without remote actions
-// is stale; readiness also requires a working notification store.
+// is stale; readiness also requires a good read of the hub's notification state.
 func (m *model) statusView(row listedRow) fleetclient.StatusView {
-	view := fleetclient.ProjectStatus(row.session, row.available, m.notificationQualified && !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	view := fleetclient.ProjectStatus(row.session, row.available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.session))
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail

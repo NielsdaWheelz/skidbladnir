@@ -32,7 +32,7 @@ type contextMsg struct {
 }
 type notificationMsg struct {
 	generation uint64
-	view       terminalclient.NotificationView
+	state      attention.State
 	err        error
 }
 type fleetMsg struct{}
@@ -82,7 +82,7 @@ type model struct {
 	searchDirectories     []string
 	directorySelection    fieldSelection[string]
 	blurred               bool
-	notificationSnapshot  terminalclient.NotificationView
+	notifications         attention.State
 	notificationFailed    bool
 	notificationQualified bool
 	inventoryLanes        []inventoryLane
@@ -615,17 +615,26 @@ func (m *model) selectedRow() *listedRow {
 	return &m.rows[m.cursor]
 }
 
+// enter pauses the browser while this exact terminal owns input and output.
+func (m *model) enter(request fleetclient.Request) tea.Cmd {
+	m.usageAttached = true
+	m.cancelUsage()
+	m.cancelObservations()
+	m.clearDirectorySearch()
+	a := &attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}
+	return tea.Exec(a, func(err error) tea.Msg { return attachedMsg{err: err, notificationErr: a.notificationErr} })
+}
+
 type attachment struct {
 	ctx             context.Context
 	client          *fleetclient.Client
 	request         fleetclient.Request
-	seed            *attention.ReadySeed
 	input, output   *os.File
 	notificationErr error
 }
 
 func (a *attachment) Run() error {
-	result := terminalclient.Run(a.ctx, a.client, a.request.Ref, a.seed, a.input, a.output)
+	result := terminalclient.Run(a.ctx, a.client, a.request.Ref, a.input, a.output)
 	a.notificationErr = result.NotificationErr
 	return result.Err
 }

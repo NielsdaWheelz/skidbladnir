@@ -4,7 +4,7 @@ problem: one session list spawns 6+2K tmux clients: inspection, epoch
 admission, two inventory batches, two identity re-checks, and two per agent
 pane (screen read, then a per-row capture). the hub's closed-client attention
 lane lists every machine every 5 s, even with no client in the foreground, so
-the cost is continuous. this lane is by design (`internal/notifier/observer.go:446`).
+the cost is continuous. this lane is by design (`internal/notifier/observer.go:267`).
 the per-step spawning is not.
 
 impact:

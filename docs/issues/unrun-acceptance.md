@@ -47,14 +47,15 @@ terminal observation and attention:
 
 notifications and push:
 
-- v0.14.0: the spec's one required [physical delivery](../native-notifications.md#implementation-and-acceptance): a locked phone alerts with skid closed and the mac asleep. ntfy is gone, so the run now uses optional push (native-notifications).
+- v0.14.0: the spec's one required [physical delivery](https://github.com/NielsdaWheelz/skidbladnir/blob/623280a5bde00c1b732f49e33afe89716633e042/docs/native-notifications.md#implementation-and-acceptance): a locked phone alerts with skid closed and the mac asleep. ntfy is gone, so the run now uses optional push (native-notifications).
 - v0.14.0: complete previous-release rollback without migrations. no host runs v0.14.0 any more, so this line awaits the owner's retirement (native-notifications).
 - v0.14.0: delivery to a locked phone in proved deep idle; android rejected forced idle at `inactive` (native-notifications-doze).
 - v0.14.0: audible default notification sound on the phone, which stayed muted (native-notifications-phone-sound).
 - v0.14.0: mac popup, sound and exact-session click from the current signed app at its installed path (native-notifications, generalization-installed-cutover).
 - v0.13.1: sustained idle/offline/setup energy of the mac notification helper; only short captures exist and the original heat report is unattributed (native-notifications-mac-energy).
 - v0.19.0: optional push installed round trip: ordinary apk and user hub credential, pairing confirmation, background current-attention delivery, offline and process-death recovery, project change, rotation/removal, delayed hints (android-optional-push-qualification).
-- v0.19.0: two physical phones: independent pairing, discovery, acknowledgement, rotation and removal; owner-deferred for lack of a second phone (android-two-phone-push-acceptance).
+- v0.19.0: two physical phones: independent pairing, discovery, rotation and removal, and shared acknowledgement; owner-deferred for lack of a second phone (android-two-phone-push-acceptance).
+- w3.1 release: hub-owned attention on devices: mac banner, sound, silent retitle, click and dismiss from the installed signed app; android heads-up, silent update and one re-alert after reboot; a phone swipe or click clearing the mac copy and the reverse; apple terminal `do script` coming to the front; normal-priority clears reaching a dozing phone (native-notifications).
 
 resolved when: each line passes, recorded content-free where its feature spec
 keeps qualification, or the owner retires it. delete its line then, and this

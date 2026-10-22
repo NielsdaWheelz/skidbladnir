@@ -27,7 +27,6 @@ type nativeEvent struct {
 	Value   json.RawMessage `json:"value,omitempty"`
 	Slot    string          `json:"slot,omitempty"`
 	Episode int64           `json:"episode,omitempty"`
-	Epoch   string          `json:"epoch,omitempty"`
 	Ref     string          `json:"ref,omitempty"`
 }
 
@@ -40,14 +39,7 @@ type nativeBridge struct {
 	closed   bool
 }
 
-type nativeReceipt struct {
-	id       uint64
-	response <-chan nativeEvent
-}
-
 var bridge = nativeBridge{requests: make(map[uint64]chan nativeEvent), wake: make(chan struct{}, 1)}
-
-var errNativeRejected = errors.New("native notification operation unavailable")
 
 // NativeRegister admits one installed app to Launch Services. It does not start
 // the notification runtime or request permission; installation owns this call.
@@ -115,21 +107,10 @@ func (native *nativeBridge) close() {
 	native.events = nil
 }
 
+// call sends one operation to the native side and waits for its reply. Post
+// runs on the calling thread; every other operation dispatches to main.
 func (native *nativeBridge) call(ctx context.Context, operation string, value, result any) error {
-	receipt, err := native.begin(operation, value)
-	if err != nil {
-		return err
-	}
-	return native.await(ctx, receipt, result)
-}
-
-// Post initiates UserNotifications on the calling owner thread. Other operations
-// dispatch to main. Completion stays buffered for the caller to await elsewhere.
-func (native *nativeBridge) begin(operation string, value any) (*nativeReceipt, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
+	encoded, _ := json.Marshal(value)
 	native.mu.Lock()
 	native.next++
 	id := native.next
@@ -140,30 +121,21 @@ func (native *nativeBridge) begin(operation string, value any) (*nativeReceipt, 
 	C.skid_native_send(C.uint64_t(id), op, payload)
 	C.free(unsafe.Pointer(op))
 	C.free(unsafe.Pointer(payload))
-	return &nativeReceipt{id: id, response: response}, nil
-}
-
-func (native *nativeBridge) await(ctx context.Context, receipt *nativeReceipt, result any) error {
 	select {
 	case <-ctx.Done():
 		native.mu.Lock()
-		delete(native.requests, receipt.id)
+		delete(native.requests, id)
 		native.mu.Unlock()
-		fmt.Fprintln(os.Stderr, "notification native call: context")
 		return ctx.Err()
-	case event := <-receipt.response:
+	case event := <-response:
 		if !event.OK {
-			fmt.Fprintln(os.Stderr, "notification native call: unavailable")
-			return errNativeRejected
+			fmt.Fprintf(os.Stderr, "notification native %s unavailable\n", operation)
+			return errors.New("native notification operation unavailable")
 		}
-		if result != nil {
-			err := json.Unmarshal(event.Value, result)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "notification native call: decode")
-			}
-			return err
+		if result == nil {
+			return nil
 		}
-		return nil
+		return json.Unmarshal(event.Value, result)
 	}
 }
 

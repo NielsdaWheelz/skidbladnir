@@ -532,7 +532,7 @@ type WaitResult struct {
 	TerminalStatus *sessions.TerminalStatus `json:"terminalStatus,omitempty"`
 }
 
-// All fleet and local notification schemas distinguish omission from null.
+// Fleet schemas distinguish omission from null.
 func nonNullJSON(encoded []byte) bool {
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	for {

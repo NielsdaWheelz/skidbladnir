@@ -1,14 +1,15 @@
-// Package notifier owns the active hub's background readiness observer.
+// Package notifier is the hub's attention owner. It observes every machine's
+// inventory, keeps one record per session lifetime with the owner's
+// acknowledgement, projects the records into notice verdicts and hints clients
+// when that projection changes.
 package notifier
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -18,252 +19,223 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
-	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 type Config struct {
 	FleetID   string
 	Client    *fleetclient.Client
-	Machine   machine.Handle
 	StatePath string
 	Fleet     *fleet.Service
 	Sender    *fcmpush.Client
 	Push      *hostconfig.AndroidPush
 	Members   []fleet.Member
 }
-type observerFile struct {
-	Configuration string             `json:"configuration,omitempty"`
-	FleetID       string             `json:"fleetId"`
-	Schema        int                `json:"schema"`
-	Epoch         string             `json:"epoch"`
-	Revision      int64              `json:"revision"`
-	Records       []attention.Record `json:"records"`
-	Receivers     []receiver         `json:"receivers"`
-}
 
-func (file *observerFile) UnmarshalJSON(data []byte) error {
-	var fields map[string]json.RawMessage
-	if attention.Decode(data, &fields) != nil {
-		return attention.ErrUnavailable
-	}
-	for _, name := range []string{"schema", "fleetId", "epoch", "revision", "records", "receivers"} {
-		if fields[name] == nil {
-			return attention.ErrUnavailable
-		}
-	}
-	type wire observerFile
-	var value wire
-	if attention.Decode(data, &value) != nil {
-		return attention.ErrUnavailable
-	}
-	*file = observerFile(value)
-	return nil
-}
-func decodeFile(data []byte) (observerFile, error) {
-	var stored observerFile
-	if len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &stored) != nil || stored.Schema != 3 || stored.Configuration != "" && !digestValid(stored.Configuration) || !digestValid(stored.FleetID) || !attention.EpochValid(stored.Epoch) || stored.Revision < 0 || stored.Records == nil || stored.Receivers == nil {
-		return stored, attention.ErrUnavailable
-	}
-	slots := map[attention.Slot]bool{}
-	for _, record := range stored.Records {
-		if !attention.ValidRecord(record, stored.Revision) || slots[record.Key.Slot()] {
-			return stored, attention.ErrUnavailable
-		}
-		slots[record.Key.Slot()] = true
-	}
-	devices := map[string]bool{}
-	for _, receiver := range stored.Receivers {
-		if !receiver.valid() || devices[receiver.DeviceID] || receiver.Configuration != stored.Configuration {
-			return stored, attention.ErrUnavailable
-		}
-		devices[receiver.DeviceID] = true
-	}
-	return stored, nil
+// observerFile is the hub's only notification state; its name is its version.
+type observerFile struct {
+	FleetID       string     `json:"fleetId"`
+	Configuration string     `json:"configuration,omitempty"` // push options id; "" = push off
+	Revision      int64      `json:"revision"`                // allocation counter, never served
+	Records       []record   `json:"records"`
+	Receivers     []receiver `json:"receivers"`
 }
 
 type Observer struct {
-	mutex            sync.Mutex
-	client           *fleetclient.Client
-	machine          machine.Handle
-	fleet            *fleet.Service
-	sender           *fcmpush.Client
-	push             *hostconfig.AndroidPush
-	sendCancel       context.CancelFunc
-	path             string
-	file             observerFile
-	snapshot         attention.Snapshot
-	unavailable      bool
-	changed          chan struct{}
-	attentionPending bool
-	subscribers      map[chan struct{}]struct{}
+	mutex       sync.Mutex
+	client      *fleetclient.Client
+	fleet       *fleet.Service // learns the member kind; the gateway already admitted the request
+	path        string
+	file        observerFile    // the committed file
+	hosts       []host          // roster order
+	served      attention.State // the last published projection
+	unavailable bool            // a save failed: 503 until restart
+	sender      *fcmpush.Client // nil: push off or no credential
+	urgent      bool            // an episode was allocated since the last fcm send
+	send        chan struct{}   // wakes the fcm sender
+	streams     map[chan struct{}]struct{}
 }
 
-// New never calls fleet methods. Push setup is explicit and local; no sender
-// credential enters durable state.
+type host struct {
+	machine  string
+	fresh    bool
+	sessions []seen // the last fresh inventory, in inventory order
+}
+
+type seen struct {
+	slot, ref, name string
+	status          sessions.TerminalStatus
+	qualified       bool
+}
+
+// New resumes this fleet's file, or starts a new one when it is missing or
+// another fleet's: fleet deletes it before a new fleet commits, but the exiting
+// process can write it once more.
 func New(config Config) (*Observer, error) {
-	if !digestValid(config.FleetID) || config.Client == nil || config.Fleet == nil || !filepath.IsAbs(config.StatePath) || config.Machine.String() == "" {
-		return nil, attention.ErrUnavailable
-	}
-	if err := os.MkdirAll(filepath.Dir(config.StatePath), 0700); err != nil {
-		return nil, attention.ErrUnavailable
-	}
-	// One gateway process owns this state directory through fleet's authority lock.
-	observer := &Observer{client: config.Client, machine: config.Machine, fleet: config.Fleet, sender: config.Sender, path: config.StatePath, changed: make(chan struct{}, 1), subscribers: map[chan struct{}]struct{}{}}
-	var stored observerFile
-	data, err := privatefile.Read(config.StatePath, attention.MaximumSnapshotBytes)
+	file := observerFile{FleetID: config.FleetID}
+	data, err := privatefile.Read(config.StatePath, 1<<20)
 	if err == nil {
-		stored, err = decodeFile(data)
+		err = strictjson.Decode(data, &file)
+	}
+	if err == nil && slices.ContainsFunc(file.Records, func(stored record) bool { return !stored.valid() }) {
+		err = errors.New("notification observer file holds an unknown record")
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, attention.ErrUnavailable
+		return nil, err
 	}
-	// An earlier fleet's file holds nothing of this one. Fleet deletes it before a
-	// new fleet commits, but the exiting process's observer can write it once more.
-	if stored.FleetID != config.FleetID {
-		random := [16]byte{}
-		if _, err = rand.Read(random[:]); err != nil {
-			return nil, attention.ErrUnavailable
-		}
-		stored = observerFile{Schema: 3, FleetID: config.FleetID, Epoch: hex.EncodeToString(random[:]), Records: []attention.Record{}, Receivers: []receiver{}}
+	if file.FleetID != config.FleetID {
+		file = observerFile{FleetID: config.FleetID}
 	}
-	stored, _ = retireAbsent(stored, config.Members)
-	stored.Revision++
-	observer.file = stored
-	observer.snapshot = attention.Snapshot{Schema: 1, Epoch: stored.Epoch, Revision: stored.Revision, Machines: []attention.MachineSnapshot{}}
-	for _, host := range config.Client.Machines() {
-		observer.snapshot.Machines = append(observer.snapshot.Machines, attention.MachineSnapshot{Machine: host.Handle, Availability: "gap"})
+	file.Receivers = phones(file.Receivers, config.Members)
+	observer := &Observer{client: config.Client, fleet: config.Fleet, path: config.StatePath, send: make(chan struct{}, 1), streams: map[chan struct{}]struct{}{}}
+	for _, machine := range config.Client.Machines() {
+		observer.hosts = append(observer.hosts, host{machine: machine.Handle})
 	}
-	if observer.save(stored) != nil {
-		return nil, attention.ErrUnavailable
+	if err := observer.save(file); err != nil {
+		return nil, err
 	}
+	observer.publish(false)
 	if err := observer.ConfigurePush(config.Push, config.Sender); err != nil {
-		return nil, attention.ErrUnavailable
+		return nil, err
 	}
 	return observer, nil
 }
+
+// save commits file, or latches the observer unavailable.
 func (observer *Observer) save(file observerFile) error {
-	encoded, err := json.Marshal(file)
-	if err != nil || len(encoded) > attention.MaximumSnapshotBytes || attention.WriteFile(observer.path, encoded) != nil {
+	data, _ := json.Marshal(file) // plain fields always encode
+	if err := privatefile.WriteFile(observer.path, data); err != nil {
 		observer.unavailable = true
-		return attention.ErrUnavailable
+		return err
 	}
 	observer.file = file
 	return nil
 }
 
-func digestValid(value string) bool {
-	decoded, err := hex.DecodeString(value)
-	return err == nil && len(decoded) == 32 && hex.EncodeToString(decoded) == value
-}
-func (observer *Observer) commit(host string, peer fleetclient.Peer, err error) error {
+// commit applies one machine's inventory read. A failed read is a gap: its
+// records and notices stay as they are.
+func (observer *Observer) commit(machine string, peer fleetclient.Peer, err error) error {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	if observer.unavailable {
 		return attention.ErrUnavailable
 	}
-	index := slices.IndexFunc(observer.snapshot.Machines, func(current attention.MachineSnapshot) bool { return current.Machine == host })
+	index := slices.IndexFunc(observer.hosts, func(current host) bool { return current.machine == machine })
 	if index < 0 {
 		return nil
 	}
-	file := observer.file
-	file.Revision++
-	after := attention.MachineSnapshot{Machine: host, Availability: "gap"}
-	attentionAllocated := false
-	if err == nil {
-		after.Availability = "fresh"
-		after.ObservedAt = peer.ObservedAt
-		after.Sessions = []attention.SessionSnapshot{}
-		records := make([]attention.Record, 0, len(file.Records)+len(peer.Sessions))
-		for _, record := range file.Records {
-			if record.Key.Machine != host {
-				records = append(records, record)
-			}
-		}
-		for _, session := range peer.Sessions {
-			ref, decodeErr := fleetclient.DecodeReference(session.Ref)
-			if decodeErr != nil {
-				panic("unadmitted inventory reference")
-			} // justify-defect: fleetclient admitted every inventory reference.
-			previous := attention.Record{}
-			present := false
-			for _, record := range file.Records {
-				if record.Key.Slot() == fleetclient.NotificationKey(ref).Slot() {
-					previous = record
-					present = true
-					break
-				}
-			}
-			row := observe(previous, present, session, file.Revision)
-			attentionAllocated = attentionAllocated || row.Record.AttentionEpisode == file.Revision && row.Record.Cause != nil
-			records = append(records, row.Record)
-			after.Sessions = append(after.Sessions, row)
-		}
-		file.Records = records
-	}
-	if observer.save(file) != nil {
-		return attention.ErrUnavailable
-	}
-	before := observer.snapshot.Machines[index]
-	observer.snapshot.Machines[index] = after
-	observer.snapshot.Revision = file.Revision
-	if meaningful(before, after) {
-		observer.signal(attentionAllocated)
-	}
-	return nil
-}
-func (observer *Observer) signal(attentionUrgency bool) {
-	observer.attentionPending = observer.attentionPending || attentionUrgency
-	select {
-	case observer.changed <- struct{}{}:
-	default:
-	}
-	for subscriber := range observer.subscribers {
-		select {
-		case subscriber <- struct{}{}:
-		default:
-		}
-	}
-}
-func (observer *Observer) membership(hosts []fleetclient.Machine) error {
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	machines := make([]attention.MachineSnapshot, 0, len(hosts))
-	for _, host := range hosts {
-		current := attention.MachineSnapshot{Machine: host.Handle, Availability: "gap"}
-		for _, old := range observer.snapshot.Machines {
-			if old.Machine == host.Handle {
-				current = old
-				break
-			}
-		}
-		machines = append(machines, current)
-	}
-	if slices.EqualFunc(observer.snapshot.Machines, machines, func(a, b attention.MachineSnapshot) bool { return a.Machine == b.Machine }) {
+	if err != nil {
+		observer.hosts[index] = host{machine: machine}
+		observer.publish(false)
 		return nil
 	}
 	file := observer.file
 	file.Revision++
-	// Removed hosts leave the public roster. Retain exact lifetime counters:
-	// a device may miss removal and the same computer can re-enroll unchanged.
-	if observer.save(file) != nil {
-		return attention.ErrUnavailable
+	before := map[string]record{}
+	records := make([]record, 0, len(file.Records)+len(peer.Sessions))
+	for _, stored := range file.Records {
+		if stored.Key.Machine == machine {
+			before[slotID(stored.Key)] = stored
+		} else {
+			records = append(records, stored)
+		}
 	}
-	observer.snapshot.Machines = machines
-	observer.snapshot.Revision = file.Revision
-	observer.signal(false)
+	changed := len(before) != len(peer.Sessions)
+	allocated := false
+	observed := make([]seen, 0, len(peer.Sessions))
+	for _, session := range peer.Sessions {
+		ref, err := fleetclient.DecodeReference(session.Ref)
+		if err != nil {
+			panic("fleetclient encoded an invalid session reference")
+		}
+		slot := slotID(ref)
+		previous, present := before[slot]
+		next, qualified := observe(previous, present, ref, session, file.Revision)
+		changed = changed || !present || !reflect.DeepEqual(previous, next)
+		allocated = allocated || next.Cause != nil && next.AttentionEpisode == file.Revision
+		records = append(records, next)
+		observed = append(observed, seen{slot, session.Ref, session.Name, session.TerminalStatus, qualified})
+	}
+	file.Records = records
+	// An unchanged inventory needs no write: every value a record or client
+	// holds was saved with a revision at least as high, so a restart still
+	// allocates above all of them.
+	if !changed {
+		observer.file = file
+	} else if err := observer.save(file); err != nil {
+		return err
+	}
+	observer.hosts[index] = host{machine: machine, fresh: true, sessions: observed}
+	observer.publish(allocated)
 	return nil
 }
 
-// Run owns independent inventory lanes; the existing five-second cadence also
-// reconciles fleet membership so additions and removals need no process restart.
+// membership follows the roster. Records of removed machines stay, so a
+// re-enrolled computer resumes its acknowledgements.
+func (observer *Observer) membership(machines []fleetclient.Machine) {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	hosts := make([]host, 0, len(machines))
+	for _, machine := range machines {
+		next := host{machine: machine.Handle}
+		if index := slices.IndexFunc(observer.hosts, func(current host) bool { return current.machine == machine.Handle }); index >= 0 {
+			next = observer.hosts[index]
+		}
+		hosts = append(hosts, next)
+	}
+	observer.hosts = hosts
+	observer.publish(false)
+}
+
+// publish recomputes the projection and wakes the fcm sender and every stream
+// when it changed. The caller holds the mutex.
+func (observer *Observer) publish(allocated bool) {
+	observer.urgent = observer.urgent || allocated
+	records := make(map[string]record, len(observer.file.Records))
+	for _, stored := range observer.file.Records {
+		records[slotID(stored.Key)] = stored
+	}
+	next := attention.State{Machines: []attention.Machine{}}
+	for _, current := range observer.hosts {
+		if !current.fresh {
+			next.Machines = append(next.Machines, attention.Machine{Machine: current.machine, Availability: attention.Gap})
+			continue
+		}
+		machine := attention.Machine{Machine: current.machine, Availability: attention.Fresh, Sessions: []attention.Session{}}
+		for _, session := range current.sessions {
+			machine.Sessions = append(machine.Sessions, project(records[session.slot], session))
+		}
+		next.Machines = append(next.Machines, machine)
+	}
+	if reflect.DeepEqual(next, observer.served) {
+		return
+	}
+	observer.served = next
+	wake(observer.send)
+	for stream := range observer.streams {
+		wake(stream)
+	}
+}
+
+func wake(channel chan struct{}) {
+	select {
+	case channel <- struct{}{}:
+	default:
+	}
+}
+
+// Run reads every machine's inventory every five seconds, one lane per machine
+// so a slow machine never delays another, reconciles the roster on the same
+// cadence, and owns the fcm sender. It stops with ctx or the first failed save.
 func (observer *Observer) Run(parent context.Context) error {
 	ctx, stop := context.WithCancel(parent)
 	type outcome struct {
-		host string
-		lane uint64
-		peer fleetclient.Peer
-		err  error
+		machine string
+		lane    uint64
+		peer    fleetclient.Peer
+		err     error
 	}
 	outcomes := make(chan outcome)
 	type lane struct {
@@ -272,41 +244,37 @@ func (observer *Observer) Run(parent context.Context) error {
 	}
 	lanes := map[string]lane{}
 	var workers sync.WaitGroup
-	workers.Go(func() { observer.publish(ctx) })
+	workers.Go(func() { observer.sendHints(ctx) })
 	defer func() { stop(); workers.Wait() }()
 	var next uint64
-	reconcile := func() error {
-		hosts := observer.client.Machines()
-		if err := observer.membership(hosts); err != nil {
-			return err
-		}
-		for host, current := range lanes {
-			if !slices.ContainsFunc(hosts, func(candidate fleetclient.Machine) bool { return candidate.Handle == host }) {
+	reconcile := func() {
+		machines := observer.client.Machines()
+		observer.membership(machines)
+		for machine, current := range lanes {
+			if !slices.ContainsFunc(machines, func(candidate fleetclient.Machine) bool { return candidate.Handle == machine }) {
 				current.cancel()
-				delete(lanes, host)
+				delete(lanes, machine)
 			}
 		}
-		for _, host := range hosts {
-			if _, found := lanes[host.Handle]; found {
+		for _, machine := range machines {
+			if _, found := lanes[machine.Handle]; found {
 				continue
 			}
 			next++
-			current := next
+			id := next
 			laneCtx, cancel := context.WithCancel(ctx)
-			lanes[host.Handle] = lane{current, cancel}
+			lanes[machine.Handle] = lane{id, cancel}
 			workers.Go(func() {
-				// justify-polling: closed-client attention retains bounded five-second per-host inventories, cancelled on membership removal or shutdown.
 				ticker := time.NewTicker(5 * time.Second)
 				defer ticker.Stop()
 				for {
 					request, cancel := context.WithTimeout(laneCtx, 5*time.Second)
-					result := observer.client.InventoryMachine(request, host.Handle)
+					result := observer.client.InventoryMachine(request, machine.Handle)
 					cancel()
-					value := outcome{host: host.Handle, lane: current, err: attention.ErrUnavailable}
+					value := outcome{machine: machine.Handle, lane: id, err: attention.ErrUnavailable}
 					if result.OK {
-						value.peer = result.Value.(fleetclient.Peer)
-						value.err = nil
-					} // justify-assertion: inventory result owns the admitted peer type.
+						value.peer, value.err = result.Value.(fleetclient.Peer), nil
+					}
 					select {
 					case outcomes <- value:
 					case <-laneCtx.Done():
@@ -320,25 +288,20 @@ func (observer *Observer) Run(parent context.Context) error {
 				}
 			})
 		}
-		return nil
 	}
-	if err := reconcile(); err != nil {
-		return err
-	}
+	reconcile()
 	membership := time.NewTicker(5 * time.Second)
 	defer membership.Stop()
 	for {
 		select {
 		case result := <-outcomes:
-			if current, found := lanes[result.host]; found && current.id == result.lane {
-				if err := observer.commit(result.host, result.peer, result.err); err != nil {
+			if current, found := lanes[result.machine]; found && current.id == result.lane {
+				if err := observer.commit(result.machine, result.peer, result.err); err != nil {
 					return err
 				}
 			}
 		case <-membership.C:
-			if err := reconcile(); err != nil {
-				return err
-			}
+			reconcile()
 		case <-ctx.Done():
 			return nil
 		}

@@ -4,8 +4,10 @@
 `codex/session-latency` in an isolated worktree.
 [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md) records evidence and limits.
 this cutover follows the [architecture](architecture.md),
-[rules](rules.md) and [temporary-test policy](rules.md#testing). v4 reset
-identity and bounded isolated-tmux/real-phone acceptance are explicitly approved;
+[rules](rules.md) and [temporary-test policy](rules.md#testing). bounded
+isolated-tmux/real-phone acceptance is explicitly approved; [native
+notifications](native-notifications.md) has since replaced its notification
+seed, visit and reset clauses with hub-held acknowledgement;
 [v0.18.0 installed qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/v0.18.0-installed-qualification.md) separately
 records the coordinated rollout and its unperformed production-entry boundary.
 
@@ -218,63 +220,9 @@ use distinct `startupCtx` and `lifetimeCtx` in `sessions.OpenTerminal` and
 `tmux.StartAttachment`: admission, identity and readiness use startup; the owned
 tmux process uses lifetime. canceling successful startup must not kill that child.
 
-prepare one immutable seed by existing session slot before connection:
-`ReadySeed{resetId,candidate?}`, where candidate is
-`{key,foreground,token:{epoch,generation>0}}`. a successful cached lookup with no candidate
-is ordinary absence, not failure. browser/phone seed from admitted in-memory
-device state; standalone desktop starts cached local preparation concurrently
-with dialing. never fetch producer state to prepare or delay output for it.
-
-mac adds `prepare {machine,tmuxId,identityToken} -> {resetId,candidate?}` using the existing
-slot fields; candidate key/foreground/token use existing exact attention shapes.
-it reads the existing serialized owner's admitted memory, performs no fetch/write,
-creates no visit and waits for no launch surface. retain the existing socket
-envelope, bounds and three-second operation budget. `register` removes
-`readyToken`; it retains exact key/foreground, presented flag and surface/nonce,
-plus the frozen optional reset id when reconstructing an already-presented visit.
-`presented {visitId,resetId?,token:{epoch,generation}}` is the sole entry token input.
-missing reset id permits only the zero token and no ready consumption. no
-candidate/lease registry is added.
-
-retain greeting identity; immediately before the first nonempty payload write,
-freeze a matching candidate already available; a reply arriving during/after that
-write cannot qualify entry.
-freeze the seed's reset id even when its candidate is absent. only a completely
-successful nonempty presentation submits that frozen reset id/token.
-no token uses the existing zero token. greeting, queued/empty output and failed/
-partial write acknowledge nothing. never replace the frozen generation later.
-
-one visit-owned worker orders registration, presentation, reconnect and end,
-replacing existing scattered orchestration. register on greeting with
-`presented=false`, independently of preparation. completed output queues its frozen
-token; a slow initial registration may finish later and submit that token once.
-distinguish `outputWritten` from `ackAttempted`; set the latter before rpc and
-never replay an uncertain attempt. the pump never waits for notification rpc/storage. owner
-checks connection/visit, idempotence, exact key/foreground, reset id, epoch and
-captured generation. bind the supplied reset id to the presented visit; entry
-acknowledgement and later live-visit ready consumption require the current device
-reset id. ordinary admissions/acks preserve it. unknown/stale reset identity
-preserves ready; never substitute today's identity. physical focus rules remain.
-reconnect retains this frozen identity and actual
-presented state and never replays entry acknowledgement. every entry cleanup
-invokes local `abandon {launchNonce} -> {}` once when a launch nonce exists,
-idempotently retiring any unconsumed association, including failure before greeting
-or cancellation before registration. late creator completion cannot recreate it;
-this operation opens/closes no terminal or window. detach cancels preparation,
-retires pending registration and closes/joins its exact connection/worker; a late
-success cannot leak a visit. retain existing bounded cleanup and focus rules.
-
-linux uses the existing local notification store, without a mac socket or new
-owner. store read/admit/present/reset/update methods accept context: nonblocking flock,
-retrying only `EWOULDBLOCK/EAGAIN` with a 25 ms cancellable wait and remaining
-caller budget, checked again after acquisition. preserve the same sidecar lock
-through read/merge/atomic replacement and retain uncertain effects. local filesystem
-i/o itself has no promised hard wall limit; cancellation cannot undo a possible
-replacement. moving an unbounded flock into a goroutine is insufficient.
-android uses its existing nonblocking owner: snapshot one candidate before
-connection, qualify on greeting, then enqueue acknowledgement after actual page
-presentation. greeting qualification and subsequent page output use the same
-existing main queue in receive order, fenced by attempt/owner/reset identity.
+entry reads the hub's notification state for the session concurrently with
+dialing, never delaying output, and acknowledges that capture after the first
+nonempty output ([native notifications](native-notifications.md#client-reconciliation)).
 
 freeze these cross-slice interfaces before consumers start; no compatibility
 overloads. returned captures/seeds are immutable; native/attention types do not
@@ -285,44 +233,19 @@ leak backward into terminal wire types.
 | h → g | `OpenTerminal(lifetimeCtx,startupCtx,input) (*TerminalAttachment,error)`; tmux startup uses the same two-context order; attachment exposes final `{attachedClients,paneId,foreground?}` |
 | g → clients | `HelloFrame{AttachedClients,PaneID,Foreground?}`; `EncodeHello(HelloFrame)`; wire foreground has exactly provider/pid/startIdentity |
 | d → clients/observer | `InventoryMachine(ctx,machineHandle) Result` returns raw `Peer` or typed failure; `EnrichContexts(ctx,source Peer,catalogues []Peer) []ContextObservation`; overlay is `{sourceRef,connectionID,execution}` |
-| d → n | `Read/Admit/Reset/Update(ctx,...)`; `Presented(ctx,resetId,key,foreground,token)` checks reset id inside the locked update; no background-context wrappers |
-| n → d | `Run(ctx,client,encodedRef,seed,input,output) Result`; `Result{Err,NotificationErr}`; optional `*attention.ReadySeed{ResetID,Candidate *ReadyCandidate}` |
-| n cached read | `Prepare(ctx,slot) (attention.ReadySeed,error)`; valid reset id plus nil candidate means successful empty preparation |
+| n → d | `Run(ctx,client,encodedRef,input,output) Result`; `Result{Err,NotificationErr}` |
 | a receive order | `onHello(attachedClients,paneId,foreground?)` precedes following binary page application on the existing main queue |
 
-nil seed means unknown: start cached preparation concurrently. a nonnil seed with
-valid reset id and no candidate is known absence. only an admitted device view may seed preparation. return
-terminal result after tty restoration and owned cleanup; notification error stays
+return terminal result after tty restoration and owned cleanup; notification error stays
 secondary and never determines terminal command exit. remove the old callback
 and synchronous post-detach notification read; the browser's independent return
 read owns fresh notification display.
 
 phone card entry remains direct. retain notification-click and reconnect inventory
 lookups, plus existing created-terminal post-write verification: they populate the
-rich session model used by pane controls. greeting identity qualifies attention
-only; never replace its pane inside old cwd/agent/status/footer metadata. the
+rich session model used by pane controls. greeting identity qualifies nothing;
+never replace its pane inside old cwd/agent/status/footer metadata. the
 [phone target/model split](issues/phone-entry-metadata-latency.md) is deferred.
-
-## accepted reset contract
-
-producer epoch/generation cannot fence a local reset followed by re-admission of
-that same producer state. the approved contract above adds required `resetId`
-to the existing go device snapshot: schema 4, canonical random 32-lowercase-hex,
-created under its sidecar lock and rotated only by explicit reset/new memory.
-ordinary admissions/acks and helper restarts preserve it. use one strict
-`notifications-v4.json` store; no v3 reader, migration or fallback. android keeps
-its existing reset identity. owner-instance/config counters do not replace this
-domain fact; existing fetch-generation fences retain their separate purpose.
-initializing an absent store is a durable mutation even for `Read`: increment
-local revision once and atomically persist the reset id before returning a usable
-snapshot/seed. persistence failure returns no seed; malformed existing memory
-fails rather than silently initializing a new domain.
-
-the owner approved v4 and its one-time go notification-memory reset at
-coordinated cutover, potentially re-alerting current ready. sessions, pairings
-and provider data remain unchanged. no v3 migration or conservative revision
-fencing remains. this authorizes the contract and disposable qualification;
-it does not install or reset the running notification owner.
 
 ## budgets and diagnostics
 

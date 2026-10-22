@@ -6,6 +6,9 @@ with `accountScope`, and narrows the packaged helper to quota; the go quota
 client ([profile usage](profile-usage.md)) then removes the helper and its pins.
 ordinary commands and existing terminal observation remain. the earlier native
 clauses are historical.
+[native notifications](native-notifications.md) supersedes the device
+acknowledgement, foreground suppression, enrollment challenge and minute-hint
+clauses below; their cutover and acceptance rows are historical.
 
 status: optional user-owned direct-fcm direction, 2026-10-20. runtime feasibility
 gate passed before production rewrite; source implemented and independently
@@ -34,7 +37,7 @@ arguments are removed from cli/api; current desktop/phone forms have no such con
 | each installed host | local tmux, processes, terminal/native apis, local observation; never manages another host's tmux |
 | desktop/phone | compose enrolled host apis directly; hub is never an execution proxy |
 | hub | accepted configuration, membership, observer and android publication; fixed, no elections or remote execution ownership |
-| each notification device | acknowledgement, admission, exact focus/clicks, presentation; no fleet-wide acknowledgement |
+| each notification device | stateless reconciliation of native notices, exact clicks, presentation; the hub holds the owner's acknowledgement |
 | optional hub fcm adapter | user-owned credentials, per-phone destinations and content-free hints; no project backend |
 | providers/user | provider installation, accounts, settings, history and daemon lifecycle |
 
@@ -110,9 +113,8 @@ state/fleet.json                machine, name, localBearer,
                                 fleet {deviceId, bearer, state},
                                 applied {settings, application},
                                 authority (hub only)
-state/notification-observer-v1.json   hub observer epoch, revision, records, receivers
+state/notification-observer-v2.json   hub observer revision, records with acknowledgements, receivers
 state/authority.lock            flock held for the `skid serve` lifetime
-existing device files           retained acknowledgement
 ```
 
 ```text
@@ -270,10 +272,10 @@ is no transfer, placement, wrong-hub routing or relay. moving the hub is a new
 fleet: `skid recover` on the new hub (with configured push, place a matching
 private credential file there first), `skid join` with a fresh invite on each
 other computer, and a fresh scan on each phone after clearing its app data (a
-phone paired to the old fleet refuses another fleet's invite). observer epoch,
-attention records and receiver state are not carried; the new hub starts a fresh
-observer. a returned old hub cannot override new trust: recovered devices fetch
-only from the new hub. no automatic failover.
+phone paired to the old fleet refuses another fleet's invite). attention
+records, acknowledgements and receiver state are not carried; the new hub starts
+a fresh observer. a returned old hub cannot override new trust: recovered devices
+fetch only from the new hub. no automatic failover.
 
 ## 5. launch, observation and quota
 
@@ -339,10 +341,11 @@ overwrite provider settings or label a hidden footer “misconfigured”.
 
 ## 6. optional direct android push
 
-retain existing observer inference, content, snapshot admission, mac native app,
-foreground suppression/clicks, notification ids/channels, device schema4 memory
-and current-only catchup. mac and authenticated foreground reads are independent
-of firebase. phones and computers pair/manage sessions with push omitted.
+retain existing observer inference, content, mac native app, clicks,
+notification ids/channels and current-only catchup. the hub holds the owner's
+acknowledgement; devices keep no notification memory and suppress nothing in the
+foreground. mac and authenticated foreground reads are independent of firebase.
+phones and computers pair/manage sessions with push omitted.
 
 ### configuration, credentials and ownership
 
@@ -416,11 +419,11 @@ until unregister completes; do not reset an unchanged project on every startup.
 callbacks must match captured runtime configuration/generation and current
 installation identity before changing owned state. no callback can bind an old
 fid to whichever fleet happens to be current. retain local receiver generation
-floor across config changes, even when fid is unchanged; allocate fresh nonce.
-the atomic private `push-v2.json` owns schema2, `generationFloor`, remembered
+floor across config changes, even when fid is unchanged.
+the atomic private `push-v3.json` owns `generationFloor`, remembered
 `configuration`, `resetRequired`, current optional `{configuration,fleetId,deviceId}`
-target and optional registration/proof/hint. disabling clears target/registration,
-not the floor or acknowledgement store. commit callback results only under the
+target and optional `{generation,fid}` registration. disabling clears
+target/registration, not the floor. commit callback results only under the
 pairing authority lock and the same target/floor; unsolicited SDK registration
 callbacks schedule a fresh owned attempt, never adopt their supplied identity.
 validate SDK-required options before starting its asynchronous registration so
@@ -443,43 +446,39 @@ credential. reuse existing fcm request/error adapter and observer worker. remove
 registration, rate/replay/anti-abuse admission, relay tombstones/storage and
 embedded sender origin. no new server/process/store/outbox or alternate backend.
 
-derive phone identity from its fleet bearer. preserve existing routes:
+derive phone identity from its fleet bearer. one route:
 
 | route | contract |
 | --- | --- |
-| `GET /v1/notifications/receivers/me` | `{configuration?,activeGeneration,desiredGeneration,status}`; configuration omitted only when disabled; status is `disabled`, `unconfigured`, `pending`, `active`, `unavailable` or `removed`; permission/restart are phone-local states |
-| `PUT /v1/notifications/receivers/me` | `{configuration,generation,fid,clientNonce}`; reject non-current configuration/stale/conflicting tuple |
-| `POST /v1/notifications/receivers/me/confirm` | `{configuration,generation,challenge}`; exact pending proof or idempotent exact committed proof |
+| `PUT /v1/notifications/receivers/me` | `{configuration,generation,fid}`; 204 when `generation` exceeds the floor (activate) or repeats the active tuple; 409 `ReceiverConflict` for a non-current configuration or a stale/conflicting tuple |
 
-observer privately owns full active and desired destinations, local generation
-fences, pending random challenge/ten-minute expiry and last confirmed proof.
-its existing private file is schema3: add optional `configuration`; each receiver
-owns `{deviceId,configuration,floor,active?,desired?,confirmed?,removed,
-registrationError,pushError}`. destinations contain
-`{generation,fid,clientNonce,challenge,expires}`. epoch/revision/records retain
-their existing meaning. no schema2 reader in final source.
-persist pending proof BEFORE direct fcm send. keep an old active destination
-while replacing it within the SAME configuration; only exact nonce/challenge
-proof activates its replacement. confirmation-response loss is idempotent;
-expired challenge renews on existing bounded reconciliation. membership removal
-commits revocation and erases destinations locally before any further send; no
-external delete/cleanup operation.
+the phone reads its receiver status, `disabled`, `unconfigured`, `active` or
+`unavailable`, from `GET /v1/notifications/state`; permission/restart are
+phone-local states.
 
-configuration change/disable retires all old active/pending destinations and
-proofs while preserving observer epoch/revision/records and device acknowledgement.
+the observer privately owns one destination and generation floor per phone. its
+private `notification-observer-v2.json` holds one optional `configuration` and
+receivers `{deviceId,floor,fid?,failed}`; no challenge, expiry or tombstone. an
+authenticated `PUT` above the floor activates its destination at once.
+membership removal drops the receiver locally; a send already in flight completes
+and its result is discarded. no external delete/cleanup operation.
+
+configuration change/disable erases all destinations while preserving records
+and the owner's acknowledgements.
 keep per-device generation floors; new registration requires the current config
 identity. transient fcm failure after activation affects push only. never echo
 private credential errors or remote error text.
 
-fcm remains data-only `message.fid`, restricted apk package, 120s ttl, separate
-attention/sync/enrollment collapse keys; attention high priority, housekeeping
-normal. no notification payload/text or terminal data. enrollment carries
-`{kind:enrollment,fleetId,deviceId,configuration,generation,clientNonce,challenge}`;
-hints `{kind:hint,schema:1,fleetId,deviceId,configuration,receiverGeneration,
-epoch,revision,urgency}`. phone matches configuration, device and generation
-before scheduling current-state fetch over tailscale. only authenticated snapshot
-admission can present or acknowledge. preserve bounded WorkManager fetch retries;
-no polling or permanent foreground service.
+fcm remains data-only `message.fid`, restricted apk package, four-week ttl,
+collapse key = urgency: `attention` (a new episode since the last send) high
+priority, `sync` normal. hints go when the hub's projection changes, at hub
+start, on push reconfiguration and after a phone registration; no minute pulse
+or enrollment message. the payload is `{kind:hint}`: no
+notification payload/text, terminal data, schema, fleet, device, generation,
+epoch or revision. the phone checks the sender against its current options before
+scheduling a current-state fetch over tailscale. only the authenticated state
+read can present. preserve bounded WorkManager fetch retries; no polling or
+permanent foreground service.
 
 ### disabled and failure behavior
 
@@ -490,16 +489,17 @@ no polling or permanent foreground service.
   phone session management does not inherit a global error.
 - configured but permission/google services unavailable, restart pending, or
   actual fcm failure: distinguish permission/restart/transport states and one
-  recovery action. receiver-read success cannot erase transport failure.
+  recovery action. a state read cannot erase transport failure.
 - disabling push cancels its jobs/registration desire without resetting
   attention memory, cancelling/reposting existing notices or changing channels.
 - invalid yaml retains accepted configuration under existing apply semantics;
   no raw credential/google error bodies, ids or notification contents in logs.
 
 [setup guide](android-push-setup.md) and qualification own operational steps and
-proof. independent phones, rotation/revocation, current-only admission and
-output-only device acknowledgement remain required; two physical phones retain
-the explicit owner deferral. no firebase setup becomes a core installation gate.
+proof. independent phone registrations, rotation/revocation, current-only
+presentation and output-only ready acknowledgement remain required; two physical
+phones retain the explicit owner deferral. no firebase setup becomes a core
+installation gate.
 
 ## 7. installer, cutover and removal
 

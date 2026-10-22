@@ -26,7 +26,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var dashboardEntry: DashboardEntryState
     private lateinit var controller: SkidbladnirController
     private lateinit var scanner: FleetScanner
-    private var resumed = false
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         applicationContext.notificationOwner().refresh()
     }
@@ -69,7 +68,7 @@ class MainActivity : ComponentActivity() {
     private fun acceptNotificationClick(intent: Intent) {
         val captured = notificationClick(intent) ?: return
         val owner = applicationContext.notificationOwner()
-        owner.scope.launch { owner.dismiss(captured.slot, captured.episode, captured.epoch) }
+        owner.scope.launch { owner.handled(captured.slot, captured.episode) }
         controller.openNotificationReference(captured.ref)
         // Intent consumption prevents task recreation from replaying a prior click.
         intent.action = Intent.ACTION_MAIN
@@ -78,22 +77,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        resumed = true
-        val owner = applicationContext.notificationOwner()
-        owner.activityFocus(true, hasWindowFocus())
-        owner.refresh()
-        if (firebasePush().status() == FirebasePushStatus.Ready) NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.KEEP)
-    }
-
-    override fun onPause() {
-        resumed = false
-        applicationContext.notificationOwner().activityFocus(false, false)
-        super.onPause()
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        applicationContext.notificationOwner().activityFocus(resumed, hasFocus)
+        applicationContext.notificationOwner().refresh()
+        NotificationEnrollment.schedule(this, androidx.work.ExistingWorkPolicy.KEEP)
     }
 
     internal fun notificationSetup() {
@@ -102,11 +87,9 @@ class MainActivity : ComponentActivity() {
         val unpaired = MachineStore(this).read().credentials.isEmpty()
         val instruction = when {
             view.health == NotificationHealth.Disabled -> "background push is optional. session management works without firebase."
-            view.health == NotificationHealth.RestartRequired -> "stop skid in android app settings, then reopen it. your sessions and notification memory stay installed."
+            view.health == NotificationHealth.RestartRequired -> "stop skid in android app settings, then reopen it. your sessions stay installed."
             view.health == NotificationHealth.Unconfigured -> "install the matching private android-push-credentials.json on the hub, then apply."
             unpaired -> "connect this phone to a fleet to receive notifications."
-            view.health == NotificationHealth.ResetRequired ->
-                "reset notification memory to adopt the current observer. fleet pairings stay installed."
             view.health == NotificationHealth.PermissionBlocked -> "open notification settings to allow needs-input alerts."
             else -> "keep tailscale connected, then retry notification setup."
         }
@@ -119,9 +102,6 @@ class MainActivity : ComponentActivity() {
             view.health in setOf(NotificationHealth.Disabled, NotificationHealth.RestartRequired, NotificationHealth.Unconfigured) -> Unit
             unpaired -> dialog.setPositiveButton("reconnect fleet") { _, _ ->
                 controller.requestFleetReconnect()
-            }
-            view.health == NotificationHealth.ResetRequired -> dialog.setPositiveButton("reset notification memory") { _, _ ->
-                owner.scope.launch { owner.reset() }
             }
             else -> dialog.setPositiveButton("set up notifications") { _, _ ->
                 if (MachineStore(this).read().credentials.isEmpty()) {
