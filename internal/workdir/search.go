@@ -19,8 +19,8 @@ const (
 )
 
 type SearchResult struct {
-	Directories []string
-	Omitted     bool
+	Directories []string `json:"directories"` // never nil
+	Omitted     bool     `json:"omitted"`
 }
 
 type searchOutput struct {
@@ -77,39 +77,23 @@ func (service *Service) Search(ctx context.Context, terms []string) (SearchResul
 	if err != nil || queryContext.Err() != nil {
 		return SearchResult{}, newError(Unavailable)
 	}
-	result := SearchResult{Directories: make([]string, 0)}
-	seen := make(map[string]struct{})
+	result := SearchResult{Directories: []string{}}
+	seen := map[string]bool{}
 	pathBytes := 0
-	for _, path := range strings.Split(strings.TrimSuffix(output.buffer.String(), "\n"), "\n") {
-		if path == "" && output.buffer.Len() == 0 {
+	for _, line := range strings.Split(strings.TrimSuffix(output.buffer.String(), "\n"), "\n") {
+		if line == "" && output.buffer.Len() == 0 {
 			break
 		}
-		if !filepath.IsAbs(path) {
+		// zoxide lists absolute paths: a "~" line is omitted, never expanded under Home.
+		path, err := service.ParseStart(line)
+		if !filepath.IsAbs(line) || err != nil || CheckStart(path) != nil || seen[path] ||
+			len(result.Directories) == maximumSearchDirectories || pathBytes+len(path) > maximumPathTextBytes {
 			result.Omitted = true
 			continue
 		}
-		candidate, err := service.ParseCandidate(path)
-		if err != nil {
-			result.Omitted = true
-			continue
-		}
-		directory, err := service.ValidateStart(candidate)
-		if err != nil {
-			result.Omitted = true
-			continue
-		}
-		canonical := directory.String()
-		if _, duplicate := seen[canonical]; duplicate {
-			result.Omitted = true
-			continue
-		}
-		if len(result.Directories) == maximumSearchDirectories || pathBytes+len(canonical) > maximumPathTextBytes {
-			result.Omitted = true
-			continue
-		}
-		seen[canonical] = struct{}{}
-		pathBytes += len(canonical)
-		result.Directories = append(result.Directories, canonical)
+		seen[path] = true
+		pathBytes += len(path)
+		result.Directories = append(result.Directories, path)
 	}
 	return result, nil
 }

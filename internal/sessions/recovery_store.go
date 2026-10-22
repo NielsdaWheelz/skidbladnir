@@ -204,7 +204,7 @@ func (manager *Manager) validateCheckpoint(recipe checkpoint) error {
 			if !filepath.IsAbs(pane.CWD) || filepath.Clean(pane.CWD) != pane.CWD {
 				return errCheckpointInvalid
 			}
-			if _, err := manager.workdir.ParseCandidate(pane.CWD); err != nil {
+			if _, err := manager.workdir.ParseStart(pane.CWD); err != nil {
 				return errCheckpointInvalid
 			}
 		}

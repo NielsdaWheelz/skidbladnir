@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 )
 
 // terminalExec becomes the new tmux pane's shell. Its one producer is
@@ -31,7 +31,13 @@ func terminalExec(arguments []string) error {
 	if err := os.Setenv("SHELL", shell); err != nil {
 		return err
 	}
-	environment := append(runtimeenv.WithoutLaunchContext(os.Environ()),
+	// Drop launch markers inherited from the pane's parent; this shell gets fresh ones below.
+	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		return strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || slices.Contains([]string{"SKIDBLADNIR_SHELL",
+			"SKIDBLADNIR_AGENT", "SKIDBLADNIR_CLAUDE_COMMAND", "SKIDBLADNIR_CONNECTION", "SKIDBLADNIR_TERMINAL_CONTEXT"}, name)
+	})
+	environment = append(environment,
 		"SKIDBLADNIR_SHELL=1",
 		"SKIDBLADNIR_STARTUP_PID="+strconv.Itoa(os.Getpid()),
 		"SKIDBLADNIR_STARTUP_CWD="+string(cwd),

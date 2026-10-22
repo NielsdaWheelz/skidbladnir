@@ -1,129 +1,190 @@
+// Package pressure samples host pressure, holds its level with hysteresis and
+// owns the GET /v1/pressure wire: json.Marshal(Snapshot) is the response body.
 package pressure
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
 
-const (
-	SampleInterval     = 5 * time.Second
-	WindowDuration     = 15 * time.Minute
-	HistorySampleLimit = int(WindowDuration / SampleInterval)
-	DeescalationDelay  = 60 * time.Second
-	memoryWarmPercent  = 15.0
-	memoryHotPercent   = 8.0
-	diskWarmPercent    = 15.0
-	diskHotPercent     = 5.0
-	loadWarm           = 1.0
-	loadHot            = 2.0
-	cpuPSIWarmPercent  = 20.0
-	cpuPSIHotPercent   = 50.0
-	fullPSIWarmPercent = 1.0
-	fullPSIHotPercent  = 5.0
-)
-
-type Status string
+// Metric names one observation by its wire key.
+type Metric string
 
 const (
-	StatusNormal  Status = "Normal"
-	StatusWarm    Status = "Warm"
-	StatusHot     Status = "Hot"
-	StatusUnknown Status = "Unknown"
+	cpuPercent                Metric = "cpuPercent"
+	normalizedLoad            Metric = "normalizedLoad"
+	memoryAvailablePercent    Metric = "memoryAvailablePercent"
+	swapUsedPercent           Metric = "swapUsedPercent"
+	diskAvailablePercent      Metric = "diskAvailablePercent"
+	cpuPSISomeAvg60Percent    Metric = "cpuPsiSomeAvg60Percent"
+	memoryPSIFullAvg60Percent Metric = "memoryPsiFullAvg60Percent"
+	ioPSIFullAvg60Percent     Metric = "ioPsiFullAvg60Percent"
+	memoryPressure            Metric = "memoryPressure"
 )
 
-type SignalStatus string
+// metrics lists every metric in wire order.
+var metrics = []Metric{cpuPercent, normalizedLoad, memoryAvailablePercent, swapUsedPercent,
+	diskAvailablePercent, cpuPSISomeAvg60Percent, memoryPSIFullAvg60Percent, ioPSIFullAvg60Percent, memoryPressure}
+
+// Level is a sample's level or one signal's state. Only a sample is Unknown and
+// only a signal is Informational.
+type Level string
 
 const (
-	SignalStatusInformational SignalStatus = "Informational"
-	SignalStatusNormal        SignalStatus = "Normal"
-	SignalStatusWarm          SignalStatus = "Warm"
-	SignalStatusHot           SignalStatus = "Hot"
+	normal        Level = "Normal"
+	warm          Level = "Warm"
+	hot           Level = "Hot"
+	unknown       Level = "Unknown"
+	informational Level = "Informational"
 )
 
+var rank = map[Level]int{normal: 0, warm: 1, hot: 2}
+
+var below = map[Level]Level{hot: warm, warm: normal}
+
+// Phase is Recovering while the held level is above the sampled one.
 type Phase string
 
 const (
-	PhaseSteady     Phase = "Steady"
-	PhaseRecovering Phase = "Recovering"
+	steady     Phase = "Steady"
+	recovering Phase = "Recovering"
 )
 
+// Reason names a required metric that is Warm or Hot.
 type Reason string
 
-const (
-	ReasonMemory    Reason = "Memory"
-	ReasonDisk      Reason = "Disk"
-	ReasonLoad      Reason = "Load"
-	ReasonCPUPSI    Reason = "CpuPsi"
-	ReasonMemoryPSI Reason = "MemoryPsi"
-	ReasonIOPSI     Reason = "IoPsi"
-)
-
-type Signal struct {
-	Status SignalStatus
-	value  float64
-	known  bool
+// policy is one platform's capability: the metrics that set the level, in reason
+// (wire) order, and the metrics it never observes, sorted bytewise.
+type policy struct {
+	required    []requirement
+	unsupported []Metric
 }
 
-func (signal Signal) Value() (float64, bool) {
-	return signal.value, signal.known
+type requirement struct {
+	metric Metric
+	reason Reason
+}
+
+var darwinPolicy = policy{
+	required:    []requirement{{diskAvailablePercent, "Disk"}, {normalizedLoad, "Load"}, {memoryPressure, "Memory"}},
+	unsupported: []Metric{cpuPSISomeAvg60Percent, ioPSIFullAvg60Percent, memoryAvailablePercent, memoryPSIFullAvg60Percent},
+}
+
+var linuxPolicy = policy{
+	required: []requirement{{memoryAvailablePercent, "Memory"}, {diskAvailablePercent, "Disk"}, {normalizedLoad, "Load"},
+		{cpuPSISomeAvg60Percent, "CpuPsi"}, {memoryPSIFullAvg60Percent, "MemoryPsi"}, {ioPSIFullAvg60Percent, "IoPsi"}},
+	unsupported: []Metric{memoryPressure},
+}
+
+// bounds are each classified float metric's inclusive warm and hot thresholds;
+// a falling metric is worse when lower. cpu and swap are display-only.
+var bounds = map[Metric]struct {
+	warm, hot float64
+	falling   bool
+}{
+	memoryAvailablePercent:    {15, 8, true},
+	diskAvailablePercent:      {15, 5, true},
+	normalizedLoad:            {1, 2, false},
+	cpuPSISomeAvg60Percent:    {20, 50, false},
+	memoryPSIFullAvg60Percent: {1, 5, false},
+	ioPSIFullAvg60Percent:     {1, 5, false},
+}
+
+type Snapshot struct {
+	Unsupported []Metric `json:"unsupported"` // sorted, constant per process
+	Current     Sample   `json:"current"`
+	History     []Point  `json:"history"` // chronological, ends with Current
 }
 
 type Sample struct {
-	ObservedAt                   time.Time
-	Status                       Status
-	Phase                        Phase
-	Reasons                      []Reason
-	CPUPercent                   Signal
-	LoadNormalized               Signal
-	MemoryAvailablePercent       Signal
-	SwapUsedPercent              Signal
-	DiskAvailablePercent         Signal
-	CPUPressureSomeAvg60         Signal
-	MemoryPressureFullAvg60      Signal
-	InputOutputPressureFullAvg60 Signal
-	MemoryPressure               MemoryPressureSignal
+	SampledAt time.Time `json:"sampledAt"` // UTC
+	Level     Level     `json:"level"`
+	Phase     Phase     `json:"phase"`
+	Reasons   []Reason  `json:"reasons"` // never nil
+	Signals   Signals   `json:"signals"`
+	Missing   []Metric  `json:"missing"` // supported but unobserved, sorted; never nil
 }
 
-type MemoryPressureSignal struct {
-	Status SignalStatus
-	value  MemoryPressure
-	known  bool
+type Point struct {
+	SampledAt time.Time `json:"sampledAt"`
+	Level     Level     `json:"level"`
 }
 
-func (signal MemoryPressureSignal) Value() (MemoryPressure, bool) { return signal.value, signal.known }
+// Signals holds one sample's observed metrics; an unobserved metric has no entry.
+type Signals map[Metric]Signal
 
-type Snapshot struct {
-	Current Sample
-	Window  []Sample
+// Signal is one observed metric. Value is a float64, except memoryPressure's
+// "Normal", "Warning" or "Critical"; State is its classification.
+type Signal struct {
+	Value any   `json:"value"`
+	State Level `json:"state"`
+}
+
+// record stores an observed float metric, classified against its bounds.
+func (signals Signals) record(metric Metric, value float64) {
+	state := informational
+	if bound, classified := bounds[metric]; classified {
+		hotter, warmer := value >= bound.hot, value >= bound.warm
+		if bound.falling {
+			hotter, warmer = value <= bound.hot, value <= bound.warm
+		}
+		switch {
+		case hotter:
+			state = hot
+		case warmer:
+			state = warm
+		default:
+			state = normal
+		}
+	}
+	signals[metric] = Signal{Value: value, State: state}
+}
+
+// MarshalJSON writes the observed signals in wire order; encoding/json would sort map keys.
+func (signals Signals) MarshalJSON() ([]byte, error) {
+	members := []string{}
+	for _, metric := range metrics {
+		if signal, observed := signals[metric]; observed {
+			member, err := json.Marshal(signal)
+			if err != nil { // only a non-finite value
+				return nil, err
+			}
+			members = append(members, `"`+string(metric)+`":`+string(member))
+		}
+	}
+	return []byte("{" + strings.Join(members, ",") + "}"), nil
 }
 
 type Monitor struct {
-	mutex     sync.RWMutex
-	collector collector
-	evaluator evaluator
+	collector collector // NewMonitor, then only Run's goroutine
+	evaluator evaluator // likewise
 	policy    policy
+	mutex     sync.RWMutex // guards current and history
 	current   Sample
-	window    []Sample
+	history   []Point
 }
 
 func NewMonitor() *Monitor {
-	monitor := &Monitor{collector: newCollector(), evaluator: newEvaluator(), policy: currentPolicy()}
-	monitor.sample(time.Now())
+	monitor := &Monitor{policy: platformPolicy}
+	monitor.sample(monitor.collector.collect(), time.Now())
 	return monitor
 }
 
+// Run samples every five seconds, the freshness/cost trade-off: linux exposes
+// these counters only as snapshots.
 func (monitor *Monitor) Run(ctx context.Context) {
-	// justify-polling: Linux exposes these host-pressure counters as snapshots;
-	// five seconds is the product's named freshness/cost tradeoff.
-	ticker := time.NewTicker(SampleInterval)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case observedAt := <-ticker.C:
-			monitor.sample(observedAt)
+		case at := <-ticker.C:
+			monitor.sample(monitor.collector.collect(), at)
 		}
 	}
 }
@@ -131,271 +192,82 @@ func (monitor *Monitor) Run(ctx context.Context) {
 func (monitor *Monitor) Snapshot() Snapshot {
 	monitor.mutex.RLock()
 	defer monitor.mutex.RUnlock()
-	window := make([]Sample, len(monitor.window))
-	for index, sample := range monitor.window {
-		window[index] = cloneSample(sample)
-	}
-	return Snapshot{Current: cloneSample(monitor.current), Window: window}
+	// a published Sample is never written again; the history array is, so it is copied
+	return Snapshot{Unsupported: monitor.policy.unsupported, Current: monitor.current, History: slices.Clone(monitor.history)}
 }
 
-func (monitor *Monitor) Unsupported() []Metric { return monitor.policy.Unsupported() }
-
-func (monitor *Monitor) sample(observedAt time.Time) {
-	raw := monitor.collector.collect()
-	evaluation := monitor.evaluator.observe(raw, observedAt, monitor.policy)
-	sample := Sample{
-		ObservedAt:                   observedAt.UTC(),
-		Status:                       evaluation.status,
-		Phase:                        evaluation.phase,
-		Reasons:                      evaluation.reasons,
-		CPUPercent:                   informationalSignal(raw.cpuPercent),
-		LoadNormalized:               signal(raw.loadNormalized, classifyLoad),
-		MemoryAvailablePercent:       signal(raw.memoryAvailablePercent, classifyMemory),
-		SwapUsedPercent:              informationalSignal(raw.swapUsedPercent),
-		DiskAvailablePercent:         signal(raw.diskAvailablePercent, classifyDisk),
-		CPUPressureSomeAvg60:         signal(raw.cpuPSISomeAvg60, classifyCPUPSI),
-		MemoryPressureFullAvg60:      signal(raw.memoryPSIFullAvg60, classifyFullPSI),
-		InputOutputPressureFullAvg60: signal(raw.ioPSIFullAvg60, classifyFullPSI),
-		MemoryPressure:               memoryPressureSignal(raw.memoryPressure),
+// sample classifies one collection against the policy and publishes it.
+func (monitor *Monitor) sample(signals Signals, at time.Time) {
+	level, reasons, unobserved := normal, []Reason{}, false
+	for _, required := range monitor.policy.required {
+		signal, observed := signals[required.metric]
+		switch {
+		case !observed:
+			unobserved = true // reasons keep collecting
+		case signal.State == warm || signal.State == hot:
+			reasons = append(reasons, required.reason)
+			if rank[signal.State] > rank[level] {
+				level = signal.State
+			}
+		}
 	}
+	if unobserved {
+		level = unknown
+	}
+	missing := []Metric{}
+	for _, metric := range metrics {
+		if _, observed := signals[metric]; !observed && !slices.Contains(monitor.policy.unsupported, metric) {
+			missing = append(missing, metric)
+		}
+	}
+	slices.Sort(missing)
+	held, phase, heldReasons := monitor.evaluator.observe(level, reasons, at)
+	current := Sample{SampledAt: at.UTC(), Level: held, Phase: phase, Reasons: heldReasons, Signals: signals, Missing: missing}
 
 	monitor.mutex.Lock()
 	defer monitor.mutex.Unlock()
-	monitor.current = sample
-	monitor.window = retainHistory(monitor.window, sample)
-}
-
-func retainHistory(history []Sample, sample Sample) []Sample {
-	cutoff := sample.ObservedAt.Add(-WindowDuration)
+	monitor.current = current
+	// keep 15 minutes, at most 180 points: one per five-second sample
+	cutoff := current.SampledAt.Add(-15 * time.Minute)
 	first := 0
-	for first < len(history) && history[first].ObservedAt.Before(cutoff) {
+	for first < len(monitor.history) && monitor.history[first].SampledAt.Before(cutoff) {
 		first++
 	}
-	history = append(history[first:], sample)
-	if len(history) > HistorySampleLimit {
-		history = history[len(history)-HistorySampleLimit:]
+	monitor.history = append(monitor.history[first:], Point{SampledAt: current.SampledAt, Level: current.Level})
+	if len(monitor.history) > 180 {
+		monitor.history = monitor.history[len(monitor.history)-180:]
 	}
-	return history
 }
 
+// evaluator holds the reported level: it escalates at once and steps down one
+// level per minute spent below the held level.
 type evaluator struct {
-	initialized    bool
-	stable         Status
-	stableReasons  []Reason
-	deescalatingAt time.Time
+	held          Level // "" until the first known sample
+	heldReasons   []Reason
+	steppingSince time.Time // zero when no step-down is armed
 }
 
-func newEvaluator() evaluator { return evaluator{} }
-
-type evaluation struct {
-	status  Status
-	phase   Phase
-	reasons []Reason
-}
-
-func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time, policy policy) evaluation {
-	raw := classifyOverall(sample, policy)
-	if raw.status == StatusUnknown {
-		evaluator.deescalatingAt = time.Time{}
-		return raw
-	}
-	if !evaluator.initialized {
-		evaluator.initialized = true
-		evaluator.stable = raw.status
-		evaluator.stableReasons = raw.reasons
-		return raw
-	}
-	if severity(raw.status) > severity(evaluator.stable) {
-		evaluator.stable = raw.status
-		evaluator.stableReasons = raw.reasons
-		evaluator.deescalatingAt = time.Time{}
-		return raw
-	}
-	if raw.status == evaluator.stable {
-		evaluator.stableReasons = raw.reasons
-		evaluator.deescalatingAt = time.Time{}
-		return raw
-	}
-	if evaluator.deescalatingAt.IsZero() {
-		evaluator.deescalatingAt = observedAt
-	} else if observedAt.Sub(evaluator.deescalatingAt) >= DeescalationDelay {
-		evaluator.stable = statusForSeverity(severity(evaluator.stable) - 1)
-		if evaluator.stable == StatusNormal {
-			evaluator.stableReasons = nil
-		} else if raw.status == evaluator.stable {
-			evaluator.stableReasons = raw.reasons
-		}
-		evaluator.deescalatingAt = time.Time{}
-	}
-	phase := PhaseSteady
-	if severity(evaluator.stable) > severity(raw.status) {
-		phase = PhaseRecovering
-	}
-	return evaluation{status: evaluator.stable, phase: phase, reasons: cloneReasons(evaluator.stableReasons)}
-}
-
-// requiredClassifiers is the closed table of metrics a policy may declare as
-// classification inputs; newPolicy admits required metrics only from this
-// table, so the required set and the classifier set cannot drift apart.
-var requiredClassifiers = map[Metric]struct {
-	reason   Reason
-	classify func(rawSample) Status
-}{
-	MetricMemoryAvailablePercent:       {ReasonMemory, func(sample rawSample) Status { return classifyMemory(sample.memoryAvailablePercent) }},
-	MetricDiskAvailablePercent:         {ReasonDisk, func(sample rawSample) Status { return classifyDisk(sample.diskAvailablePercent) }},
-	MetricLoadNormalized:               {ReasonLoad, func(sample rawSample) Status { return classifyLoad(sample.loadNormalized) }},
-	MetricCPUPressureSomeAvg60:         {ReasonCPUPSI, func(sample rawSample) Status { return classifyCPUPSI(sample.cpuPSISomeAvg60) }},
-	MetricMemoryPressureFullAvg60:      {ReasonMemoryPSI, func(sample rawSample) Status { return classifyFullPSI(sample.memoryPSIFullAvg60) }},
-	MetricInputOutputPressureFullAvg60: {ReasonIOPSI, func(sample rawSample) Status { return classifyFullPSI(sample.ioPSIFullAvg60) }},
-	MetricMemoryPressure:               {ReasonMemory, func(sample rawSample) Status { return classifyMemoryPressure(sample.memoryPressure) }},
-}
-
-func classifyOverall(sample rawSample, policy policy) evaluation {
-	result := evaluation{status: StatusNormal, phase: PhaseSteady}
-	missing := false
-	for _, metric := range policy.required {
-		classifier := requiredClassifiers[metric]
-		switch classifier.classify(sample) {
-		case StatusHot:
-			result.status = StatusHot
-			result.reasons = append(result.reasons, classifier.reason)
-		case StatusWarm:
-			if result.status != StatusHot {
-				result.status = StatusWarm
-			}
-			result.reasons = append(result.reasons, classifier.reason)
-		case StatusUnknown:
-			missing = true
-		case StatusNormal:
+func (evaluator *evaluator) observe(level Level, reasons []Reason, at time.Time) (Level, Phase, []Reason) {
+	switch {
+	case level == unknown:
+		evaluator.steppingSince = time.Time{}
+		return level, steady, reasons
+	case evaluator.held == "" || rank[level] >= rank[evaluator.held]:
+		evaluator.held, evaluator.heldReasons, evaluator.steppingSince = level, reasons, time.Time{}
+		return level, steady, reasons
+	case evaluator.steppingSince.IsZero():
+		evaluator.steppingSince = at
+	case at.Sub(evaluator.steppingSince) >= time.Minute:
+		evaluator.held, evaluator.steppingSince = below[evaluator.held], time.Time{}
+		// a step onto the sampled level takes its reasons, which are none at Normal;
+		// a step above it keeps the reasons it held
+		if evaluator.held == level {
+			evaluator.heldReasons = reasons
 		}
 	}
-	if missing {
-		result.status = StatusUnknown
+	phase := steady
+	if rank[evaluator.held] > rank[level] {
+		phase = recovering
 	}
-	return result
-}
-
-func memoryPressureSignal(value memoryPressureMetric) MemoryPressureSignal {
-	if !value.known {
-		return MemoryPressureSignal{}
-	}
-	return MemoryPressureSignal{Status: SignalStatus(classifyMemoryPressure(value)), value: value.value, known: true}
-}
-
-func classifyMemoryPressure(value memoryPressureMetric) Status {
-	if !value.known {
-		return StatusUnknown
-	}
-	switch value.value {
-	case MemoryPressureNormal:
-		return StatusNormal
-	case MemoryPressureWarning:
-		return StatusWarm
-	case MemoryPressureCritical:
-		return StatusHot
-	default:
-		panic("invalid memory pressure") // justify-defect: the closed collector value escaped its exhaustive boundary.
-	}
-}
-
-func signal(value metric, classify func(metric) Status) Signal {
-	if !value.known {
-		return Signal{}
-	}
-	return Signal{Status: SignalStatus(classify(value)), value: value.value, known: true}
-}
-
-func informationalSignal(value metric) Signal {
-	if !value.known {
-		return Signal{}
-	}
-	return Signal{Status: SignalStatusInformational, value: value.value, known: true}
-}
-
-func classifyMemory(value metric) Status {
-	return classifyLower(value, memoryWarmPercent, memoryHotPercent)
-}
-
-func classifyDisk(value metric) Status {
-	return classifyLower(value, diskWarmPercent, diskHotPercent)
-}
-
-func classifyLoad(value metric) Status {
-	return classifyHigher(value, loadWarm, loadHot)
-}
-
-func classifyCPUPSI(value metric) Status {
-	return classifyHigher(value, cpuPSIWarmPercent, cpuPSIHotPercent)
-}
-
-func classifyFullPSI(value metric) Status {
-	return classifyHigher(value, fullPSIWarmPercent, fullPSIHotPercent)
-}
-
-func classifyLower(value metric, warm, hot float64) Status {
-	if !value.known {
-		return StatusUnknown
-	}
-	if value.value <= hot {
-		return StatusHot
-	}
-	if value.value <= warm {
-		return StatusWarm
-	}
-	return StatusNormal
-}
-
-func classifyHigher(value metric, warm, hot float64) Status {
-	if !value.known {
-		return StatusUnknown
-	}
-	if value.value >= hot {
-		return StatusHot
-	}
-	if value.value >= warm {
-		return StatusWarm
-	}
-	return StatusNormal
-}
-
-func severity(status Status) int {
-	switch status {
-	case StatusNormal:
-		return 0
-	case StatusWarm:
-		return 1
-	case StatusHot:
-		return 2
-	case StatusUnknown:
-		panic("UNKNOWN has no pressure severity")
-	default:
-		panic("invalid pressure status")
-	}
-}
-
-func statusForSeverity(value int) Status {
-	switch value {
-	case 0:
-		return StatusNormal
-	case 1:
-		return StatusWarm
-	case 2:
-		return StatusHot
-	default:
-		panic("invalid pressure severity")
-	}
-}
-
-func cloneReasons(reasons []Reason) []Reason {
-	if len(reasons) == 0 {
-		return nil
-	}
-	cloned := make([]Reason, len(reasons))
-	copy(cloned, reasons)
-	return cloned
-}
-
-func cloneSample(sample Sample) Sample {
-	sample.Reasons = cloneReasons(sample.Reasons)
-	return sample
+	return evaluator.held, phase, evaluator.heldReasons
 }

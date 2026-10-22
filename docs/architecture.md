@@ -688,7 +688,7 @@ history item is `current`.
   retry on the existing tick; source/admission contradictions and possible
   reconstruction effects remain blocked. transition-only diagnostics carry no
   authority. manual repair remains outside skid.
-- `internal/platform` is the closed `Linux | Darwin` native adapter.
+- only Linux and Darwin build; the gateway reports `platform` from `runtime.GOOS`.
   `internal/hostconfig` strictly decodes the one human yaml; `internal/fleet`
   owns accepted settings, per-host application, identity and membership, with no
   authority transfer. join, recover and a failed state write restart the service
