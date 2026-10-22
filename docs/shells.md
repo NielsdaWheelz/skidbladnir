@@ -29,8 +29,8 @@ historical pr 2 evidence uses its original `t` binding and proves no pr 3 layout
 [architecture.md](architecture.md) owns scope; [roadmap.md](roadmap.md) owns
 delivery; this document owns the contracts below. read [AGENTS.md](../AGENTS.md),
 [agent-control.md](agent-control.md), [agent-control-ux.md](agent-control-ux.md),
-[design-language.md](design-language.md), and [rules/index.md](rules/index.md).
-the requested testing standards live at [rules/testing.md](rules/testing.md).
+[design-language.md](design-language.md), and [rules.md](rules.md).
+the requested testing standards live at [rules.md](rules.md#testing).
 
 ## 1. outcome and limits
 

@@ -179,7 +179,7 @@ conditional cwd policy and duplicated height arithmetic; keep no parallel path.
 
 ## red green refactor and acceptance
 
-follow [testing policy](rules/testing.md). root authors the two disposable
+follow [testing policy](rules.md#testing). root authors the two disposable
 probes; designers freeze output
 requirements, verifier challenges oracles and boundary coverage before execution.
 

@@ -77,13 +77,13 @@ recorded there.
 layout, group-heading policy and vertical spacing; source is implemented and
 [qualification](dashboard-compact-roster.md#verification) records its evidence.
 readable facts may grow cards; recognition uses crest plus names.
-[design language](design-language.md) owns visual values; [codebase rules](rules/index.md)
-own implementation conventions. a platform fact that contradicts a premise
-reopens the responsible contract.
+[design language](design-language.md) owns visual values; [codebase rules](rules.md)
+own implementation conventions and trust boundaries. a platform fact that
+contradicts a premise reopens the responsible contract.
 
 [the roadmap](roadmap.md) indexes delivery and open acceptance.
 [the codebase map](codebase-map.md) locates implementation owners.
-[testing policy](rules/testing.md) supersedes retired test recipes in older
+[testing policy](rules.md#testing) supersedes retired test recipes in older
 feature plans; those recipes do not recreate removed gates.
 
 [automatic session names and public handles](automatic-session-names.md) owns
@@ -785,8 +785,13 @@ agent-control errors retain their own spec. session and v0 mappings:
 Malformed, oversized, auth, and machine-binding failures are distinguished;
 expected Start and Kill failures retain their domain codes. A missing required
 supported pressure input is modeled as `UNKNOWN`; only unmodeled defects become
-the content-free `InternalError`. DTOs are a strict hard cut: unknown keys or
-enum values are defects, with no protocol branch or compatibility state.
+the content-free `InternalError`. The gateway decodes request bodies strictly.
+Clients decode responses tolerantly, ignoring keys they do not read; an undecodable
+response is a lost response, so observations show that machine unavailable and a
+possibly dispatched mutation is `unknown`, never a defect or crash. There is no
+protocol branch or compatibility state; [rules](rules.md#trust-boundaries) own decode
+policy. Today `internal/fleetclient` and android `productJson` still decode strictly
+and treat a mismatch as a defect; their cleanup slices convert them.
 
 - WSS: text frames `Hello | Presence | Resize | Detach | Error`; Presence
   contains kind and attached-client count. strict Hello also requires the final
@@ -1226,7 +1231,7 @@ scope and acceptance-criterion change; removing old code does not authorize it.
 
 ## 9. Verification
 
-[testing policy](rules/testing.md) owns the temporary-test cleanup workflow and
+[testing policy](rules.md#testing) owns the temporary-test cleanup workflow and
 retained engineering commands. `scripts/check verify` runs static checks and
 builds, with no behavioral tests or live tmux/provider/device boundary.
 release integrity is separate from behavioral acceptance.

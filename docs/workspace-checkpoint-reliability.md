@@ -133,7 +133,7 @@ classification belongs where evidence exists:
   `ErrProcessNotPermitted` means unavailable: it also covers an unlinked executable
   and does not preserve an errno.
 - unexpected internal failures and impossible constructed facts remain defects
-  under [errors](rules/errors.md), never synthetic retryable observations.
+  under [errors](rules.md#errors-and-panics), never synthetic retryable observations.
 
 preserve narrow private distinctions at their detectors: `topology_changed`,
 `source_changed`, `unsupported`, `protocol_invalid`, `limit`. map topology churn

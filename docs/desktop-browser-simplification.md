@@ -167,7 +167,7 @@ cross-feature machinery.
 
 this section records the simplification cutover. current row geometry and its
 acceptance belong to [single-line rows](desktop-single-line-rows.md#acceptance-and-evidence).
-follow [testing policy](rules/testing.md). root writes two disposable probes;
+follow [testing policy](rules.md#testing). root writes two disposable probes;
 the verifier reviews their sensitivity before any production edit. exercise
 actual decoding, `Update`/`View` and the live composition below, not a replica.
 

@@ -16,7 +16,7 @@ release-bound platform gate are green. Hands-on acceptance remains `NOT_RUN`.
 [`roadmap.md`](roadmap.md) owns delivery order;
 [`dashboard-pull-to-refresh.md`](dashboard-pull-to-refresh.md) owns the existing
 inventory intent. This document owns only collection spacing and refresh
-presentation. Testing follows [`rules/testing.md`](rules/testing.md); no
+presentation. Testing follows [`rules.md`](rules.md#testing); no
 duplicate `testing-standards.md` exists or is added.
 
 ## Outcome
@@ -96,7 +96,7 @@ or test-only production seam for this single consumer.
 ## historical original hard cut and cleanup
 
 the following cleanup, ownership and proof recipe record the 2026-08-28 change.
-they are not a new assignment or retained suite; [testing policy](rules/testing.md)
+they are not a new assignment or retained suite; [testing policy](rules.md#testing)
 governs current verification. the selected-machine pressure proof below is
 historical; session views supersedes that placement.
 

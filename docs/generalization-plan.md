@@ -340,7 +340,7 @@ terminal windows retain optional integer `fiveHourUsedPercent`/
 retain claude grammar; add codex quota only from complete, anchored supported
 statusline fields with proven window/used-versus-remaining semantics. no clipped
 salvage or context-percentage guessing. qualify authored frames through the
-existing [frame corpus](rules/testing.md), not a new parser harness.
+existing [frame corpus](rules.md#testing), not a new parser harness.
 document working provider statusline recipes and a quiet optional hint; never
 overwrite provider settings or label a hidden footer “misconfigured”.
 
@@ -631,7 +631,7 @@ per slice: refresh callers → independent design/content review → disposable
 end-to-end RED → implement GREEN → review code/probe sensitivity → refactor →
 rerun affected proof → delete temporary tests before commit. preserved behavior
 uses passing baseline comparisons. retain engineering checks/provider corpus
-under the [testing policy](rules/testing.md).
+under the [testing policy](rules.md#testing).
 
 | journey | required evidence; rejects |
 | --- | --- |

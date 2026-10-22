@@ -269,7 +269,7 @@ the behavioral evidence; historical results qualify only their recorded sources.
 root serializes integration. writers use disjoint assigned paths; a verifier
 writes neither production nor tests. do not build a cross-language state-machine
 framework, contract generator, retained test harness or production test seam.
-[testing policy](rules/testing.md) governs temporary behavioral tests and their
+[testing policy](rules.md#testing) governs temporary behavioral tests and their
 removal before commit. demonstrate representative old-source failures before
 implementing; then verify the changed behavior at its actual owner/boundary.
 run `scripts/check verify` for engineering checks after implementation. classifier

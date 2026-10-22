@@ -554,12 +554,12 @@ write a small temporary check at each actual boundary. observe failure against t
 relevant baseline/current defect BEFORE changing source. existing simulated probes
 are diagnostics, not retrospective live red/green. baseline comparison uses an
 isolated checkout/socket and synthetic content. after green, refactor for the
-existing [rules](rules/index.md), adversarially review, rerun affected checks, then
+existing [rules](rules.md), adversarially review, rerun affected checks, then
 delete temporary checks before commit. retain content-free boundary/status/count/
 artifact evidence, never prompts, terminal bytes, account data or credentials.
 a missing device/boundary is `NOT_RUN`.
 
-[testing policy](rules/testing.md) owns verification. tmux/integration/live and
+[testing policy](rules.md#testing) owns verification. tmux/integration/live and
 phone/adb need explicit current-turn approval. engineering checks do not prove
 behavior. the owner's current implementation request explicitly includes
 integration/live checks; phone/adb work is outside this change.

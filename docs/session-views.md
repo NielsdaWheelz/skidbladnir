@@ -319,7 +319,7 @@ ownership boundaries, not requirements for new modules or separate agents.
    plus affected design-language, refresh, creation and codebase-map references
    with the implemented state. preserve independent group-entry/card/chrome work.
    exercise the acceptance below, remove temporary checks under
-   [testing policy](rules/testing.md), run `scripts/check verify`, and update the
+   [testing policy](rules.md#testing), run `scripts/check verify`, and update the
    issue/status with actual source-attributed results. release, installation and
    deployment are outside this plan.
 

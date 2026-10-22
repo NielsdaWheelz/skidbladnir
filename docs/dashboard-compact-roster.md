@@ -163,7 +163,7 @@ branch. preserve runtime missing-anchor handling; it is not a legacy reader.
 
 ## temporary red green refactor and acceptance
 
-follow [testing policy](rules/testing.md) and chrome's disposable instrumentation
+follow [testing policy](rules.md#testing) and chrome's disposable instrumentation
 setup, without retaining its probes or recreating retired gates. three focused
 probes cover geometry/grouping, overflow/content/semantics, and interaction/
 continuity. use production theme and typed dummy inventory. call the existing

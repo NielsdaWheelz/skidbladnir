@@ -159,7 +159,7 @@ separate files or agents.
    replace the unfiltered dropdown with the bounded searchable disclosure.
    preserve the public callbacks and controller-owned drafts where possible.
 4. **verify and close.** exercise the acceptance below, remove temporary checks
-   under [testing policy](rules/testing.md), run `scripts/check verify`, and update
+   under [testing policy](rules.md#testing), run `scripts/check verify`, and update
    delivery status with actual evidence. runtime checks remain separate from
    engineering checks. temporary device test installation is part of approved
    qualification; release and production deployment are outside this scope.

@@ -363,7 +363,7 @@ owner/stream/model in a local container; the isolated physical-phone app with
 scripted TLS/WSS peers, actual WebView output, fresh process restoration and
 storage failures. those boundaries do not establish installed-fleet deployment,
 cloud-provider behavior or unrelated naming/control acceptance. tests are removed
-under [testing policy](rules/testing.md).
+under [testing policy](rules.md#testing).
 
 [terminal control](terminal-agent-control.md) replaces ordinary native-first
 observation/control with exact terminal operations. explicit native targets stay
@@ -499,7 +499,7 @@ original launch policy.
   generic later release-suite result.
 - [behavioral coverage](issues/test-system-reset.md): temporary change-specific
   tests are removed before commit. no retained suite protects the important
-  behavior automatically. [testing policy](rules/testing.md) owns the workflow;
+  behavior automatically. [testing policy](rules.md#testing) owns the workflow;
   `scripts/check verify` runs engineering checks and builds only.
 - [terminal continuity](terminal-continuity.md): `v0.10.3` is published and
   deployed on the three hosts. isolated mac zsh/bash, ssh/mosh, and the named

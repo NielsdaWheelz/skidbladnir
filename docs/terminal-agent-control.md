@@ -409,7 +409,7 @@ issue resolutions at cutover. do not mark issues resolved from this plan alone.
 
 ## 8. temporary red/green/refactor acceptance
 
-follow [testing policy](rules/testing.md). write focused end-to-end tests through
+follow [testing policy](rules.md#testing). write focused end-to-end tests through
 real clients/gateway/isolated tmux and actual supported provider tuis. demonstrate
 the intended failures on the original implementation, implement green, challenge
 test sensitivity, refactor at the responsible layer, rerun affected cases, then

@@ -351,7 +351,7 @@ exports/manifests.
 
 ## Acceptance: 80/20
 
-Follow [Testing Standards](rules/testing.md), especially real-runtime tiers,
+Follow [Testing Standards](rules.md#testing), especially real-runtime tiers,
 external-only mocking and outcome assertions, plus [architecture §9](architecture.md#9-verification).
 One proof owner per boundary; do not duplicate each failure case at every tier.
 An external-protocol fixture cannot qualify actual Codex/TUI concurrency.

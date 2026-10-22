@@ -14,7 +14,7 @@ behind the literal label `Dwarves`; [`design-language.md`](design-language.md)
 [`ornament-pipeline.md`](ornament-pipeline.md) owns the build-time pipeline
 this delta corrects; [`roadmap.md`](roadmap.md) owns delivery order. This
 document owns the mark's legibility contract and its placement. Testing
-standard is [`rules/testing.md`](rules/testing.md).
+standard is [`rules.md`](rules.md#testing).
 
 Numbered D8 because the forge seal claims D5, destructive chrome claims D6,
 and the launcher mark claims D7; those three are specified on their own

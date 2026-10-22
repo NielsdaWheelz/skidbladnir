@@ -4,7 +4,7 @@
 `codex/session-latency` in an isolated worktree.
 [qualification](session-latency-qualification.md) records evidence and limits.
 this cutover follows the [architecture](architecture.md),
-[rules](rules/index.md) and [temporary-test policy](rules/testing.md). v4 reset
+[rules](rules.md) and [temporary-test policy](rules.md#testing). v4 reset
 identity and bounded isolated-tmux/real-phone acceptance are explicitly approved;
 [v0.18.0 installed qualification](v0.18.0-installed-qualification.md) separately
 records the coordinated rollout and its unperformed production-entry boundary.

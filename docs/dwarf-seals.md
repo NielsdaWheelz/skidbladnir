@@ -10,7 +10,7 @@ trait derivation and deterministic geometry remain owned here.
 2026-09-17: the copied python seal formula and static collision check are retired.
 `scripts/check-catalogue` validates catalogue data and source inventory only.
 rendering requirements remain; the proof plan below is historical under the
-[test retirement](rules/testing.md).
+[test retirement](rules.md#testing).
 
 Status: implemented 2026-08-26; golden-vector and catalogue-distinctness
 gates green; the 33-test instrumented suite green on the physical S22+
@@ -170,7 +170,7 @@ the historical 48dp crest-only hands-on check was not performed. it is supersede
 by [compact roster](dashboard-compact-roster.md)'s recognition and scaling
 acceptance. the existing debug gallery shares the production renderer; no
 separate 48dp acceptance path remains in the target. current verification uses
-[testing policy](rules/testing.md), not the retired platform gate.
+[testing policy](rules.md#testing), not the retired platform gate.
 
 ## Non-goals
 

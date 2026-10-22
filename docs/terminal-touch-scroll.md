@@ -16,7 +16,7 @@ S22+ red, focused green, complete `38`-owner candidate matrix, and routine
 verification recorded; selection-copy owns that joined-source evidence.
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the closed
-implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md).
+implementation boundary. Testing follows [`rules.md`](rules.md#testing).
 The accepted
 [`terminal-selection-copy.md`](terminal-selection-copy.md) target supersedes
 this document's direct-touch PointerEvent, capture, compatibility-tail, and tap

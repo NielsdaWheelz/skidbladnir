@@ -5,8 +5,8 @@ installed owner readability review remains `NOT_RUN`. this spec owns row geometr
 rules in [desktop browser](desktop-browser.md), [browser simplification](desktop-browser-simplification.md),
 [session rows](desktop-session-rows.md) and [design language §19](design-language.md#19-terminal-browser).
 their other behavior and source-attributed qualification remain independent.
-[architecture](architecture.md), [rules](rules/index.md) and
-[testing policy](rules/testing.md) govern implementation. no product question remains open.
+[architecture](architecture.md), [rules](rules.md) and
+[testing policy](rules.md#testing) govern implementation. no product question remains open.
 planning and implementation content/layout/adversarial reviews pass.
 [source qualification](#source-qualification) records the exercised boundaries.
 

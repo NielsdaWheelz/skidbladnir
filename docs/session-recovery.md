@@ -294,7 +294,7 @@ this historical matrix belongs to the 2026-10-07 source, including its original
 blanket failure policy. [new acceptance](workspace-checkpoint-reliability.md#red-green-refactor-acceptance)
 supersedes the affected rows; [current evidence](workspace-checkpoint-reliability.md#qualification)
 records their new boundaries. qualification below records only the original source.
-temporary tests follow [testing policy](rules/testing.md). tmux/live/device use
+temporary tests follow [testing policy](rules.md#testing). tmux/live/device use
 requires explicit current-turn approval; every destructive tmux test uses only
 its own isolated `-L` socket and temporary checkpoint/lock paths injected through
 ordinary constructor config. no test uses the real checkpoint. reboot tests use

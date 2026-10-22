@@ -57,5 +57,5 @@ the quota helper consumes one closed bounded request and has no conversation
 dispatch. it uses existing already-running codex sockets without starting,
 restarting or updating providers. no prompt, output or credential enters logs.
 provider-runtime's independently published cognitive/archive APIs remain outside
-skid. [testing policy](rules/testing.md) owns disposable acceptance tests; matching
+skid. [testing policy](rules.md#testing) owns disposable acceptance tests; matching
 host/client/worker schemas cut over together without a compatibility reader.

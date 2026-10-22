@@ -11,8 +11,8 @@ has its own contract. dwarf assignment remains independent of
 provider status. older gateway-owned product ordering and status-era names
 below are historical.
 
-Normative rules: [`rules/index.md`](rules/index.md), especially
-[`rules/testing.md`](rules/testing.md). Architecture guardrails remain binding.
+Normative rules: [`rules.md`](rules.md), especially
+[its testing section](rules.md#testing). Architecture guardrails remain binding.
 
 ## Goal
 

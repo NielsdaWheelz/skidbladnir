@@ -25,7 +25,7 @@ the separate launch-boundary matrix covered bash 3.2/5.3 and zsh 5.9 with
 `errexit` enabled at callback invocation, including redirected stderr.
 after rebasing, the startup guard, installer, terminal admission and command
 status were checked again against current main.
-temporary fixtures are removed under the [testing policy](../rules/testing.md).
+temporary fixtures are removed under the [testing policy](../rules.md#testing).
 
 tradeoffs: new skid startup actions lose the early preview. the theme can discard
 its shared cache after a skipped preamble; later ordinary shells may need to

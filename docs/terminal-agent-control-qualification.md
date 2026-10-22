@@ -59,7 +59,7 @@ conversation dependency is retired; the [merged phone composition](issues/reply-
 remains explicitly skipped/`NOT_RUN`. that waiver supplies no physical proof.
 all 17 temporary go tests and the android verification fixtures were removed
 before commit, forfeiting automatic regression
-coverage as required by [testing policy](rules/testing.md).
+coverage as required by [testing policy](rules.md#testing).
 
 ## release composition
 

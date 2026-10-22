@@ -12,8 +12,8 @@ codex hook registration is ignored. native codex targeting uses an explicitly
 recorded conversation id under [native interaction](native-agent-observation.md),
 independent of the foreground tui.
 
-Normative rules: [`rules/index.md`](rules/index.md), especially
-[`rules/testing.md`](rules/testing.md).
+Normative rules: [`rules.md`](rules.md), especially
+[its testing section](rules.md#testing).
 
 ## Outcome
 
@@ -188,7 +188,7 @@ there. desktop details may show the accepted provider-session facts.
 9. Logs and evidence contain no provider input, identifiers, argv, environment
    values, prompts, objectives, terminal bytes, credentials, or account data.
 
-[testing policy](rules/testing.md) owns current verification. required external
+[testing policy](rules.md#testing) owns current verification. required external
 boundaries need their applicable approval and evidence; unexecuted checks are
 `NOT_RUN`, never passes. identity evidence alone proves no status or control behavior.
 

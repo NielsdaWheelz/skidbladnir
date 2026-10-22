@@ -28,8 +28,8 @@ the exact public release restored. The hands-on sample remains `NOT_RUN`.
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns the Android
 state model, delivery boundary, and red/green/refactor shape. All implementation
-follows [`rules/index.md`](rules/index.md), with tests governed by
-[`rules/testing.md`](rules/testing.md); no parallel `testing-standards.md` exists
+follows [`rules.md`](rules.md), with tests governed by
+[its testing section](rules.md#testing); no parallel `testing-standards.md` exists
 or is added.
 
 ## Outcome

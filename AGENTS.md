@@ -1,9 +1,8 @@
 # Implementation guidance
 
 Before changing this repository, read [the architecture](docs/architecture.md),
-[the roadmap](docs/roadmap.md), and
-[the codebase rules](docs/rules/index.md). tmux owns terminal sessions and pane
-processes; providers own execution and history.
+[the roadmap](docs/roadmap.md), and [the codebase rules](docs/rules.md). tmux owns
+terminal sessions and pane processes; providers own execution and history.
 the phone and desktop are tmux clients. read [agent control](docs/agent-control.md)
 for terminal observation and explicit controls; [terminal-only control](docs/terminal-only-control.md)
 owns the current capability boundary. native account quota is read-only and
@@ -18,11 +17,9 @@ as terminal-local presentation; it stores no state and has no privileged product
 meaning. architecture §8 governs further upgrades: a new capability requires an
 explicit scope and acceptance-criterion change.
 
-2026-09-17 test retirement: behavioral suites and their harnesses are removed.
-`scripts/check verify` retains engineering checks only. cleanup uses temporary
-integration/live tests removed before commit; do not recreate the retired gates
-or treat engineering checks as behavioral acceptance. [testing status](docs/rules/testing.md)
-supersedes earlier test-tier, mandatory red/green, and gate instructions.
+behavioral tests are retired. [testing](docs/rules.md#testing) owns verification and
+supersedes earlier test-tier, mandatory red/green, and gate instructions; do not
+recreate the retired gates or treat engineering checks as behavioral acceptance.
 
 Unconditional guardrails, regardless of assignment:
 
@@ -35,10 +32,10 @@ Unconditional guardrails, regardless of assignment:
   never a pass.
 - Never kill, resize, or retarget a tmux session/pane other than the exact
   one your test created on an isolated `-L` socket.
-- Never invoke tmux or run the `integration`/`live` gates without explicit
+- Never invoke tmux or run integration/live tests without explicit
   user approval in the current turn. An opt-in environment variable, a prior
   approval, or a composite test command is not approval.
-- Never run the `platform` gate or use ADB against the user's phone without
+- Never run device tests or use ADB against the user's phone without
   explicit user approval in the current turn.
 - Logs and evidence stay credential-free and content-free: no terminal bytes,
   prompts, objectives, tokens, or account data.

@@ -29,7 +29,7 @@ are green, with the exact public APK restored. The physical product gate failed
 and remains unclaimed.
 [`architecture.md`](architecture.md) owns the product delta and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the
-implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md);
+implementation boundary. Testing follows [`rules.md`](rules.md#testing);
 there is no separate `testing-standards.md`.
 
 ## Outcome and scope

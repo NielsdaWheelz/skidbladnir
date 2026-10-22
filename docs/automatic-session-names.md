@@ -14,7 +14,7 @@ amendment: skid never names provider conversations; codex starts a normal new
 remote conversation and remains unassociated. manual association is removed;
 existing bindings and direct native commands remain available. physical
 phone acceptance passed on the separately approved physical device.
-[testing policy](rules/testing.md) governs temporary tests and their deletion.
+[testing policy](rules.md#testing) governs temporary tests and their deletion.
 
 ## outcome and scope
 

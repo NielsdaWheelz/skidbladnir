@@ -153,7 +153,7 @@ historical evidence stays historical. do not edit unrelated issue records.
 
 ## red, green, refactor and acceptance
 
-follow [testing policy](rules/testing.md). there is no retained android runner;
+follow [testing policy](rules.md#testing). there is no retained android runner;
 temporary instrumentation dependencies/configuration are permitted only for
 this proof and must be deleted. no revived gate, general harness, source-text
 acceptance test, production test tag, health setter or transport seam.

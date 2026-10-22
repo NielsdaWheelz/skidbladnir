@@ -15,7 +15,7 @@ human-eye check and no gate substitutes for it.
 every value here; [`roadmap.md`](roadmap.md) owns delivery order;
 [`ornament-pipeline.md`](ornament-pipeline.md) owns the build-time pipeline
 this delta extends. This document owns the launcher identity. Testing standard
-is [`rules/testing.md`](rules/testing.md).
+is [`rules.md`](rules.md#testing).
 
 Numbered D7 because [`forge-seal.md`](forge-seal.md) claims D5 and
 [`destructive-chrome.md`](destructive-chrome.md) claims D6. Both landed
@@ -343,7 +343,7 @@ and "App icon"); roadmap (D7 entry and status row).
 
 ## Red / green / refactor
 
-the historical proof plan below predates [test retirement](rules/testing.md).
+the historical proof plan below predates [test retirement](rules.md#testing).
 the retained `scripts/gen-ornament --check` generates once and checks drift;
 it does not repeat generation as a determinism test.
 
@@ -379,7 +379,7 @@ it does not repeat generation as a determinism test.
 
 **Deliberately unproven (80/20).** No test asserts the mark reads as a ship —
 that is the hands-on pass. No per-path pixel test and no test of the
-background facet; both would assert styling, which rules/cleanliness forbids.
+background facet; both would assert styling, which rules.md forbids.
 No unit test of `_vector`: every run of the generator that clears both
 invariants exercises it, and the drift gate byte-compares its output.
 

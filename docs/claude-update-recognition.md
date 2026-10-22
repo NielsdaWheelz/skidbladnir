@@ -113,12 +113,12 @@ production edits are assigned.
    reproduce the original bug through real tmux/gateway/native process boundaries
    before editing production. baseline-compatible probes must fail behaviorally,
    not merely fail to compile or reject a new schema. reviewer checks sensitivity.
-2. implement, make the same probes green, then refactor under [codebase rules](rules/index.md).
+2. implement, make the same probes green, then refactor under [codebase rules](rules.md).
    use direct temporary probes for pure schema/matching cases and real stock
    claude on darwin/linux for runtime claims. no process mocks as live evidence.
    verify quota/footer via ordinary inventory, not status-only `info --explain`.
 3. review code, output and evidence; delete temporary probes under
-   [testing policy](rules/testing.md), then run `scripts/check verify host`.
+   [testing policy](rules.md#testing), then run `scripts/check verify host`.
    record source/platform/provider identities and case outcomes, without terminal
    bytes, prompts, conversation ids or account data. `NOT_RUN` is never a pass.
 4. publish/activate the matching binary/config generation through the existing

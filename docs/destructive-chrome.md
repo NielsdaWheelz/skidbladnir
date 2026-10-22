@@ -28,7 +28,7 @@ including product language and the visibly-distinct detach/kill guarantee;
 [`design-language.md`](design-language.md) owns the visual values (§5 color,
 §6 shape, §12 motion, §15 the forbidden list); this document owns the
 severity model, the shared chrome primitives, and the delivery plan. Testing
-standard is [`rules/testing.md`](rules/testing.md).
+standard is [`rules.md`](rules.md#testing).
 
 Numbered D6 because a Forge-seal delta already claims D5 in flight on its own
 branch (its spec is not a file here, so it is named rather than linked).
@@ -163,10 +163,10 @@ internal fun killConfirmationTitle(label, target) = killActionLabel(...) + "?"
   // Surface: tone color at 12% fill, 1dp tone hairline, NidavellirShapes.Card,
   // 12dp padding. `title` (when present) is Bone titleSmall/SemiBold; `body`
   // is bodyMedium in the tone color. Both optional params have a real
-  // consumer today (rules/simplicity).
+  // consumer today (rules.md).
   // NO `modifier` param, deliberately: all three consumers applied the same
   // fillMaxWidth().padding(horizontal 16, vertical 4), so the panel owns that
-  // geometry — it was the duplication being removed — and rules/simplicity
+  // geometry — it was the duplication being removed — and rules.md
   // forbids a parameter no call site varies. EmptyState and
   // UnreadableMachineStrip already set that precedent in this codebase.
 
@@ -218,7 +218,7 @@ and edited by this delta.
 `supporting: MachineNotice?` — a message without a tone and a tone without
 a message are both illegal states and stop being representable. Its default
 (`= Ember`) is deleted: production always passed it explicitly and the
-default existed only for a test call site (rules/simplicity).
+default existed only for a test call site (rules.md).
 `inventoryStale` also loses its test-only default. The three modifier
 params keep theirs per Compose convention.
 

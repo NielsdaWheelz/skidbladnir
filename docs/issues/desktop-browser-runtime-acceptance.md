@@ -141,7 +141,7 @@ its own source, not that historical delivery.
 
 with current-turn approval, use a temporary real browser → pty → gateway →
 isolated tmux journey under
-[testing policy](../rules/testing.md). prove exact creation/attachment, retained
+[testing policy](../rules.md#testing). prove exact creation/attachment, retained
 filters and selection, the first navigation key after detach, escape after
 `ctrl-] d` staying in skid, `ctrl-c` quitting, source survival, and no creation
 replay after a lost reply. record content-free results in the change; delete

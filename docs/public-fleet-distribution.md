@@ -15,8 +15,8 @@ convergence/doctor evidence does not prove this boundary.
 [roadmap.md](roadmap.md) owns delivery order; this document owns the slice's
 detailed capability and work split.
 
-Normative code and proof rules remain [docs/rules](rules/index.md), especially
-[testing.md](rules/testing.md). Do not create a second testing standard.
+Normative code and proof rules remain [docs/rules.md](rules.md), especially
+[testing](rules.md#testing). Do not create a second testing standard.
 
 2026-09-17 operator simplification: installation and qr pairing are independent
 commands. `scripts/install-android <apk>` performs a noninteractive, data-preserving
@@ -153,7 +153,7 @@ sha, and all five downloaded-asset digests with this repository's
 `release-pin.json` as data; json whitespace and release-note prose are not
 identity. hosted verification is looked up by source sha, not parsed from notes.
 host binary reproduction is an optional `scripts/check-release --reproduce`
-audit under the [current verification policy](rules/testing.md). ordinary checks
+audit under the [current verification policy](rules.md#testing). ordinary checks
 verify declared identity and integrity, not independent source-to-binary
 equivalence. `scripts/release TAG` builds once, checks artifacts, and creates a
 draft; the duplicate build-and-discard `scripts/check release` is removed.
@@ -451,7 +451,7 @@ Reuse and centralize:
 ## 7. Non-Overlapping Implementation Edges
 
 sections 7–8 record the original implementation and proof plan. the current
-script scope above and [testing status](rules/testing.md) supersede their retired
+script scope above and [testing status](rules.md#testing) supersede their retired
 commands and test harnesses.
 
 Every builder writes its own behavioral red, observes the intended failure,

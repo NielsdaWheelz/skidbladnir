@@ -24,8 +24,8 @@ updates the window's latest client before sizes are recalculated, and the
 `#{window-size}` format resolves the window option (falling back to the global
 window option) for the targeted session's current window.
 [Architecture](architecture.md) owns scope/acceptance; this document owns the
-closed implementation contract. Follow [Testing Standards](rules/testing.md)
-(the repository's testing-standard file) and [codebase rules](rules/index.md).
+closed implementation contract. Follow [Testing Standards](rules.md#testing)
+(the repository's testing-standard file) and [codebase rules](rules.md).
 
 ## Target and scope
 

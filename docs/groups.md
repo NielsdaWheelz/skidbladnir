@@ -24,7 +24,7 @@ contract. [agent-control.md](agent-control.md) and
 [agent-control-ux.md](agent-control-ux.md) still own provider controls, references,
 transport, and attachment. their current status and machine/name ordering rules
 supersede older activity-only descriptions. follow [../AGENTS.md](../AGENTS.md),
-[rules/index.md](rules/index.md), and [rules/testing.md](rules/testing.md).
+[rules.md](rules.md), including [testing](rules.md#testing).
 
 ## 1. outcome, scope, and final state
 
@@ -113,8 +113,7 @@ or aliasing. `alpha`, `Alpha`, and `alpha  beta` remain distinct. `all spaces`,
 human cli arguments and tui/phone drafts normalize to nfc at submission, before
 validation. invalid drafts stay editable and are not truncated. api requests,
 same-system responses, and externally written metadata accept only canonical
-nfc; their readers never normalize. typing convenience stays at human ingress,
-as [boundaries.md](rules/boundaries.md) requires.
+nfc; their readers never normalize. typing convenience stays at human ingress.
 
 nfc is pinned to unicode 15.0 in both clients; a runtime/toolchain upgrade must
 not silently change equality. code points unassigned in that version remain
@@ -572,7 +571,7 @@ permission to alter unrelated features. root owns canonical docs and any gate
 composition changes. [session views](session-views.md#implementation-plan) owns
 the collection cutover. the original groups work used host, desktop and android
 builders, with read-only cross-owner adversarial reviews; its temporary tests
-followed [testing policy](rules/testing.md).
+followed [testing policy](rules.md#testing).
 
 | paths | responsibility / reuse |
 | --- | --- |
@@ -592,8 +591,8 @@ followed [testing policy](rules/testing.md).
 | android `DashboardEntryState.kt`, `DashboardScreen.kt` | one selected view, item projection, schema-4 capsule, view strip and restoration under session views |
 | android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action (since 2026-10-02 the overflow's first row) and shared group field using existing chrome |
 | android `MainActivity.kt` | thread events only as required; retain single saved-state owner |
-| temporary boundary checks under [testing policy](rules/testing.md) | label/transport/group/filter/fence/restore behavior |
-| temporary integration/live checks under [testing policy](rules/testing.md) | authenticated host/tmux membership and phone restore/interaction boundaries |
+| temporary boundary checks under [testing policy](rules.md#testing) | label/transport/group/filter/fence/restore behavior |
+| temporary integration/live checks under [testing policy](rules.md#testing) | authenticated host/tmux membership and phone restore/interaction boundaries |
 | this plan, canonical docs, directly superseded client/navigation specs | current contracts and historical evidence attribution |
 
 android production paths are relative to
@@ -622,7 +621,7 @@ required cleanup:
 
 ## 12. acceptance and bounded proof plan
 
-use temporary boundary checks under [testing policy](rules/testing.md): observe
+use temporary boundary checks under [testing policy](rules.md#testing): observe
 the intended behavioral failure before changing each owner, then pass the same
 check and remove it before commit. compile failure is not a behavioral red.
 synthetic labels may be inputs, but evidence reports case names and outcomes,
