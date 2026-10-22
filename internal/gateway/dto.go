@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"errors"
-	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -12,11 +11,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
-	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
-	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type apiError struct {
@@ -107,8 +103,8 @@ type sessionDTO struct {
 }
 
 type machineDTO struct {
-	Handle   string        `json:"handle"`
-	Platform platform.Kind `json:"platform"`
+	Handle   string `json:"handle"`
+	Platform string `json:"platform"`
 }
 
 type sessionsResponseDTO struct {
@@ -134,46 +130,6 @@ type recoveryFailureDTO struct {
 type createSessionResponseDTO struct {
 	ObservedAt string     `json:"observedAt"`
 	Session    sessionDTO `json:"session"`
-}
-
-type directoryListingRequest struct {
-	Directory string `json:"directory"`
-}
-
-type directoryListingResponseDTO struct {
-	Machine         machineDTO                      `json:"machine"`
-	Directory       string                          `json:"directory"`
-	ParentDirectory *string                         `json:"parentDirectory,omitempty"`
-	Children        []directoryListingEntryResponse `json:"children"`
-	Omitted         bool                            `json:"omitted"`
-}
-
-type directoryListingEntryResponse struct {
-	Directory string `json:"directory"`
-	Kind      string `json:"kind"`
-}
-
-func mapDirectoryListing(machine machineDTO, listing workdir.Listing) directoryListingResponseDTO {
-	children := listing.Children()
-	mappedChildren := make([]directoryListingEntryResponse, len(children))
-	for index, entry := range children {
-		mappedChildren[index] = directoryListingEntryResponse{
-			Directory: entry.Directory().String(),
-			Kind:      string(entry.Kind()),
-		}
-	}
-	var parentDirectory *string
-	if parent, present := listing.Parent().Value(); present {
-		value := parent.String()
-		parentDirectory = &value
-	}
-	return directoryListingResponseDTO{
-		Machine:         machine,
-		Directory:       listing.Directory().String(),
-		ParentDirectory: parentDirectory,
-		Children:        mappedChildren,
-		Omitted:         listing.Omissions() == workdir.Present,
-	}
 }
 
 // Request members decode null as absent. A pointer marks a member whose
@@ -237,48 +193,6 @@ func digitsAfter(value string, prefix byte) bool {
 		}
 	}
 	return true
-}
-
-type pressureResponseDTO struct {
-	Unsupported []pressure.Metric    `json:"unsupported"`
-	Current     hostSampleDTO        `json:"current"`
-	History     []pressureHistoryDTO `json:"history"`
-}
-
-type hostSampleDTO struct {
-	SampledAt string             `json:"sampledAt"`
-	Level     string             `json:"level"`
-	Phase     pressure.Phase     `json:"phase"`
-	Reasons   []string           `json:"reasons"`
-	Signals   pressureSignalsDTO `json:"signals"`
-	Missing   []pressure.Metric  `json:"missing"`
-}
-
-type pressureSignalsDTO struct {
-	CPUPercent                          *pressureSignalDTO       `json:"cpuPercent,omitempty"`
-	NormalizedLoad                      *pressureSignalDTO       `json:"normalizedLoad,omitempty"`
-	MemoryAvailablePercent              *pressureSignalDTO       `json:"memoryAvailablePercent,omitempty"`
-	SwapUsedPercent                     *pressureSignalDTO       `json:"swapUsedPercent,omitempty"`
-	DiskAvailablePercent                *pressureSignalDTO       `json:"diskAvailablePercent,omitempty"`
-	CPUPressureSomeAvg60Percent         *pressureSignalDTO       `json:"cpuPsiSomeAvg60Percent,omitempty"`
-	MemoryPressureFullAvg60Percent      *pressureSignalDTO       `json:"memoryPsiFullAvg60Percent,omitempty"`
-	InputOutputPressureFullAvg60Percent *pressureSignalDTO       `json:"ioPsiFullAvg60Percent,omitempty"`
-	MemoryPressure                      *memoryPressureSignalDTO `json:"memoryPressure,omitempty"`
-}
-
-type pressureSignalDTO struct {
-	Value float64               `json:"value"`
-	State pressure.SignalStatus `json:"state"`
-}
-
-type memoryPressureSignalDTO struct {
-	Value pressure.MemoryPressure `json:"value"`
-	State pressure.SignalStatus   `json:"state"`
-}
-
-type pressureHistoryDTO struct {
-	SampledAt string `json:"sampledAt"`
-	Level     string `json:"level"`
 }
 
 func mapProfiles(profiles []agentruntime.Profile) ([]profileDTO, error) {
@@ -443,153 +357,4 @@ func formatProjectionInstant(value time.Time) (string, error) {
 		return "", errors.New("projection instant is outside canonical RFC 3339")
 	}
 	return value.UTC().Format(time.RFC3339Nano), nil
-}
-
-func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struct{}) (hostSampleDTO, error) {
-	level, err := mapPressureLevel(sample.Status)
-	if err != nil {
-		return hostSampleDTO{}, err
-	}
-	reasons := make([]string, len(sample.Reasons))
-	for index, reason := range sample.Reasons {
-		switch reason {
-		case pressure.ReasonMemory, pressure.ReasonDisk, pressure.ReasonLoad, pressure.ReasonCPUPSI, pressure.ReasonMemoryPSI, pressure.ReasonIOPSI:
-			reasons[index] = string(reason)
-		default:
-			return hostSampleDTO{}, errors.New("invalid pressure reason")
-		}
-	}
-	mapped := hostSampleDTO{
-		SampledAt: sample.ObservedAt.Format(time.RFC3339Nano),
-		Level:     level,
-		Phase:     sample.Phase,
-		Reasons:   reasons,
-		Missing:   []pressure.Metric{},
-	}
-	switch sample.Phase {
-	case pressure.PhaseSteady, pressure.PhaseRecovering:
-	default:
-		return hostSampleDTO{}, errors.New("invalid pressure phase")
-	}
-	metrics := [...]struct {
-		metric        pressure.Metric
-		signal        pressure.Signal
-		destination   **pressureSignalDTO
-		maximum       float64
-		informational bool
-	}{
-		{pressure.MetricCPUPercent, sample.CPUPercent, &mapped.Signals.CPUPercent, 100, true},
-		{pressure.MetricLoadNormalized, sample.LoadNormalized, &mapped.Signals.NormalizedLoad, math.MaxFloat64, false},
-		{pressure.MetricMemoryAvailablePercent, sample.MemoryAvailablePercent, &mapped.Signals.MemoryAvailablePercent, 100, false},
-		{pressure.MetricSwapUsedPercent, sample.SwapUsedPercent, &mapped.Signals.SwapUsedPercent, 100, true},
-		{pressure.MetricDiskAvailablePercent, sample.DiskAvailablePercent, &mapped.Signals.DiskAvailablePercent, 100, false},
-		{pressure.MetricCPUPressureSomeAvg60, sample.CPUPressureSomeAvg60, &mapped.Signals.CPUPressureSomeAvg60Percent, 100, false},
-		{pressure.MetricMemoryPressureFullAvg60, sample.MemoryPressureFullAvg60, &mapped.Signals.MemoryPressureFullAvg60Percent, 100, false},
-		{pressure.MetricInputOutputPressureFullAvg60, sample.InputOutputPressureFullAvg60, &mapped.Signals.InputOutputPressureFullAvg60Percent, 100, false},
-	}
-	for _, metric := range metrics {
-		value, known := metric.signal.Value()
-		if _, excluded := unsupported[metric.metric]; excluded {
-			if err := partitionPressureMetric(metric.metric, known, true, &mapped.Missing); err != nil {
-				return hostSampleDTO{}, err
-			}
-			continue
-		}
-		if err := partitionPressureMetric(metric.metric, known, false, &mapped.Missing); err != nil {
-			return hostSampleDTO{}, err
-		}
-		if !known {
-			continue
-		}
-		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > metric.maximum {
-			return hostSampleDTO{}, errors.New("invalid pressure metric")
-		}
-		if !validSignalStatus(metric.signal.Status, metric.informational) {
-			return hostSampleDTO{}, errors.New("invalid pressure signal status")
-		}
-		*metric.destination = &pressureSignalDTO{Value: value, State: metric.signal.Status}
-	}
-	memoryPressure, known := sample.MemoryPressure.Value()
-	_, memoryPressureUnsupported := unsupported[pressure.MetricMemoryPressure]
-	if err := partitionPressureMetric(pressure.MetricMemoryPressure, known, memoryPressureUnsupported, &mapped.Missing); err != nil {
-		return hostSampleDTO{}, err
-	}
-	if known && !memoryPressureUnsupported {
-		switch {
-		case memoryPressure == pressure.MemoryPressureNormal && sample.MemoryPressure.Status == pressure.SignalStatusNormal,
-			memoryPressure == pressure.MemoryPressureWarning && sample.MemoryPressure.Status == pressure.SignalStatusWarm,
-			memoryPressure == pressure.MemoryPressureCritical && sample.MemoryPressure.Status == pressure.SignalStatusHot:
-		default:
-			return hostSampleDTO{}, errors.New("invalid memory pressure signal")
-		}
-		mapped.Signals.MemoryPressure = &memoryPressureSignalDTO{Value: memoryPressure, State: sample.MemoryPressure.Status}
-	}
-	sort.Slice(mapped.Missing, func(left, right int) bool {
-		return mapped.Missing[left] < mapped.Missing[right]
-	})
-	return mapped, nil
-}
-
-func mapPressureHistory(sample pressure.Sample) (pressureHistoryDTO, error) {
-	level, err := mapPressureLevel(sample.Status)
-	if err != nil {
-		return pressureHistoryDTO{}, err
-	}
-	return pressureHistoryDTO{SampledAt: sample.ObservedAt.Format(time.RFC3339Nano), Level: level}, nil
-}
-
-func mapPressureLevel(status pressure.Status) (string, error) {
-	switch status {
-	case pressure.StatusNormal, pressure.StatusWarm, pressure.StatusHot, pressure.StatusUnknown:
-		return string(status), nil
-	default:
-		return "", errors.New("invalid pressure status")
-	}
-}
-
-func validSignalStatus(status pressure.SignalStatus, informational bool) bool {
-	if informational {
-		return status == pressure.SignalStatusInformational
-	}
-	return status == pressure.SignalStatusNormal || status == pressure.SignalStatusWarm || status == pressure.SignalStatusHot
-}
-
-func partitionPressureMetric(metric pressure.Metric, observed, unsupported bool, missing *[]pressure.Metric) error {
-	if unsupported {
-		if observed {
-			return errors.New("unsupported pressure metric was observed")
-		}
-		return nil
-	}
-	if !observed {
-		*missing = append(*missing, metric)
-	}
-	return nil
-}
-
-// mapUnsupportedMetrics projects one platform's declared pressure capability
-// onto the closed wire union. internal/pressure owns the sorted, unique
-// canonical set and establishes that invariant when it constructs the policy,
-// so the gateway only has to close the enum once, when it is composed.
-func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pressure.Metric]struct{}) {
-	mapped := make([]pressure.Metric, 0, len(metrics))
-	set := make(map[pressure.Metric]struct{}, len(metrics))
-	for _, metric := range metrics {
-		switch metric {
-		case pressure.MetricCPUPercent,
-			pressure.MetricLoadNormalized,
-			pressure.MetricMemoryAvailablePercent,
-			pressure.MetricSwapUsedPercent,
-			pressure.MetricDiskAvailablePercent,
-			pressure.MetricCPUPressureSomeAvg60,
-			pressure.MetricMemoryPressureFullAvg60,
-			pressure.MetricInputOutputPressureFullAvg60,
-			pressure.MetricMemoryPressure:
-		default:
-			panic("declared pressure capability names a metric outside the closed wire union") // justify-defect: the host policy and this same-system closed schema ship together; an unknown enum value must never reach a client.
-		}
-		mapped = append(mapped, metric)
-		set[metric] = struct{}{}
-	}
-	return mapped, set
 }

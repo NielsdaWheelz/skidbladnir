@@ -290,8 +290,9 @@ remove it before command evaluation. unsupported/missing shells fail locally,
 never choose another shell silently. no provider preflight or alias interpretation.
 
 remove `PrepareLaunch` daemon startup, forced codex remote/cwd/model/effort flags,
-account env injection/deletion and replacement provider aliases. adapt
-`runtimeenv.WithoutLaunchContext`; deleting wrappers alone is insufficient.
+account env injection/deletion and replacement provider aliases. adapt the
+launch-marker filter in `cmd/skidbladnir/terminal_exec.go`; deleting wrappers
+alone is insufficient.
 observation helpers may set their own account environment, never the new shell's.
 discover claude's canonical native executable independently from command text
 without running a provider; missing executable means unavailable claude native
@@ -594,7 +595,7 @@ freeze shared contracts before dependent work.
 | slice | exclusive paths / dependencies | designer's deliverable and standard |
 | --- | --- | --- |
 | a: config/fleet authority | new `internal/fleet/`; `internal/hostconfig/`, `internal/auth/`, `internal/pairing/`, `internal/machine/`; first | default/commented yaml; field/path-specific errors; distinct accepted/applied/pending/revoked states; no secret values |
-| b: command/observation | `internal/agentruntime/`, `internal/agentcontrol/`, `internal/sessions/`, `internal/runtimeenv/`, `internal/process/`, `deployment/providers/`, `deployment/native-control/`; consumes a | exact command examples, supported statusline recipes, unknown/source diagnostics; no implied daemon launch |
+| b: command/observation | `internal/agentruntime/`, `internal/agentcontrol/`, `internal/sessions/`, `internal/process/`, `deployment/providers/`, `deployment/native-control/`; consumes a | exact command examples, supported statusline recipes, unknown/source diagnostics; no implied daemon launch |
 | c: host/desktop adapters | `internal/gateway/`, `internal/fleetclient/`, `internal/sessionui/`; consumes a/b | preserve current screens/keys/layout; add only required setup/error copy and bounded arbitrary-name rendering |
 | d: observer/mac | `internal/notifier/`, `internal/attention/`, `internal/macnotifications/`, `cmd/skid-notifications/`, `macos/`; consumes a/c | retain closed reason/health strings; apple-terminal failure counterpart and exact focus behavior |
 | e: android | `android/` including gradle/manifest/locks; consumes a/c/d/f | retain screens, channel ids and notification copy; pairing/permission/optional-push errors each identify one next action |

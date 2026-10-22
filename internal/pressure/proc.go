@@ -13,55 +13,62 @@ import (
 	"syscall"
 )
 
-func currentPolicy() policy { return linuxPolicy() }
+var platformPolicy = linuxPolicy
 
-// justify-ignore-error: every read or parse failure below deliberately leaves
-// its metric unknown — §4 models an unavailable /proc input as UNKNOWN and
-// names the missing metric on the wire (older kernels lack PSI files
-// entirely), so the error values carry nothing the sample does not already
-// express.
-func (collector *collector) collect() rawSample {
-	sample := rawSample{}
+// collect leaves a metric unobserved on any read or parse failure: the wire names
+// it in missing, and older kernels lack the PSI files entirely.
+func (collector *collector) collect() Signals {
+	signals := Signals{}
 	if contents, err := os.ReadFile("/proc/stat"); err == nil {
 		if counters, ok := parseCPUCounters(contents); ok {
-			sample.cpuPercent = collector.cpuPercent(counters)
+			collector.observeCPU(signals, counters)
 		}
 	}
 	if contents, err := os.ReadFile("/proc/loadavg"); err == nil {
 		fields := strings.Fields(string(contents))
 		if len(fields) > 0 && runtime.NumCPU() > 0 {
 			if load, parseErr := strconv.ParseFloat(fields[0], 64); parseErr == nil && load >= 0 && !math.IsInf(load, 0) {
-				sample.loadNormalized = knownMetric(load / float64(runtime.NumCPU()))
+				signals.record(normalizedLoad, load/float64(runtime.NumCPU()))
 			}
 		}
 	}
 	if contents, err := os.ReadFile("/proc/meminfo"); err == nil {
-		total, available, swapTotal, swapFree := parseMemory(contents)
-		if total.known && available.known && total.value > 0 && available.value <= total.value {
-			sample.memoryAvailablePercent = knownMetric(available.value * 100 / total.value)
+		memory := parseMemory(contents)
+		total, totalKnown := memory["MemTotal"]
+		available, availableKnown := memory["MemAvailable"]
+		if totalKnown && availableKnown && total > 0 && available <= total {
+			signals.record(memoryAvailablePercent, available*100/total)
 		}
-		if swapTotal.known && swapFree.known && swapTotal.value >= 0 && swapFree.value <= swapTotal.value {
-			if swapTotal.value == 0 {
-				sample.swapUsedPercent = knownMetric(0)
+		swapTotal, swapTotalKnown := memory["SwapTotal"]
+		swapFree, swapFreeKnown := memory["SwapFree"]
+		if swapTotalKnown && swapFreeKnown && swapFree <= swapTotal {
+			if swapTotal == 0 {
+				signals.record(swapUsedPercent, 0)
 			} else {
-				sample.swapUsedPercent = knownMetric((swapTotal.value - swapFree.value) * 100 / swapTotal.value)
+				signals.record(swapUsedPercent, (swapTotal-swapFree)*100/swapTotal)
 			}
 		}
 	}
 	var filesystem syscall.Statfs_t
 	if err := syscall.Statfs("/", &filesystem); err == nil && filesystem.Blocks > 0 && filesystem.Bavail <= filesystem.Blocks {
-		sample.diskAvailablePercent = knownMetric(float64(filesystem.Bavail) * 100 / float64(filesystem.Blocks))
+		signals.record(diskAvailablePercent, float64(filesystem.Bavail)*100/float64(filesystem.Blocks))
 	}
 	if contents, err := os.ReadFile("/proc/pressure/cpu"); err == nil {
-		sample.cpuPSISomeAvg60 = parsePSI(contents, "some")
+		if psi, known := parsePSI(contents, "some"); known {
+			signals.record(cpuPSISomeAvg60Percent, psi)
+		}
 	}
 	if contents, err := os.ReadFile("/proc/pressure/memory"); err == nil {
-		sample.memoryPSIFullAvg60 = parsePSI(contents, "full")
+		if psi, known := parsePSI(contents, "full"); known {
+			signals.record(memoryPSIFullAvg60Percent, psi)
+		}
 	}
 	if contents, err := os.ReadFile("/proc/pressure/io"); err == nil {
-		sample.ioPSIFullAvg60 = parsePSI(contents, "full")
+		if psi, known := parsePSI(contents, "full"); known {
+			signals.record(ioPSIFullAvg60Percent, psi)
+		}
 	}
-	return sample
+	return signals
 }
 
 func parseCPUCounters(contents []byte) (cpuCounters, bool) {
@@ -93,8 +100,10 @@ func parseCPUCounters(contents []byte) (cpuCounters, bool) {
 	return cpuCounters{total: total, idle: idle}, total > 0
 }
 
-func parseMemory(contents []byte) (metric, metric, metric, metric) {
-	values := map[string]metric{}
+// parseMemory returns the parsed MemTotal, MemAvailable, SwapTotal and SwapFree kB values;
+// an absent or malformed line has no entry.
+func parseMemory(contents []byte) map[string]float64 {
+	values := map[string]float64{}
 	scanner := bufio.NewScanner(bytes.NewReader(contents))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
@@ -106,14 +115,14 @@ func parseMemory(contents []byte) (metric, metric, metric, metric) {
 		case "MemTotal", "MemAvailable", "SwapTotal", "SwapFree":
 			value, err := strconv.ParseUint(fields[1], 10, 64)
 			if err == nil {
-				values[key] = knownMetric(float64(value))
+				values[key] = float64(value)
 			}
 		}
 	}
-	return values["MemTotal"], values["MemAvailable"], values["SwapTotal"], values["SwapFree"]
+	return values
 }
 
-func parsePSI(contents []byte, kind string) metric {
+func parsePSI(contents []byte, kind string) (float64, bool) {
 	scanner := bufio.NewScanner(bytes.NewReader(contents))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
@@ -127,10 +136,10 @@ func parsePSI(contents []byte, kind string) metric {
 			}
 			parsed, err := strconv.ParseFloat(value, 64)
 			if err == nil && parsed >= 0 && parsed <= 100 && !math.IsInf(parsed, 0) {
-				return knownMetric(parsed)
+				return parsed, true
 			}
-			return metric{}
+			return 0, false
 		}
 	}
-	return metric{}
+	return 0, false
 }

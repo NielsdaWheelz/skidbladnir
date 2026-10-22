@@ -435,11 +435,7 @@ func (manager *Manager) reconcileRecovery() {
 	restore := operation
 	for _, window := range recipe.Windows {
 		for _, pane := range window.Panes {
-			candidate, err := manager.workdir.ParseCandidate(pane.CWD)
-			if err != nil {
-				panic("admitted checkpoint cwd became invalid")
-			} // justify-defect: checkpoint admission already parsed every cwd.
-			if _, err := manager.workdir.ValidateStart(candidate); err != nil {
+			if err := workdir.CheckStart(pane.CWD); err != nil {
 				manager.failRecovery(recoveryOperationError(restore, RecoveryPhaseRestore, "restore_preflight", err), true)
 				return
 			}

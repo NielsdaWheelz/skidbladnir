@@ -61,14 +61,13 @@ func newSessionError(code ErrorCode, message string) *Error {
 	return &Error{Code: code, Message: message}
 }
 
-func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirectory, agentruntime.Profile, error) {
-	candidate, err := manager.workdir.ParseCandidate(input.CWD)
+func (manager *Manager) validateCreate(input CreateInput) (string, agentruntime.Profile, error) {
+	cwd, err := manager.workdir.ParseStart(input.CWD)
 	if err != nil {
-		return workdir.WorkingDirectory{}, agentruntime.Profile{}, mapWorkingDirectoryError(err)
+		return "", agentruntime.Profile{}, mapWorkingDirectoryError(err)
 	}
-	cwd, err := manager.workdir.ValidateStart(candidate)
-	if err != nil {
-		return workdir.WorkingDirectory{}, agentruntime.Profile{}, mapWorkingDirectoryError(err)
+	if err := workdir.CheckStart(cwd); err != nil {
+		return "", agentruntime.Profile{}, mapWorkingDirectoryError(err)
 	}
 	var profile agentruntime.Profile
 	switch input.Kind {
@@ -76,7 +75,7 @@ func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirect
 		var found bool
 		profile, found = manager.Profile(agentruntime.ProfileKey(input.Profile))
 		if !found {
-			return workdir.WorkingDirectory{}, agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
+			return "", agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 		}
 	case LaunchTerminal:
 		if input.Profile != "" {
@@ -87,11 +86,11 @@ func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirect
 	}
 	if input.OptionalTmuxName != "" {
 		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
-			return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
+			return "", agentruntime.Profile{}, err
 		}
 	}
 	if err := validateObjective(input.Objective); err != nil {
-		return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
+		return "", agentruntime.Profile{}, err
 	}
 
 	return cwd, profile, nil

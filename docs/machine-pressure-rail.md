@@ -199,7 +199,7 @@ Ownership is fixed:
 | Boundary | Owner | Contract |
 | --- | --- | --- |
 | Sampling, thresholds, hysteresis, recovery, reasons | Host pressure package | Sole pressure-meaning owner; unchanged |
-| Wire projection and strict decoding | Gateway/client boundary | Existing single `GET /v1/pressure` shape; unchanged |
+| Wire shape | Host pressure package (`Snapshot` json); the gateway serves it and Android decodes it strictly | Existing single `GET /v1/pressure` shape; unchanged |
 | Text, precision, order, marks, accents | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
 | Rail geometry, spans, scrolling, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
 | placement and disclosure | `DashboardScreen.kt` | every accepted machine rail is reachable through machines; detail selection never filters cards |

@@ -36,7 +36,7 @@ func (gateway *Gateway) readTerminalContext(writer http.ResponseWriter, request 
 	}
 	result := terminalContextDTO{ObservedAt: instant, CWD: observed.CWD}
 	if result.CWD != "" {
-		if _, err := gateway.workdir.ParseCandidate(result.CWD); err != nil {
+		if _, err := gateway.workdir.ParseStart(result.CWD); err != nil {
 			result.CWD = ""
 		}
 	}

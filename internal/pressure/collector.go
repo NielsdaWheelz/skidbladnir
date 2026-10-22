@@ -12,24 +12,17 @@ type collector struct {
 	hasPreviousCPU bool
 }
 
-func newCollector() collector { return collector{} }
-
-func (collector *collector) cpuPercent(current cpuCounters) metric {
-	usage := metric{}
-	if collector.hasPreviousCPU {
-		usage = cpuUsage(collector.previousCPU, current)
-	}
+// observeCPU records usage since the previous counters; the first sample and a
+// counter reset leave cpu unobserved.
+func (collector *collector) observeCPU(signals Signals, current cpuCounters) {
+	previous, hadPrevious := collector.previousCPU, collector.hasPreviousCPU
 	collector.previousCPU, collector.hasPreviousCPU = current, true
-	return usage
-}
-
-func cpuUsage(previous, current cpuCounters) metric {
-	if current.total <= previous.total || current.idle < previous.idle {
-		return metric{}
+	if !hadPrevious || current.total <= previous.total || current.idle < previous.idle {
+		return
 	}
 	total, idle := current.total-previous.total, current.idle-previous.idle
 	if idle > total {
-		return metric{}
+		return
 	}
-	return knownMetric(float64(total-idle) * 100 / float64(total))
+	signals.record(cpuPercent, float64(total-idle)*100/float64(total))
 }

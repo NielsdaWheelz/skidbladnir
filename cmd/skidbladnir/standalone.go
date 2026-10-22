@@ -30,7 +30,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/install"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/notifier"
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
@@ -109,7 +108,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 		}
 	}
 	monitor := pressure.NewMonitor()
-	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle, Platform: platform.Current()})
+	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle})
 	workers := make(chan error, 4)
 	go func() { monitor.Run(ctx); workers <- nil }()
 	go func() { control.Run(ctx); workers <- nil }()

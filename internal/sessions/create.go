@@ -95,7 +95,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 			return ObservedSession{}, err
 		}
 	}
-	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd.String(), launch)
+	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd, launch)
 	if err != nil {
 		return ObservedSession{}, err
 	}
@@ -122,7 +122,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		"#{"+tmuxclient.ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}")
 	// A directory that vanished since validation fails the tmux client's chdir,
 	// which maps to the same answer.
-	output, accepted, err := manager.tmux.CreateSession(ctx, cwd.String(), sourceID, sourceServer, commandArgs)
+	output, accepted, err := manager.tmux.CreateSession(ctx, cwd, sourceID, sourceServer, commandArgs)
 	if !accepted {
 		if err != nil {
 			var pathError *os.PathError

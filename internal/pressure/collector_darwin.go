@@ -50,36 +50,37 @@ static struct skid_pressure_sample skid_collect_pressure(void) {
 */
 import "C"
 
-func currentPolicy() policy { return darwinPolicy() }
+var platformPolicy = darwinPolicy
 
-func (collector *collector) collect() rawSample {
+func (collector *collector) collect() Signals {
 	raw := C.skid_collect_pressure()
-	sample := rawSample{}
+	signals := Signals{}
 	if raw.valid&1 != 0 {
-		sample.cpuPercent = collector.cpuPercent(cpuCounters{total: uint64(raw.cpu_total), idle: uint64(raw.cpu_idle)})
+		collector.observeCPU(signals, cpuCounters{total: uint64(raw.cpu_total), idle: uint64(raw.cpu_idle)})
 	}
 	if raw.valid&6 == 6 {
-		sample.loadNormalized = knownMetric(float64(raw.load) / float64(raw.logical_cpus))
+		signals.record(normalizedLoad, float64(raw.load)/float64(raw.logical_cpus))
 	}
 	if raw.valid&8 != 0 {
+		// the kernel's own verdict; any other level leaves memory pressure unobserved
 		switch int(raw.memory_pressure) {
 		case 1:
-			sample.memoryPressure = knownMemoryPressure(MemoryPressureNormal)
+			signals[memoryPressure] = Signal{Value: "Normal", State: normal}
 		case 2:
-			sample.memoryPressure = knownMemoryPressure(MemoryPressureWarning)
+			signals[memoryPressure] = Signal{Value: "Warning", State: warm}
 		case 4:
-			sample.memoryPressure = knownMemoryPressure(MemoryPressureCritical)
+			signals[memoryPressure] = Signal{Value: "Critical", State: hot}
 		}
 	}
 	if raw.valid&16 != 0 {
 		if raw.swap_total == 0 {
-			sample.swapUsedPercent = knownMetric(0)
+			signals.record(swapUsedPercent, 0)
 		} else if raw.swap_used <= raw.swap_total {
-			sample.swapUsedPercent = knownMetric(float64(raw.swap_used) * 100 / float64(raw.swap_total))
+			signals.record(swapUsedPercent, float64(raw.swap_used)*100/float64(raw.swap_total))
 		}
 	}
 	if raw.valid&32 != 0 && raw.disk_available <= raw.disk_blocks {
-		sample.diskAvailablePercent = knownMetric(float64(raw.disk_available) * 100 / float64(raw.disk_blocks))
+		signals.record(diskAvailablePercent, float64(raw.disk_available)*100/float64(raw.disk_blocks))
 	}
-	return sample
+	return signals
 }

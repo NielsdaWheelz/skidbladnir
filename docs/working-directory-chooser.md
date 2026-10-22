@@ -91,19 +91,18 @@ cwd parsing/normalization, start validation, browse containment/projection,
 ordering, and bounds:
 
 ```text
-opaque WorkingDirectoryCandidate, WorkingDirectory, HomeDirectory, ParentDirectory
-Listing { directory, parent=None|Some, children: Entry[], omissions=None|Present }
+Listing { directory, parentDirectory?, children: Entry[], omitted }
 Entry { directory, kind=Directory|SymbolicLink }
+SearchResult { directories, omitted }
 ErrorCode = Invalid | Unavailable | TooLarge       # no path or raw OS text
 
 New(home, zoxidePath) -> Service
-Service.ParseCandidate(string) -> WorkingDirectoryCandidate
-Service.ParseBrowseDirectory(string) -> HomeDirectory
-Service.ValidateStart(candidate) -> WorkingDirectory
-Service.List(context, HomeDirectory) -> Listing
+Service.ParseStart(string) -> canonical absolute path      # Invalid
+CheckStart(path)                                         # Unavailable unless enterable
+Service.List(context, "~" | "~/...") -> Listing
+Service.Search(context, terms) -> SearchResult
 ```
 
-- Opaque values have package-private representation/construction.
 - `New`: absolute, clean, searchable service-UID Home satisfying cwd grammar;
   zoxide is an absolute clean path, or empty when disabled.
 - Create grammar: input and normalized absolute value are each 1–4,096 UTF-8
@@ -113,13 +112,14 @@ Service.List(context, HomeDirectory) -> Listing
   length, directory existence, and search permission.
 - Browse grammar: only canonical `~` or `~/...`; reject absolute, relative,
   empty, dot-segment, repeated-separator, and trailing-separator forms.
-- Open one `os.Root` per listing and close before return. Do not use prefix
-  containment, `EvalSymlinks`, shell/`find`, or caller descriptors. Home is a
-  pathname—not device—root; mounted directories beneath it remain in scope.
+- Open Home and the requested directory as `os.Root`s per listing and close
+  them before return. Do not use prefix containment, `EvalSymlinks`,
+  shell/`find`, or caller descriptors. Home is a pathname—not device—root;
+  mounted directories beneath it remain in scope.
 - Return immediate searchable directories only. Ignore files. Include only
   root-relative symlinks whose root-scoped resolution remains a directory
   inside Home; mark them `SymbolicLink`.
-- Omit raced-away, escaping, unsafe, or over-limit candidate folders and return
+- Omit escaping, unsafe, unreadable or over-limit candidate folders and return
   only whether omissions occurred. Never expose a count or escaped substitute.
 - Return hidden folders; Android owns visibility. sort by ascii-folded basename,
   then exact utf-8 basename. local filtering preserves server order for ties.
@@ -127,13 +127,17 @@ Service.List(context, HomeDirectory) -> Listing
   child, or path-text bound returns `TooLarge` with no partial listing.
 - Requested-directory read/search/root-resolution failure is `Unavailable`;
   malformed input is `Invalid`; cancellation returns the context error.
-- A listing is advisory; Create always revalidates. No cache, watcher, retry,
-  goroutine, persistent descriptor, mutation, or telemetry exists.
+- A listing is advisory; Create always revalidates. Concurrent changes are not
+  detected: a listing may come from the directory as opened or show an entry's
+  earlier kind. No cache, watcher, retry, goroutine, persistent descriptor,
+  mutation, or telemetry exists.
 
 `main` creates one immutable, concurrency-safe concrete `*workdir.Service` and
 passes it to `sessions.Manager` and `gateway.Gateway`; no interface wraps it.
 sessions maps Invalid/Unavailable to existing Create errors; listing maps Invalid
-to `InvalidRequest`. cwd stays typed through the exact tmux `-c` adapter. other
+to `InvalidRequest`. sessions passes the canonical string from `ParseStart` and
+`CheckStart` unchanged to the tmux `-c` adapter. `Listing` and `SearchResult`
+carry their wire json; the gateway adds only `machine` to a listing. other
 session validation remains in `sessions`.
 
 ## http api
@@ -169,7 +173,8 @@ trailing, content-encoded, or oversized input.
 
 `parentDirectory` is absent—never `null`—only for `~`; empty children is `[]`.
 All other keys are required. Children are unique, direct, canonical, ordered,
-and bounded. `omitted` maps only `Present`; no count crosses the boundary.
+and bounded. `omitted` says only whether omissions occurred; no count crosses
+the boundary.
 
 | New code | HTTP | Exact message |
 | --- | ---: | --- |

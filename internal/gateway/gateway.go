@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	pathpkg "path"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -36,7 +36,6 @@ type Config struct {
 	Notifications http.Handler
 	Logger        *slog.Logger // the process's one logging.New; its doc is the event-line contract
 	Machine       machine.Handle
-	Platform      platform.Descriptor
 }
 
 type Gateway struct {
@@ -48,13 +47,7 @@ type Gateway struct {
 	notifications http.Handler
 	logger        *slog.Logger
 	machine       machine.Handle
-	platform      platform.Descriptor
 	routes        *http.ServeMux
-
-	// The declared pressure capability is constant for one running gateway, so
-	// it is projected onto the wire union once, here, instead of per request.
-	unsupportedMetrics   []pressure.Metric
-	unsupportedMetricSet map[pressure.Metric]struct{}
 
 	// liveMutex guards the live connections, closing and the closed devices (terminal.go).
 	liveMutex     sync.Mutex
@@ -64,21 +57,17 @@ type Gateway struct {
 }
 
 func New(config Config) *Gateway {
-	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	gateway := &Gateway{
-		agents:               config.Agents,
-		sessions:             config.Sessions,
-		workdir:              config.Workdir,
-		pressure:             config.Pressure,
-		fleet:                config.Fleet,
-		notifications:        config.Notifications,
-		logger:               config.Logger,
-		machine:              config.Machine,
-		platform:             config.Platform,
-		unsupportedMetrics:   unsupportedMetrics,
-		unsupportedMetricSet: unsupportedMetricSet,
-		live:                 make(map[*liveConnection]struct{}),
-		closedDevices:        make(map[string]bool),
+		agents:        config.Agents,
+		sessions:      config.Sessions,
+		workdir:       config.Workdir,
+		pressure:      config.Pressure,
+		fleet:         config.Fleet,
+		notifications: config.Notifications,
+		logger:        config.Logger,
+		machine:       config.Machine,
+		live:          make(map[*liveConnection]struct{}),
+		closedDevices: make(map[string]bool),
 	}
 	// Each pattern without its method is the route name in the request log.
 	gateway.routes = http.NewServeMux()
@@ -195,45 +184,6 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	gateway.routes.ServeHTTP(tracked, request.WithContext(context.WithValue(request.Context(), deviceContextKey{}, member.DeviceID)))
 }
 
-func (gateway *Gateway) listDirectory(writer http.ResponseWriter, request *http.Request) {
-	input, ok := decodeJSON[directoryListingRequest](writer, request)
-	if !ok {
-		return
-	}
-	directory, err := gateway.workdir.ParseBrowseDirectory(input.Directory)
-	if err != nil {
-		writeDirectoryListingError(writer, err)
-		return
-	}
-	listing, err := gateway.workdir.List(request.Context(), directory)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		writeDirectoryListingError(writer, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, mapDirectoryListing(gateway.machineDTO(), listing), &errorDirectoryListingTooLarge)
-}
-
-func writeDirectoryListingError(writer http.ResponseWriter, err error) {
-	code, classified := workdir.ErrorCodeOf(err)
-	if !classified {
-		writeError(writer, errorInternal)
-		return
-	}
-	switch code {
-	case workdir.Invalid:
-		writeError(writer, errorInvalidRequest)
-	case workdir.Unavailable:
-		writeError(writer, errorDirectoryListingUnavailable)
-	case workdir.TooLarge:
-		writeError(writer, errorDirectoryListingTooLarge)
-	default:
-		writeError(writer, errorInternal)
-	}
-}
-
 // deviceContextKey carries the authenticated member's DeviceID to routed handlers.
 type deviceContextKey struct{}
 
@@ -262,7 +212,11 @@ func (gateway *Gateway) authenticate(writer *trackedResponseWriter, request *htt
 }
 
 func (gateway *Gateway) machineDTO() machineDTO {
-	return machineDTO{Handle: gateway.machine.String(), Platform: gateway.platform.Kind}
+	platform := "Linux" // only darwin and linux build: pressure has no other collector
+	if runtime.GOOS == "darwin" {
+		platform = "Darwin"
+	}
+	return machineDTO{Handle: gateway.machine.String(), Platform: platform}
 }
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
@@ -471,22 +425,8 @@ func (gateway *Gateway) setSessionGroup(writer http.ResponseWriter, request *htt
 func (gateway *Gateway) readPressure(writer http.ResponseWriter, _ *http.Request) {
 	startedAt := time.Now()
 	snapshot := gateway.pressure.Snapshot()
-	current, err := mapHostSample(snapshot.Current, gateway.unsupportedMetricSet)
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	history := make([]pressureHistoryDTO, len(snapshot.Window))
-	for index, sample := range snapshot.Window {
-		mapped, mapErr := mapPressureHistory(sample)
-		if mapErr != nil {
-			writeError(writer, errorInternal)
-			return
-		}
-		history[index] = mapped
-	}
-	gateway.logger.Info("Pressure.Sampled", "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds(), "skidbladnir.pressure.level", current.Level, "skidbladnir.pressure.reasons", current.Reasons)
-	writeJSON(writer, http.StatusOK, pressureResponseDTO{Unsupported: gateway.unsupportedMetrics, Current: current, History: history}, nil)
+	gateway.logger.Info("Pressure.Sampled", "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds(), "skidbladnir.pressure.level", snapshot.Current.Level, "skidbladnir.pressure.reasons", snapshot.Current.Reasons)
+	writeJSON(writer, http.StatusOK, snapshot, nil)
 }
 
 // decodeJSON strictly decodes one application/json body of at most MaximumBodyBytes into T, answering
