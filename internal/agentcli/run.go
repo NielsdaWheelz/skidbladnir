@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
@@ -120,7 +121,7 @@ type command struct {
 func parse(args []string) (command, error) {
 	var result command
 	var operands []string
-	var groupArgument, setArgument string
+	var groupArgument, setArgument, refArgument string
 	seen := map[string]bool{}
 	literal := false
 	for i := 0; i < len(args); i++ {
@@ -181,7 +182,7 @@ func parse(args []string) (command, error) {
 				case "--machine":
 					result.request.Machine = argument
 				case "--ref":
-					result.request.Ref = argument
+					refArgument = argument
 				case "--profile":
 					result.request.Profile = argument
 				case "--cwd":
@@ -226,7 +227,7 @@ func parse(args []string) (command, error) {
 			result.request.Name = operands[0]
 		}
 	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell":
-		if result.request.Ref == "" {
+		if !seen["--ref"] {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
 			}
@@ -316,14 +317,55 @@ func parse(args []string) (command, error) {
 	if result.stdin && operation != "send" && operation != "text" && operation != "start" || result.json && operation == "enter" {
 		return result, errors.New("option not supported by command")
 	}
-	request := result.request
-	if result.stdin {
-		request.Text = "stdin"
+	// Combinations the option loop admits; parse is the only request validator.
+	invalid := errors.New("invalid command arguments")
+	request := &result.request
+	if seen["--ref"] {
+		ref, err := fleetclient.DecodeReference(refArgument)
+		if err != nil || operation == "list" || operation == "start" || seen["--machine"] {
+			return result, invalid
+		}
+		request.Ref = ref
+	} else if operation != "list" && operation != "start" {
+		// t- plus 16 lowercase hex; an empty operand is no handle.
+		if handle := request.Handle; len(handle) != 18 || !strings.HasPrefix(handle, "t-") || strings.Trim(handle[2:], "0123456789abcdef") != "" {
+			return result, invalid
+		}
 	}
-	if !request.Valid() {
-		return result, errors.New("invalid command arguments")
+	if seen["--max-bytes"] && operation != "read" || (seen["--profile"] || seen["--cwd"]) && operation != "start" {
+		return result, invalid
+	}
+	switch operation {
+	case "start":
+		if request.Machine == "" || (request.Kind == fleetclient.LaunchAgent) != (request.Profile != "") {
+			return result, invalid
+		}
+	case "send", "text":
+		if !result.stdin && !validText(request.Text) {
+			return result, invalid
+		}
+	case "keys":
+		if len(request.Keys) < 1 || len(request.Keys) > 16 {
+			return result, invalid
+		}
+		for _, key := range request.Keys {
+			switch key {
+			case "enter", "escape", "ctrl-c", "up", "down", "left", "right", "tab", "backspace", "page-up", "page-down":
+			default:
+				return result, invalid
+			}
+		}
+	case "wait":
+		if request.State != "idle" && request.State != "working" && request.State != "needs-input" {
+			return result, invalid
+		}
 	}
 	return result, nil
+}
+
+// validText bounds terminal text from argv or stdin: 1-32768 bytes of utf-8 without NUL.
+func validText(text string) bool {
+	return text != "" && len(text) <= 32768 && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }
 
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -373,11 +415,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if len(text) > 32768 {
 			return render(parsed, fleetclient.Failed("input_limit", "not_sent"), stdout, stderr)
 		}
-		if len(text) == 0 {
-			return render(parsed, fleetclient.Failed("invalid_input", "not_sent"), stdout, stderr)
-		}
 		parsed.request.Text = string(text)
-		if !parsed.request.Valid() {
+		if !validText(parsed.request.Text) {
 			return render(parsed, fleetclient.Failed("invalid_input", "not_sent"), stdout, stderr)
 		}
 	}
@@ -412,7 +451,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if failure != nil {
 			return render(parsed, fleetclient.Result{Error: failure}, stdout, stderr)
 		}
-		result := terminalclient.Run(ctx, client, ref.Encode(), stdin.(*os.File), stdout.(*os.File))
+		result := terminalclient.Run(ctx, client, ref, stdin.(*os.File), stdout.(*os.File))
 		if result.NotificationErr != nil {
 			fmt.Fprintln(stderr, "notifications unavailable")
 		}
@@ -426,15 +465,26 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func render(command command, result fleetclient.Result, stdout, stderr io.Writer) int {
+	operation := command.request.Operation
+	encoded, err := result.Encode(operation)
+	if err != nil && operation != "list" { // a result over 64 KiB: report that in either mode
+		dispatch := "not_sent"
+		switch operation {
+		case "send", "text", "keys", "stop", "close", "shell", "group":
+			dispatch = "unknown"
+		}
+		result = fleetclient.Failed("output_limit", dispatch)
+		encoded, err = result.Encode(operation)
+	}
 	if command.json {
-		encoded, err := result.Encode(command.request.Operation)
+		// An enriched list over 1 MiB prints nothing: docs/issues/list-json-output-limit.md.
 		if err != nil {
 			return 1
 		}
 		if _, err := stdout.Write(encoded); err != nil {
 			return 1
 		}
-		return result.ExitCode(command.request.Operation)
+		return result.ExitCode(operation)
 	}
 	if !result.OK {
 		reportFailure(stderr, *result.Error, command.request, command.machines)
@@ -443,7 +493,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	var human bytes.Buffer
 	output := stdout
 	stdout = &human
-	switch command.request.Operation {
+	switch operation {
 	case "list":
 		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
@@ -536,7 +586,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	case "info", "shell":
 		value := result.Value.(fleetclient.ObservedSession)
 		fmt.Fprintf(stdout, "target: %s on %s\n", value.Session.TerminalHandle, value.Label)
-		if command.request.Operation != "info" {
+		if operation != "info" {
 			fmt.Fprintf(stdout, "created %s\nenter with: skid enter %s --machine %s\n", value.Session.Name, value.Session.TerminalHandle, machineArgument(value.Label))
 		} else {
 			row := value.Session
@@ -608,7 +658,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		io.WriteString(stdout, text)
 	case "wait":
 		value := result.Value.(fleetclient.WaitResult)
-		request := fleetclient.Request{Ref: value.Target}
+		request := fleetclient.Request{Ref: value.Target.Reference}
 		fmt.Fprintf(stdout, "target: %s\nwait: %s", targetText(request, command.machines), value.Outcome)
 		switch value.Outcome {
 		case "matched":
@@ -633,26 +683,23 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	default:
 		value := result.Value.(fleetclient.WriteResult)
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
-		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, command.request.Operation, value.Outcome, fleetclient.WriteText(command.request.Operation, value))
+		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, operation, value.Outcome, fleetclient.WriteText(operation, value))
 	}
 
 	if _, err := output.Write(human.Bytes()); err != nil {
 		return 1
 	}
-	return result.ExitCode(command.request.Operation)
+	return result.ExitCode(operation)
 }
 
 func targetText(request fleetclient.Request, machines []fleetclient.Machine) string {
 	handle, label := request.Handle, request.Machine
-	if request.Ref != "" {
-		ref, err := fleetclient.DecodeReference(request.Ref)
-		if err == nil {
-			handle, label = ref.Handle(), ""
-			for _, machine := range machines {
-				if machine.Handle == ref.Machine {
-					label = machine.Label
-					break
-				}
+	if !request.Ref.IsZero() {
+		handle, label = request.Ref.Handle(), ""
+		for _, machine := range machines {
+			if machine.Handle == request.Ref.Machine {
+				label = machine.Label
+				break
 			}
 		}
 	}
@@ -676,8 +723,8 @@ func machineArgument(label string) string {
 }
 
 func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetclient.Request, machines []fleetclient.Machine) {
-	if failure.Target != "" {
-		request.Ref, request.Handle, request.Machine = failure.Target, "", ""
+	if !failure.Target.IsZero() {
+		request.Ref, request.Handle, request.Machine = failure.Target.Reference, "", ""
 	}
 	target := strings.TrimSpace(request.Operation + " " + targetText(request, machines))
 	fmt.Fprintf(writer, "%s: %s (%s)\n", target, failure.Code, failure.Dispatch)

@@ -32,8 +32,8 @@ accounts, change codex, add phone quotas, or release/deploy anything.
    current registered `agent.provider == "Claude"` and matching `agent.profile`,
    no remote connection, and a present validated `terminalUsage`.
 2. within each host/profile, select one actual session-row snapshot: most present
-   windows first, then ascending numeric tmux session id, then numeric active pane id.
-   reuse `usageTerminalLess`; disagreement never affects eligibility or ranking.
+   windows first, then ascending numeric tmux session id, unique within one host.
+   reuse `fleetclient.CompareSessions`; disagreement never affects eligibility or ranking.
    zero is a present value. never combine windows from different observations.
 3. across hosts, select the candidate with greatest original client-local
    `Peer.ReceivedAt`; equal receipts choose the lexically smaller machine handle.

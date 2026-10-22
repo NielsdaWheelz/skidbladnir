@@ -146,17 +146,14 @@ func (observer *Observer) commit(machine string, peer fleetclient.Peer, err erro
 	allocated := false
 	observed := make([]seen, 0, len(peer.Sessions))
 	for _, session := range peer.Sessions {
-		ref, err := fleetclient.DecodeReference(session.Ref)
-		if err != nil {
-			panic("fleetclient encoded an invalid session reference")
-		}
+		ref := session.Ref.Reference
 		slot := slotID(ref)
 		previous, present := before[slot]
 		next, qualified := observe(previous, present, ref, session, file.Revision)
 		changed = changed || !present || !reflect.DeepEqual(previous, next)
 		allocated = allocated || next.Cause != nil && next.AttentionEpisode == file.Revision
 		records = append(records, next)
-		observed = append(observed, seen{slot, session.Ref, session.Name, session.TerminalStatus, qualified})
+		observed = append(observed, seen{slot, session.Ref.Encode(), session.Name, session.TerminalStatus, qualified})
 	}
 	file.Records = records
 	// An unchanged inventory needs no write: every value a record or client

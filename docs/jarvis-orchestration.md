@@ -511,7 +511,7 @@ and reviews handoffs. shared-file work is serial, never competing edits.
 | --- | --- | --- |
 | root / content designer | this spec; skid architecture/roadmap/feature docs/issues; jarvis SPEC/adr/active plan/operations/agent guidance/issues | accepted schemas, concise examples, dependencies/acceptance; root alone owns catalog/check composition if needed |
 | skid host | agentruntime launch.go/profile.go; sessions manager.go/types.go/validation.go; gateway dto.go/gateway.go/terminal_control.go; agentcontrol terminal.go; android GatewayClient.kt | literal lowering, captured create result, initial guard, strict shared error consumers |
-| skid cli/client | agentcli run.go; fleetclient client.go/content.go/handles.go/request.go/response.go/start.go; sessionui session.go | short resolution/output, budget preflight, one-shot compound result; consumes host contract |
+| skid cli/client | agentcli run.go; fleetclient client.go/content.go/request.go/response.go/start.go; sessionui session.go | short resolution/output, budget preflight, one-shot compound result; consumes host contract |
 | jarvis adapter | src/jarvis/agent_tools.py, agent_control.py | closed wire/model separation, capture context, common receipt classification, original-ref effects/observer |
 | jarvis durability | src/jarvis/actions.py, write_dispatch.py, checkpoints.py, service.py, cli.py | staged-receipt recovery, immutable waits, atomic events/cancel, scheduler/shutdown; consumes adapter types/classification |
 | jarvis authority | src/jarvis/write_policy.py, write_gate.py, definitions.py | readable captured gate context, tool prompts, narrow authority and wait-only notice exception |

@@ -29,9 +29,8 @@ func RecoveryNotice(peer Peer) (text string, failure bool) {
 
 // ErrorMessage is shared by command output and the desktop browser.
 func ErrorMessage(failure Failure, request Request) string {
-	if (request.Operation == "start" || request.Operation == "shell") && failure.Target != "" {
-		ref, _ := DecodeReference(failure.Target)
-		return "terminal was created (" + ref.Handle() + "); creation follow-up failed. refresh to inspect it."
+	if (request.Operation == "start" || request.Operation == "shell") && !failure.Target.IsZero() {
+		return "terminal was created (" + failure.Target.Handle() + "); creation follow-up failed. refresh to inspect it."
 	}
 	if failure.Dispatch == "unknown" {
 		if request.Operation == "rename" {

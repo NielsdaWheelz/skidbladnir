@@ -23,16 +23,10 @@ type selectedView struct {
 	label group.Label
 }
 
-func sameSession(a, b fleetclient.Session) bool {
-	left, _ := fleetclient.DecodeReference(a.Ref)
-	right, _ := fleetclient.DecodeReference(b.Ref)
-	return left.SessionEqual(right)
-}
-
 func (m *model) rebuild() {
-	var selected fleetclient.Session
+	var selected fleetclient.Reference
 	if row := m.selectedRow(); row != nil {
-		selected = row.session
+		selected = row.Session.Ref.Reference
 	}
 	previous := m.cursor
 	m.rows = nil
@@ -40,13 +34,13 @@ func (m *model) rebuild() {
 	case viewNeedsInput:
 		for _, peer := range m.peers {
 			for _, session := range peer.Sessions {
-				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
+				row := peer.Row(session)
 				if m.statusView(row).Queue != fleetclient.QueueExcluded {
 					m.rows = append(m.rows, row)
 				}
 			}
 		}
-		slices.SortStableFunc(m.rows, func(a, b listedRow) int {
+		slices.SortStableFunc(m.rows, func(a, b fleetclient.Row) int {
 			return cmp.Compare(m.statusView(a).Queue, m.statusView(b).Queue)
 		})
 	case viewAll, viewGroup:
@@ -58,16 +52,14 @@ func (m *model) rebuild() {
 			}
 		}
 		for _, group := range fleetclient.Groups(m.peers, filter) {
-			for _, row := range group.Rows {
-				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available})
-			}
+			m.rows = append(m.rows, group.Rows...)
 		}
 	default:
 		panic("invalid selected view") // justify-defect: only the closed view kinds populate the model.
 	}
 	m.cursor = -1
 	for index, row := range m.rows {
-		if sameSession(row.session, selected) {
+		if row.Session.Ref.SessionEqual(selected) {
 			m.cursor = index
 			break
 		}
@@ -107,14 +99,14 @@ func (m *model) selectView(view selectedView) {
 	if m.view == view {
 		return
 	}
-	var selected fleetclient.Session
+	var selected fleetclient.Reference
 	if row := m.selectedRow(); row != nil {
-		selected = row.session
+		selected = row.Session.Ref.Reference
 	}
 	m.view = view
 	m.rebuild()
 	// keep a surviving selection; otherwise begin at the first row of the view.
-	if row := m.selectedRow(); row != nil && !sameSession(row.session, selected) {
+	if row := m.selectedRow(); row != nil && !row.Session.Ref.SessionEqual(selected) {
 		m.cursor = 0
 	}
 	m.top = 0

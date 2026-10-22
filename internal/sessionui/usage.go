@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -27,52 +26,42 @@ type usagePeer struct {
 }
 type usageMsg struct {
 	generation uint64
-	result     fleetclient.Result
+	peers      []fleetclient.ProfileUsagePeer
 }
 
 func (m *model) usageVisible() bool {
-	return !m.usageStopped && !m.usageAttached && m.ctx.Err() == nil && (m.page == "" || m.page == "usage")
+	return m.observing() && (m.page == "" || m.page == "usage")
 }
-func (m *model) cancelUsage() {
-	m.usageGeneration++
-	if m.usageCancel != nil {
-		m.usageCancel()
-		m.usageCancel = nil
-	}
-	m.usagePending = false
-}
-func (m *model) refreshUsage(now time.Time, manual bool) tea.Cmd {
-	if !m.usageVisible() || m.usagePending || !manual && now.Before(m.usageNext) {
+
+// refreshUsage never asks to trail: a manual refresh during a read is dropped.
+func (m *model) refreshUsage(manual bool) tea.Cmd {
+	now := time.Now()
+	if !m.usageVisible() || !manual && now.Before(m.usageNext) {
 		return nil
 	}
-	m.usageGeneration++
-	ctx, cancel := context.WithCancel(m.ctx)
-	m.usageCancel, m.usagePending = cancel, true
-	// justify-polling: the existing browser tick reads the full native quota
-	// scope every minute from attempt start; forms/attachment/quit cancel it.
-	m.usageNext = now.Add(time.Minute)
-	client, generation, workers := m.client, m.usageGeneration, &m.usageWorkers
-	completed := make(chan usageMsg, 1)
-	workers.Add(1)
-	// Bubble Tea does not wait for commands. Register the worker before delivery
-	// so Run can cancel and join it even if its command never runs.
-	go func() {
-		defer workers.Done()
-		defer cancel()
-		result := client.ProfileUsage(ctx)
-		completed <- usageMsg{generation: generation, result: result}
-	}()
-	return func() tea.Msg { return <-completed }
+	client := m.client
+	command := m.usageLane.read(m.ctx, false, func(ctx context.Context, generation uint64) tea.Msg {
+		return usageMsg{generation: generation, peers: client.ProfileUsage(ctx)}
+	})
+	if command != nil {
+		// justify-polling: the existing browser tick reads the full native quota
+		// scope every minute from attempt start; forms/attachment/quit cancel it.
+		m.usageNext = now.Add(time.Minute)
+	}
+	return command
 }
-func (m *model) acceptUsage(message usageMsg) {
-	if !m.usageVisible() || message.generation != m.usageGeneration {
-		return
+func (m *model) acceptUsage(message usageMsg) tea.Cmd {
+	landed, current := m.usageLane.land(message.generation)
+	if !landed {
+		return nil
 	}
-	m.usagePending, m.usageCancel = false, nil
-	if !message.result.OK {
-		panic("whole-fleet usage read failed before peer collection") // justify-defect: the immutable client table supplies a valid unfiltered scope.
+	if !current || !m.usageVisible() {
+		if m.usageLane.trailing { // a fence retired this read and asked for its successor
+			return m.refreshUsage(false)
+		}
+		return nil
 	}
-	for _, received := range message.result.Value.(fleetclient.ProfileUsageObservation).Peers {
+	for _, received := range message.peers {
 		for index := range m.usagePeers {
 			peer := &m.usagePeers[index]
 			if peer.machine.Handle != received.Machine {
@@ -101,6 +90,7 @@ func (m *model) acceptUsage(message usageMsg) {
 			break
 		}
 	}
+	return nil
 }
 
 // Full inventories own current descriptors. A change clears only that host's
@@ -141,8 +131,9 @@ func (m *model) reconcileUsageProfiles(received fleetclient.Peer) bool {
 			}
 		}
 		peer.profiles = profiles
-		if known || m.usagePending {
-			m.cancelUsage()
+		if known || m.usageLane.flight != 0 {
+			m.usageLane.fence()
+			m.usageLane.trailing = true
 			m.usageNext = time.Time{}
 			return true
 		}
@@ -238,8 +229,8 @@ func usageLater(receivedAt time.Time, machine string, previous time.Time, previo
 }
 func (m *model) usageAccessRejected(machine string) bool {
 	for _, peer := range m.peers {
-		if peer.Machine == machine && peer.Error != nil {
-			return peer.Error.Code == "Unauthenticated" || peer.Error.Code == "MachineIdentityMismatch" || peer.Error.Code == "DeviceRemoved"
+		if peer.Machine == machine {
+			return accessRejected(peer.Error)
 		}
 	}
 	return false
@@ -309,20 +300,6 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 	}
 	return row
 }
-func usageTerminalLess(left, right fleetclient.Session) bool {
-	l, _ := fleetclient.DecodeReference(left.Ref)
-	r, _ := fleetclient.DecodeReference(right.Ref)
-	for _, pair := range [][2]string{{l.TmuxID, r.TmuxID}, {left.ActivePaneID, right.ActivePaneID}} {
-		a, b := strings.TrimLeft(pair[0][1:], "0"), strings.TrimLeft(pair[1][1:], "0")
-		if len(a) != len(b) {
-			return len(a) < len(b)
-		}
-		if a != b {
-			return a < b
-		}
-	}
-	return false
-}
 func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
 	unavailable, absent := false, false
@@ -363,7 +340,7 @@ func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageR
 			if usage.SevenDayUsedPercent != nil {
 				known++
 			}
-			if candidate == nil || known > count || known == count && usageTerminalLess(*session, *candidate) {
+			if candidate == nil || known > count || known == count && fleetclient.CompareSessions(*session, *candidate) < 0 {
 				candidate, count = session, known
 			}
 		}

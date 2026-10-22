@@ -27,12 +27,8 @@ type ProfileUsagePeer struct {
 	Profiles   []ProfileUsage
 }
 
-type ProfileUsageObservation struct {
-	Peers []ProfileUsagePeer
-}
-
 // ProfileUsage reads every peer's usage, independently of inventories.
-func (client *Client) ProfileUsage(parent context.Context) Result {
+func (client *Client) ProfileUsage(parent context.Context) []ProfileUsagePeer {
 	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
 	peers := client.peerSnapshot()
@@ -40,7 +36,7 @@ func (client *Client) ProfileUsage(parent context.Context) Result {
 	var pending sync.WaitGroup
 	for index, selected := range peers {
 		pending.Go(func() {
-			result := client.call(ctx, selected, "profile_usage", "/v1/profile-usage", nil)
+			result := client.call(ctx, selected, "profile_usage", "", nil)
 			row := ProfileUsagePeer{Label: selected.Label, Machine: selected.Machine, OK: result.OK, Error: result.Error}
 			if result.OK {
 				row = result.Value.(ProfileUsagePeer)
@@ -49,7 +45,7 @@ func (client *Client) ProfileUsage(parent context.Context) Result {
 		})
 	}
 	pending.Wait()
-	return success(ProfileUsageObservation{Peers: rows})
+	return rows
 }
 
 func decodeProfileUsage(encoded []byte, target peer) (any, bool) {

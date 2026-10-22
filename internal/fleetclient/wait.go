@@ -12,22 +12,19 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 	if parent.Err() != nil {
 		return Failed("cancelled", "not_sent")
 	}
-	if !request.Valid() {
-		return Failed("invalid_input", "not_sent")
-	}
 	ctx, cancel := context.WithTimeout(parent, request.WaitTimeout)
 	defer cancel()
 	resolveContext, cancelResolve := context.WithTimeout(ctx, Timeout)
-	captured, _, failure := client.resolve(resolveContext, request)
+	resolved, failure := client.resolve(resolveContext, request)
 	cancelResolve()
 	if parent.Err() != nil {
 		return Failed("cancelled", "not_sent")
 	}
 	if failure != nil {
-		return *failure
+		return Result{Error: failure}
 	}
-	result := WaitResult{Target: captured.Encode(), Outcome: "timeout"}
-	target, _ := client.peerByMachine(captured.Machine)
+	captured := resolved.ref
+	result := WaitResult{Target: Ref{captured}, Outcome: "timeout"}
 	// justify-polling: one foreground waiter watches one captured target. Each
 	// sample finishes before the next five-second cadence; no work is mutated.
 	for {
@@ -38,10 +35,9 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return success(result)
 		}
 		sampleContext, cancelSample := context.WithTimeout(ctx, Timeout)
-		path := "/v1/sessions/" + captured.TmuxID + "/terminal/inspect"
 		body := map[string]any{"identityToken": captured.IdentityToken, "paneId": captured.PaneID}
 		encoded, _ := json.Marshal(body)
-		sampled := client.call(sampleContext, target, "terminal_inspect", path, encoded)
+		sampled := client.call(sampleContext, resolved.peer, "terminal_inspect", captured.TmuxID, encoded)
 		cancelSample()
 		if parent.Err() != nil {
 			return Failed("cancelled", "not_sent")
@@ -71,7 +67,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		case "needs-input":
 			matched = NeedsInput(status)
 		default:
-			panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
+			panic("terminal wait state was not validated") // justify-defect: skid parse admits only these three states.
 		}
 		if matched {
 			result.Outcome = "matched"

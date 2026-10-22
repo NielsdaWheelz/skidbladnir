@@ -50,7 +50,7 @@ type Session struct {
 	Name            string                   `json:"name"`
 	NameMode        string                   `json:"nameMode"`
 	TerminalHandle  string                   `json:"terminalHandle"`
-	Ref             string                   `json:"ref"`
+	Ref             Ref                      `json:"ref"`
 	CWD             string                   `json:"cwd,omitempty"`
 	ActiveCommand   string                   `json:"activeCommand,omitempty"`
 	LaunchProfile   string                   `json:"launchProfile,omitempty"`
@@ -228,7 +228,7 @@ type StartResult struct {
 	Machine  string           `json:"machine"`
 	Creation string           `json:"creation"`
 	Prompt   string           `json:"prompt"`
-	Target   string           `json:"target,omitempty"`
+	Target   Ref              `json:"target,omitzero"`
 	Handle   string           `json:"handle,omitempty"`
 	Terminal *ObservedSession `json:"terminal,omitempty"`
 	Failure  *Failure         `json:"failure,omitempty"`
@@ -311,11 +311,10 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
-	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, TerminalFooter: s.TerminalFooter, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
+	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, TerminalFooter: s.TerminalFooter, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: ref.Handle(), Ref: Ref{ref}, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
 	if s.Agent != nil {
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, Label: s.Agent.Label, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
-	row.Ref = ref.Encode()
 	return row
 }
 
@@ -383,7 +382,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			}
 			observed.Sessions = append(observed.Sessions, s.project(target.Machine))
 		}
-		slices.SortStableFunc(observed.Sessions, compareSessions)
+		slices.SortStableFunc(observed.Sessions, CompareSessions)
 		return observed, true
 	case "start", "shell":
 		var value *hostObservedSession
@@ -528,17 +527,14 @@ func decodeMutationFailure(operation string, encoded []byte, status int, machine
 	}
 	failure := &Failure{Code: value.Code, Dispatch: value.Dispatch}
 	if value.Target != nil {
-		failure.Target = (Reference{Machine: machine, TmuxID: value.Target.TmuxID, IdentityToken: value.Target.IdentityToken, PaneID: value.Target.PaneID}).Encode()
-		if _, err := DecodeReference(failure.Target); err != nil {
-			return nil
-		}
+		failure.Target = Ref{Reference{Machine: machine, TmuxID: value.Target.TmuxID, IdentityToken: value.Target.IdentityToken, PaneID: value.Target.PaneID}}
 	}
 	return failure
 }
 
 type WaitResult struct {
 	Outcome        string                   `json:"outcome"`
-	Target         string                   `json:"target"`
+	Target         Ref                      `json:"target"`
 	TerminalStatus *sessions.TerminalStatus `json:"terminalStatus,omitempty"`
 }
 

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -36,9 +35,6 @@ type Manager struct {
 }
 
 func New(config Config) (*Manager, error) {
-	if err := requireExecutable(config.TmuxPath); err != nil {
-		return nil, fmt.Errorf("tmux executable: %w", err)
-	}
 	tmux, err := tmuxclient.New(config.TmuxPath, config.SocketName)
 	if err != nil {
 		return nil, err
