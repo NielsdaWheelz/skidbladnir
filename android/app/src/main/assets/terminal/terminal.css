@@ -65,7 +65,10 @@ main {
     overscroll-behavior-x: none;
 }
 
-#terminal .xterm {
+/* The scrollable element is the screen's nearest scrolling ancestor, so it
+   needs its own declaration to keep browser panning out of touch input. */
+#terminal .xterm,
+#terminal .xterm-scrollable-element {
     touch-action: none;
 }
 

@@ -18,8 +18,8 @@ product behavior and acceptance; this document owns the implementation
 boundary. [`roadmap.md`](roadmap.md) owns delivery status.
 [`terminal-touch-scroll.md`](terminal-touch-scroll.md) supersedes this
 document's former blanket gesture non-goal and hard-cuts the lifecycle command
-to `ResetInputState`; its source-pinned xterm line-wheel API does not change key
-or modifier semantics.
+to `ResetInputState`; its page-owned wheel routes do not change key or
+modifier semantics.
 
 ## Outcome
 
@@ -226,6 +226,6 @@ settings, customization, persistence, profiles, typed-text shift, a separate Met
 modifier lock, repeat, popups, long press, macros, snippets, gesture controls
 other than terminal touch scroll, trackpads, hardware-keyboard adaptation,
 dynamic ordering, content parsing, local-history controls, a native composer,
-Kitty/CSI-u, xterm version upgrades beyond the touch-scroll source patch,
+Kitty/CSI-u, xterm version upgrades,
 telemetry, new logging, gateway/tmux/public-API
 changes, and compatibility surfaces.

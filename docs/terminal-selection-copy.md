@@ -31,6 +31,10 @@ and remains unclaimed.
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the
 implementation boundary. Testing follows [`rules.md`](rules.md#testing);
 there is no separate `testing-standards.md`.
+On 2026-10-21 (stock-xterm) the patched fork, its patch and its build script
+were deleted for stock xterm.js 6.0.0; the page now owns the tap and selection
+ranges below. The ownership tables, reds/greens, verification plans and release
+evidence below are history of the patched delivery.
 
 ## Outcome and scope
 
@@ -89,27 +93,30 @@ change.
   gesture resumes normal arbitration.
 - Before long-press expiry, the existing vertical-drag routing remains
   authoritative. Movement beyond slop cancels the timer. A below-slop release
-  focuses the terminal, submits one semantic primary tap to xterm, then emits
-  one content-free `ImeRequested` intent. Native exact-decodes that intent and,
-  only while the page is live, visible, enabled, attached, window-focused, and
-  selection-idle, acquires WebView focus and requests `WindowInsets.Type.ime()`.
-  xterm's negotiated mouse protocol remains the sole authority for resulting
-  terminal input.
+  focuses the terminal, sends one SGR primary press and release through
+  `terminal.input` (press only under X10, nothing when the application does
+  not track the mouse), then emits one content-free `ImeRequested` intent.
+  Native exact-decodes that intent and, only while the page is live, visible,
+  enabled, attached, window-focused, and selection-idle, acquires WebView focus
+  and requests `WindowInsets.Type.ime()`.
 - Track the sole `Touch.identifier` and resolve every move and final coordinate
   from the matching touch, including `changedTouches` on end. Never index
   `touches[0]`. A second contact cancels and drains all touches before a new
   gesture may start; missing identifiers and invalid streams fail closed.
   Live lifecycle reset also preserves blocked ownership until the still-down
-  stream drains; only disposal may abandon the tail.
+  stream drains; only page failure may abandon the tail.
 - At expiry, select the nearest xterm word (one cell when blank) and request one
   native `LONG_PRESS` haptic. Mouse-reporting mode is intentionally bypassed
   only for this claimed selection gesture.
-- While held, movement extends by xterm cells and uses xterm's selection
-  auto-scroll at the viewport edge. Touch target retention carries an active
-  contact outside the screen. Release first reconciles the matching final
-  `changedTouches` coordinate, then retains the range, snapshots the exact xterm
-  selection in page memory, and opens the native action mode at the normalized
-  release point.
+- While held, movement extends by xterm cells and auto-scrolls at the top or
+  bottom edge like xterm's mouse selection (every 50 ms, 1..15 rows by
+  distance, through whatever history the buffer holds). The word is anchored
+  by an xterm marker on its first row, so it follows its text while output
+  scrolls the buffer; once that row leaves the buffer the hold clears with no
+  `Copy`. Touch target retention carries an active contact outside the screen.
+  Release first reconciles the matching final `changedTouches` coordinate,
+  then retains the range, snapshots the exact xterm selection in page memory,
+  and opens the native action mode at the normalized release point.
 - Once selection exists, one new primary tap, action-mode dismissal, second
   contact, cancellation, attachment loss, backgrounding, disable, rotation,
   page failure, or disposal clears it and emits zero input. Android Back first
@@ -122,9 +129,10 @@ change.
   handler. Unregister it before every transition out of `Selected` and on
   failure/disposal. No Activity cast, Compose callback, key interception, or
   legacy `onBackPressed` path exists.
-- xterm alone owns buffer coordinates, wrapped rows, wide/combining cells,
-  scrollback, selection rendering, and returned text. The page never rebuilds
-  text from the DOM, accessibility tree, or buffer rows.
+- xterm owns scrollback, selection rendering and the returned text
+  (`getSelection()`). The page computes only the cell range—the word over
+  public `IBufferLine` cells and the extended end—applies it with `select()` on
+  every move, 50 ms tick and release, and never rebuilds text.
 - Selection is attachment-local and limited to the active xterm buffer retained
   since this attachment. There is no post-release handle editing in this 80/20
   slice; start again to refine a released range.
@@ -188,7 +196,7 @@ change.
 trusted primary touch
         |
         v
-TerminalTouchInteraction -- semantic selection input --> pinned xterm
+page gesture owner ------ select(col,row,len) ------> stock xterm
         |                                                   |
         | Started / Available(snapshot) / Cleared           | getSelection()
         v                                                   |
@@ -201,43 +209,30 @@ LockedTerminalWebView --> TerminalSelectionController <-----+
                        Android ClipboardManager
 ```
 
-`terminal.js` hard-renames `createTerminalTouchScroll` to
-`createTerminalTouchInteraction`; its one TouchEvent state machine owns the
-mutually exclusive `Composing`, `Pending`, `Scrolling`, `Selecting`, `Selected`,
-and drained multi-touch states. A released `Selected` interaction retains
+`terminal.js`'s one TouchEvent state machine owns the mutually exclusive
+`Composing`, `Pending`, `Scrolling`, `Selecting`, `Selected`, and drained
+multi-touch states. A released `Selected` interaction retains
 precedence over a new composition observation because it already owns native
-modal state. The existing wheel API and routes remain unchanged.
+modal state. Wheel and tap routes are those of
+[touch scroll](terminal-touch-scroll.md#architecture-and-api-design).
 
-The pinned xterm fork adds one atomic semantic tap ingress:
+The page applies selection through xterm's public API:
 
-```text
-terminal.handleTapInput({ clientX: finite CSS px, clientY: finite CSS px }) -> void
-```
+| Page function | Contract |
+| --- | --- |
+| `wordAt(cell)` | The cell alone if blank (`getChars().trim() === ""`), else the run of non-separator cells through it (separators are space, `` ()[]{}',"` `` and empty cells; width-0 continuation cells never separate), crossing a row boundary only into or from a soft-wrapped row. |
+| `applySelection(active)` | The word is held as offsets from an `IMarker` (`terminal.registerMarker`) on its first row, so xterm moves it with that row's text through trims, inserts and deletes. The finger's cell, walked left off width-0 cells, ends the range at its index + max(1, width) forward or at its index reversed; a finger above the screen reaches (0, top row), below reaches (cols, last row). The range is `[end, word.end)` when the end precedes the word, else `[word.start, max(word.end, end))`, applied with `terminal.select(col, row, length)`. False, and the hold is cleared, once the marker is disposed (its row left the buffer) or another buffer is active. |
+| `tickSelection(active)` | Every 50 ms while held: `terminal.scrollLines` toward a finger beyond the top or bottom edge, then `applySelection`. |
+| `terminal.clearSelection()` | Clears on cancel, a tap while selected, failure and native `ClearSelection`. |
 
-It maps coordinates once through xterm's mouse service and submits fresh
-primary-left `DOWN` and `UP` records to `CoreMouseService`; that existing owner
-decides what the negotiated protocol can emit. Mouse-off emits no mouse input,
-X10 emits its press-only form, and protocols supporting release retain their
-normal press/release form. The page never reads terminal modes, encodes escape
-bytes, or fabricates DOM events. A completed tap focuses before this call;
-negotiated DEC focus reporting remains ordinary terminal behavior.
-
-The pinned xterm fork adds one semantic API that delegates to its existing
-internal selection owner and can never emit `onData`:
-
-```text
-terminal.handleSelectionInput(input) -> void
-
-input =
-  { kind: StartWord, clientX: finite CSS px, clientY: finite CSS px } |
-  { kind: Extend,    clientX: finite CSS px, clientY: finite CSS px } |
-  { kind: End,       clientX: finite CSS px, clientY: finite CSS px } |
-  { kind: Cancel }
-```
-
-Invalid shape, coordinates, order, pre-open use, or post-disposal use defects.
-`StartWord` deliberately takes local selection precedence over DEC mouse mode;
-all mouse and wheel protocol behavior remains xterm-owned.
+The range is re-applied on every move, every tick and at release before
+`getSelection()`, so the copied text always equals the highlight and a resting
+finger's highlight trails its anchor by at most one tick. Selection
+deliberately takes local precedence over DEC mouse mode and never emits
+terminal input. Stock xterm also writes its own selection to the clipboard
+from an element `copy` listener; one window capture `copy` listener calls
+`stopImmediatePropagation()` (no `preventDefault()`), so that handler never
+runs and the default copy action reaches only the helper textarea.
 
 Native transition table:
 
@@ -262,9 +257,9 @@ accepts only that sequence, and echoes the exact token in its clear command. A
 crossed clear for an already acknowledged older generation is
 idempotently ignored by the page and can never touch a newer selection. Every
 page-originated mismatched, duplicate, future, or out-of-order message fails
-native closed. Exhausting the safe-integer space fails the page closed. The
-page keeps no copy snapshot after `SelectionAvailable`; native drops its
-snapshot immediately on entering `Clearing`, page failure, or disposal.
+native closed. The page keeps no copy snapshot after `SelectionAvailable`;
+native drops its snapshot immediately on entering `Clearing`, page failure, or
+disposal.
 
 `LockedTerminalWebView` remains the exact message decoder and lifecycle owner.
 One new `TerminalSelectionController` owns the `ActionMode`, overlay-priority
@@ -310,16 +305,13 @@ has no negotiation path.
 
 ## Hard cut and cleanup
 
-- Replace the wheel-named xterm patch/artifact with one generic
-  `xterm-6.0.0-skidbladnir` patch/artifact containing the existing wheel work
-  and new selection ingress. Delete the old names, lock entries, and hard-coded
-  checks; never edit generated JavaScript.
-- Retain one source pin, one reviewed patch with upstream-style focused tests,
-  and a deterministic rebuild whose empty `git diff` is the byte compare.
+- Stock xterm.js 6.0.0 is vendored verbatim; the page owns tap and selection
+  ranges through its public API.
 - Delete the PointerEvent/pointer-capture path, compatibility mouse/context-menu
   suppression state, and old pass-through long-press path. The sole TouchEvent
   owner prevents the trusted start before recognition; xterm/Chromium DOM copy
-  handlers cannot become a second clipboard writer.
+  handlers cannot become a second clipboard writer (a window capture `copy`
+  listener stops xterm's element handler).
 - Consolidate gesture cancellation, multi-touch draining, lifecycle reset, and
   page-command encoding with their existing owners. Remove every superseded
   branch, import, comment, and test in the same change.
@@ -434,9 +426,9 @@ payload-cap branches directly.
    helper focus retained and zero mouse-off input or selection. Wheel,
    touch-scroll, paste, modifier, geometry, reconnect, background, rotation,
    and unavailable behavior retain their existing contracts.
-5. Only the generic pinned xterm patch/artifact and exact version-3 packaged
-   protocol remain; stale names, PointerEvent selection/scroll ownership, and
-   old/alternate copy paths are absent.
+5. Only stock xterm.js and the exact packaged protocol remain; stale names,
+   PointerEvent selection/scroll ownership, and old/alternate copy paths are
+   absent.
 
 Pre-publication verification is the focused xterm source test and reproducible
 byte-identical rebuild; the signed, same-version S22+ candidate owner proof;
@@ -490,17 +482,44 @@ telemetry; xterm upgrade; iOS.
   entering the controller. The component journey therefore discovers the node
   semantically and taps its real bounds; TalkBack/Switch Access invocation stays
   in the honest hands-on gate and is `NOT_RUN`.
-- The maintained xterm fork grows, accepted to keep cell/Unicode/wrap/mouse
-  semantics in xterm rather than duplicating private buffer logic in app code.
+- Page-owned word bounds keep xterm stock and selection public-API-only at the
+  cost of three divergences from xterm's own word selection. A separator glyph
+  at a soft-wrap boundary no longer joins the wrapped word, where xterm
+  includes the neighbouring row's edge cell whenever it is not a space. A
+  soft-wrapped word extended to a cell on its continuation row before the
+  word's end keeps the whole word, where the fork truncated it. An exact cell
+  boundary rounds down where xterm rounds up. `wordAt` walks at most one
+  separator-free soft-wrapped run, bounded by the buffer.
+- The anchor is a marker, so output streaming during a hold moves the word
+  with its text. Under tmux this is the common case: a tmux line scroll in a
+  pane whose region starts at row 0 is a bare line feed, which trims one row
+  once the alternate buffer holds its maximum (stock xterm grows an empty
+  alternate buffer's capacity with the grid but never shrinks it, so a grid
+  that shrank before tmux attached first keeps that many rows above the
+  screen, untrimmed). The marker also follows tmux's multi-line `CSI n S`
+  scrolls, which delete and insert rows without a trim; the fork's selection
+  tracked only trims, so there it stayed on the screen position. When the
+  word's first row leaves the buffer (trimmed or deleted), the hold clears
+  with no `Copy`, where the fork cleared once the range's end row scrolled off
+  and then failed the page. A buffer switch mid-hold also clears it. Rows
+  shifted inside a region that does not start at row 0 (a lower split pane)
+  move neither marker nor fork selection. A text-size change landing mid-hold
+  re-fits the grid without a window resize and leaves the anchor's column
+  offsets in the old geometry; its controls sit on a sheet outside the
+  terminal, so this needs a second finger or a write committing during a hold.
+- The highlight may vanish for up to one 50 ms tick mid-hold. Stock xterm
+  clears its selection on every mouse-protocol change, and tmux re-sends its
+  modes on change or invalidation; the next move, tick or release re-applies
+  it, so the copied text is exact. The fork suppressed that clear during its
+  drag.
 - TouchEvents replace the more portable PointerEvents because the pinned
   API-36 WebView physically withholds PointerEvent move/up after long press but
   retains TouchEvents. The app accepts this Android-specific adaptation and a
-  narrow semantic tap ingress over a native gesture detector, fabricated DOM
+  page-encoded SGR tap over a native gesture detector, fabricated DOM
   events, timing offsets, or duplicate touch owners.
-- Preventing the trusted touch start removes Chromium's compatibility tap.
-  xterm therefore receives one semantic tap and remains the sole mouse-protocol
-  encoder. X10 stays press-only; a completed tap may emit negotiated DEC focus
-  input. Stylus behavior and generic-browser portability are not claimed.
+- Preventing the trusted touch start removes Chromium's compatibility tap, so
+  the page sends one SGR tap. X10 stays press-only; a completed tap may emit
+  negotiated DEC focus input. Stylus behavior and generic-browser portability are not claimed.
 - A gesture beginning during active composition is intentionally unavailable
   for terminal manipulation. Requiring one fresh gesture after composition
   completion is accepted to prevent a single touch from both committing text

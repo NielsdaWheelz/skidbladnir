@@ -186,7 +186,7 @@ gateway mapper, geometry presence fields/labels, font auto-shrink constants and
 loop, upward fit clamps, guessed PTY dimensions, version-3 decoder, and their
 superseded assertions/comments. Keep one fitter, one stored preference, one
 SP conversion, and one resize transport. Do not generalize credential rollback,
-duplicate native cell measurement, edit generated xterm assets, or upgrade xterm.
+duplicate native cell measurement, edit vendored xterm assets, or upgrade xterm.
 
 ## Red / green / refactor and acceptance
 

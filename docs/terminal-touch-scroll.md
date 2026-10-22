@@ -23,39 +23,41 @@ this document's direct-touch PointerEvent, capture, compatibility-tail, and tap
 ownership. This document remains authoritative for fixed `8 CSS px` scroll
 arbitration and every xterm wheel/mouse route; its recorded evidence describes
 the shipped pre-selection-copy source.
+On 2026-10-21 (stock-xterm) the patched fork, its patch and its build script
+were deleted for stock xterm.js 6.0.0; the page now owns the wheel routes
+below. The ownership tables, reds/greens, verification plans and release
+evidence below are history of the patched delivery.
 
 ## Outcome
 
 A primary one-finger vertical drag over the live terminal behaves like a real
-wheel at the same xterm location. xterm alone chooses the result for every
-normalized line-wheel input:
+wheel at the same xterm location. The page routes every wheel unit from
+xterm's public state:
 
 | Current xterm state | Observable result |
 | --- | --- |
-| Application requested wheel-capable mouse tracking | xterm emits its negotiated mouse-wheel report |
-| Active buffer has no scrollback capability and mouse does not own wheel | xterm emits its normal/application-cursor Up or Down sequence |
-| Active buffer supports scrollback and mouse does not own wheel | xterm attempts phone-local viewport movement and emits no terminal input, including at a scroll boundary |
+| `modes.mouseTrackingMode` is `vt200`, `drag`, or `any` | One SGR wheel report, `ESC[<64;C;RM` backward or `ESC[<65;C;RM` forward |
+| Otherwise, the alternate buffer is active | One normal/application-cursor Up or Down sequence |
+| Otherwise (normal buffer) | Exact local `terminal.scrollLines` and no terminal input, including at a scroll boundary |
 
 This is Termux-like routing, drag-only: compare Termux's immutable
 [`doScroll`](https://github.com/termux/termux-app/blob/3b66f8799635a4dba4a206563048ff0e6792c487/terminal-view/src/main/java/com/termux/view/TerminalView.java#L573-L589).
 It works around xterm 6.0.0's confirmed
-[touch regression](https://github.com/xtermjs/xterm.js/issues/5489) with one
-source-pinned public line-wheel API. That API delegates to one xterm-owned
-internal router shared with physical DOM wheel handling; its outcomes use
-xterm's existing mouse, cursor-fallback, and viewport primitives. It fixes live
-terminal interaction; it is not a history subsystem.
+[touch regression](https://github.com/xtermjs/xterm.js/issues/5489) without
+patching xterm: tmux always negotiates SGR 1006 with any mouse mode, so the
+page encodes reports and cursor keys itself through `terminal.input` and
+scrolls through `terminal.scrollLines`. It fixes live terminal interaction; it
+is not a history subsystem.
 
 ## Goals, decisions, and rules
 
 - One provider-neutral gesture delivers ordinary xterm wheel semantics to
   shells, tmux, Codex, Claude, and future opaque terminal programs; downstream
   software may consume or ignore them.
-- The terminal page owns touch recognition. xterm remains the sole owner of
-  buffer state, terminal modes, wheel routing, cursor encoding, mouse protocol
-  encoding, and local viewport movement.
-- Every API call takes exactly one xterm wheel route. Skíðblaðnir
-  never reads xterm modes to choose a route and never emits terminal escape
-  sequences itself.
+- The terminal page owns touch recognition. xterm owns buffer state, modes and
+  local viewport movement; the page owns wheel and tap routing and their
+  SGR/cursor bytes.
+- Every wheel unit takes exactly one route.
 - The existing ordered `terminal.onData` -> page `Input` -> WSS path remains
   the only terminal-input path. A local scroll emits no `Input`.
 - The outer document and native WebView remain locked at `(0, 0)`. Only the
@@ -79,9 +81,8 @@ terminal interaction; it is not a history subsystem.
 - Accumulate each move as signed incremental travel `previousY - currentY`,
   then update `previousY`; reversal therefore cancels un-emitted opposite debt.
   Convert the accumulator by the snapshotted row height. On each
-  animation frame, invoke `terminal.handleWheelInput(...)` at most once with
-  the snapshotted coordinate, false modifier flags, and signed whole-row
-  `deltaLines`: negative for finger-down/backward, positive for
+  animation frame, emit at most one wheel unit at the start cell, unmodified,
+  of signed whole rows: negative for finger-down/backward, positive for
   finger-up/forward. Clamp magnitude to `terminal.rows`, drop excess whole-row
   debt, and retain only the fractional remainder for that gesture. No DOM
   wheel event is constructed or dispatched.
@@ -93,7 +94,7 @@ terminal interaction; it is not a history subsystem.
   Nothing is emitted after release.
 - After claim, a second contact, selection, `touchcancel`, native
   `ACTION_CANCEL`, xterm textarea blur, window blur, resize, rotation, page
-  hide, `ResetInputState`, page failure, or disposal
+  hide, `ResetInputState`, or page failure
   immediately prevents future events, cancels a pending frame, and discards all
   debt. Events already dispatched remain authoritative.
 - On a live enabled -> disabled transition, `ResetInputState` is synchronously
@@ -133,10 +134,10 @@ Existing `PgUp` and `PgDn` stay raw terminal keys.
 ## Architecture and API design
 
 ```text
-trusted touch TouchEvent ----> page-private TerminalTouchInteraction
+trusted touch TouchEvent ----> page gesture owner
                                               |
                                               v
-                           xterm handleWheelInput(deltaLines, x, y)
+                              page sendWheel(rows, start cell)
                                               |
                     +-------------------------+-----------------------+
                     |                         |                       |
@@ -147,44 +148,29 @@ trusted touch TouchEvent ----> page-private TerminalTouchInteraction
                                                 existing Input/WSS/PTY
 ```
 
-`terminal.js` owns one private lifecycle handle:
+`terminal.js` owns the gesture state directly:
 
 ```text
-createTerminalTouchInteraction({ terminal, screen, longPressMilliseconds }) ->
-  { cancel(), clearSelection(), dispose() }
-
 touch-scroll state = Idle | Composing | Pending | Scrolling
 ```
 
-The state is page-memory only. Touch calls the private line-wheel sender on
-animation frames. `clearSelection()` and the
+The state is page-memory only; listeners are installed at the handshake. Touch
+calls `sendWheel` on animation frames. Native `ClearSelection` and the
 selection-owned states are defined by
 [`terminal-selection-copy.md`](terminal-selection-copy.md).
 
-The pinned xterm fork adds one public semantic ingress and one internal route
-owner:
+The page owns the routes over xterm's public API:
 
-```text
-terminal.handleWheelInput({
-  deltaLines: integer,
-  clientX: finite CSS pixel,
-  clientY: finite CSS pixel,
-  ctrlKey: boolean,
-  altKey: boolean,
-  shiftKey: boolean
-}) -> void
-```
+| Page function | Contract |
+| --- | --- |
+| `sendWheel(rows, cell)` | `modes.mouseTrackingMode` in {`vt200`, `drag`, `any`}: one `ESC[<64;C;RM` (rows < 0) or `ESC[<65;C;RM` (rows > 0); else `buffer.active.type === "alternate"`: one `ESC[A`/`ESC[B` (`ESC O A`/`ESC O B` under `applicationCursorKeysMode`); else `terminal.scrollLines(rows)`. One remote unit per call whatever `abs(rows)`. |
+| `sendTap(cell)` | `none`: nothing. `x10`: `ESC[<0;C;RM`. `vt200`/`drag`/`any`: that, then `ESC[<0;C;Rm`. |
 
-`deltaLines` is non-zero, positive forward/down and negative backward/up. The
-public boundary rejects non-integer/non-finite deltas and non-finite
-coordinates. Before `open()` or after disposal it defects without queuing.
-Inside xterm, physical DOM wheel input and this semantic ingress share one
-private router which atomically selects wheel-capable mouse reporting first,
-then exact local viewport `scrollLines(deltaLines)` when scrollback exists,
-otherwise one normal/application-cursor sequence. The selected route is never
-returned. Physical wheels retain their existing browser normalization and
-smooth-scroll policy; semantic line input never enters that pixel/classifier
-pipeline.
+Remote bytes enter through `terminal.input(bytes, true)`, xterm's user-input
+path to `onData`, so they keep its side effects (scroll to bottom, selection
+clear) and reach `Input` like typed bytes. `C;R` is the 1-based cell from
+`cellAt(x, y)`: the position within `.xterm-screen` scaled by `cols` and `rows`
+and clamped, which equals xterm's own mouse-report coordinates.
 
 The existing lifecycle reset is hard-cut from modifier-specific naming to the
 one input-state owner:
@@ -201,7 +187,7 @@ setting, persistence, gateway operation, or tmux command.
 
 `LockedTerminalWebView` should consolidate its repeated Focus/Accessory/
 ResetInputState message-port send boilerplate into one private exact
-page-command sender. `failPage()` disposes the gesture owner, permanently
+page-command sender. `failPage()` cancels the gesture, permanently
 rejects later native messages, then publishes failure. Do not expose a generic
 command API or production test seam.
 
@@ -212,22 +198,29 @@ command API or production test seam.
   detector, feature flag, legacy branch, fallback, or compatibility decoder.
 - `ResetInputState` and `resetInputState()` replace `ResetModifiers` and
   `resetModifiers()` outright; no alias or dual decoder remains.
-- One page line-wheel sender; no application-owned `terminal.scrollLines`,
-  buffer/mode branch, hand-encoded mouse/cursor sequence, synthetic
-  `WheelEvent`, PageUp remap, or tmux `send-keys`.
-- Replace the official xterm JavaScript artifact with one visibly fork-suffixed
-  artifact that `scripts/build-terminal-xterm` rebuilds from tag `6.0.0`,
-  commit `f447274f430fd22513f6adbf9862d19524471c04`, Node 22.23.2, and one
-  reviewed source patch, with install scripts disabled. Besides the source
-  delta, the patch carries a build-only `package.json`/`package-lock.json`
-  refresh that pins the webpack and terser versions the committed bytes were
-  built with; the tag's own lock produces different bytes. Those build tools
-  do not enter the shipped bundle. The rebuild ignores git and npm user config.
-  Git alone tracks the vendored bytes; a rebuild followed by an empty
-  `git diff` proves reproducibility. Never
-  edit minified output. Preserve the MIT license and official CSS. Do not apply upstream's local-only
-  [touch patch](https://github.com/xtermjs/xterm.js/commit/40f2eefec70577f9e8d3eda08f95028f3f04380a)
-  beside this owner.
+- One page wheel router; no synthetic `WheelEvent`, PageUp remap, or tmux
+  `send-keys`.
+- Vendored runtime: verbatim upstream bytes, no build step and no retained
+  check. Git alone tracks them; never edit them. Under
+  `android/app/src/main/assets/terminal/`:
+
+  | File | Source | Identity |
+  | --- | --- | --- |
+  | `vendor/xterm-6.0.0.js` | `package/lib/xterm.js` of npm `@xterm/xterm@6.0.0` | tarball `sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==`; file sha256 `14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972` |
+  | `vendor/xterm-6.0.0.css`, `vendor/xterm-6.0.0.LICENSE` | `package/css/xterm.css`, `package/LICENSE`, same tarball | byte-identical |
+  | `vendor/xterm-addon-fit-0.11.0.{js,LICENSE}` | `package/lib/addon-fit.js`, `package/LICENSE` of npm `@xterm/addon-fit@0.11.0` | tarball `sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==` |
+  | `vendor/JetBrainsMono-{Regular,Bold}.woff2`, `vendor/JetBrainsMono-2.304.LICENSE` | `fonts/webfonts/` and `OFL.txt` of the JetBrains Mono v2.304 release zip | byte-identical |
+
+  `xterm-6.0.0.js` has no trailing newline and ends in a `sourceMappingURL`
+  comment; only devtools request the map, which the asset loader 404s.
+  Re-verify from the repository root:
+
+  ```sh
+  curl -sL https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz -o x.tgz
+  openssl dgst -sha512 -binary x.tgz | base64   # TQwDdQGt...OYg==
+  tar -xzOf x.tgz package/lib/xterm.js | cmp - android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js
+  rm x.tgz
+  ```
 - Keep native/page horizontal containment, CSP, geometry, IME, paste, queue,
   WSS, PTY, attach, detach, and reconnect behavior unchanged.
 - Delete obsolete `pan-y`, gesture experiments, imports, comments, and tests in
@@ -243,9 +236,7 @@ The exact S22/WebView proof established that a constructed line-mode wheel
 event exposes `deltaY == wheelDeltaY == -2`; xterm's copied VS Code normalizer
 treats the deprecated field as a legacy `/120` value, the viewport consumes
 the event, and local position does not move. That rejected seam must not
-return. The source-pinned semantic API above is the hard cut. Stop if its
-physical and semantic callers cannot share one internal router, if the exact
-Android pin cannot route all three branches.
+return. Stock xterm.js with page-owned routing is the hard cut.
 
 ## Files and non-overlapping ownership
 
@@ -369,9 +360,9 @@ re-proves these owners. Every unapproved device/tmux/live-host boundary is
 
 ## Acceptance criteria
 
-1. A one-finger vertical drag over the terminal produces the three exact xterm
-   outcomes above, in natural direction, with exactly one route per line-wheel
-   call; a normal-buffer boundary never becomes cursor input.
+1. A one-finger vertical drag over the terminal produces the three exact
+   outcomes above, in natural direction, with exactly one route per wheel
+   unit; a normal-buffer boundary never becomes cursor input.
 2. Gesture arbitration, cancellation, amplification bound, modifier behavior,
    and lifecycle match this contract.
 3. A touch beginning during active composition is wholly composition-owned and
@@ -380,9 +371,8 @@ re-proves these owners. Every unapproved device/tmux/live-host boundary is
    horizontal containment, transport, and attachment lifecycle do not regress.
 4. Codex and Claude remain opaque. No content, transcript, provider, gateway,
    tmux, persistence, or product/network API capability is added.
-5. Only the final TouchEvent owner, exact internal version-3 commands, one
-   generic reviewed xterm source patch, and its reproducibly generated fork
-   artifact remain.
+5. Only the final TouchEvent owner, exact internal commands, and verbatim
+   stock xterm.js remain.
 
 ## Non-goals and explicit trade-offs
 
@@ -396,21 +386,26 @@ logging. Existing opaque tmux mouse bindings may enter shared copy mode.
 
 - **Context sensitivity:** one swipe may be local or shared application input.
   This is accepted terminal parity; calling it “history” would be false.
-- **Maintained xterm fork:** the semantic API fixes ownership and exact-row
-  behavior but adds source-build and upgrade burden. The accepted guard is one
-  reviewable patch, pinned reproducible inputs and output, upstream-style
-  regressions, and the black-box S22 three-route matrix; a future xterm upgrade
-  cannot land without all of them.
-- **Pinned build toolchain:** the patch keeps a build-only manifest and lock
-  refresh, originally made to clear a since-removed dev-toolchain audit,
-  because the committed bundle's bytes depend on the webpack and terser it
-  pins. The rebuild neither audits nor lints that toolchain: none of it ships,
-  and an advisory gate on it failed the rebuild as new advisories appeared.
-  The refresh's typescript-eslint 8 bump is kept without the lint-config
-  renames it needs, so lint in the patched tree is knowingly unmaintained.
-  Node is pinned; npm version, build platform, locale and clock are not
-  checked, so drift shows only as a `git diff`. Dropping the refresh means
-  re-baselining the bundle.
+- **Page-owned routing:** stock xterm costs three small divergences. Reports
+  are always SGR: an application negotiating DEFAULT, UTF-8, URXVT or
+  SGR-pixels encoding gets SGR wheel and tap reports,
+  where the fork sent DEFAULT ones to an `onBinary` the page never read and
+  encoded the others natively; unreachable, because tmux enables 1006 with
+  every outer mouse mode, and stock xterm has no public encoding getter. Local
+  scroll uses public `scrollLines`, which offsets the viewport's scroll
+  position rather than the fork's exact `ydisp` target; the two agree whenever
+  the viewport is synced, i.e. always except within one frame of a resize. The
+  selection edge-scroll tick extends to the last visible row, not one row
+  below the viewport as xterm's mouse tick does; that row is off-screen and
+  release recomputes the range identically.
+- **Physical wheels:** an attached mouse's wheel reaches stock xterm's own
+  wheel handling, not `sendWheel`: its negotiated encoding with modifier bits,
+  pixel smooth scroll, and no one-unit-per-frame bound. The fork routed both
+  through one router. Touch never produces a DOM wheel.
+- **Upgrade surface:** routing and selection use only public API, but
+  `settleFonts` re-measures the cell through private
+  `terminal._core._charSizeService.measure()`, present in stock 6.0.0. An xterm
+  upgrade is a file swap plus a check of that reach and these journeys.
 - **Bounded batching:** one frame can produce at most
   one remote cursor/mouse unit even when its event carries several local lines.
   This sacrifices remote velocity fidelity to prevent input amplification.

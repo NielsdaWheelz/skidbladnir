@@ -11,9 +11,9 @@ acceptance gaps and historical failures remain.
 
 evidence: go test files, android unit/instrumentation source sets, shell
 self-tests, owned xterm assertions, and `scripts/test` are removed.
-`scripts/check verify` runs only static checks and builds. xterm's upstream mock
-signature adaptations remain solely because its retained build compiles upstream
-test sources; no xterm test runner or repository-owned assertions remain.
+`scripts/check verify` runs only static checks and builds. the vendored xterm is
+the stock npm bundle; no xterm build, test runner or repository-owned assertions
+remain.
 
 resolved when: the owner chooses and retains a small executable suite for the
 important behavioral guarantees, with measured runtime and demonstrated failure
