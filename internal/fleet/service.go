@@ -141,7 +141,8 @@ func loadHandle(path string) (machine.Handle, error) {
 }
 
 // newFleet makes base the hub of a new fleet. The previous fleet's observer state
-// is deleted first, so the commit that follows never pairs it with the new fleet.
+// is durably deleted first, so the commit that follows never pairs it with the
+// new fleet.
 func (s *Service) newFleet(base document, c hostconfig.Config) (document, error) {
 	id := make([]byte, 32)
 	_, _ = rand.Read(id) // crypto/rand cannot fail
@@ -154,19 +155,7 @@ func (s *Service) newFleet(base document, c hostconfig.Config) (document, error)
 		Settings: &c,
 	}}
 	base.Authority = &authority{Invites: []invite{}, Reports: map[string]SelfReport{}}
-	return base, resetObserver(s.options.ObserverPath)
-}
-
-// resetObserver durably deletes the notification observer's fleet-scoped state.
-func resetObserver(path string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	directory, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	return errors.Join(directory.Sync(), directory.Close())
+	return base, privatefile.Remove(s.options.ObserverPath)
 }
 
 // draft decodes the committed bytes into a private copy for one mutation.

@@ -228,9 +228,11 @@ the existing creation action `new terminal on <owner>`.
    stored under `$HOME/.cache/skidbladnir/terminal-contexts/<connectionId>.json`
    (directory 0700, files 0600); the file name carries the id. helper and gateway
    share one path/codec owner. records hold no cwd, provider content, timestamps
-   or credentials. no record cap, size check or directory lock: register writes a
-   temp file and renames it, after pruning records from another boot or with a
-   dead root; reads never prune. records survive gateway
+   or credentials. no record cap, size check or directory lock: register replaces
+   the record through `privatefile.WriteFile`, after pruning records from another
+   boot or with a dead root; reads never prune. its file and directory syncs buy a
+   boot-scoped record nothing and cost about 7 ms per registered shell on darwin;
+   one write path is worth that. records survive gateway
    restart but supply no authority without current kernel validation. boot identity
    prevents accepting pid/start/tty reuse after reboot. no heartbeat or daemon.
    this is a narrow exception to tmux-only runtime metadata: transient connection

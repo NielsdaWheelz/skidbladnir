@@ -1,4 +1,7 @@
-// Package privatefile owns reads and durable replacement of private local state.
+// Package privatefile owns private local state files: 0600 regular files, read
+// under a bound and replaced or removed durably. A missing parent directory is
+// created 0700; callers own an existing directory's mode. No other package
+// syncs a directory.
 package privatefile
 
 import (
@@ -62,7 +65,20 @@ func WriteFile(path string, data []byte) (result error) {
 	if err := os.Rename(temporary, path); err != nil {
 		return err
 	}
-	directory, err := os.Open(filepath.Dir(path))
+	return syncDirectory(filepath.Dir(path))
+}
+
+// Remove durably deletes one private file; a missing file is already deleted.
+func Remove(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+// syncDirectory makes a rename or unlink in path durable.
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
 	if err != nil {
 		return err
 	}
