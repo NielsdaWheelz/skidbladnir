@@ -71,8 +71,9 @@ launch is a closed choice; it is not a new provider or a profile named terminal.
 
 `kind` is required. terminal forbids `profile`; shell-here forbids overrides,
 names, pane/process targets, and client-supplied cwd/group. reject unknown,
-duplicate, missing required, null, and wrong-type fields through existing strict
-decoders. optional fields retain their existing omission/empty-value rules.
+duplicate, missing required and wrong-type fields through existing strict
+decoders; null counts as absent. optional fields retain their existing
+omission/empty-value rules.
 the response is the existing strict session dto, with optional observed agent
 facts; never invent `launchProfile:"terminal"` or a permanent session kind.
 manual agent recognition retains its existing configured-profile requirements;

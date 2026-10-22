@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,109 +17,71 @@ import (
 const (
 	sessionIdentityHeader        = "Skidbladnir-Session-Identity"
 	terminalPresenceInterval     = 2 * time.Second
+	terminalObservationTimeout   = 3 * time.Second
 	terminalLivenessInterval     = 10 * time.Second
 	terminalLivenessTimeout      = 5 * time.Second
-	terminalObservationTimeout   = 3 * time.Second
 	terminalInitialResizeTimeout = 5 * time.Second
 	terminalStartupTimeout       = 5 * time.Second
 	terminalWriteTimeout         = 5 * time.Second
-	terminalFinalFrameTimeout    = 5 * time.Second
 	terminalShutdownTimeout      = 8 * time.Second
 	terminalPTYReadBufferBytes   = 32 * 1024
 )
 
-// liveConnection owns revocation and cleanup for a terminal or notification stream.
+// liveConnection is one terminal or notification stream. cancel ends it; done closes after its cleanup,
+// and cleanupErr is written before done closes.
 type liveConnection struct {
-	deviceID      string
-	sessionID     string
-	identityToken string
-	cancel        context.CancelFunc
-	done          chan error
+	deviceID, sessionID, identityToken string
+	cancel                             context.CancelFunc
+	done                               chan struct{}
+	cleanupErr                         error
 }
 
-type terminalEnd uint8
-
-const (
-	terminalDetached terminalEnd = iota + 1
-	terminalPeerClosed
-	terminalReconnect
-	terminalInvalidRequest
-	terminalRequestTooLarge
-	terminalInternalFailure
-	terminalTransportFailure
-)
-
 func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.Request) {
-	id, valid := terminalSessionID(request.URL.Path)
-	if !valid {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
+	id := request.PathValue("tmuxId")
 	identityValues := request.Header.Values(sessionIdentityHeader)
 	if len(identityValues) != 1 || identityValues[0] == "" {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
 	identityToken := identityValues[0]
-	validationContext, cancelValidation := context.WithTimeout(request.Context(), 5*time.Second)
-	validationErr := gateway.sessions.ResolveSession(validationContext, id, identityToken)
-	cancelValidation()
-	if validationErr != nil {
-		writeSessionError(writer, validationErr)
+	resolve, cancelResolve := context.WithTimeout(request.Context(), 5*time.Second)
+	err := gateway.sessions.ResolveSession(resolve, id, identityToken)
+	cancelResolve()
+	if err != nil {
+		writeError(writer, sessionFailure(err))
 		return
 	}
-
-	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
+	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
-		if tracked, ok := writer.(interface{ setErrorCode(logging.ErrorCode) }); ok {
-			tracked.setErrorCode(logging.ErrorInvalidRequest)
-		}
+		writer.(*trackedResponseWriter).errorCode = logging.ErrorInvalidRequest
 		return
 	}
 	connection.SetReadLimit(-1)
 
-	terminalContext, cancel := context.WithCancel(context.Background())
-	admissionContext, cancelAdmission := context.WithTimeout(request.Context(), terminalInitialResizeTimeout)
-	admissionErr := gateway.lockTerminalLifecycle(admissionContext)
-	cancelAdmission()
-	if admissionErr != nil {
-		cancel()
-		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
-		return
-	}
-	registration, registered := gateway.registerLiveConnection(request.Context().Value(deviceContextKey{}).(string), id, identityToken, cancel)
-	<-gateway.terminalLifecycle
-	if !registered {
-		cancel()
-		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
-		return
-	}
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	completionErr := error(nil)
-	defer func() { gateway.unregisterLiveConnection(registration, completionErr) }()
-
-	initial, opened := readInitialTerminalResize(terminalContext, connection)
-	if !opened {
+	live := gateway.register(request.Context().Value(deviceContextKey{}).(string), id, identityToken, cancel)
+	if live == nil {
+		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
 		return
 	}
-
-	completionErr = errors.New("terminal cleanup completion was not reported")
-	completionErr = gateway.runTerminal(terminalContext, connection, sessions.OpenTerminalInput{
+	var cleanupErr error
+	defer func() { gateway.unregister(live, cleanupErr) }()
+	initial, ok := readInitialResize(ctx, connection)
+	if !ok {
+		return
+	}
+	cleanupErr = gateway.runTerminal(ctx, connection, sessions.OpenTerminalInput{
 		TmuxID: id, IdentityToken: identityToken, Columns: initial.Columns, Rows: initial.Rows,
-	}, request.Header.Get("Authorization"))
+	})
 }
 
-func (gateway *Gateway) runTerminal(
-	ctx context.Context,
-	connection *websocket.Conn,
-	input sessions.OpenTerminalInput,
-	authorization string,
-) (cleanupErr error) {
-	startupContext, cancelStartup := context.WithTimeout(ctx, terminalStartupTimeout)
+// runTerminal attaches the pty, writes Hello, then pumps until ctx ends or a worker ends the connection,
+// writing at most one final Error frame. It returns the pty and tmux client release error.
+func (gateway *Gateway) runTerminal(ctx context.Context, connection *websocket.Conn, input sessions.OpenTerminalInput) (cleanupErr error) {
+	startup, cancelStartup := context.WithTimeout(ctx, terminalStartupTimeout)
 	defer cancelStartup()
-	attachment, err := gateway.sessions.OpenTerminal(ctx, startupContext, input)
+	attachment, err := gateway.sessions.OpenTerminal(ctx, startup, input)
 	if err != nil {
 		writeTerminalErrorAndClose(ctx, connection, terminalCodeForSessionError(err))
 		if errors.Is(err, sessions.ErrTerminalCleanupFailed) {
@@ -128,243 +89,173 @@ func (gateway *Gateway) runTerminal(
 		}
 		return nil
 	}
-	runtimeContext, cancel := context.WithCancel(ctx)
-	queue := terminal.NewOutboundQueue()
+	runtime, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() {
 		cancel()
-		queue.Close()
-		_ = connection.CloseNow() // justify-ignore-error: owned terminal cleanup must not wait for a WebSocket close handshake.
-		ptyErr := attachment.ClosePTY()
-		clientErr := attachment.CloseClient()
-		cleanupErr = errors.Join(ptyErr, clientErr)
+		_ = connection.CloseNow()
+		cleanupErr = errors.Join(attachment.ClosePTY(), attachment.CloseClient())
 		workers.Wait()
 	}()
 
-	greeting, err := attachment.Greeting(startupContext)
+	greeting, err := attachment.Greeting(startup)
 	if err != nil {
-		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorReconnectRequired)
-		return
+		writeTerminalErrorAndClose(runtime, connection, terminal.ErrorReconnectRequired)
+		return nil
 	}
-	frame := terminal.HelloFrame{AttachedClients: greeting.AttachedClients, PaneID: greeting.PaneID}
+	hello := terminal.HelloFrame{AttachedClients: greeting.AttachedClients, PaneID: greeting.PaneID}
 	if foreground := greeting.Foreground; foreground != nil {
-		frame.Foreground = &terminal.Foreground{
+		hello.Foreground = &terminal.Foreground{
 			Provider: foreground.Provider.String(), PID: int64(foreground.PID), StartIdentity: string(foreground.StartIdentity),
 		}
 	}
-	hello, err := terminal.EncodeHello(frame)
-	if err != nil {
-		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorInternal)
-		return
-	}
-	if err := connection.Write(startupContext, websocket.MessageText, hello); err != nil {
-		return
+	if connection.Write(startup, websocket.MessageText, terminal.EncodeHello(hello)) != nil {
+		return nil
 	}
 	cancelStartup()
 
-	workerResults := make(chan terminalEnd, 4)
-	writerDone := make(chan error, 1)
-	workers.Add(5)
+	// gate serializes data frames so that nothing follows the final frame.
+	var gate sync.Mutex
+	ended := false
+	send := func(kind websocket.MessageType, payload []byte) bool {
+		gate.Lock()
+		defer gate.Unlock()
+		if ended {
+			return false
+		}
+		write, cancelWrite := context.WithTimeout(runtime, terminalWriteTimeout)
+		defer cancelWrite()
+		return connection.Write(write, kind, payload) == nil
+	}
+	endings := make(chan terminal.ErrorCode, 4)
+	workers.Add(4)
+	go func() { defer workers.Done(); endings <- pumpPTY(attachment, send) }()
+	go func() { defer workers.Done(); endings <- pumpInput(runtime, connection, attachment) }()
 	go func() {
 		defer workers.Done()
-		workerResults <- pumpTerminalLiveness(runtimeContext, connection, terminalLivenessInterval, terminalLivenessTimeout)
+		endings <- watchPresence(runtime, attachment, greeting.AttachedClients, send)
 	}()
-	go func() {
-		defer workers.Done()
-		writerDone <- pumpTerminalOutput(runtimeContext, connection, queue)
-	}()
-	go func() {
-		defer workers.Done()
-		workerResults <- pumpTerminalPTY(attachment, queue)
-	}()
-	go func() {
-		defer workers.Done()
-		workerResults <- pumpTerminalInput(runtimeContext, connection, attachment)
-	}()
-	go func() {
-		defer workers.Done()
-		workerResults <- gateway.monitorTerminal(runtimeContext, authorization, attachment, queue, greeting.AttachedClients)
-	}()
-
+	go func() { defer workers.Done(); endings <- pingPeer(runtime, connection) }()
+	var code terminal.ErrorCode
 	select {
 	case <-ctx.Done():
-		return
-	case <-writerDone:
-		return
-	case ending := <-workerResults:
-		if ending == terminalDetached {
-			queue.Close()
-			waitForTerminalWriter(ctx, writerDone)
-			_ = connection.CloseNow() // justify-ignore-error: Detach commits to prompt owned-resource teardown, not a peer handshake.
-			return
-		}
-		code, final := terminalErrorForEnd(ending)
-		if final {
-			payload, encodeErr := terminal.EncodeError(code)
-			if encodeErr != nil {
-				panic("closed terminal error failed encoding") // justify-defect: terminalErrorForEnd returns only the closed error universe.
-			}
-			if queue.TerminateWithText(payload) == nil {
-				waitForTerminalWriter(ctx, writerDone)
-				_ = connection.CloseNow() // justify-ignore-error: the bounded final-frame attempt already settled this transport.
-			}
-		}
+		return nil
+	case code = <-endings:
 	}
+	// a worker cut short by ctx may still report a code; revocation, close and shutdown end without a frame.
+	if code == "" || ctx.Err() != nil {
+		return nil
+	}
+	// coder/websocket closes the connection when a Read or Write ctx ends, so runtime stays live until the
+	// final frame is written; the timer bounds the in-flight frame plus the final one.
+	stop := time.AfterFunc(terminalWriteTimeout, func() { _ = connection.CloseNow() })
+	defer stop.Stop()
+	gate.Lock()
+	ended = true
+	_ = connection.Write(ctx, websocket.MessageText, terminal.EncodeError(code))
+	gate.Unlock()
 	return nil
 }
 
-func pumpTerminalPTY(attachment *sessions.TerminalAttachment, queue *terminal.OutboundQueue) terminalEnd {
+func pumpPTY(attachment *sessions.TerminalAttachment, send func(websocket.MessageType, []byte) bool) terminal.ErrorCode {
 	buffer := make([]byte, terminalPTYReadBufferBytes)
 	for {
 		count, err := attachment.Read(buffer)
-		if count > 0 {
-			if enqueueErr := queue.EnqueueBinary(buffer[:count]); enqueueErr != nil {
-				return terminalTransportFailure
-			}
+		if count > 0 && !send(websocket.MessageBinary, buffer[:count]) {
+			return ""
 		}
 		if err != nil {
-			return terminalReconnect
+			return terminal.ErrorReconnectRequired
 		}
 		if count == 0 {
-			return terminalInternalFailure
+			return terminal.ErrorInternal
 		}
 	}
 }
 
-func pumpTerminalInput(ctx context.Context, connection *websocket.Conn, attachment *sessions.TerminalAttachment) terminalEnd {
+func pumpInput(ctx context.Context, connection *websocket.Conn, attachment *sessions.TerminalAttachment) terminal.ErrorCode {
 	for {
-		messageType, payload, oversized, err := readTerminalMessage(ctx, connection)
+		kind, payload, oversized, err := readMessage(ctx, connection)
 		if err != nil {
-			return terminalPeerClosed
+			return ""
 		}
 		if oversized {
-			return terminalRequestTooLarge
+			return terminal.ErrorRequestTooLarge
 		}
-		switch messageType {
-		case websocket.MessageBinary:
+		if kind == websocket.MessageBinary {
 			if len(payload) > 0 {
 				if _, err := attachment.Write(payload); err != nil {
-					return terminalReconnect
+					return terminal.ErrorReconnectRequired
 				}
 			}
-		case websocket.MessageText:
-			frame, err := terminal.ParseClientText(payload)
-			if errors.Is(err, terminal.ErrFrameTooLarge) {
-				return terminalRequestTooLarge
-			}
-			if err != nil {
-				return terminalInvalidRequest
-			}
-			switch frame := frame.(type) {
-			case terminal.ResizeFrame:
-				if err := attachment.Resize(frame.Columns, frame.Rows); err != nil {
-					return terminalReconnect
-				}
-			case terminal.DetachFrame:
-				return terminalDetached
-			default:
-				panic("unknown terminal client frame") // justify-defect: ParseClientText returns only Resize or Detach.
-			}
-		default:
-			panic("unknown WebSocket data message type") // justify-defect: coder/websocket exposes only text and binary data messages.
+			continue
+		}
+		frame, err := terminal.ParseClientText(payload)
+		if err != nil {
+			return terminal.ErrorInvalidRequest
+		}
+		if frame.Detach {
+			return ""
+		}
+		if err := attachment.Resize(frame.Columns, frame.Rows); err != nil {
+			return terminal.ErrorReconnectRequired
 		}
 	}
 }
 
-func pumpTerminalOutput(ctx context.Context, connection *websocket.Conn, queue *terminal.OutboundQueue) error {
-	for {
-		frame, err := queue.Next(ctx)
-		if err != nil {
-			return err
-		}
-		messageType := websocket.MessageText
-		switch frame.Kind {
-		case terminal.OutboundText:
-		case terminal.OutboundBinary:
-			messageType = websocket.MessageBinary
-		default:
-			panic("unknown terminal outbound frame") // justify-defect: OutboundQueue constructs the closed outbound-kind universe.
-		}
-		writeContext, cancel := context.WithTimeout(ctx, terminalWriteTimeout)
-		err = connection.Write(writeContext, messageType, frame.Payload)
-		cancel()
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func pumpTerminalLiveness(ctx context.Context, connection *websocket.Conn, interval, timeout time.Duration) terminalEnd {
-	// justify-polling: a vanished peer emits no transport close, and the WebSocket
-	// pong reply is observable only to a Ping caller; one ping per interval with a
-	// bounded reply wait releases a dead phone's PTY and tmux client
-	// within interval+timeout.
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return terminalPeerClosed
-		case <-ticker.C:
-		}
-		pingContext, cancelPing := context.WithTimeout(ctx, timeout)
-		err := connection.Ping(pingContext)
-		cancelPing()
-		if err != nil {
-			return terminalPeerClosed
-		}
-	}
-}
-
-func (gateway *Gateway) monitorTerminal(
+// watchPresence polls tmux for attached clients, which it does not stream, and sends each change.
+func watchPresence(
 	ctx context.Context,
-	authorization string,
 	attachment *sessions.TerminalAttachment,
-	queue *terminal.OutboundQueue,
-	initialAttachedClients int,
-) terminalEnd {
-	// justify-polling: tmux exposes no client-topology stream; the existing
-	// presence tick also confirms current device admission.
+	previous int,
+	send func(websocket.MessageType, []byte) bool,
+) terminal.ErrorCode {
 	ticker := time.NewTicker(terminalPresenceInterval)
 	defer ticker.Stop()
-	previous := initialAttachedClients
 	for {
 		select {
 		case <-ctx.Done():
-			return terminalPeerClosed
+			return ""
 		case <-ticker.C:
 		}
-		request := &http.Request{Header: http.Header{"Authorization": []string{authorization}}}
-		_, err := gateway.fleet.Authenticate(request)
+		observation, cancel := context.WithTimeout(ctx, terminalObservationTimeout)
+		observed, err := attachment.AttachedClients(observation)
+		cancel()
 		if err != nil {
-			return terminalReconnect
-		}
-		observed, err := observeAttachedClients(ctx, attachment)
-		if err != nil {
-			return terminalReconnect
+			return terminal.ErrorReconnectRequired
 		}
 		if observed == previous {
 			continue
 		}
-		payload, err := terminal.EncodePresence(observed)
-		if err != nil {
-			return terminalInternalFailure
-		}
-		if err := queue.EnqueueText(payload); err != nil {
-			return terminalTransportFailure
+		if !send(websocket.MessageText, terminal.EncodePresence(observed)) {
+			return ""
 		}
 		previous = observed
 	}
 }
 
-func observeAttachedClients(ctx context.Context, attachment *sessions.TerminalAttachment) (int, error) {
-	observationContext, cancel := context.WithTimeout(ctx, terminalObservationTimeout)
-	defer cancel()
-	return attachment.AttachedClients(observationContext)
+// pingPeer pings the peer, whose silent loss emits no transport close, releasing a dead peer's pty
+// and tmux client within the liveness interval plus timeout.
+func pingPeer(ctx context.Context, connection *websocket.Conn) terminal.ErrorCode {
+	ticker := time.NewTicker(terminalLivenessInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-ticker.C:
+		}
+		ping, cancel := context.WithTimeout(ctx, terminalLivenessTimeout)
+		err := connection.Ping(ping)
+		cancel()
+		if err != nil {
+			return ""
+		}
+	}
 }
 
-func readTerminalMessage(ctx context.Context, connection *websocket.Conn) (websocket.MessageType, []byte, bool, error) {
-	messageType, reader, err := connection.Reader(ctx)
+func readMessage(ctx context.Context, connection *websocket.Conn) (websocket.MessageType, []byte, bool, error) {
+	kind, reader, err := connection.Reader(ctx)
 	if err != nil {
 		return 0, nil, false, err
 	}
@@ -373,27 +264,25 @@ func readTerminalMessage(ctx context.Context, connection *websocket.Conn) (webso
 		return 0, nil, false, err
 	}
 	if len(payload) > terminal.MaximumFrameBytes {
-		return messageType, nil, true, nil
+		return kind, nil, true, nil
 	}
-	return messageType, payload, false, nil
+	return kind, payload, false, nil
 }
 
-// The mandatory first client frame decides the PTY dimensions, so it is read
-// before any terminal resource exists and every outcome other than a valid
-// Resize ends the connection here. The gate owns its budget with a timer:
-// bounding the read with a deadline context makes the WebSocket library close
-// the transport underneath the refusal frame this gate owes the phone.
-func readInitialTerminalResize(ctx context.Context, connection *websocket.Conn) (terminal.ResizeFrame, bool) {
+// readInitialResize reads the mandatory first frame, which decides the pty size, before any terminal
+// resource exists. A timer, not a deadline ctx, bounds the wait: a ctx ending under the read would make
+// the library close the connection beneath the refusal frame owed to the peer.
+func readInitialResize(ctx context.Context, connection *websocket.Conn) (terminal.ClientFrame, bool) {
 	type firstFrame struct {
-		messageType websocket.MessageType
-		payload     []byte
-		oversized   bool
-		err         error
+		kind      websocket.MessageType
+		payload   []byte
+		oversized bool
+		err       error
 	}
 	frames := make(chan firstFrame, 1)
 	go func() {
-		messageType, payload, oversized, err := readTerminalMessage(ctx, connection)
-		frames <- firstFrame{messageType: messageType, payload: payload, oversized: oversized, err: err}
+		kind, payload, oversized, err := readMessage(ctx, connection)
+		frames <- firstFrame{kind: kind, payload: payload, oversized: oversized, err: err}
 	}()
 	budget := time.NewTimer(terminalInitialResizeTimeout)
 	defer budget.Stop()
@@ -401,52 +290,38 @@ func readInitialTerminalResize(ctx context.Context, connection *websocket.Conn) 
 	select {
 	case <-budget.C:
 		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
-		return terminal.ResizeFrame{}, false
+		return terminal.ClientFrame{}, false
 	case first = <-frames:
 	}
 	if first.err != nil {
-		_ = connection.CloseNow() // justify-ignore-error: a peer that closed before its first frame owns no terminal resources and must not wait for a handshake.
-		return terminal.ResizeFrame{}, false
+		_ = connection.CloseNow()
+		return terminal.ClientFrame{}, false
 	}
 	if first.oversized {
 		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorRequestTooLarge)
-		return terminal.ResizeFrame{}, false
+		return terminal.ClientFrame{}, false
 	}
-	if first.messageType != websocket.MessageText {
+	if first.kind != websocket.MessageText {
 		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
-		return terminal.ResizeFrame{}, false
+		return terminal.ClientFrame{}, false
 	}
 	frame, err := terminal.ParseClientText(first.payload)
 	if err != nil {
 		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
-		return terminal.ResizeFrame{}, false
+		return terminal.ClientFrame{}, false
 	}
-	switch frame := frame.(type) {
-	case terminal.ResizeFrame:
-		return frame, true
-	case terminal.DetachFrame:
-		_ = connection.CloseNow() // justify-ignore-error: an initial Detach owns no terminal resources and must not wait for a handshake.
-		return terminal.ResizeFrame{}, false
-	default:
-		panic("unknown terminal client frame") // justify-defect: ParseClientText returns only Resize or Detach.
+	if frame.Detach {
+		_ = connection.CloseNow()
+		return terminal.ClientFrame{}, false
 	}
+	return frame, true
 }
 
-func terminalErrorForEnd(ending terminalEnd) (terminal.ErrorCode, bool) {
-	switch ending {
-	case terminalReconnect:
-		return terminal.ErrorReconnectRequired, true
-	case terminalInvalidRequest:
-		return terminal.ErrorInvalidRequest, true
-	case terminalRequestTooLarge:
-		return terminal.ErrorRequestTooLarge, true
-	case terminalInternalFailure:
-		return terminal.ErrorInternal, true
-	case terminalDetached, terminalPeerClosed, terminalTransportFailure:
-		return "", false
-	default:
-		panic("unknown terminal ending") // justify-defect: terminal workers return only the closed terminal-end universe.
-	}
+func writeTerminalErrorAndClose(parent context.Context, connection *websocket.Conn, code terminal.ErrorCode) {
+	ctx, cancel := context.WithTimeout(parent, terminalWriteTimeout)
+	_ = connection.Write(ctx, websocket.MessageText, terminal.EncodeError(code))
+	cancel()
+	_ = connection.CloseNow()
 }
 
 func terminalCodeForSessionError(err error) terminal.ErrorCode {
@@ -465,127 +340,101 @@ func terminalCodeForSessionError(err error) terminal.ErrorCode {
 	}
 }
 
-func terminalSessionID(path string) (string, bool) {
-	const prefix = "/v1/sessions/"
-	const suffix = "/terminal"
-	if len(path) <= len(prefix)+len(suffix) || !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
-		return "", false
+// closeSession ends the session's live connections, waits for their cleanup for at most six seconds while
+// keeping the last two seconds of ctx's deadline for deletion, then deletes the session only if its lifetime
+// still matches identityToken. Cleanup failure is logged and never vetoes deletion.
+func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken string) error {
+	startedAt := time.Now()
+	deadline, _ := ctx.Deadline()
+	cleanupDeadline := startedAt.Add(6 * time.Second)
+	if reserve := deadline.Add(-2 * time.Second); reserve.Before(cleanupDeadline) {
+		cleanupDeadline = reserve
 	}
-	id := path[len(prefix) : len(path)-len(suffix)]
-	return id, id != "" && !strings.ContainsRune(id, '/')
-}
-
-func writeTerminalErrorAndClose(parent context.Context, connection *websocket.Conn, code terminal.ErrorCode) {
-	payload, err := terminal.EncodeError(code)
+	cleanup, cancelCleanup := context.WithDeadline(ctx, cleanupDeadline)
+	err := gateway.endConnections(cleanup, func(connection *liveConnection) bool {
+		return connection.sessionID == tmuxID && connection.identityToken == identityToken
+	})
+	cancelCleanup()
 	if err != nil {
-		panic("closed terminal error failed encoding") // justify-defect: every caller supplies a closed terminal error code.
+		gateway.log(logging.NewTerminalCleanupFailed())
 	}
-	ctx, cancel := context.WithTimeout(parent, terminalWriteTimeout)
-	_ = connection.Write(ctx, websocket.MessageText, payload) // justify-ignore-error: a failed upgraded stream has no alternate response path.
-	cancel()
-	_ = connection.CloseNow() // justify-ignore-error: an error-only upgrade owns no terminal resources and must not wait for a peer handshake.
-}
-
-func waitForTerminalWriter(ctx context.Context, writerDone <-chan error) {
-	timer := time.NewTimer(terminalFinalFrameTimeout)
-	defer timer.Stop()
-	select {
-	case <-writerDone:
-	case <-ctx.Done():
-	case <-timer.C:
-	}
-}
-
-func (gateway *Gateway) registerLiveConnection(deviceID, sessionID, identityToken string, cancel context.CancelFunc) (uint64, bool) {
-	gateway.liveMutex.Lock()
-	defer gateway.liveMutex.Unlock()
-	if gateway.closing || gateway.closedDevices[deviceID] {
-		return 0, false
-	}
-	gateway.nextLiveConnection++
-	if gateway.nextLiveConnection == 0 {
-		panic("terminal registration sequence exhausted") // justify-defect: uint64 exhaustion is unreachable for one-user process lifetime.
-	}
-	key := gateway.nextLiveConnection
-	gateway.liveConnections[key] = &liveConnection{deviceID: deviceID, sessionID: sessionID, identityToken: identityToken, cancel: cancel, done: make(chan error, 1)}
-	return key, true
-}
-
-func (gateway *Gateway) unregisterLiveConnection(key uint64, cleanupErr error) {
-	gateway.liveMutex.Lock()
-	terminalSession, found := gateway.liveConnections[key]
-	if found {
-		delete(gateway.liveConnections, key)
-		terminalSession.done <- cleanupErr
-		close(terminalSession.done)
-	}
-	gateway.liveMutex.Unlock()
-}
-
-func (gateway *Gateway) closeLiveConnections(ctx context.Context, sessionID, identityToken string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	gateway.liveMutex.Lock()
-	selected := make([]*liveConnection, 0)
-	for _, terminalSession := range gateway.liveConnections {
-		if terminalSession.sessionID == sessionID && terminalSession.identityToken == identityToken {
-			selected = append(selected, terminalSession)
-		}
-	}
-	gateway.liveMutex.Unlock()
-	for _, terminalSession := range selected {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		terminalSession.cancel()
-	}
-	return waitForLiveConnections(ctx, selected)
-}
-
-func (gateway *Gateway) CloseLiveConnections(ctx context.Context) error {
-	if err := gateway.lockTerminalLifecycle(ctx); err != nil {
+	if err := gateway.sessions.Kill(ctx, sessions.KillInput{TmuxID: tmuxID, IdentityToken: identityToken}); err != nil {
 		return err
 	}
-	defer func() { <-gateway.terminalLifecycle }()
-	gateway.liveMutex.Lock()
-	gateway.closing = true
-	selected := make([]*liveConnection, 0, len(gateway.liveConnections))
-	for _, terminalSession := range gateway.liveConnections {
-		selected = append(selected, terminalSession)
+	event, err := logging.NewSessionKilled(tmuxID, time.Since(startedAt))
+	if err != nil {
+		panic("invalid session-killed log event")
 	}
-	gateway.liveMutex.Unlock()
-	for _, terminalSession := range selected {
-		terminalSession.cancel()
-	}
-	return waitForLiveConnections(ctx, selected)
+	gateway.log(event)
+	return nil
 }
 
-func waitForLiveConnections(ctx context.Context, terminals []*liveConnection) error {
-	waitContext, cancel := context.WithTimeout(ctx, terminalShutdownTimeout)
-	defer cancel()
+// register records a live connection; nil means the device is closed or the gateway is closing.
+func (gateway *Gateway) register(deviceID, sessionID, identityToken string, cancel context.CancelFunc) *liveConnection {
+	gateway.liveMutex.Lock()
+	defer gateway.liveMutex.Unlock()
+	if gateway.closing || gateway.closedDevices[deviceID] {
+		return nil
+	}
+	connection := &liveConnection{deviceID: deviceID, sessionID: sessionID, identityToken: identityToken, cancel: cancel, done: make(chan struct{})}
+	gateway.live[connection] = struct{}{}
+	return connection
+}
+
+func (gateway *Gateway) unregister(connection *liveConnection, cleanupErr error) {
+	gateway.liveMutex.Lock()
+	delete(gateway.live, connection)
+	gateway.liveMutex.Unlock()
+	connection.cleanupErr = cleanupErr
+	close(connection.done)
+}
+
+// CloseDevice fences deviceID for the process lifetime and cancels its live connections.
+func (gateway *Gateway) CloseDevice(deviceID string) {
+	gateway.liveMutex.Lock()
+	defer gateway.liveMutex.Unlock()
+	gateway.closedDevices[deviceID] = true
+	for connection := range gateway.live {
+		if connection.deviceID == deviceID {
+			connection.cancel()
+		}
+	}
+}
+
+// endConnections cancels the matching connections and waits for each cleanup until ctx ends.
+func (gateway *Gateway) endConnections(ctx context.Context, match func(*liveConnection) bool) error {
+	gateway.liveMutex.Lock()
+	var ending []*liveConnection
+	for connection := range gateway.live {
+		if match(connection) {
+			connection.cancel()
+			ending = append(ending, connection)
+		}
+	}
+	gateway.liveMutex.Unlock()
 	var cleanupErrors []error
-	for _, terminalSession := range terminals {
+	for _, connection := range ending {
 		select {
-		case cleanupErr := <-terminalSession.done:
-			if cleanupErr != nil {
+		case <-connection.done:
+			if connection.cleanupErr != nil {
 				cleanupErrors = append(cleanupErrors, errors.New("live connection cleanup failed"))
 			}
-		case <-waitContext.Done():
+		case <-ctx.Done():
 			return errors.New("live connection cleanup did not finish")
 		}
 	}
 	return errors.Join(cleanupErrors...)
 }
 
-// CloseDevice fences admission before cancelling the removed device's attachments.
-func (gateway *Gateway) CloseDevice(deviceID string) {
+// closeLiveConnections refuses later admissions, then ends every live connection, waiting at most eight seconds.
+func (gateway *Gateway) closeLiveConnections(ctx context.Context) error {
 	gateway.liveMutex.Lock()
-	defer gateway.liveMutex.Unlock()
-	gateway.closedDevices[deviceID] = true
-	for _, attachment := range gateway.liveConnections {
-		if attachment.deviceID == deviceID {
-			attachment.cancel()
-		}
-	}
+	gateway.closing = true
+	gateway.liveMutex.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, terminalShutdownTimeout)
+	defer cancel()
+	return gateway.endConnections(ctx, func(*liveConnection) bool { return true })
 }

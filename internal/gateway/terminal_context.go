@@ -1,9 +1,7 @@
 package gateway
 
 import (
-	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 )
@@ -21,7 +19,7 @@ type terminalContextDTO struct {
 }
 
 func (gateway *Gateway) readTerminalContext(writer http.ResponseWriter, request *http.Request) {
-	id := strings.TrimPrefix(request.URL.Path, "/v1/terminal-contexts/")
+	id := request.PathValue("connectionId")
 	if !terminalcontext.ValidConnectionID(id) || request.ContentLength != 0 {
 		writeError(writer, errorInvalidRequest)
 		return
@@ -48,13 +46,5 @@ func (gateway *Gateway) readTerminalContext(writer http.ResponseWriter, request 
 	if observed.Connection != nil {
 		result.Connection = &connectionDTO{Transport: observed.Connection.Transport, ID: observed.Connection.ID}
 	}
-	encoded, err := json.Marshal(result)
-	if err != nil || len(encoded)+1 > 64*1024 {
-		writeError(writer, errorInternal)
-		return
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write(append(encoded, '\n')) // justify-ignore-error: a disconnected reader cannot be repaired.
+	writeJSON(writer, http.StatusOK, result, &errorInternal)
 }

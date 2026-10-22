@@ -166,8 +166,9 @@ PATCH /v1/sessions/{tmuxId}
 ```
 
 these are closed union shapes: automatic forbids `name`; manual requires it.
-reject unknown/duplicate/null keys and old bodies through the existing strict
-decoder. expected manual name is the exact observed native name, including
+reject unknown/duplicate keys and old bodies through the existing strict
+decoder; a null `name` is absent. expected manual name is the exact observed
+native name, including
 external names outside skid's input grammar; only the new manual name uses
 ascii64 validation. retain authentication, pinned machine and body limits.
 

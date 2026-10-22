@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
@@ -39,17 +38,9 @@ func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *ht
 		writeError(writer, errorInternal)
 		return
 	}
-	var encoded boundedJSONBuffer
-	if json.NewEncoder(&encoded).Encode(struct {
+	writeJSON(writer, http.StatusOK, struct {
 		Machine    machineDTO        `json:"machine"`
 		ObservedAt string            `json:"observedAt"`
 		Profiles   []profileUsageDTO `json:"profiles"`
-	}{gateway.machineDTO(), stamp, mapped}) != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write(encoded.buffer.Bytes()) // justify-ignore-error: a client disconnect after headers cannot be repaired.
+	}{gateway.machineDTO(), stamp, mapped}, &errorInternal)
 }

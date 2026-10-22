@@ -265,7 +265,7 @@ retain existing wait failure behavior.
 reuse `POST /v1/sessions/{id}/terminal/inspect`:
 
 ```text
-request  = {identityToken, paneId, explain?: boolean} // absent = false; no null
+request  = {identityToken, paneId, explain?: boolean} // absent or null = false
 response = {terminalStatus, diagnostics?}           // present iff explain=true
 diagnostics = {rules: [id]}
 ```

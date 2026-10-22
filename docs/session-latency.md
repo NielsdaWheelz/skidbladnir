@@ -126,8 +126,8 @@ per-row tmux read.
 
 remove manager locks from `ResolveSession` and `OpenTerminal`:
 they read immutable configuration/native facts, reserve nothing, and have exact
-checks at dispatch. retain gateway `terminalLifecycle` registration/cancel/join/
-close ordering and tmux's final attach predicate. inventory cannot block attachment
+checks at dispatch. retain the gateway's cancel/join of live connections before
+exact deletion and tmux's final attach predicate. inventory cannot block attachment
 through the manager gate. replace actual mutation/recovery ownership with one
 capacity-one context-aware manager gate. check cancellation before waiting and after acquiring;
 an expired waiter releases ownership, returns its context error and starts no

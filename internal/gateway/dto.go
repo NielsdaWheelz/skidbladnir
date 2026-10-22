@@ -1,8 +1,6 @@
 package gateway
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -18,7 +16,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -142,7 +139,7 @@ type createSessionResponseDTO struct {
 }
 
 type directoryListingRequest struct {
-	Directory stringField `json:"directory"`
+	Directory string `json:"directory"`
 }
 
 type directoryListingResponseDTO struct {
@@ -181,62 +178,67 @@ func mapDirectoryListing(machine machineDTO, listing workdir.Listing) directoryL
 	}
 }
 
+// Request members decode null as absent. A pointer marks a member whose
+// absence answers differently from its empty value.
 type createSessionRequest struct {
 	Kind             sessions.LaunchKind `json:"kind"`
-	CWD              stringField         `json:"cwd"`
-	Profile          stringField         `json:"profile"`
-	OptionalTmuxName stringField         `json:"optionalTmuxName"`
-	Objective        stringField         `json:"objective"`
-	Group            stringField         `json:"group"`
+	CWD              *string             `json:"cwd"`
+	Profile          *string             `json:"profile"`
+	OptionalTmuxName *string             `json:"optionalTmuxName"`
+	Objective        *string             `json:"objective"`
+	Group            *string             `json:"group"`
 }
 
-type stringField struct {
-	present bool
-	value   string
-}
-
-func (field *stringField) UnmarshalJSON(encoded []byte) error {
-	field.present = true
-	if bytes.Equal(encoded, []byte("null")) {
-		return errors.New("null is not a string")
-	}
-	return json.Unmarshal(encoded, &field.value)
-}
-
-type killSessionRequest struct {
-	IdentityToken stringField `json:"identityToken"`
+// identityRequest addresses a session lifetime: shell creation and deletion.
+type identityRequest struct {
+	IdentityToken string `json:"identityToken"`
 }
 
 type namingRequest struct {
-	Mode stringField `json:"mode"`
-	Name stringField `json:"name"`
+	Mode string  `json:"mode"`
+	Name *string `json:"name"`
 }
 
-func (field *namingRequest) UnmarshalJSON(encoded []byte) error {
-	type wire namingRequest
-	var decoded wire
-	if err := strictjson.Decode(encoded, &decoded); err != nil {
-		return err
-	}
-	if !decoded.Mode.present || decoded.Mode.value != "automatic" && decoded.Mode.value != "manual" || decoded.Mode.value == "automatic" && decoded.Name.present || decoded.Mode.value == "manual" && !decoded.Name.present {
-		return errors.New("invalid naming shape")
-	}
-	*field = namingRequest(decoded)
-	return nil
+// valid reports whether the naming has its mode's shape: automatic has no name, manual has one.
+func (field namingRequest) valid() bool {
+	return field.Mode == "automatic" && field.Name == nil || field.Mode == "manual" && field.Name != nil
 }
+
 func (field namingRequest) naming() sessions.Naming {
-	return sessions.Naming{Mode: sessions.NameMode(field.Mode.value), Name: field.Name.value}
+	return sessions.Naming{Mode: sessions.NameMode(field.Mode), Name: valueOf(field.Name)}
 }
 
 type renameSessionRequest struct {
 	ExpectedNaming *namingRequest `json:"expectedNaming"`
 	Naming         *namingRequest `json:"naming"`
-	IdentityToken  stringField    `json:"identityToken"`
+	IdentityToken  string         `json:"identityToken"`
 }
 
 type setSessionGroupRequest struct {
-	IdentityToken stringField `json:"identityToken"`
-	Group         stringField `json:"group"`
+	IdentityToken string  `json:"identityToken"`
+	Group         *string `json:"group"`
+}
+
+// valueOf reads an optional member; absent is empty.
+func valueOf(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+// digitsAfter reports whether value is prefix followed by one or more ASCII digits, the shape
+// of tmux session ($N) and pane (%N) ids.
+func digitsAfter(value string, prefix byte) bool {
+	if len(value) < 2 || value[0] != prefix {
+		return false
+	}
+	for _, character := range value[1:] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type pressureResponseDTO struct {
@@ -612,9 +614,4 @@ func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging
 		}
 	}
 	return level, reasons, nil
-}
-
-// Shell creation addresses only the source session lifetime.
-type shellSessionRequest struct {
-	IdentityToken stringField `json:"identityToken"`
 }

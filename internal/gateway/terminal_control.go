@@ -1,12 +1,10 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -14,7 +12,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 var (
@@ -24,85 +21,50 @@ var (
 )
 
 type terminalRequest struct {
-	IdentityToken  stringField `json:"identityToken"`
-	PaneID         stringField `json:"paneId"`
-	Text           stringField `json:"text"`
-	InitialProfile stringField `json:"initialProfile"`
-	Keys           *[]string   `json:"keys"`
-	MaxBytes       *int        `json:"maxBytes"`
-	Explain        *bool       `json:"explain"`
+	IdentityToken  string   `json:"identityToken"`
+	PaneID         string   `json:"paneId"`
+	Text           *string  `json:"text"`
+	InitialProfile *string  `json:"initialProfile"`
+	Keys           []string `json:"keys"`
+	MaxBytes       *int     `json:"maxBytes"`
+	Explain        *bool    `json:"explain"`
 }
 
-func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	for _, value := range members {
-		if bytes.Equal(value, []byte("null")) {
-			return errors.New("terminal request fields cannot be null")
-		}
-	}
-	type wire terminalRequest
-	var decoded wire
-	if err := strictjson.Decode(encoded, &decoded); err != nil {
-		return err
-	}
-	*input = terminalRequest(decoded)
-	return nil
-}
-
-func (input terminalRequest) valid(operation string) bool {
-	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+// shaped reports whether input names a target and only the members operation admits.
+// agentcontrol owns the members' value bounds.
+func (input terminalRequest) shaped(operation string) bool {
+	if input.IdentityToken == "" || !digitsAfter(input.PaneID, '%') ||
+		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") {
 		return false
-	}
-	if input.InitialProfile.present {
-		if operation != "send" {
-			return false
-		}
-		if _, err := agentruntime.ParseProfileKey(input.InitialProfile.value); err != nil {
-			return false
-		}
 	}
 	switch operation {
 	case "inspect":
-		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil
+		return input.Text == nil && input.Keys == nil && input.MaxBytes == nil
 	case "stop", "close":
-		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
+		return input.Text == nil && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "read":
-		return !input.Text.present && input.Keys == nil && input.Explain == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
+		return input.Text == nil && input.Keys == nil && input.Explain == nil
 	case "send", "text":
-		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil && input.Text.value != "" && len(input.Text.value) <= 32768 && utf8.ValidString(input.Text.value) && !strings.ContainsRune(input.Text.value, 0)
+		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "keys":
-		return !input.Text.present && input.MaxBytes == nil && input.Explain == nil && input.Keys != nil && len(*input.Keys) >= 1 && len(*input.Keys) <= 16
-	default:
-		return false
+		return input.Text == nil && input.MaxBytes == nil && input.Explain == nil
 	}
-}
-
-func terminalOperationPath(path string) (string, string, bool) {
-	rest, found := strings.CutPrefix(path, "/v1/sessions/")
-	if !found {
-		return "", "", false
-	}
-	id, operation, found := strings.Cut(rest, "/terminal/")
-	return id, operation, found && len(id) >= 2 && id[0] == '$' && strings.IndexFunc(id[1:], func(r rune) bool { return r < '0' || r > '9' }) < 0 && !strings.ContainsRune(operation, '/')
+	return false
 }
 
 func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
 	defer cancel()
-	id, operation, valid := terminalOperationPath(request.URL.Path)
-	if !valid {
+	id, operation := request.PathValue("tmuxId"), request.PathValue("operation")
+	if !digitsAfter(id, '$') {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	input, failure := decodeJSON[terminalRequest](writer, request)
-	if failure != nil {
-		writeError(writer, *failure)
+	input, ok := decodeJSON[terminalRequest](writer, request)
+	if !ok {
 		return
 	}
-	if !input.valid(operation) {
+	if !input.shaped(operation) {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -110,7 +72,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		writeError(writer, terminalFailure(ctx.Err()))
 		return
 	}
-	target := sessions.TerminalTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value}
+	target := sessions.TerminalTarget{TmuxID: id, IdentityToken: input.IdentityToken, PaneID: input.PaneID}
 	var result any
 	var err error
 	switch operation {
@@ -139,22 +101,30 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		}
 		result = inspected
 	case "read":
-		maxBytes := 0
-		if input.MaxBytes != nil {
-			maxBytes = *input.MaxBytes
-		}
 		var read agentcontrol.ReadResult
-		read, err = gateway.agents.TerminalRead(ctx, target, maxBytes)
-		if err == nil {
-			writeAgentRead(writer, read)
-			return
+		read, err = gateway.agents.TerminalRead(ctx, target, input.MaxBytes)
+		if err != nil {
+			break
 		}
+		// Keep the newest text that fits one response: halve from the start on a rune boundary.
+		for {
+			encoded, _ := json.Marshal(read) // strings and a bool always encode
+			if len(encoded)+1 <= int(MaximumBodyBytes) {
+				break
+			}
+			read.Text = read.Text[len(read.Text)/2:]
+			for len(read.Text) > 0 && !utf8.RuneStart(read.Text[0]) {
+				read.Text = read.Text[1:]
+			}
+			read.Truncated = true
+		}
+		result = read
 	case "send":
-		result, err = gateway.agents.TerminalSend(ctx, target, input.Text.value, agentruntime.ProfileKey(input.InitialProfile.value))
+		result, err = gateway.agents.TerminalSend(ctx, target, valueOf(input.Text), agentruntime.ProfileKey(valueOf(input.InitialProfile)))
 	case "text":
-		result, err = gateway.agents.Text(ctx, target, input.Text.value)
+		result, err = gateway.agents.Text(ctx, target, valueOf(input.Text))
 	case "keys":
-		result, err = gateway.agents.Keys(ctx, target, *input.Keys)
+		result, err = gateway.agents.Keys(ctx, target, input.Keys)
 	case "stop":
 		result, err = gateway.agents.TerminalStop(ctx, target)
 	case "close":
@@ -183,7 +153,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		} else if terminalFailure(stopErr).Dispatch == "unknown" {
 			closed.Interrupt = "unknown"
 		}
-		closeErr := gateway.closeSessionTerminal(ctx, id, target.IdentityToken)
+		closeErr := gateway.closeSession(ctx, id, target.IdentityToken)
 		if closeErr == nil {
 			closed.Terminal = "closed"
 		} else if terminalFailure(closeErr).Dispatch == "unknown" {
@@ -195,70 +165,12 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		writeError(writer, terminalFailure(err))
 		return
 	}
-	writeJSON(writer, http.StatusOK, result)
+	writeJSON(writer, http.StatusOK, result, nil)
 }
 
 type terminalCloseResult struct {
 	Interrupt string `json:"interrupt"`
 	Terminal  string `json:"terminal"`
-}
-
-// terminalLifecycle orders attachment admission and exact session deletion.
-// Its one permit is cancellable; no worker escapes the requesting context.
-func (gateway *Gateway) lockTerminalLifecycle(ctx context.Context) error {
-	select {
-	case gateway.terminalLifecycle <- struct{}{}:
-		if err := ctx.Err(); err != nil {
-			<-gateway.terminalLifecycle
-			return err
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// ctx carries the operation's absolute deadline; all waits consume that budget.
-func (gateway *Gateway) closeSessionTerminal(ctx context.Context, id, identityToken string) error {
-	startedAt := time.Now()
-	deadline, _ := ctx.Deadline()
-	admissionContext, cancelAdmission := context.WithDeadline(ctx, deadline.Add(-2*time.Second))
-	defer cancelAdmission()
-	err := gateway.lockTerminalLifecycle(admissionContext)
-	if err != nil {
-		return err
-	}
-	defer func() { <-gateway.terminalLifecycle }()
-	if err := gateway.sessions.ResolveSession(admissionContext, id, identityToken); err != nil {
-		return err
-	}
-	cancelAdmission()
-	cleanupDeadline := time.Now().Add(6 * time.Second)
-	if cap := deadline.Add(-2 * time.Second); cap.Before(cleanupDeadline) {
-		cleanupDeadline = cap
-	}
-	cleanupContext, cancelCleanup := context.WithDeadline(ctx, cleanupDeadline)
-	cleanupErr := gateway.closeLiveConnections(cleanupContext, id, identityToken)
-	cancelCleanup()
-	if cleanupErr != nil {
-		gateway.log(logging.NewTerminalCleanupFailed())
-	}
-	// Cleanup failure cannot veto exact deletion. Parent cancellation still owns
-	// later phases; never pass the expired cleanup context into deletion.
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	deleteErr := gateway.sessions.Kill(ctx, sessions.KillInput{TmuxID: id, IdentityToken: identityToken})
-	if deleteErr != nil {
-		return deleteErr
-	}
-	// Closure reports exact deletion, independently of attachment cleanup.
-	event, eventErr := logging.NewSessionKilled(id, time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid session-killed log event")
-	} // justify-defect: sessions deleted this canonical tmux id.
-	gateway.log(event)
-	return nil
 }
 
 func terminalFailure(err error) apiError {

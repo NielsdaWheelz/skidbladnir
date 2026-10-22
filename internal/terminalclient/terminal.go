@@ -53,7 +53,7 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, see
 	if err != nil {
 		return Result{Err: errors.New("cannot measure terminal")}
 	}
-	if _, err := terminal.EncodeResize(columns, rows); err != nil {
+	if !terminal.ValidSize(columns, rows) {
 		return Result{Err: errDimensions}
 	}
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -68,7 +68,7 @@ func Run(ctx context.Context, client *fleetclient.Client, encodedRef string, see
 	if err != nil {
 		return Result{Err: errors.New("cannot measure terminal")}
 	}
-	if _, err := terminal.EncodeResize(columns, rows); err != nil {
+	if !terminal.ValidSize(columns, rows) {
 		return Result{Err: errDimensions}
 	}
 	original, err := term.MakeRaw(int(input.Fd()))
@@ -95,11 +95,10 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
-	resize, err := terminal.EncodeResize(columns, rows)
-	if err != nil {
+	if !terminal.ValidSize(columns, rows) {
 		return errDimensions
 	}
-	if err := write(ctx, connection, websocket.MessageText, resize); err != nil {
+	if err := write(ctx, connection, websocket.MessageText, terminal.EncodeResize(columns, rows)); err != nil {
 		return err
 	}
 	helloContext, cancelHello := context.WithTimeout(ctx, fleetclient.Timeout)
@@ -176,11 +175,10 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 			if err != nil {
 				return errors.New("cannot measure terminal; detached")
 			}
-			resize, err := terminal.EncodeResize(columns, rows)
-			if err != nil {
+			if !terminal.ValidSize(columns, rows) {
 				return errDimensions
 			}
-			if err := write(ctx, connection, websocket.MessageText, resize); err != nil {
+			if err := write(ctx, connection, websocket.MessageText, terminal.EncodeResize(columns, rows)); err != nil {
 				return err
 			}
 		case event := <-outputs:
