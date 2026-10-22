@@ -368,7 +368,7 @@ private fun TerminalSessionSheet(
         is ExecutionContext.Local -> null
         is ExecutionContext.Remote -> listOfNotNull(
             "running on ${execution.machine.label.text}",
-            execution.agent?.let { remoteAgentLabel(execution, state.machines) },
+            execution.agent?.let { agentLabel(it.provider, it.label) },
             "terminal on $owner",
         ).joinToString(" · ")
         ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on $owner"

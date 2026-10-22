@@ -44,7 +44,10 @@ the change stays in existing client state and presentation owners. no new host
 api, wire status enum, detector rule, provider integration, poller, dependency,
 group registry, navigation framework or notification store is required. the cli's
 `wait --state needs-input` continues to mean an explicit response request;
-human collection membership never becomes control admission.
+human collection membership never becomes control admission. status copy and
+queue eligibility are since rendered by the host
+([terminal observation §6](terminal-observation.md#6-content-attention-and-filtering));
+clients add staleness and ready.
 
 recognized error/interruption notices are covered. disappearance of the agent
 process into its shell is not: existing attention resets on foreground exit,
@@ -283,9 +286,10 @@ sooner. modal pages retain their input ownership. the independent
 the implementation follows these existing ownership boundaries. these are code
 ownership boundaries, not requirements for new modules or separate agents.
 
-1. **typed collection projection.** extend the existing status presentation in
-   `internal/fleetclient/status.go` and android `ProductModel.kt` with the small
-   derived queue category needed by membership/order. renderers and collection
+1. **typed collection projection.** `sessions.PresentStatus` renders the
+   status and its queue eligibility once; `internal/fleetclient/status.go` and
+   android `ProductModel.kt` overlay staleness and ready into the small derived
+   queue category needed by membership/order. renderers and collection
    projections consume the same classification. preserve the strict request
    predicate and cli wait behavior; remove a phone-only filter helper if its
    final caller disappears. add no wire rank or shared cross-language framework.
@@ -308,8 +312,7 @@ ownership boundaries, not requirements for new modules or separate agents.
    matching attention completion, including failure. expose notification failure
    even with no rows.
 4. **phone presentation.** update `DashboardScreen.kt`, `SessionCard.kt` and the
-   narrow visibility/disclosure wiring in `PressurePresentation.kt` and
-   `MachinePressureRail.kt`. replace the controls, always show card machine,
+   narrow visibility/disclosure wiring in `MachinePressureRail.kt`. replace the controls, always show card machine,
    provide queue group context and route machines/pressure/reconnect through one
    transient disclosure. remove unused scope-dependent helpers and imports;
    `MainActivity.kt` wiring changes only if its existing calls require them.

@@ -250,7 +250,7 @@ the existing creation action `new terminal on <owner>`.
 ```text
 source session adds connection?: {transport:"ssh"|"mosh", id?:<32 hex>}
 GET /v1/terminal-contexts/{connectionId}
-200 {observedAt, cwd?, agent?:{provider, profile?}, connection?:{transport,id?}}
+200 {observedAt, cwd?, agent?:{provider, profile?, label?}, connection?:{transport,id?}}
 404 TerminalContextUnavailable
 ```
 
@@ -279,8 +279,9 @@ each client derives one execution-context projection keyed by the original sessi
 reference: `local {machine,cwd?,agent?}`, `remote {machine,cwd?,agent?}` or
 `remoteUnknown`. cards, agent filters/counts and details consume that projection.
 resolved remote cwd replaces displayed source cwd; unknown remote context hides
-source cwd/provider. resolve remote profile keys through the destination catalogue,
-even when the source catalogue is empty. attachment, availability and action
+source cwd/provider. the destination labels a remote profile key (`agent.label`, its
+configured label), so no client joins a catalogue; an unlabelled key shows the key
+on the desktop and `<provider> · profile unknown` on the phone. attachment, availability and action
 eligibility still use source facts; a reachable destination cannot replace an
 unavailable source.
 

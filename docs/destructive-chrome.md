@@ -71,8 +71,8 @@ provisioning repair is required" gets the calm armed accent.
 - **One owner for severity.** Every notice, error, degraded marker, and
   destructive control reads its color from `noticeToneColor`. After this
   delta the bare `Ember` token survives in exactly two files: `Theme.kt`
-  (its definition and `noticeToneColor`) and `DashboardScreen.kt`
-  (`pressureColor` alone, where design language §5 assigns Ember to `HOT` —
+  (its definition and `noticeToneColor`) and `MachinePressureRail.kt`
+  (pressure `HOT` alone, where design language §5 assigns Ember to `HOT` —
   host load is a separate axis with its own owner).
   `MaterialTheme.colorScheme.error` is never read by app code (the scheme
   slot stays for M3-internal use such as text-field error state).
@@ -242,7 +242,7 @@ params keep theirs per Compose convention.
 | Forge error text | `colorScheme.error` | `noticeToneColor(Failure)` |
 | Reconnect panel message | Ember | `noticeToneColor(Failure)` |
 | Bearer-repair error | `colorScheme.error` | `noticeToneColor(Failure)` |
-| `pressureColor(Hot)` | Ember | **unchanged** — design language §5 assigns it |
+| pressure `HOT` | Ember | **unchanged** — design language §5 assigns it |
 | `terminalPresenceColor(ReconnectRequired)` | Ember | **unchanged** — a failure state, not staleness |
 
 The kill dialog gains no decoration; §7 holds. The Forge's error text stays
@@ -383,7 +383,7 @@ Green: implement only enough to satisfy those six plus the disposition
 table. Routine `scripts/test verify` stays green and device-free.
 
 Refactor: fold any remaining color literal in the three screen files into
-`noticeToneColor`/`pressureColor`; delete symbols left unreferenced by the
+`noticeToneColor` or the pressure colours; delete symbols left unreferenced by the
 move to `ProductModel.kt`; add no abstraction with only a speculative
 second consumer.
 

@@ -84,8 +84,8 @@ session += {terminalStatus: TerminalStatus}
 
 [observation §2](terminal-observation.md#2-capability-and-wire-contract) owns
 `TerminalStatus`: its five fields, their values and the legal combinations.
-`sessions.TerminalStatus.Valid` enforces them; go and kotlin clients check them
-once at ingress. every member is required and non-null; the former
+`sessions.TerminalStatus.Valid` enforces them; the go client checks them once at
+ingress and kotlin decodes the closed enums. every member is required and non-null; the former
 `{state, source}` shape is rejected.
 retain existing `activePaneId`, foreground `agent?`, connection and account facts;
 do not introduce a second pane/provider identity or per-action capability map.

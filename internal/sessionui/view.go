@@ -11,6 +11,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -731,16 +732,16 @@ func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
 	}
 	view := m.statusView(row)
 	switch view.Tone {
-	case fleetclient.ToneMuted:
+	case sessions.ToneMuted:
 		return view.Label, muted
-	case fleetclient.ToneFrost:
+	case sessions.ToneWorking:
 		return view.Label, frost
-	case fleetclient.ToneEmber:
+	case sessions.ToneAttention:
 		return view.Label, ember
-	case fleetclient.ToneMoss:
+	case sessions.ToneReady:
 		return view.Label, moss
 	}
-	panic("invalid status tone") // justify-defect: Tone is a closed enum.
+	panic("invalid status tone") // justify-defect: StatusTone is a closed set.
 }
 
 // tail keeps the end of a path, where directories differ.

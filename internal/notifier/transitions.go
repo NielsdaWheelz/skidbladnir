@@ -75,10 +75,10 @@ func (c cause) text() string {
 	}
 	parts := []string{}
 	if c.Request != "" {
-		parts = append(parts, attention.RequestText(c.Request))
+		parts = append(parts, c.Request.RequestText())
 	}
 	if c.Notice != "" {
-		parts = append(parts, attention.NoticeText(c.Notice))
+		parts = append(parts, c.Notice.Text())
 	}
 	return strings.Join(parts, " · ")
 }

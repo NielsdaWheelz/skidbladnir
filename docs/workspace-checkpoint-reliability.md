@@ -198,8 +198,10 @@ use existing desktop notice wrapping/tones and android machine notices.
 | broken | `<host>: workspace recovery stopped. <failure sentence> <last-save>. manual repair required; live terminals remain usable.` / failure |
 | recovered | existing `<host>: terminals restored as shells. resume conversations using the same provider account.` / degraded |
 
-failure sentence is `<phase label>: <cause phrase>.` the host supplies facts;
-clients never infer retryability. exact vocabulary:
+failure sentence is `<phase label>: <cause phrase>.` the host renders the
+status, failure sentence and action (`sessions.Recovery.Notice`, sent as
+`recovery.notice`); clients add `<host>`, the last save in the device's zone and
+the tone, and never infer retryability. exact vocabulary:
 
 | phase | label |
 | --- | --- |
@@ -268,7 +270,8 @@ blocked recovery. no compatibility decoder, old-message fallback or dual path.
 stored schema 1 is unchanged, so there is no file migration.
 the go decoder owns strict wire shape/canonical instants and keeps one private
 `sessions.Recovery`; semantic admission delegates to its existing `Valid` contract.
-android owns the equivalent platform projection. no second go phase/cause table.
+the notice copy has one owner, `sessions.Recovery.Notice`: go clients call it
+and android reads `recovery.notice`, so no client keeps a phase/cause table.
 
 ## red green refactor acceptance
 

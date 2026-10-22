@@ -5,6 +5,11 @@ the hub and discards device memory without converters. the first release that
 carries it, after v0.21.0, is another lockstep install of three hosts and the
 phone: the old apk cannot read the new notification state.
 
+the same release adds host-rendered `status`, `recovery.notice` and `agent.label`
+(sessions, terminal contexts). old clients reject the new members, and the new
+apk requires `status`; a new desktop reads an old host but shows profile keys
+where labels were. this window covers them.
+
 impact: until hosts and phone match, the phone shows no notifications. after
 install, attention restarts on the hub: sessions ready before the install stay
 quiet until they work and idle again, and current requests alert once more on

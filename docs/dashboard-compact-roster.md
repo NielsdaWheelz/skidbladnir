@@ -70,8 +70,8 @@ unweighted and content-sized, never independently filling the line.
 | known remote | `[resolved remote profile · ]running on <execution machine> · terminal on <terminal machine>` | abbreviated remote cwd, or literal `directory unavailable` |
 | unknown remote | `remote context unknown · terminal on <terminal machine>` | omitted |
 
-brackets denote omission, never literal text. reuse `sessionProfileLabel` and
-`remoteAgentLabel`; unproven profile remains `<provider> · profile unknown`.
+brackets denote omission, never literal text. labels come from the host's
+`agent.label` through `agentLabel`; an unlabelled profile remains `<provider> · profile unknown`.
 a plain terminal has no profile. never substitute its launch profile. the cluster
 wraps fully without ellipsis. the path uses `abbreviatedDirectory`, moves whole
 to the next line when necessary, and uses one-line start-ellipsis only when wider

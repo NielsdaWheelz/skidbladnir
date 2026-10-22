@@ -26,32 +26,14 @@ import kotlinx.serialization.json.decodeFromJsonElement
     @SerialName("capture_failed") CaptureFailed, @SerialName("process_failed") ProcessFailed,
 }
 
-/** One screen observation. The host's sessions.TerminalStatus owns the legal combinations; init mirrors its Valid. */
+/** One screen observation, as the host sent it; sessions.TerminalStatus owns the legal combinations. */
 @Serializable internal data class TerminalStatus(
     val activity: TerminalActivity,
     val interaction: TerminalInteraction,
     val notice: TerminalNotice,
     val source: TerminalStatusSource,
     val reason: TerminalStatusReason,
-) {
-    init {
-        // justify-service-invariant-check: this flat record mirrors the host's sessions.TerminalStatus and its
-        // five-member wire. A sealed split would need custom decoding and still leave reason's dimension counts here.
-        val activityKnown = activity != TerminalActivity.Unknown
-        val interactionKnown = interaction != TerminalInteraction.Unknown
-        val terminal = source == TerminalStatusSource.Terminal
-        require(when (reason) {
-            TerminalStatusReason.ObservationTimeout, TerminalStatusReason.CaptureFailed, TerminalStatusReason.ProcessFailed ->
-                !terminal && !activityKnown && !interactionKnown && notice == TerminalNotice.None
-            TerminalStatusReason.ProviderUnrecognized, TerminalStatusReason.RemoteContext, TerminalStatusReason.ForegroundChanged ->
-                terminal && !activityKnown && !interactionKnown && notice == TerminalNotice.None
-            TerminalStatusReason.Recognized -> terminal && activityKnown && interactionKnown
-            TerminalStatusReason.Partial -> terminal && activityKnown != interactionKnown
-            TerminalStatusReason.LayoutUnknown -> terminal && !activityKnown && !interactionKnown
-            TerminalStatusReason.EvidenceClipped, TerminalStatusReason.EvidenceConflict -> terminal && (!activityKnown || !interactionKnown)
-        })
-    }
-}
+)
 @Serializable internal enum class TerminalWriteOutcome {
     @SerialName("written") Written, @SerialName("unknown") Unknown,
 }

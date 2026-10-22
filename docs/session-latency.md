@@ -174,7 +174,7 @@ notification outcome.
 each successful admitted source inventory starts one optional context pass: two seconds
 total, at most one per source and three overall. cancel an obsolete pass and
 coalesce its latest successor without overlap. deduplicate ids within each pass;
-use retained destination catalogues, otherwise the existing profile-key label.
+use the destination context's `agent.label`, otherwise the existing profile-key label.
 never list sessions solely for a label. apply overlays only when source generation,
 session lifetime and connection id still match; never replace a current peer with
 an enriched old peer. remote rows start as `remoteUnknown`, hiding source cwd/
