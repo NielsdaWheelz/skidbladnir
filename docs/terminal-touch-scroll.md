@@ -98,8 +98,8 @@ terminal interaction; it is not a history subsystem.
   debt. Events already dispatched remain authoritative.
 - On a live enabled -> disabled transition, `ResetInputState` is synchronously
   enqueued before native disable. Initial pre-ready disable neither sends nor
-  queues a command and is not a failure. A disabled native WebView accepts
-  neither touch nor accessibility wheel actions. Reconnect starts with fresh
+  queues a command and is not a failure. A disabled native WebView accepts no
+  touch. Reconnect starts with fresh
   gesture state and the attachment's fresh local buffer.
 - Do not blur/refocus the terminal, dismiss/reopen the IME, or move the
   horizontal/page viewport. Selection cancellation belongs to the current
@@ -117,30 +117,7 @@ terminal interaction; it is not a history subsystem.
 
 The scoped screen rule remains `touch-action: none`; the page owns the trusted
 TouchEvent stream synchronously as defined by the selection-copy contract.
-
-### Accessibility
-
-When the page is live and the native WebView is enabled, it exposes exactly two
-resource-backed custom actions labelled `Terminal wheel backward` and
-`Terminal wheel forward`.
-Each posts the exact direction, cancels any direct-touch gesture, and invokes
-one line-wheel input with magnitude `max(1, terminal.rows - 1)` at the current
-screen center. Only those two action ids are intercepted; all other actions
-delegate to `super`. Unready, disabled, unavailable, rejected-port, and
-disposed states return false.
-
-The WebView narrowly wraps Chromium's existing `AccessibilityNodeProvider` and
-adds the actions to the currently accessibility-focused virtual terminal node;
-every non-owned node query and action delegates unchanged. Availability changes
-publish a subtree-content change so services refresh cached actions, never a
-synthetic scroll event. The actions must be discoverable on the node TalkBack
-and Switch Access actually focus inside Chromium's virtual tree. They are deliberately not
-Android `ACTION_SCROLL_*`: a wheel may become local movement, remote input, or
-a no-op, so emitting `TYPE_VIEW_SCROLLED` without true delta/max state would
-violate Android's
-[`TYPE_VIEW_SCROLLED` contract](https://developer.android.com/reference/android/view/accessibility/AccessibilityEvent#TYPE_VIEW_SCROLLED).
-Touch exploration remains Android-owned. Existing `PgUp` and `PgDn` stay raw
-terminal keys.
+Existing `PgUp` and `PgDn` stay raw terminal keys.
 
 ### Feedback and shared effects
 
@@ -156,9 +133,8 @@ terminal keys.
 ## Architecture and API design
 
 ```text
-trusted touch TouchEvent ------\
-                                > page-private TerminalTouchInteraction
-native accessibility action --/             |
+trusted touch TouchEvent ----> page-private TerminalTouchInteraction
+                                              |
                                               v
                            xterm handleWheelInput(deltaLines, x, y)
                                               |
@@ -175,15 +151,13 @@ native accessibility action --/             |
 
 ```text
 createTerminalTouchInteraction({ terminal, screen, longPressMilliseconds }) ->
-  { cancel(), clearSelection(), scroll(direction), dispose() }
+  { cancel(), clearSelection(), dispose() }
 
-direction = Backward | Forward
 touch-scroll state = Idle | Composing | Pending | Scrolling
 ```
 
-The state is page-memory only. `scroll(direction)` is the accessibility entry:
-it cancels direct-touch state, then calls the same private line-wheel sender.
-Touch calls that sender on animation frames. `clearSelection()` and the
+The state is page-memory only. Touch calls the private line-wheel sender on
+animation frames. `clearSelection()` and the
 selection-owned states are defined by
 [`terminal-selection-copy.md`](terminal-selection-copy.md).
 
@@ -212,11 +186,10 @@ returned. Physical wheels retain their existing browser normalization and
 smooth-scroll policy; semantic line input never enters that pixel/classifier
 pipeline.
 
-Native accessibility adds `Scroll`. The existing lifecycle reset is hard-cut
-from modifier-specific naming to the one input-state owner:
+The existing lifecycle reset is hard-cut from modifier-specific naming to the
+one input-state owner:
 
 ```text
-Scroll          = {"kind":"Scroll","direction":"Backward|Forward"}
 ResetInputState = {"kind":"ResetInputState"}
 ```
 
@@ -227,7 +200,7 @@ differently cased fields fail closed. There is no public HTTP/WSS schema, DTO,
 setting, persistence, gateway operation, or tmux command.
 
 `LockedTerminalWebView` should consolidate its repeated Focus/Accessory/
-ResetInputState/Scroll message-port send boilerplate into one private exact
+ResetInputState message-port send boilerplate into one private exact
 page-command sender. `failPage()` disposes the gesture owner, permanently
 rejects later native messages, then publishes failure. Do not expose a generic
 command API or production test seam.
@@ -272,15 +245,14 @@ treats the deprecated field as a legacy `/120` value, the viewport consumes
 the event, and local position does not move. That rejected seam must not
 return. The source-pinned semantic API above is the hard cut. Stop if its
 physical and semantic callers cannot share one internal router, if the exact
-Android pin cannot route all three branches, or if the two custom actions
-cannot appear on the actually focused virtual node.
+Android pin cannot route all three branches.
 
 ## Files and non-overlapping ownership
 
 | Owner | Paths | Proof |
 | --- | --- | --- |
 | Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-key-deck.md`, this document, `scripts/build-terminal-xterm`, static-only composition in `scripts/test` | Scope, authority, and reproducible-generation policy |
-| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir.patch`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, `android/app/src/main/res/values/terminal_touch_scroll.xml`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
+| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir.patch`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
 | Read-only verifier | none | Diff, residue, dependency, and gate review |
 
 The runtime slice cannot split further without duplicating the gesture owner or
@@ -356,7 +328,7 @@ MacBook, DevServer, and Arch acceptance and final fleet doctor passed on
 `v0.2.27`. Reboot persistence was not exercised and remains `NOT_RUN`.
 
 **Green:** implement only the source-pinned xterm line-wheel API/router, page
-gesture owner, scoped CSS ownership, two native custom actions, exact commands,
+gesture owner, scoped CSS ownership, exact commands,
 and lifecycle reset rename required by those reds. The source patch carries
 focused upstream-style route/API regressions; the real-WebView matrix remains
 the authoritative product proof.
@@ -373,8 +345,8 @@ move-frame excess-clamp branch directly. Remove every runnable mutation.
 
 Verification is deliberately boundary-weighted:
 
-- the focused real-WebView instrumentation owns gesture, xterm routing, native
-  accessibility, and shell containment;
+- the focused real-WebView instrumentation owns gesture, xterm routing, and shell
+  containment;
 - `./scripts/test verify` owns static analysis, compilation, lint, and unit
   regressions, but does not prove touch behavior;
 - `./scripts/build-terminal-xterm` performs a clean fetch of the pinned commit,
@@ -385,8 +357,7 @@ Verification is deliberately boundary-weighted:
   then owns platform regression;
 - a separately approved hands-on S22+ component journey owns threshold jitter,
   diagonal/slow/fast direction, long-range drag-only usability, long press and
-  selection handles, active Gboard composition, IME/focus stability, action discovery and
-  feedback in TalkBack and Switch Access, rotation, and normal/alternate/mouse
+  selection handles, active Gboard composition, IME/focus stability, rotation, and normal/alternate/mouse
   route fixtures;
 - a separately approved live-terminal journey—explicitly a
   tmux/live-host/provider-live boundary—owns actual phone -> tmux -> Claude Code
@@ -401,8 +372,8 @@ re-proves these owners. Every unapproved device/tmux/live-host boundary is
 1. A one-finger vertical drag over the terminal produces the three exact xterm
    outcomes above, in natural direction, with exactly one route per line-wheel
    call; a normal-buffer boundary never becomes cursor input.
-2. Gesture arbitration, cancellation, amplification bound, accessibility
-   actions, modifier behavior, and lifecycle match this contract.
+2. Gesture arbitration, cancellation, amplification bound, modifier behavior,
+   and lifecycle match this contract.
 3. A touch beginning during active composition is wholly composition-owned and
    has zero terminal-gesture effect; its fresh successor routes normally.
    Terminal focus, selection, literal IME output, paste, color, geometry,
@@ -440,13 +411,11 @@ logging. Existing opaque tmux mouse bindings may enter shared copy mode.
   Node is pinned; npm version, build platform, locale and clock are not
   checked, so drift shows only as a `git diff`. Dropping the refresh means
   re-baselining the bundle.
-- **Bounded batching:** one frame or accessibility action can produce at most
+- **Bounded batching:** one frame can produce at most
   one remote cursor/mouse unit even when its event carries several local lines.
   This sacrifices remote velocity fidelity to prevent input amplification.
-- **Truthful accessibility:** custom wheel actions sacrifice Android's generic
-  scroll gesture and may require the actions menu. Standard scroll actions were
-  rejected because this owner cannot truthfully report local delta/max state
-  when xterm routes the wheel into terminal input or a no-op.
+- **No screen-reader scrolling:** TalkBack and Switch Access cannot scroll the
+  terminal ([design language §14](design-language.md#14-accessibility-floor)).
 - **No fling:** scrolling stops at release. This sacrifices momentum to avoid
   post-gesture terminal input and a second timing/velocity policy in the 80/20
   slice; long-output usability must pass hands-on.

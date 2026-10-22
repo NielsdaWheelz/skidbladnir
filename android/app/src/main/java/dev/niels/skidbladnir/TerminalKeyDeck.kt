@@ -23,13 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.isTraversalGroup
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.semantics.traversalIndex
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -39,27 +32,26 @@ import androidx.compose.ui.unit.dp
 private data class TerminalKeyDeckItem(
     val accessory: TerminalAccessory,
     val label: String,
-    val spokenName: String,
 )
 
 private val terminalKeyDeckRows = listOf(
     listOf(
-        TerminalKeyDeckItem(TerminalAccessory.Escape, "Esc", "Escape"),
-        TerminalKeyDeckItem(TerminalAccessory.Slash, "/", "Slash"),
-        TerminalKeyDeckItem(TerminalAccessory.Shift, "Shift", "Shift"),
-        TerminalKeyDeckItem(TerminalAccessory.Home, "Home", "Home"),
-        TerminalKeyDeckItem(TerminalAccessory.Up, "↑", "Up arrow"),
-        TerminalKeyDeckItem(TerminalAccessory.End, "End", "End"),
-        TerminalKeyDeckItem(TerminalAccessory.PageUp, "PgUp", "Page up"),
+        TerminalKeyDeckItem(TerminalAccessory.Escape, "Esc"),
+        TerminalKeyDeckItem(TerminalAccessory.Slash, "/"),
+        TerminalKeyDeckItem(TerminalAccessory.Shift, "Shift"),
+        TerminalKeyDeckItem(TerminalAccessory.Home, "Home"),
+        TerminalKeyDeckItem(TerminalAccessory.Up, "↑"),
+        TerminalKeyDeckItem(TerminalAccessory.End, "End"),
+        TerminalKeyDeckItem(TerminalAccessory.PageUp, "PgUp"),
     ),
     listOf(
-        TerminalKeyDeckItem(TerminalAccessory.Tab, "Tab", "Tab"),
-        TerminalKeyDeckItem(TerminalAccessory.Control, "Ctrl", "Control"),
-        TerminalKeyDeckItem(TerminalAccessory.Alt, "Alt", "Alt"),
-        TerminalKeyDeckItem(TerminalAccessory.Left, "←", "Left arrow"),
-        TerminalKeyDeckItem(TerminalAccessory.Down, "↓", "Down arrow"),
-        TerminalKeyDeckItem(TerminalAccessory.Right, "→", "Right arrow"),
-        TerminalKeyDeckItem(TerminalAccessory.PageDown, "PgDn", "Page down"),
+        TerminalKeyDeckItem(TerminalAccessory.Tab, "Tab"),
+        TerminalKeyDeckItem(TerminalAccessory.Control, "Ctrl"),
+        TerminalKeyDeckItem(TerminalAccessory.Alt, "Alt"),
+        TerminalKeyDeckItem(TerminalAccessory.Left, "←"),
+        TerminalKeyDeckItem(TerminalAccessory.Down, "↓"),
+        TerminalKeyDeckItem(TerminalAccessory.Right, "→"),
+        TerminalKeyDeckItem(TerminalAccessory.PageDown, "PgDn"),
     ),
 )
 
@@ -82,15 +74,13 @@ internal fun TerminalKeyDeck(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .semantics { isTraversalGroup = true }
                     .padding(DECK_OUTER_PADDING),
                 verticalArrangement = Arrangement.spacedBy(DECK_GAP),
             ) {
-                terminalKeyDeckRows.forEachIndexed { rowIndex, row ->
+                terminalKeyDeckRows.forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(DECK_GAP)) {
-                        row.forEachIndexed { columnIndex, item ->
-                            val modifierPhase = item.modifierPhase(modifiers)
-                            val armed = enabled && modifierPhase == TerminalModifierPhase.Armed
+                        row.forEach { item ->
+                            val armed = enabled && item.modifierPhase(modifiers) == TerminalModifierPhase.Armed
                             OutlinedButton(
                                 onClick = {
                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -99,15 +89,7 @@ internal fun TerminalKeyDeck(
                                 enabled = enabled,
                                 modifier = Modifier
                                     .width(cellWidth)
-                                    .heightIn(min = MINIMUM_KEY_SIZE)
-                                    .semantics {
-                                        contentDescription = item.spokenName
-                                        traversalIndex = (rowIndex * COLUMN_COUNT + columnIndex).toFloat()
-                                        if (modifierPhase != null) {
-                                            toggleableState = if (armed) ToggleableState.On else ToggleableState.Off
-                                            stateDescription = if (armed) "Armed" else "Off"
-                                        }
-                                    },
+                                    .heightIn(min = MINIMUM_KEY_SIZE),
                                 shape = NidavellirShapes.Key,
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     containerColor = if (armed) Gold.copy(alpha = 0.18f) else Color.Transparent,

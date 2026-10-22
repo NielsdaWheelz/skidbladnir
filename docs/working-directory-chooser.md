@@ -57,8 +57,7 @@ Home is a navigation scope; the primary field accepts valid paths outside it.
 
 one full-height browser replaces the form within the same sheet. show Back,
 cancel, the captured host, current/requested folder context and one bounded tree.
-keep the context and its polite live region composed above the tree; explicit
-use stays below it. current means the rows belong to that path. loading/failure
+keep the context composed above the tree; explicit use stays below it. current means the rows belong to that path. loading/failure
 without a retained snapshot says requested and exposes no parent/folder/use.
 
 use literal machine-specific copy: `browse home`, `parent folder`, `filter
@@ -67,11 +66,9 @@ folders`, `show hidden folders` / `hide hidden folders`, `enter path`, and
 `no visible folders here`; omissions say `some folders cannot be shown`.
 existing typed failure copy and tones are retained.
 
-folder and linked-folder semantics identify their kind and navigation effect;
-use identifies the full directory and host. targets are at least 48dp. full
-spoken paths retain exact values; visual machine/name values use unicode
-isolation and paths use an explicitly left-to-right region with horizontal
-scroll initially at the tail. tree keys use row kind plus snapshot ordinal;
+targets are at least 48dp. paths use an explicitly left-to-right region with
+horizontal scroll initially at the tail; machine and folder names render
+without bidi isolation, so an rtl name may reorder neighbouring punctuation. tree keys use row kind plus snapshot ordinal;
 exact paths remain transient action/viewport values, never saved-state keys.
 
 ## decisions and tradeoffs

@@ -69,7 +69,7 @@ internal fun GroupField(
         modifier = modifier,
     ) { choose ->
         if (text.isEmpty()) {
-            item(key = "unassigned") { SuggestionTextChoice("unassigned", "unassigned", { choose("") }) }
+            item(key = "unassigned") { SuggestionTextChoice("unassigned", { choose("") }) }
         }
         item(key = "heading") { Text("observed groups", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
         if (candidates.observed.isEmpty()) {
@@ -77,16 +77,15 @@ internal fun GroupField(
         }
         // Saveable viewport keys contain no labels; acceptance uses the exact domain value.
         itemsIndexed(candidates.observed, key = { ordinal, _ -> "observed:$ordinal" }) { _, label ->
-            val description = if (label.text == "unassigned") "group: unassigned" else label.text
-            SuggestionTextChoice(bidiIsolate(description), description, { choose(label.text) })
+            SuggestionTextChoice(if (label.text == "unassigned") "group: unassigned" else label.text, { choose(label.text) })
         }
         candidates.literal?.let { label ->
             item(key = "literal") {
-                SuggestionTextChoice("use label: ${bidiIsolate(label.text)}", "use label: ${label.text}", { choose(label.text) })
+                SuggestionTextChoice("use label: ${label.text}", { choose(label.text) })
             }
         }
         if (text.isNotEmpty()) {
-            item(key = "unassigned") { SuggestionTextChoice("unassigned", "unassigned", { choose("") }) }
+            item(key = "unassigned") { SuggestionTextChoice("unassigned", { choose("") }) }
         }
     }
 }

@@ -33,9 +33,9 @@ and stays readable without provider jargon or explanatory chrome.
 
 | element | exact content and behaviour |
 | --- | --- |
-| new key | visible and spoken `Shift`; state description `Off` or `Armed`; toggle semantics match ctrl/alt |
+| new key | visible `Shift`; off or armed like ctrl/alt |
 | armed | existing gold text/fill and `2dp` border; state follows the page snapshot |
-| disabled | all modifiers present and announced as `Off`; no dispatch or haptic |
+| disabled | all modifiers render off; no dispatch or haptic |
 | activation | existing button, keyboard-tap haptic and ≥`48dp × 48dp` target |
 | layout | existing mono typography, `4dp` outer padding, `2dp` gaps and equal measured cell widths; both rows share horizontal overflow |
 

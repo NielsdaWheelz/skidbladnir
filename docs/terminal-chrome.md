@@ -62,8 +62,8 @@ inset band ┘                              navigation bar or keyboard
 
 | element | content | interaction |
 | --- | --- | --- |
-| detach | `Detach`; Gold, `labelLarge`, body face | top-leading, ≥ 48 dp, `Role.Button`, angular indication; Android Back is equivalent |
-| identity | line 1: tmux name, Data, semibold, Bone, one line, ellipsis. line 2: `<place> · <presence>`, Data, `labelSmall`; place Muted and truncating first, presence in its colour | the region and a trailing Gold `⋯` (body face) are one button that opens the session sheet; spoken `<name> on <place>, <presence>`, click label `open session actions` |
+| detach | `Detach`; Gold, `labelLarge`, body face | top-leading, ≥ 48 dp, angular indication; Android Back is equivalent |
+| identity | line 1: tmux name, Data, semibold, Bone, one line, ellipsis. line 2: `<place> · <presence>`, Data, `labelSmall`; place Muted and truncating first, presence in its colour | the region and a trailing Gold `⋯` (body face) are one button that opens the session sheet |
 
 place names where typed input runs, host first, so truncation keeps it:
 `macbook` for a local pane, `devbox via macbook` for a resolved ssh/mosh pane,
@@ -86,10 +86,10 @@ edge. its open flag is the only state it adds, scoped to the attachment attempt.
 
 facts, in order:
 
-- the tmux name, as heading;
+- the tmux name;
 - `<place> · <presence>`, coloured as in the rail;
-- the shared status projection (`label · detail` in its tone colour, with its
-  accessibility label);
+- the shared status projection (`label · detail · evidence` in its tone
+  colour);
 - Muted Data lines, each when it applies: `running on <host> · <agent> ·
   terminal on <owner>` (the agent segment only when one is recognized) or
   `remote context unknown · terminal on <owner>`; `directory <cwd>` or
@@ -100,7 +100,7 @@ facts, in order:
 actions are the shared menu rows (`ActionRows` in `ActionMenu.kt`):
 body-face `labelLarge`, at least 48 dp, wrapping rather than truncating; Bone,
 Ember when destructive, 38% when disabled, with a hairline rule before the
-destructive run. they speak their visible labels.
+destructive run.
 
 | row | routes to |
 | --- | --- |
@@ -128,8 +128,8 @@ light-status-bar flag, which `enableEdgeToEdge` overrides and api 36 ignores.
 ## trade-offs
 
 - rename, new terminal, text size, interrupt and close each cost one more tap.
-- inferred status is not visible while attached. the terminal is the evidence
-  (and talkback can read it), and cards keep the glance.
+- inferred status is not visible while attached. the terminal is the evidence,
+  and cards keep the glance.
 - `Detach` is about 26 dp wider than `‹`; long names ellipsize sooner.
 - the rail is 48 dp, not a 24 dp information strip with actions elsewhere: two
   explicit targets at the accessibility floor cost about one row. the targets

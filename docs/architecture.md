@@ -280,8 +280,8 @@ outside every view. recovery adds no controls or saved client state.
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
 - **Card presentation:** [compact roster](dashboard-compact-roster.md) owns the
-  accepted replacement structure; [session card](session-card.md) retains actions
-  and speech. the operator-owned tmux name is the primary work
+  accepted replacement structure; [session card](session-card.md) retains
+  actions. the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
   the status line's leading facet is redundant decoration; the line's literal
   label remains the semantic and accessible source. the exclusive status/attention
@@ -300,10 +300,10 @@ outside every view. recovery adds no controls or saved client state.
   a proven runtime profile, `<provider> · profile unknown` for an agent without
   one, and no profile for a pane without an agent, whose status already reads
   `terminal`. It never substitutes launch
-  profile for missing runtime profile. Cwd abbreviation never changes its
-  complete spoken value. a tap opens the terminal;
+  profile for missing runtime profile. The card abbreviates cwd; the terminal
+  session sheet shows it whole. a tap opens the terminal;
   change group, send interrupt and both confirmed closures sit behind the
-  card's overflow and are mirrored as TalkBack custom actions.
+  card's overflow.
 - Character normalization runs under the gateway's one mutation lock. Valid assignments are retained. Missing or
   invalid assignments use least-live-use selection with a stable
   server-epoch/session-id tie-break and one identity-guarded conditional tmux
@@ -920,8 +920,7 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   xterm screen becomes a normalized xterm line-wheel input; xterm alone routes
   it to exact local scrollback, cursor fallback, or negotiated mouse reporting.
   A completed sub-threshold tap becomes a semantic xterm primary tap; xterm's
-  active mouse protocol alone decides whether press/release input exists. Two
-  truthful Android accessibility wheel actions enter the same route. Physical DOM wheels and
+  active mouse protocol alone decides whether press/release input exists. Physical DOM wheels and
   semantic line-wheel input share one xterm-owned router. There is no
   transcript, mode detector, application-side router, synthetic wheel-event
   injection, or tmux scroll command. The closed implementation and proof
@@ -958,14 +957,11 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   cleanly recreate or release the attachment; nothing replays. Recreation from
   Terminal returns to the saved Dashboard entry and never restores or
   automatically opens an attachment.
-- Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
-  and semantic labels on all controls. [`design-language.md`](design-language.md)
+- Near-black tonal surfaces and deterministic procedural dwarf icons as
+  landmarks. [`design-language.md`](design-language.md)
   owns the implemented palette, typography, shape, ornament, motion and
-  terminal theme. The key deck has stable row-major
-  traversal and spoken ctrl/alt/shift state; terminal scroll exposes reviewed custom
-  accessibility actions. Copy is accessible after a trusted touch selection;
-  end-to-end screen-reader selection construction is not claimed.
-  Accessibility beyond those reviewed surfaces remains best-effort.
+  terminal theme. The phone has no screen-reader support (owner cut,
+  2026-10-21; [design language §14](design-language.md#14-accessibility-floor)).
 
 ## 7. Security
 

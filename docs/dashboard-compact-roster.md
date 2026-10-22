@@ -40,19 +40,18 @@ retain the existing surface, cut corners, gold lip, angular press and type sizes
 use `8dp` horizontal and `6dp` vertical body padding. the upper block is at least
 `48dp` high: top-aligned `36dp` crest, `8dp` gap, weighted text column, and `48dp`
 end reservation for the overflow. only this block reserves overflow width.
-the body and top-end overflow remain sibling accessibility nodes; moving the
-button inside the body's cleared semantics is forbidden. its mark stays aligned
-with the first name line; its actual target remains `48dp × 48dp`.
+the top-end overflow is the body's sibling, never inside its clickable. its mark
+stays aligned with the first name line; its actual target remains `48dp × 48dp`.
 
 | content | presentation and overflow |
 | --- | --- |
 | work name | existing exact tmux name, bold bone data `titleSmall`; at most two lines, then ellipsis |
 | status and dwarf | below the name with `2dp` gap; native `FlowRow`, `8dp` horizontal and `2dp` vertical gaps; status first, dwarf second |
-| status | existing `sessionStatusContent`, tone, fixed `12dp` facet and motion rules; primary label wraps without ellipsis or line cap; ordinary detail stays one line with ellipsis and complete speech; needs-input queue detail wraps completely |
+| status | existing `sessionStatusContent`, tone, fixed `12dp` facet and motion rules; primary label wraps without ellipsis or line cap; ordinary detail stays one line with ellipsis; needs-input queue detail wraps completely |
 | dwarf | exact `character.displayName`, display face at `labelMedium` size, muted; wraps without ellipsis or line cap |
 | conditional facts | availability, notification failure, objective, in that order below the upper block; full width, `2dp` gaps; warnings wrap without ellipsis or line cap; existing copy/tone and objective two-line limit |
 | context | full-width footer after a `2dp` gap; existing data `labelSmall`, muted; fitting policy below |
-| needs-input group | after context, existing `group: <label>` or `unassigned`, one visual line with ellipsis and complete speech |
+| needs-input group | after context, existing `group: <label>` or `unassigned`, one visual line with ellipsis |
 
 ordinary detail can move the dwarf to another line. text growth may move following
 cards; do not reserve blank lines, shrink fonts or animate layout to conceal it.
@@ -77,7 +76,7 @@ a plain terminal has no profile. never substitute its launch profile. the cluste
 wraps fully without ellipsis. the path uses `abbreviatedDirectory`, moves whole
 to the next line when necessary, and uses one-line start-ellipsis only when wider
 than a complete footer line. `directory unavailable` wraps fully. accepting a
-second line avoids a tiny, useless path fragment. full cwd is still spoken once.
+second line avoids a tiny, useless path fragment.
 
 `DwarfPortrait(character)` becomes the single `36dp` renderer, including its
 existing debug gallery caller. retain `sealSpec`, traits, palette and geometry.
@@ -98,7 +97,7 @@ names scope once, preserves useful boundaries and never conceals sessions.
 | `needs input` | flat; retain each card's group account | existing queue priority and tie order |
 
 all-view headings use data `labelMedium`, muted, no vertical padding, one visual
-line with ellipsis, complete spoken label and heading semantics. the grid's
+line with ellipsis. the grid's
 vertical spacing is `4dp` between every rendered item, including recovery
 notices; horizontal spacing stays `8dp`. retain the `300dp` adaptive columns,
 `12dp` side/top insets, `84dp` trailing forge clearance and pull behavior.
@@ -125,15 +124,13 @@ their signatures. reuse native rows/columns/flow rows; no custom measurement
 engine, layout model or presentation cache. consume chrome's `MenuAction` and
 `ActionMenuButton`; never restore the retired session-menu aliases.
 
-one body tap opens its captured terminal; the menu/custom actions keep their
+one body tap opens its captured terminal; the menu actions keep their
 order, enablement, exact targets and confirmations. stale cards retain last
-observations, literal fences and disabled actions. full spoken facts and the
-two-node body/overflow structure remain. the layout never reclassifies status,
+observations, literal fences and disabled actions. the body/overflow sibling
+structure remains. the layout never reclassifies status,
 infers remote activity or retargets control from displayed labels.
 
-the shared `sessionStatusContent.accessibilityLabel` also includes ordinary local
-command detail once; the terminal header receives the same correction. classification
-and interfaces stay intact. no wire api, dto, persisted schema, controller, poller,
+classification and interfaces stay intact. no wire api, dto, persisted schema, controller, poller,
 gateway, provider or notification-owner change. existing typed inputs already contain every fact.
 
 ## ownership and implementation sequence

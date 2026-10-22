@@ -171,8 +171,8 @@ reports a fact the app holds (`MachineState.canMutate`), never activity.
   viewport, so that inline card controls could never rest under the seal;
   those controls are now one [overflow](session-card.md#actions) per card, and
   the user reported the empty strip the exclusion left as unwanted.
-- `contentDescription = "New dwarf"`; `Role.Button`; `enabled = canForge` so
-  disabled state is spoken; 56dp ≥ the 48dp floor, so no
+- `contentDescription = "New dwarf"` (a drawn control with no text);
+  `enabled = canForge`; 56dp ≥ the 48dp floor, so no
   `minimumInteractiveComponentSize()`.
 
 ## Structure and composition

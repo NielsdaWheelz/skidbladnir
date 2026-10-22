@@ -75,7 +75,7 @@ a qualifying request/notice retains the existing `work continues` detail. do not
 compare rendered strings, colours or raw stored-ready bits to decide membership.
 when a menu takes primary display precedence over an independently recognized
 notice, the notice still qualifies. show `error shown` or `interruption shown`
-in the queue's existing status detail and speech so the inclusion is explained;
+in the queue's existing status detail so the inclusion is explained;
 keep the primary `menu open` label and any work-continues fact. menu alone never
 qualifies. this contextual detail introduces no new observation or badge.
 
@@ -152,7 +152,6 @@ indices or displayed label text. exact label equality remains. draw named-group
 tabs, headings and details with bare labels; truncate long tab labels directly.
 named `all`, `needs input` and `unassigned` can read like the built-in views,
 but their typed identities remain distinct.
-speech identifies named group tabs as groups and retains their complete labels.
 
 fresh launch remains `all`, all machines, at the top. initial selection and first
 tab position are separate. selecting the active view is a no-op. desktop view
@@ -175,18 +174,17 @@ still require explicit group selection before creation.
 replace the machine chips, group-selector sheet trigger and needs-input toggle
 with one horizontally scrolling single-selection strip. tab styling follows
 [compact chrome](dashboard-compact-chrome.md); retain clear selection, 48dp
-targets and full spoken names/selected semantics. selectors
+targets. selectors
 remain outside pull-to-refresh. labels stay on one line, with bounded visual
-ellipsis for labels wider than the available strip; speech retains the full
-label. reveal the selected tab after restoration or programmatic selection using
+ellipsis for labels wider than the available strip. reveal the selected tab after restoration or programmatic selection using
 the existing minimal bring-into-view behavior. ordinary polls must not reset the
 strip while the user scrolls. exact horizontal offset is not persisted.
 
 needs input uses the existing 300dp-minimum adaptive card grid, globally ordered
 by tier. group headings cannot precede ready-first order. in this view only, add one quiet
 `group: <label>` line after the card's context footer, or `unassigned`; use the
-existing data typography, one visual line with ellipsis and the full group once
-in the existing body speech node. add no separate action or badge. this costs
+existing data typography and one visual line with ellipsis. add no separate
+action or badge. this costs
 one card line in exchange for group context without interleaving priority tiers.
 the accepted [compact roster](dashboard-compact-roster.md) replaces card geometry
 and keeps headings only in `all`; named/unassigned views use their selected tab

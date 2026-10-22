@@ -33,9 +33,9 @@ phone:
 - v0.5.0: hands-on groups/shells workflow: membership set/change/clear, intersecting filters and return position, forge/session-sheet creation with cwd/group inheritance, duplicate taps, narrow and enlarged text (groups-shells-hands-on).
 - v0.10.0: groups filter/edit/create/detach against a real host; darwin isolated-host membership continuity. its capsule-restore rows are superseded by [session views](../session-views.md) schema 4 (groups-cutover-acceptance).
 - v0.10.7: naming composition: strict `nameMode` decoding, narrow large-text naming controls, ready persistence through rename/reset (reply-notifications-phone-composition).
-- v0.13.0: terminal chrome on the s22+: one-row rail through connect/frozen/too-small and both sheets, talkback reading order, switch access to every sheet row (terminal-chrome-hands-on). the frozen-announcement defect is [separate](terminal-frozen-announcement.md).
+- v0.13.0: terminal chrome on the s22+: one-row rail through connect/frozen/too-small and both sheets (terminal-chrome-hands-on).
 - v0.15.0: on real sessions, open and cancel both closure confirmations, then a terminal visit/return keeping the dashboard anchor (session-card-hands-on).
-- v0.11.0: concurrent work with a request, generic needs input, production-gateway delayed response, spoken talkback of card status (terminal-observation-phone-acceptance).
+- v0.11.0: concurrent work with a request, generic needs input, production-gateway delayed response (terminal-observation-phone-acceptance).
 
 terminal observation and attention:
 

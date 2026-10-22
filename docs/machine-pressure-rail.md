@@ -133,9 +133,7 @@ Keep the current copy and precedence exactly:
 <MACHINE> UNKNOWN · <METRIC> NO DATA[ +N]
 ```
 
-Truncation may shorten visible copy; every untruncated header fact remains in
-the rail's merged accessibility summary. The spoken summary may use equivalent
-prose and need not repeat the visible header byte-for-byte.
+Truncation may shorten visible copy; the details sheet states every header fact.
 
 ### Metric row
 
@@ -171,16 +169,14 @@ health, interpolate colour, or convert them to `Normal`, `Warm`, or `Hot`.
 
 ### History and disclosure
 
-`PressureHistoryBand` is a frozen owner. Its source and observable rendering
-remain unchanged: 16dp height, 5dp top padding, sample width/gap behavior,
+`PressureHistoryBand` is a frozen owner. Its observable rendering remains
+unchanged: 16dp height, 5dp top padding, sample width/gap behavior,
 ordering, colours, and level heights (`Normal .25`, `Warm .58`, `Hot 1.0`,
-`Unknown .42`). It has no visible/spoken title and no duplicate in the sheet.
+`Unknown .42`). It has no title and no duplicate in the sheet.
 
-The whole rail remains one `Role.Button` with action label
-`Show <machine> pressure details`. Descendants add no focus or click targets.
-The merged summary retains machine, verdict/phase, freshness, causes, every
-visible metric value/mark/full state, detail-only missing evidence, and
-compressed history without relying on colour.
+The whole rail remains one clickable that opens the details sheet. Descendants
+add no focus or click targets. It carries no spoken summary
+([design language §14](design-language.md#14-accessibility-floor)).
 
 The existing machine-bound sheet remains local to the accepted snapshot. Open,
 dismiss, Back, focus return, machine removal, full rows, state words, reasons,
@@ -204,10 +200,10 @@ Ownership is fixed:
 | --- | --- | --- |
 | Sampling, thresholds, hysteresis, recovery, reasons | Host pressure package | Sole pressure-meaning owner; unchanged |
 | Wire projection and strict decoding | Gateway/client boundary | Existing single `GET /v1/pressure` shape; unchanged |
-| Text, precision, order, marks, accents, accessibility summary | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
-| Rail geometry, spans, scrolling, semantics, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
+| Text, precision, order, marks, accents | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
+| Rail geometry, spans, scrolling, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
 | placement and disclosure | `DashboardScreen.kt` | every accepted machine rail is reachable through machines; detail selection never filters cards |
-| History geometry | `PressureHistoryBand` | Frozen source and pixel contract |
+| History geometry | `PressureHistoryBand` | Frozen pixel contract |
 
 The external API remains exactly one strict shape:
 `{ unsupported, current, history }`. Existing signal states are
@@ -221,12 +217,9 @@ Hard-cut the internal presentation schema to:
 PressureRailContent(
   header: PressureRailHeaderContent,
   metrics: List<PressureRailMetricContent>,
-  historySummary,
-  accessibilitySummary,
-  actionLabel,
 )
 PressureRailHeaderContent(machineLabel, statusText, accent)
-PressureRailMetricContent(metric, shortLabel, value, stateMark, stateWord, accent)
+PressureRailMetricContent(shortLabel, value, stateMark, accent)
 PressureRailAccent = None | Gold | Ember | Muted
 ```
 
@@ -349,8 +342,8 @@ hands-on acceptance remain `NOT_RUN`; `NOT_RUN` is never a pass.
 - Only host-emitted signal state controls Gold/Ember metric accents; Reading
   may use Gold in the header. Android contains no pressure threshold or
   raw-value colour interpolation.
-- Rail semantics communicate the same facts without colour and disclosure stays
-  machine-bound, local, non-mutating, and focus-correct.
+- Disclosure stays machine-bound, local, non-mutating, and focus-correct; the
+  details sheet states every signal state in words, not colour alone.
 - `PressureHistoryBand` and its pixel proof are unchanged.
 - The tree contains no gem production/type/test vocabulary, duplicate proof,
   dead code, compatibility path, or stale canonical pressure prose.

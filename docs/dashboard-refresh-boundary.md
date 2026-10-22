@@ -67,12 +67,10 @@ pressure rails live in the machines disclosure under
 so no selected-machine rail-to-card gap remains. a dashboard notice is still a
 real intervening sibling and owns its existing height.
 
-While pulling, exactly one semantics node exposes determinate progress and no
-custom description or action. While refreshing, exactly one node exposes
-indeterminate progress, content description `Checking tmux sessions`, and no
-action or role. At zero animator duration, checking renders the complete static
-band at `x = 12dp..width - 12dp`, `y = 0..2dp`, with the same indeterminate
-semantics; it never freezes on an empty frame.
+While pulling, the line shows determinate progress; while refreshing,
+indeterminate progress. It carries no custom description, action or role. At
+zero animator duration, checking renders the complete static band at
+`x = 12dp..width - 12dp`, `y = 0..2dp`; it never freezes on an empty frame.
 
 ## Architecture and API design
 
@@ -84,8 +82,8 @@ reuse Material's linear progress primitive and the existing `Gold` token.
 The API-36 client observes the public Android animator-duration-scale boundary
 while the collection indicator is composed. It reads the initial value,
 registers one lifecycle-bound change listener, then re-reads to close the
-registration race. Scale zero selects a complete determinate visual whose
-outer semantics remain indeterminate; no nullable coroutine-context fallback,
+registration race. Scale zero selects a complete determinate visual; no
+nullable coroutine-context fallback,
 settings permission, or test seam exists.
 
 No public API, callback, DTO, model, schema, state, dependency, controller,

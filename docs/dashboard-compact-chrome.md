@@ -28,22 +28,22 @@ below for both features. literals are closed content, not a new runtime schema.
 | slot | exact content | effect |
 | --- | --- | --- |
 | title | `Dwarves` | existing display style and silent `24dp` mark |
-| overflow | spoken `dashboard options` | existing three-stud mark; button semantics |
+| overflow | `contentDescription` `dashboard options` | existing three-stud mark |
 | menu row 1 | `machines` | dismiss popup, then open existing machine sheet |
 | menu row 2 | `notification settings` | dismiss popup, then launch existing channel-settings intent |
 | unhealthy notice action | `set up notifications` | existing setup callback/dialog |
 | built-in views | `needs input`, `all`, `unassigned` | existing typed selections |
-| named view | exact authored group label | speech: `group: <complete label>` |
-| unresolved named view | `previously selected group` | speech: `group: previously selected group`; retain selection |
+| named view | exact authored group label | existing typed selection |
+| unresolved named view | `previously selected group` | retain selection |
 
 good content names the destination or current fact once. no counters, badges,
 menu-row icons, health suffixes, new status claims or themed instructions.
-a named group `all` still speaks `group: all`; it never becomes the built-in
-view. long unicode names ellipsize visually and retain complete speech.
+a named group `all` never becomes the built-in view. long unicode names
+ellipsize.
 
 **header/menu:** one `48dp`-minimum row, existing `16dp` side insets and `8dp`
-gaps. retain the weighted, single-line title with visual ellipsis; one text
-node still speaks the complete `Dwarves`, while the mark is silent. remove the
+gaps. retain the weighted, single-line title with visual ellipsis; the mark is
+silent. remove the
 summary without relocating it. the trailing trigger is a real `48dp` square,
 with its studs centered at `24dp`. both menu entries are always enabled,
 including when no machine is actionable. opening/dismissing changes no
@@ -66,9 +66,9 @@ surface, cut corners and angular press indication.
 use the same weight in both states so selection does not change width. these
 heights are minima: allow text to grow the field and target. preserve one-line
 ellipsis and current width bound. the outer target owns `selectable`,
-`Role.Tab`, complete speech, selected state, bring-into-view and angular press
-indication. its inner field fills that width, centers vertically, owns only
-paint/text/padding, and clears its semantics; it is not independently clickable.
+bring-into-view and angular press indication. its inner field fills that width,
+centers vertically and owns only paint/text/padding; it is not independently
+clickable.
 do not shrink targets or rely on overlapping invisible hit expansion. apply
 these styles locally.
 
@@ -104,7 +104,7 @@ internal class MenuAction(
     val perform: () -> Unit,
 )
 // composable signatures; existing behavior and defaults retained
-ActionMenuButton(spokenName: String, actions: List<MenuAction>, markCenterY: Dp,
+ActionMenuButton(description: String, actions: List<MenuAction>, markCenterY: Dp,
                  modifier: Modifier = Modifier)
 ActionRows(actions: List<MenuAction>, dismiss: () -> Unit)
 DashboardTopBar(onMachines: () -> Unit, onNotificationSettings: () -> Unit)
@@ -114,7 +114,7 @@ rename `SessionActions.kt` to `ActionMenu.kt`, `SessionAction` to `MenuAction`,
 `SessionActionsButton` to `ActionMenuButton`, `SessionActionRows` to `ActionRows`,
 and the private item accordingly. retain `terminalLifetimeActions` as the
 session-specific list factory. preserve session action order, captured targets,
-live enablement, destructive separator/tone, spoken/custom actions and existing
+live enablement, destructive separator/tone and existing
 card mark alignment. the header supplies two enabled, non-destructive actions.
 
 no wire api, persisted schema, lifecycle, controller, notification-owner,
@@ -180,8 +180,8 @@ acceptance test, production test tag, health setter or transport seam.
 | --- | --- |
 | compact header and notice | rendered actual dashboard: title/mark, usable overflow, no summary or direct machines/settings buttons; unhealthy diagnostic and one setup action remain |
 | menu | exactly two rows in order; dismiss/outside/back; machines opens current sheet; settings intent dispatches once to existing app/channel; popup absent after compose idles |
-| shared menu safety | actual session-card menu with inert callbacks: enabled action fires once, disabled action never fires; existing session speech/order/targets retained |
-| selection and layout | actual view strip at `320dp`/`360dp`, `1×`/`2×` text and landscape; minimum targets, no overlap/clipping; long unicode and selector-like group labels; empty/unresolved selection and full spoken names |
+| shared menu safety | actual session-card menu with inert callbacks: enabled action fires once, disabled action never fires; existing session order/targets retained |
+| selection and layout | actual view strip at `320dp`/`360dp`, `1×`/`2×` text and landscape; minimum targets, no overlap/clipping; long unicode and selector-like group labels; empty/unresolved selection |
 | continuity | machine disclosure closes with the same view/grid anchor/offset; selected-tab reveal works; inventory updates preserve manual strip browsing |
 | native end-to-end | actual app: menu → machines → details → back/dismiss; reconnect entry without submitting; menu → actual channel settings → return; view and surviving semantic anchor remain |
 | healthy physical layout | actually enrolled notification `Ready`: two resting rows, about `96dp` at default text before insets/gutter; no settings row; larger text may grow |

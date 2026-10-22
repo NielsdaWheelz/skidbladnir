@@ -51,15 +51,16 @@ Android Back, and the session sheet's confirmed closures remain separate lifecyc
 
 ## UI contract
 
-| Row | Visible labels | Spoken labels |
-| --- | --- | --- |
-| 1 | `Esc / Shift Home ↑ End PgUp` | `Escape`, `Slash`, `Shift`, `Home`, `Up arrow`, `End`, `Page up` |
-| 2 | `Tab Ctrl Alt ← ↓ → PgDn` | `Tab`, `Control`, `Alt`, `Left arrow`, `Down arrow`, `Right arrow`, `Page down` |
+| Row | Visible labels |
+| --- | --- |
+| 1 | `Esc / Shift Home ↑ End PgUp` |
+| 2 | `Tab Ctrl Alt ← ↓ → PgDn` |
 
 - `/` is ASCII. direction labels are true arrows.
-- TalkBack traversal is row-major `0..13` and matches the table.
-- ctrl, alt and shift expose toggle semantics and state description `Off` or
-  `Armed`. all eight combinations are valid; disabled modifiers present `Off`.
+- keys carry no spoken names, traversal order or state descriptions
+  ([design language §14](design-language.md#14-accessibility-floor)).
+- ctrl, alt and shift each render off or armed (the Gold treatment). all eight
+  combinations are valid; disabled modifiers render off.
 - Each enabled activation uses system `KEYBOARD_TAP` haptics. A disabled key
   dispatches nothing and produces no haptic.
 - Reuse `RaisedSurface`, `NidavellirShapes.Key`, `NidavellirType.Data`, `Bone`,
@@ -179,7 +180,7 @@ extra fields, and malformed values fail closed. There is one protocol shape,
 one input path, and no alias, fallback, negotiation, or compatibility decoder.
 
 `TerminalKeyDeck` owns one local two-row item matrix, measured grid width, one
-scroll state, semantics, selected rendering, and enabled state. `TerminalScreen`
+scroll state, selected rendering, and enabled state. `TerminalScreen`
 remembers the latest page-owned snapshot per attempt; it owns no reducer.
 `LockedTerminalWebView` parses the exact snapshot without deriving or persisting
 modifier truth. `SkidbladnirController` adds no key logic or test seam.
@@ -206,12 +207,12 @@ device or hands-on boundary not run is `NOT_RUN`, never a pass.
 
 Acceptance requires:
 
-1. The exact fixed matrix, labels, spoken names, traversal, alignment, targets,
+1. The exact fixed matrix, labels, alignment, targets,
    shared overflow, normal-font height, large-text non-clipping, haptics, and
    disabled behavior.
 2. Every base and modified key emits its specified value exactly once through
    the existing ordered `Input` route.
-3. page-owned ctrl/alt/shift truth is atomic, visible, spoken, independently
+3. page-owned ctrl/alt/shift truth is atomic, visible, independently
    toggleable, jointly consumable, and cleared at every owned boundary.
 4. IME, composition, dictation, paste, Unicode, CR behavior, queue bounds,
    focus, viewport containment, CSP, WSS, and tmux behavior remain unchanged.

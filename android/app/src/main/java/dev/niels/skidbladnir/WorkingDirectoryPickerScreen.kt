@@ -39,12 +39,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
@@ -90,10 +84,9 @@ private sealed interface PickerAction {
 
 private sealed interface BrowseStatus {
     data object Ready : BrowseStatus
-    data class Supporting(val visual: String, val spoken: String) : BrowseStatus
+    data class Supporting(val text: String) : BrowseStatus
     data class Failed(
-        val headingVisual: String,
-        val headingSpoken: String,
+        val heading: String,
         val body: String,
         val tone: NoticeTone,
         val retryLabel: String?,
@@ -103,7 +96,6 @@ private sealed interface BrowseStatus {
 private data class PickerBrowseContext(
     val locationLabel: String,
     val directory: HomeDirectory,
-    val locationSpoken: String,
     val status: BrowseStatus,
 )
 
@@ -112,7 +104,6 @@ private sealed interface PickerRow {
     data class Action(
         override val key: PickerRowKey,
         val label: String,
-        val contentDescription: String,
         val action: PickerAction,
     ) : PickerRow
     data class Filter(val value: String) : PickerRow { override val key = PickerRowKey.Filter }
@@ -148,7 +139,7 @@ internal fun WorkingDirectoryPickerScreen(
 ) {
     val content = workingDirectoryBrowseContent(picker.load)
     val view = content.view
-    val rows = workingDirectoryBrowseRows(picker.machine, view)
+    val rows = workingDirectoryBrowseRows(view)
     val listState = rememberLazyListState()
     // A new reply snapshot or folder subset must restore before scroll capture resumes.
     val viewportScope = view?.let { BrowseViewportScope(it.listing, it.filter, it.showHidden) }
@@ -177,10 +168,7 @@ internal fun WorkingDirectoryPickerScreen(
                 onClick = { if (actions.useCurrent()) onReturnToField() },
                 enabled = enabled && restorationReady && content.actionsEnabled,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth().heightIn(min = 48.dp).minimumInteractiveComponentSize()
-                    .semantics {
-                        contentDescription = "Use ${directory.encoded} as working directory on ${picker.machine.label.text}."
-                    },
+                    .fillMaxWidth().heightIn(min = 48.dp).minimumInteractiveComponentSize(),
                 shape = NidavellirShapes.Chip,
             ) { Text(if (home) "Use Home" else "Use this folder") }
         }
@@ -202,11 +190,9 @@ private fun PickerHeader(machine: PairedMachine, onBack: () -> Unit, onCancel: (
         Text("Browse Home", style = MaterialTheme.typography.headlineSmall,
             fontFamily = NidavellirType.Display, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 8.dp))
-        Text("On ${bidiIsolate(machine.label.text)}", color = Muted,
+        Text("On ${machine.label.text}", color = Muted,
             style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).semantics {
-                contentDescription = "On ${machine.label.text}"
-            })
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }
 
@@ -220,7 +206,6 @@ private fun PickerRow(
     when (row) {
         is PickerRow.Action -> PickerActionRow(
             label = row.label,
-            description = row.contentDescription,
             enabled = when (row.action) {
                 PickerAction.EnterPath -> true
                 PickerAction.Parent, is PickerAction.Folder -> browseActionsEnabled
@@ -249,7 +234,6 @@ private fun PickerRow(
 @Composable
 private fun PickerActionRow(
     label: String,
-    description: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
@@ -264,13 +248,8 @@ private fun PickerActionRow(
                 interactionSource = null,
                 indication = AngularIndication(NidavellirShapes.Chip),
                 enabled = enabled,
-                role = Role.Button,
                 onClick = onClick,
-            )
-            .semantics(mergeDescendants = true) {
-                contentDescription = description
-                role = Role.Button
-            },
+            ),
     ) {
         Box(
             Modifier.fillMaxWidth().minimumInteractiveComponentSize()
@@ -292,8 +271,7 @@ private fun BrowseContext(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -301,26 +279,12 @@ private fun BrowseContext(
             color = Muted,
             style = MaterialTheme.typography.labelLarge,
         )
-        WorkingDirectoryPathLine(
-            path = content.directory.encoded,
-            contentDescription = content.locationSpoken,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        WorkingDirectoryPathLine(content.directory.encoded, Modifier.fillMaxWidth())
         when (val status = content.status) {
             BrowseStatus.Ready -> Unit
-            is BrowseStatus.Supporting -> Text(
-                status.visual,
-                color = Muted,
-                modifier = Modifier.semantics { contentDescription = status.spoken },
-            )
+            is BrowseStatus.Supporting -> Text(status.text, color = Muted)
             is BrowseStatus.Failed -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    status.headingVisual,
-                    color = Muted,
-                    modifier = Modifier.semantics {
-                        contentDescription = status.headingSpoken
-                    },
-                )
+                Text(status.heading, color = Muted)
                 NoticePanel(
                     tone = status.tone,
                     body = status.body,
@@ -341,27 +305,17 @@ private fun BrowseContext(
 }
 
 @Composable
-internal fun WorkingDirectoryPathLine(
-    path: String,
-    modifier: Modifier = Modifier,
-    contentDescription: String? = path,
-) {
+internal fun WorkingDirectoryPathLine(path: String, modifier: Modifier = Modifier) {
     val scrollState = rememberScrollState()
     LaunchedEffect(path, scrollState.maxValue) {
         scrollState.scrollTo(scrollState.maxValue)
     }
     Row(
-        modifier.heightIn(min = 48.dp).horizontalScroll(scrollState).then(
-            contentDescription?.let { description ->
-                Modifier.semantics(mergeDescendants = true) {
-                    this.contentDescription = description
-                }
-            } ?: Modifier,
-        ),
+        modifier.heightIn(min = 48.dp).horizontalScroll(scrollState),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            ltrIsolate(path),
+            path,
             color = Bone,
             fontFamily = NidavellirType.Data,
             maxLines = 1,
@@ -443,7 +397,7 @@ private fun workingDirectoryBrowseContent(load: DirectoryLoad): BrowseContent = 
         locationIsCurrent = true, location = load.view.listing.directory, view = load.view,
         actionsEnabled = true,
         status = if (visibleWorkingDirectoryEntries(load.view).isEmpty()) {
-            BrowseStatus.Supporting("No visible folders here.", "No visible folders here.")
+            BrowseStatus.Supporting("No visible folders here.")
         } else BrowseStatus.Ready,
     )
     is DirectoryLoad.Loading -> when (val retained = load.retained) {
@@ -459,19 +413,13 @@ private fun workingDirectoryBrowseContent(load: DirectoryLoad): BrowseContent = 
     }
 }
 
-private fun openingStatus(directory: HomeDirectory): BrowseStatus.Supporting {
-    val name = directory.displayName
-    return BrowseStatus.Supporting(
-        visual = "Opening “${bidiIsolate(name)}”…",
-        spoken = "Opening “$name”…",
-    )
-}
+private fun openingStatus(directory: HomeDirectory): BrowseStatus.Supporting =
+    BrowseStatus.Supporting("Opening “${directory.displayName}”…")
 
 private fun browseFailureStatus(
     requested: HomeDirectory,
     failure: DirectoryBrowseFailure,
 ): BrowseStatus.Failed {
-    val name = requested.displayName
     val bodyAndRetry = when (failure) {
         DirectoryBrowseFailure.Transport ->
             "Could not reach this machine over your Tailnet." to "Try again"
@@ -483,8 +431,7 @@ private fun browseFailureStatus(
             "Skíðblaðnir could not complete the request." to "Try again"
     }
     return BrowseStatus.Failed(
-        headingVisual = "Could not open “${bidiIsolate(name)}”.",
-        headingSpoken = "Could not open “$name”.",
+        heading = "Could not open “${requested.displayName}”.",
         body = bodyAndRetry.first,
         tone = NoticeTone.Failure,
         retryLabel = bodyAndRetry.second,
@@ -499,30 +446,23 @@ private fun browseContent(
     status: BrowseStatus,
 ): BrowseContent {
     val label = if (locationIsCurrent) "Current folder" else "Requested folder"
-    return BrowseContent(PickerBrowseContext(label, location, "$label ${location.encoded}", status), view, actionsEnabled)
+    return BrowseContent(PickerBrowseContext(label, location, status), view, actionsEnabled)
 }
 
-private fun workingDirectoryBrowseRows(machine: PairedMachine, view: DirectoryView?): List<PickerRow> = buildList {
+private fun workingDirectoryBrowseRows(view: DirectoryView?): List<PickerRow> = buildList {
     if (view?.listing?.parent is ParentDirectory.Available) {
-        add(PickerRow.Action(PickerRowKey.Parent, "Parent folder",
-            "Parent folder. Opens the parent folder.", PickerAction.Parent))
+        add(PickerRow.Action(PickerRowKey.Parent, "Parent folder", PickerAction.Parent))
     }
-    add(PickerRow.Action(PickerRowKey.EnterPath, "Enter path",
-        "Enter a working directory on ${machine.label.text}.", PickerAction.EnterPath))
+    add(PickerRow.Action(PickerRowKey.EnterPath, "Enter path", PickerAction.EnterPath))
     if (view == null) return@buildList
     add(PickerRow.Filter(view.filter))
     if (workingDirectoryHasHiddenEntries(view)) add(PickerRow.Hidden(view.showHidden))
     if (view.listing.omissions == DirectoryOmissions.Present) add(PickerRow.Omission)
     val ordinals = view.listing.children.withIndex().associate { it.value.directory to it.index }
     visibleWorkingDirectoryEntries(view).forEach { entry ->
-        val name = entry.directory.basename
         add(PickerRow.Action(
             PickerRowKey.Folder(entry.directory, checkNotNull(ordinals[entry.directory])),
-            bidiIsolate(name),
-            when (entry.kind) {
-                DirectoryEntryKind.Directory -> "Folder $name. Opens folder."
-                DirectoryEntryKind.SymbolicLink -> "Linked folder $name. Opens folder."
-            },
+            entry.directory.basename,
             PickerAction.Folder(entry.directory),
         ))
     }
@@ -530,6 +470,3 @@ private fun workingDirectoryBrowseRows(machine: PairedMachine, view: DirectoryVi
 
 private val HomeDirectory.displayName: String
     get() = if (this == HomeDirectory.Home) "Home" else basename
-
-internal fun bidiIsolate(value: String): String = "\u2068$value\u2069"
-private fun ltrIsolate(value: String): String = "\u2066$value\u2069"

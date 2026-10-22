@@ -97,13 +97,12 @@ for drift until both were deleted.
 ```text
 internal const val ValknutStrokeRatio = 0.055f
 internal fun DrawScope.drawValknut(color: Color)                    // was (color, strokeWidth: Dp = 2.dp)
-internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: Modifier = Modifier)
+internal fun HlidskjalfMark(color: Color, markSize: Dp, modifier: Modifier = Modifier)
 ```
 
 `drawValknut` reads `size.minDimension * ValknutStrokeRatio`; the `Dp` stroke
 parameter is hard-cut, and no call site passed it. `HlidskjalfMark` is the only
-renderer: it sizes the canvas, clears its own subtree semantics, and carries
-`tag` solely so the proofs can assert its silence.
+renderer: it sizes the canvas and has no semantics of its own.
 
 ### Placement
 

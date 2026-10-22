@@ -146,15 +146,15 @@ claims permanent sizing authority. No copy-generation framework or new theme.
 
 | Feature | Content and interaction acceptance |
 | --- | --- |
-| Text size | Session-sheet row `text size · N`, spoken as shown ([terminal chrome](terminal-chrome.md)); ≥48dp target. Sheet title `Text size`; `−`, current nominal integer, `+`; spoken `Decrease terminal text size`, `Terminal text size, N`, `Increase terminal text size`. Bound buttons disable correctly. |
+| Text size | Session-sheet row `text size · N` ([terminal chrome](terminal-chrome.md)); ≥48dp target. Sheet title `Text size`; `−`, current nominal integer, `+`. Bound buttons disable correctly. |
 | Saved setting | `Reset to 16`, disabled at 16; `Done`. `Saved on this phone. Android’s text-size setting also applies.` Applied changes survive dismissal; no Save/Cancel or editable numeric field. |
 | Shared sizing | Sheet: `Screen size is shared with other attached terminals.` Connected rail: `1 client` / `N clients`; retain existing connection-failure presentation. |
 | Insufficient room | `Terminal needs more room`. `Hide the keyboard, reduce text size, or make the app window larger.` Actions: `Hide keyboard` when visible; `Text size` always. Keep Detach accessible; no Retry or automatic shrinking. |
 | Preference failure | Read: `Text size unavailable.` and `Retry` (reread only). Write: `Text size could not be saved.`; previous committed size remains. |
 
 Use existing sheet/notice treatment and Back precedence. At system text scale
-2.0, controls remain reachable without clipped labels; identity may ellipsize
-visually while retaining its full accessible name. The designer checks reading
+2.0, controls remain reachable without clipped labels; identity may ellipsize.
+The designer checks reading
 comfort, action discovery, and visible final cells on the actual phone.
 
 ## Non-overlapping implementation ownership

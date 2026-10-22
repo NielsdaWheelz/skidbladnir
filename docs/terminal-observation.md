@@ -311,9 +311,9 @@ meaningful without colour.
 
 priority: stale/unavailable treatment, request, menu, current notice, starting/working,
 ready, idle/unknown. when request/menu/notice takes precedence over working, add
-`work continues` in existing detail space. accessibility adds
-`; [work continues;] inferred from terminal` only for a recognized local agent
-with source terminal; unavailable/non-agent labels make no inference claim.
+`work continues` in existing detail space. the phone session sheet adds
+`inferred from terminal` only for a recognized local agent with source terminal;
+unavailable/non-agent labels make no inference claim.
 rows of a host whose read failed or that is being re-read are never ready and
 stay out of the filter. a failed host's rows keep their stale cached facts as
 muted `last observed: <label>`, and keep that form while the host is re-read;

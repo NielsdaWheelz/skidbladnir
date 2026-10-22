@@ -1,15 +1,10 @@
 package dev.niels.skidbladnir
 
-import java.time.Duration
-import java.time.Instant
 import java.util.Locale
 
 internal data class PressureRailContent(
     val header: PressureRailHeaderContent,
     val metrics: List<PressureRailMetricContent>,
-    val historySummary: String,
-    val accessibilitySummary: String,
-    val actionLabel: String,
 )
 
 internal data class PressureRailHeaderContent(
@@ -19,11 +14,9 @@ internal data class PressureRailHeaderContent(
 )
 
 internal data class PressureRailMetricContent(
-    val metric: PressureMetric,
     val shortLabel: String,
     val value: String,
     val stateMark: String,
-    val stateWord: String,
     val accent: PressureRailAccent,
 )
 
@@ -31,7 +24,6 @@ internal data class PressureDetailsContent(
     val title: String,
     val summary: String,
     val rows: List<PressureDetailRow>,
-    val dismissLabel: String,
 )
 
 internal data class PressureDetailRow(
@@ -46,38 +38,11 @@ internal enum class PressureRailAccent { None, Gold, Ember, Muted }
 
 internal enum class PressureColorRole { Frost, Moss, Gold, Ember, Muted }
 
-internal fun pressureRailContent(machineLabel: String, state: PressureState): PressureRailContent {
-    val response = state.response()
-    val metrics = response?.current?.signals?.let(::railMetrics).orEmpty()
-    val historySummary = response?.history?.let(::historySummary) ?: "No pressure samples yet."
-    val header = pressureHeader(machineLabel, state)
-    val metricSummary = metrics.joinToString("; ") {
-        "${it.shortLabel} ${it.value} ${it.stateMark}, ${it.stateWord.lowercase(Locale.ROOT)}"
-    }
-    val visibleMetrics = metrics.map(PressureRailMetricContent::metric).toSet()
-    val missingDetailSummary = response?.current?.signals
-        ?.filterIsInstance<PressureSignal.Missing>()
-        ?.filterNot { it.metric in visibleMetrics }
-        ?.joinToString("; ") {
-            "${metricCopy(it.metric).shortLabel} NO DATA ?, no data"
-        }
-        .orEmpty()
-    return PressureRailContent(
-        header = header,
-        metrics = metrics,
-        historySummary = historySummary,
-        accessibilitySummary = listOf(
-            machineLabel,
-            pressureDetailsSummary(state).removeSuffix("."),
-            metricSummary,
-            missingDetailSummary,
-            historySummary,
-        )
-            .filter(String::isNotEmpty)
-            .joinToString(". "),
-        actionLabel = "Show $machineLabel pressure details",
+internal fun pressureRailContent(machineLabel: String, state: PressureState): PressureRailContent =
+    PressureRailContent(
+        header = pressureHeader(machineLabel, state),
+        metrics = state.response()?.current?.signals?.let(::railMetrics).orEmpty(),
     )
-}
 
 internal fun pressureDetailsContent(machineLabel: String, state: PressureState): PressureDetailsContent {
     val response = state.response()
@@ -85,7 +50,6 @@ internal fun pressureDetailsContent(machineLabel: String, state: PressureState):
         title = "$machineLabel pressure",
         summary = pressureDetailsSummary(state),
         rows = response?.current?.signals?.let(::detailRows).orEmpty(),
-        dismissLabel = "Dismiss $machineLabel pressure details",
     )
 }
 
@@ -204,14 +168,12 @@ private fun railMetricContent(signal: PressureSignal): PressureRailMetricContent
     val metric = metricCopy(signal.metric)
     val presentation = signalPresentation(signal)
     return PressureRailMetricContent(
-        metric = signal.metric,
         shortLabel = metric.shortLabel,
         value = when (signal) {
             is PressureSignal.Missing -> "NO DATA"
             is PressureSignal.Measured -> collapsedPressureValue(signal.value)
         },
         stateMark = presentation.stateMark,
-        stateWord = presentation.stateWord,
         accent = presentation.railAccent,
     )
 }
@@ -318,40 +280,6 @@ private fun formatNumber(value: Double): String = if (value == 0.0) {
     "0"
 } else {
     String.format(Locale.ROOT, "%.2f", value).trimEnd('0').trimEnd('.')
-}
-
-private data class HistoryRun(val level: PressureLevel, val start: Instant, val end: Instant)
-
-private fun historySummary(history: List<PressureHistorySample>): String {
-    val runs = mutableListOf<HistoryRun>()
-    history.forEachIndexed { index, sample ->
-        val end = history.getOrNull(index + 1)?.sampledAt ?: sample.sampledAt.plusSeconds(5)
-        if (runs.lastOrNull()?.level == sample.level) {
-            runs[runs.lastIndex] = runs.last().copy(end = end)
-        } else {
-            runs += HistoryRun(sample.level, sample.sampledAt, end)
-        }
-    }
-    val shown = runs.takeLast(3)
-    val earlier = runs.size - shown.size
-    val prefix = if (earlier == 0) {
-        ""
-    } else {
-        "$earlier earlier ${if (earlier == 1) "run" else "runs"} over " +
-            "${formatDuration(Duration.between(runs.first().start, shown.first().start))}; "
-    }
-    return "Trend: $prefix${shown.joinToString(", then ") { run ->
-        "${run.level.name.lowercase(Locale.ROOT)} ${formatDuration(Duration.between(run.start, run.end))}"
-    }}."
-}
-
-private fun formatDuration(duration: Duration): String {
-    val minutes = duration.seconds / 60
-    val seconds = duration.seconds % 60
-    return listOfNotNull(
-        minutes.takeIf { it > 0 }?.let { "$it ${if (it == 1L) "minute" else "minutes"}" },
-        seconds.takeIf { it > 0 }?.let { "$it ${if (it == 1L) "second" else "seconds"}" },
-    ).joinToString(" ")
 }
 
 private fun reasonLabel(reason: PressureReason): String = when (reason) {

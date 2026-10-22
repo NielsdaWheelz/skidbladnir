@@ -137,7 +137,7 @@ sheet's existing cancel behavior. reopening preserves the draft. retain group
 entry's unresolved-prefill rule and explicit unassigned choice.
 
 use single-line input, disabled autocorrect and automatic capitalization,
-complete spoken values and the existing path isolation. choices have at least
+and the existing left-to-right path row. choices have at least
 48dp touch targets; 2× text must keep the field, choices and final action usable.
 show the existing directory search states and omitted-result notice beneath
 the field. keep browse home available when search is unavailable. there is no
@@ -264,7 +264,7 @@ retain ranking, value admission and submission. cancellation is best effort;
 snapshot admission supplies correctness. directory search covers visited paths,
 with literal entry and Home browse supplying other locations. long phone paths
 reuse the existing horizontal path row; group choices and long host labels use
-one-line ellipsis with complete spoken values. these are the implementation's
+one-line ellipsis. these are the implementation's
 scope and presentation tradeoffs.
 
 the terminal program probe uses pipe input with rendering disabled; separate

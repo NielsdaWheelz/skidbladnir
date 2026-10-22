@@ -46,11 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -103,7 +98,6 @@ internal fun TerminalScreen(
             place = place,
             presence = presence,
             presenceColor = terminalPresenceColor(state.connection),
-            spokenName = "${state.target.session.tmuxName} on $place, $presence",
             onDetach = onDetach,
             onSession = { sessionSheet = true },
         )
@@ -268,7 +262,6 @@ private fun TerminalRail(
     place: String,
     presence: String,
     presenceColor: Color,
-    spokenName: String,
     onDetach: () -> Unit,
     onSession: () -> Unit,
 ) {
@@ -284,7 +277,6 @@ private fun TerminalRail(
                     .clickable(
                         interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Chip),
-                        role = Role.Button,
                         onClick = onDetach,
                     )
                     .minimumInteractiveComponentSize()
@@ -299,13 +291,8 @@ private fun TerminalRail(
                     .clickable(
                         interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Chip),
-                        role = Role.Button,
-                        onClickLabel = "open session actions",
                         onClick = onSession,
                     )
-                    .clearAndSetSemantics {
-                        contentDescription = spokenName
-                    }
                     .heightIn(min = 48.dp)
                     .padding(start = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -413,7 +400,7 @@ private fun TerminalSessionSheet(
                 style = MaterialTheme.typography.titleMedium,
                 fontFamily = NidavellirType.Data,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() },
+                modifier = Modifier.padding(horizontal = 16.dp),
             )
             Text(
                 text = buildAnnotatedString {
@@ -432,8 +419,7 @@ private fun TerminalSessionSheet(
                 fontFamily = NidavellirType.Data,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
-                    .padding(top = 8.dp)
-                    .clearAndSetSemantics { contentDescription = status.accessibilityLabel },
+                    .padding(top = 8.dp),
             )
             listOfNotNull(
                 context,
@@ -508,7 +494,6 @@ private fun TerminalTextSizeSheet(
                     onClick = onDecrease,
                     enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp - 1),
                     shape = NidavellirShapes.Chip,
-                    modifier = Modifier.semantics { contentDescription = "Decrease terminal text size" },
                 ) {
                     Text("−")
                 }
@@ -516,13 +501,11 @@ private fun TerminalTextSizeSheet(
                     text = textSize.nominalSp.toString(),
                     style = MaterialTheme.typography.headlineMedium,
                     fontFamily = NidavellirType.Data,
-                    modifier = Modifier.semantics { contentDescription = "Terminal text size, ${textSize.nominalSp}" },
                 )
                 OutlinedButton(
                     onClick = onIncrease,
                     enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp + 1),
                     shape = NidavellirShapes.Chip,
-                    modifier = Modifier.semantics { contentDescription = "Increase terminal text size" },
                 ) {
                     Text("+")
                 }
