@@ -17,7 +17,8 @@ evidence: 2026-10-21, macbook:
   with `Interactive` gave their children priority 20, 20 and 31.
 - under contention, a priority-20 busy thread got 74% of one core over 3 s.
 
-status: the source change and install check are done, unreleased. install
+status: the source change and install check shipped in `v0.20.1` (#131), which
+dev-server #192 pins; the macbook still runs `v0.20.0`. install
 also fails when no new serve appears within 5 s of bootstrap; a passing check
 prints serve's pid and priority. only the new release's own installer applies
 them (`scripts/install`, as dev-server's apply runs it). `skid install` or
