@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -19,9 +18,8 @@ type directorySearchResponse struct {
 }
 
 func (gateway *Gateway) searchDirectories(writer http.ResponseWriter, request *http.Request) {
-	input, failure := decodeJSON[directorySearchRequest](writer, request)
-	if failure != nil {
-		writeError(writer, *failure)
+	input, ok := decodeJSON[directorySearchRequest](writer, request)
+	if !ok {
 		return
 	}
 	result, err := gateway.workdir.Search(request.Context(), input.Terms)
@@ -43,17 +41,5 @@ func (gateway *Gateway) searchDirectories(writer http.ResponseWriter, request *h
 		}
 		return
 	}
-	encoded, err := json.Marshal(directorySearchResponse{Directories: result.Directories, Omitted: result.Omitted})
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	if len(encoded)+1 > int(MaximumBodyBytes) {
-		writeError(writer, errorDirectorySearchTooLarge)
-		return
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write(append(encoded, '\n')) // justify-ignore-error: a client disconnect after headers cannot be repaired.
+	writeJSON(writer, http.StatusOK, directorySearchResponse{Directories: result.Directories, Omitted: result.Omitted}, &errorDirectorySearchTooLarge)
 }

@@ -34,33 +34,11 @@ func (method Method) valid() bool {
 	}
 }
 
+// Route is the request's route pattern without its method, or "unmatched".
 type Route string
 
-const (
-	RouteTerminalControl   Route = "/v1/sessions/{tmuxId}/terminal/{operation}"
-	RouteSessions          Route = "/v1/sessions"
-	RouteProfileUsage      Route = "/v1/profile-usage"
-	RouteSession           Route = "/v1/sessions/{tmuxId}"
-	RouteSessionGroup      Route = "/v1/sessions/{tmuxId}/group"
-	RouteSessionShell      Route = "/v1/sessions/{tmuxId}/shell"
-	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
-	RoutePressure          Route = "/v1/pressure"
-	RouteFleet             Route = "/v1/fleet/{operation}"
-	RouteLocal             Route = "/v1/local/{operation}"
-	RouteNotifications     Route = "/v1/notifications/{operation}"
-	RouteDirectoryListings Route = "/v1/directory-listings"
-	RouteDirectorySearches Route = "/v1/directory-searches"
-	RouteTerminalContexts  Route = "/v1/terminal-contexts/{connectionId}"
-	RouteUnmatched         Route = "unmatched"
-)
-
 func (route Route) valid() bool {
-	switch route {
-	case RouteTerminalControl, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RouteFleet, RouteLocal, RouteNotifications, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
-		return true
-	default:
-		return false
-	}
+	return route != ""
 }
 
 type ErrorCode string

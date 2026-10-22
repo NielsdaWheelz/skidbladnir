@@ -209,7 +209,7 @@ claim. preparation failures before possible input are `not_sent`; possible input
 with lost confirmation is `unknown`; neither is automatically retried.
 
 close validates its entire request and session lifetime first. attempt stop once,
-then run validate -> cancel owned attachments -> bounded cleanup -> revalidate/delete.
+then run cancel owned attachments -> bounded cleanup -> revalidate/delete.
 interruption failure, stale pane, unknown write or attachment-cleanup failure
 does not veto deletion of the captured session. retain the existing attachment
 owners; delete no unrelated resource. changed session lifetime refuses closure;
@@ -227,7 +227,7 @@ route reader and native/terminal method switches. retain auth, pinned machine,
 close's ten-second budget, interruption gets at most two seconds; cleanup uses
 at most six, reserving the final two for exact deletion. use separate child
 contexts, never the expired interruption context; calculate each cap against the
-absolute operation deadline, including validation and lock waits. parent
+absolute operation deadline, including validation. parent
 cancellation still wins. no retry finishes a partial operation.
 
 | route | request fields beyond terminal target | result |
@@ -248,8 +248,8 @@ close result = {interrupt:written|not_sent|unknown,
 diagnostics = {rules: [id]}
 ```
 
-`explain` is a boolean accepted only by inspect; absent means false and null
-rejects. diagnostics are present exactly when `explain` is true and name the
+`explain` is a boolean accepted only by inspect; absent or null means false.
+diagnostics are present exactly when `explain` is true and name the
 rules of the same sample as the status: `rules` is always an array, possibly
 empty, of content-free rule ids. an observation failure after target admission
 is `200` with an unavailable status and, when explained, `rules: []`; target,
@@ -262,7 +262,7 @@ existing error envelope; post-admission close failures use the compound result.
 reuse session-not-found/identity errors; introduce `TerminalTargetChanged`,
 `TerminalUnavailable`, `TerminalInputBlocked` for the corresponding terminal
 boundaries. every error has existing `dispatch:not_sent|unknown` semantics.
-unknown/null/duplicate keys, old pid/start/mode/method/conversation bodies reject.
+unknown/duplicate keys, old pid/start/mode/method/conversation bodies reject.
 
 read defaults to 16 kib, maximum 32 kib; alternate screen means visible capture,
 otherwise bounded retained terminal tail. text is nonempty valid utf-8, <=32 kib,
@@ -275,8 +275,9 @@ idle activity, no interaction or notice, empty composer and the same sampled
 foreground at input. ordinary send retains working-state steering. cli `start
 --stdin` owns the original 15-second create/readiness/input budget and performs
 one input attempt; [launch evidence](jarvis-orchestration.md#launch-evidence)
-retains the captured target and independent phase outcomes. null/empty options
-reject. this remains terminal delivery, with no atomic provider-admission claim.
+retains the captured target and independent phase outcomes. empty options
+reject; null is absent. this remains terminal delivery, with no atomic
+provider-admission claim.
 
 ordinary terminal selectors/ref route inspect/read/send/text/keys/wait/stop/close
 to these terminal operations. remove `--terminal` from read/stop; retain

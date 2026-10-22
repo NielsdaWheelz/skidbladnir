@@ -233,7 +233,7 @@ cancel and join the input reader before returning tty ownership; a blocked stdin
 goroutine must not consume later tui input. use library cancellation/handoff.
 
 expand shared go/android geometry limits to 20–1024 columns and 5–512 rows, retaining
-the 64 kib frame and 1 mib queue limits. desktop rejects unsupported initial
+the 64 kib frame limit. desktop rejects unsupported initial
 dimensions; a later unsupported resize detaches with an explanation and restores
 the tty while work continues. no silent clamp or virtual viewport. update go/kotlin/js
 bounds together; preserve the phone's existing undersized-viewport input gating

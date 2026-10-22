@@ -803,14 +803,14 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   frames are pty bytes both ways. one websocket owns one pty/client and closes
   both on connection loss. terminal-only `TerminalConfigurationUnsupported` names
   the three required tmux options; it is not an http error. No byte
-  replay or gateway scrollback; slow clients disconnect and reattach fresh.
+  replay or gateway scrollback; a client whose writes stall for 5 s disconnects and reattaches fresh.
   Any WSS loss freezes terminal input behind a typed `Reconnect required`.
 - Bounds: HTTP body 64 KiB; cwd 4,096 bytes; directory search accepts 1–8 terms
   totalling at most 256 bytes and returns at most 64 paths / 32 KiB;
   a remote-context response is at most 64 KiB; one directory listing scans at
   most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
   encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
-  views; objective 240 scalars; group 64 scalars / 256 utf-8 bytes; terminal frame 64 KiB; queue 1 MiB; geometry
+  views; objective 240 scalars; group 64 scalars / 256 utf-8 bytes; terminal frame 64 KiB; geometry
   20–1024 × 5–512. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,

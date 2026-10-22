@@ -236,7 +236,7 @@ never `null`. there is no `/groups` inventory or membership-query endpoint.
 | --- | --- |
 | host session dto | optional `group: string`; present means canonical nonempty label |
 | `GET /v1/sessions` | unchanged envelope/order; project `group?` per session |
-| `POST /v1/sessions` | existing required `cwd, profile` and optional `optionalTmuxName, objective`, plus optional `group`; present empty is `GroupInvalid`; null/wrong type is `InvalidRequest` |
+| `POST /v1/sessions` | existing required `cwd, profile` and optional `optionalTmuxName, objective`, plus optional `group`; present empty is `GroupInvalid`; null is absent; wrong type is `InvalidRequest` |
 | create success | existing `201 {observedAt,session}`, using the same session dto |
 | `PUT /v1/sessions/{tmuxId}/group` | exactly `{identityToken: string, group: string}`; nonempty assigns, empty clears; both keys required |
 | membership success | bodyless `204`; no new observation time, receipt, agent, or refreshed reference |
@@ -244,12 +244,11 @@ never `null`. there is no `/groups` inventory or membership-query endpoint.
 | cli `info` / `start` | existing observed-session envelope with `session.group?` |
 
 the mutation's empty string is the explicit whole-property clear value. omission
-does not mean clear; `null` is never accepted. reuse strict `stringField` without
-a second nullable request grammar. reject extra, duplicate, mis-cased, absent,
-wrongly typed fields and noncanonical paths before mutation. supplied `tmuxName`,
-agent fields, or expected old group are extra fields, not alternate contracts.
-route `/group` before generic session-path handling; reuse `parseSessionPath`
-after removing the exact suffix.
+does not mean clear; absent or `null` `group` is invalid. reject extra, duplicate,
+mis-cased, absent, wrongly typed fields and noncanonical paths before mutation.
+supplied `tmuxName`, agent fields, or expected old group are extra fields, not
+alternate contracts. the gateway route table matches
+`PUT /v1/sessions/{tmuxId}/group` and requires a `$digits` id before the body.
 
 response decoders must distinguish absent `group` from present empty/null/invalid
 text; only absence means unassigned on inventory. a pointer decoder that silently

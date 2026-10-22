@@ -122,16 +122,18 @@ func (service *Service) TerminalInspect(parent context.Context, target sessions.
 	return read.status, Diagnostics{Rules: read.rules}, nil
 }
 
-func (service *Service) TerminalRead(parent context.Context, target sessions.TerminalTarget, maxBytes int) (ReadResult, error) {
-	if maxBytes == 0 {
-		maxBytes = 16384
+// TerminalRead captures at most maxBytes of terminal text, 16 KiB when maxBytes is nil.
+func (service *Service) TerminalRead(parent context.Context, target sessions.TerminalTarget, maxBytes *int) (ReadResult, error) {
+	limit := 16384
+	if maxBytes != nil {
+		limit = *maxBytes
 	}
-	if maxBytes < 1 || maxBytes > 32768 {
+	if limit < 1 || limit > 32768 {
 		return ReadResult{}, ErrInvalidInput
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	capture, err := service.sessions.CaptureTerminal(ctx, target, maxBytes)
+	capture, err := service.sessions.CaptureTerminal(ctx, target, limit)
 	if err != nil {
 		return ReadResult{}, err
 	}
