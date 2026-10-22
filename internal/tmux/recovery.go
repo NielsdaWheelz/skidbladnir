@@ -125,12 +125,12 @@ func (client Client) ValidateRecoveryServer(ctx context.Context, expected Server
 }
 
 func (client Client) recoveryShell(ctx context.Context, expected ServerIdentity) (string, error) {
-	format := recoveryFields("@skid_server_epoch", "pid", "start_time", "server_sessions", "default-shell", "default-command", "exit-empty", "exit-unattached")
+	format := inventoryFields("@skid_server_epoch", "pid", "start_time", "server_sessions", "default-shell", "default-command", "exit-empty", "exit-unattached")
 	output, err := client.Output(ctx, "validate-recovery-server", "-N", "display-message", "-p", format)
 	if err != nil {
 		return "", err
 	}
-	fields, rest, err := parseRecoveryFields([]byte(output), 8)
+	fields, rest, err := parseInventoryFields([]byte(output+"\n"), 8)
 	if err != nil || len(rest) != 0 {
 		return "", WorkspaceProtocolInvalid
 	}
@@ -610,7 +610,7 @@ func normalizedLayoutCell(encoded json.RawMessage, paneIDs map[string]string) (j
 }
 
 // CaptureWorkspace runs all graph reads in one synchronous native command
-// queue. Raw fields are byte-length-prefixed, including names with newlines.
+// queue. Quoted fields evaluate each native value once, including changing cwd.
 func (client Client) CaptureWorkspace(ctx context.Context) (Workspace, bool, error) {
 	ids, err := client.ListSessionIDs(ctx)
 	if err != nil {
@@ -619,10 +619,10 @@ func (client Client) CaptureWorkspace(ctx context.Context) (Workspace, bool, err
 	if len(ids) > 256 {
 		return Workspace{}, false, WorkspaceLimit
 	}
-	identity := recoveryFields("@skid_server_epoch", "pid", "start_time")
-	graph := commandText("list-sessions", "-F", "S"+recoveryFields("session_id", "session_name", "session_group", "window_index")) + " ; " +
-		commandText("list-windows", "-a", "-F", "W"+recoveryFields("session_id", "window_index", "window_id", "window_name", "window_width", "window_height", "window_layout", "pane_id", "window_zoomed_flag")) + " ; " +
-		commandText("list-panes", "-a", "-F", "P"+recoveryFields("window_id", "pane_id", "pane_index", "pane_current_path"))
+	identity := inventoryFields("@skid_server_epoch", "pid", "start_time")
+	graph := commandText("list-sessions", "-F", "S"+inventoryFields("session_id", "session_name", "session_group", "window_index")) + " ; " +
+		commandText("list-windows", "-a", "-F", "W"+inventoryFields("session_id", "window_index", "window_id", "window_name", "window_width", "window_height", "window_layout", "pane_id", "window_zoomed_flag")) + " ; " +
+		commandText("list-panes", "-a", "-F", "P"+inventoryFields("window_id", "pane_id", "pane_index", "pane_current_path"))
 	script := commandText("display-message", "-p", "B"+identity) + " ; " + commandText("if-shell", "-F", "#{server_sessions}", graph, "")
 	for _, id := range ids {
 		if len(id) > 32 {
@@ -633,7 +633,7 @@ func (client Client) CaptureWorkspace(ctx context.Context) (Workspace, bool, err
 		}
 		// show-options without -A owns local metadata. Its escaped output stays
 		// on one line; only canonical catalogue/base64 tokens are admitted.
-		script += " ; " + commandText("display-message", "-p", "-l", "M"+strconv.Itoa(len(id))+":"+id) + " ; " +
+		script += " ; " + commandText("display-message", "-p", "-l", "M"+id+"|") + " ; " +
 			commandText("show-options", "-q", "-t", id, "@skid_character") + " ; " +
 			commandText("show-options", "-q", "-t", id, GroupOption) + " ; " +
 			commandText("display-message", "-p", "-l", "N")
@@ -672,44 +672,18 @@ func (output *recoveryOutput) Write(value []byte) (int, error) {
 	return count, nil
 }
 
-func recoveryFields(names ...string) string {
-	var output strings.Builder
-	for _, name := range names {
-		output.WriteString("#{n:" + name + "}:#{" + name + "}")
-	}
-	return output.String()
-}
-
-func parseRecoveryFields(input []byte, count int) ([]string, []byte, error) {
-	fields := make([]string, 0, count)
-	for range count {
-		length, rest, found := bytes.Cut(input, []byte{':'})
-		if !found || len(length) == 0 || len(length) > 8 {
-			return nil, nil, WorkspaceProtocolInvalid
-		}
-		n, err := strconv.Atoi(string(length))
-		if err != nil || n < 0 || n > len(rest) {
-			return nil, nil, WorkspaceProtocolInvalid
-		}
-		fields = append(fields, string(rest[:n]))
-		input = rest[n:]
-	}
-	return fields, input, nil
-}
-
 func parseWorkspace(input []byte) (Workspace, error) {
 	workspace := Workspace{Sessions: []WorkspaceSession{}, Windows: []WorkspaceWindow{}}
 	sessions := make(map[string]int)
 	windows := make(map[string]int)
 	paneIndices := make(map[string]map[int]string)
-	paneRecords := make(map[string]WorkspacePane)
 	metadata := make(map[string]bool)
 	started, ended := false, false
 	for len(input) > 0 {
 		kind := input[0]
 		if kind == 'M' {
-			fields, rest, err := parseRecoveryFields(input[1:], 1)
-			if err != nil || len(rest) == 0 || rest[0] != '\n' || !started || ended || !workspaceID(fields[0], '$') {
+			fields, rest, err := parseInventoryFields(input[1:], 1)
+			if err != nil || !started || ended || !workspaceID(fields[0], '$') {
 				return Workspace{}, WorkspaceProtocolInvalid
 			}
 			session, exists := sessions[fields[0]]
@@ -717,7 +691,7 @@ func parseWorkspace(input []byte) (Workspace, error) {
 				return Workspace{}, WorkspaceProtocolInvalid
 			}
 			metadata[fields[0]] = true
-			input = rest[1:]
+			input = rest
 			seen := make(map[string]bool)
 			for {
 				line, rest, complete := bytes.Cut(input, []byte{'\n'})
@@ -761,11 +735,11 @@ func parseWorkspace(input []byte) (Workspace, error) {
 		default:
 			return Workspace{}, WorkspaceProtocolInvalid
 		}
-		fields, rest, err := parseRecoveryFields(input[1:], count)
-		if err != nil || len(rest) == 0 || rest[0] != '\n' || ended {
+		fields, rest, err := parseInventoryFields(input[1:], count)
+		if err != nil || ended {
 			return Workspace{}, WorkspaceProtocolInvalid
 		}
-		input = rest[1:]
+		input = rest
 		if kind == 'B' || kind == 'E' {
 			server := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
 			if !server.valid() || kind == 'B' && started || kind == 'E' && !started {
@@ -832,15 +806,16 @@ func parseWorkspace(input []byte) (Workspace, error) {
 			if paneIndices[fields[0]] == nil {
 				paneIndices[fields[0]] = make(map[int]string)
 			}
-			pane := WorkspacePane{Key: fields[1], CWD: fields[3]}
 			if previous, duplicate := paneIndices[fields[0]][index]; duplicate {
-				if previous != pane.Key || paneRecords[pane.Key] != pane {
+				if previous != fields[1] {
 					return Workspace{}, WorkspaceProtocolInvalid
 				}
+				// Linked windows repeat pane rows. Keep the first cwd sample;
+				// the process may change directory between native reads.
 				continue
 			}
+			pane := WorkspacePane{Key: fields[1], CWD: fields[3]}
 			paneIndices[fields[0]][index] = fields[1]
-			paneRecords[pane.Key] = pane
 			workspace.Windows[window].Panes = append(workspace.Windows[window].Panes, pane)
 		}
 	}

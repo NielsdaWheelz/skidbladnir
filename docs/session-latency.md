@@ -30,8 +30,8 @@ no runtime replacement, cache, request singleflight, permanent control connectio
 new daemon, event framework, http route, account/provider change,
 input replay or visual redesign. phone interaction and visual redesign are
 [separate](issues/phone-interaction-redesign.md) [issues](issues/visual-redesign.md).
-the [cwd framing concern](issues/tmux-cwd-framing-race.md) is a separate fix;
-do not copy that duplicated length/value encoding into inventory.
+inventory and [workspace capture](session-recovery.md#checkpoint-schema-and-capture)
+share the quoted-field codec; dynamic values are sampled once per emitted field.
 
 ## authority and invariants
 
