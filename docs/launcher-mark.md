@@ -10,6 +10,10 @@ green again on the merged tree, and the current complete 54-test release-bound
 S22+ platform gate is green. The hands-on glance is `NOT_RUN`: it is a
 human-eye check and no gate substitutes for it.
 
+2026-10-21: the generator is deleted and the launcher resources are frozen
+source ([ornament-pipeline.md](ornament-pipeline.md)); the generator sections
+below are historical.
+
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) owns visual identity and wins on
 every value here; [`roadmap.md`](roadmap.md) owns delivery order;
@@ -344,8 +348,7 @@ and "App icon"); roadmap (D7 entry and status row).
 ## Red / green / refactor
 
 the historical proof plan below predates [test retirement](rules.md#testing).
-the retained `scripts/gen-ornament --check` generates once and checks drift;
-it does not repeat generation as a determinism test.
+no part of it, including the generator's drift check, remains.
 
 **Generator (static gate, `ornament-static`)**
 

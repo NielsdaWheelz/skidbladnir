@@ -30,6 +30,10 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 tag="$1"
+[[ "$(uname -s)/$(uname -m)" == Darwin/arm64 && "${SKIDBLADNIR_MAC_SIGNING_IDENTITY:-}" =~ ^[0-9A-Fa-f]{40}$ ]] || {
+  printf 'release requires the native Darwin arm64 signing host and SKIDBLADNIR_MAC_SIGNING_IDENTITY\n' >&2
+  exit 1
+}
 preflight="$("$repo_dir/scripts/check-release-source" "$tag")"
 IFS=$'\t' read -r sha run_id <<<"$preflight"
 [[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[0-9]+$ ]] || {
@@ -71,7 +75,36 @@ add_release_source_worktree "$repo_dir" "$sha" "$source_worktree" || {
 }
 source_worktree_registered=1
 release_dir="$staging_dir/assets"
-"$source_worktree/scripts/build" release-assets "$tag" "$sha" "$release_dir"
+(
+  cd "$source_worktree"
+  export GOTOOLCHAIN=local
+  export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
+  export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+  scripts/check-go-toolchain >/dev/null
+  read -r version_name version_code < <(scripts/check-release --android-version "$tag")
+  mkdir -m 0700 "$release_dir"
+  cd android
+  SKIDBLADNIR_ANDROID_SIGNING_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-signing.properties" \
+    ./gradlew \
+    -Pskidbladnir.versionName="$version_name" \
+    -Pskidbladnir.versionCode="$version_code" \
+    :app:assembleRelease --no-daemon
+  cd ..
+  install -m 0644 android/app/build/outputs/apk/release/app-release.apk "$release_dir/skidbladnir-android.apk"
+  install -m 0644 android/app-signing-cert.sha256 "$release_dir/android-signing-cert.sha256"
+  scripts/build-host-archive . "$tag" "$sha" linux amd64 linux-amd64 "$release_dir/skidbladnir-linux-amd64.tar.gz"
+  scripts/build-host-archive . "$tag" "$sha" darwin arm64 darwin-arm64 "$release_dir/skidbladnir-darwin-arm64.tar.gz"
+  (
+    cd "$release_dir"
+    shasum -a 256 \
+      android-signing-cert.sha256 \
+      skidbladnir-android.apk \
+      skidbladnir-darwin-arm64.tar.gz \
+      skidbladnir-linux-amd64.tar.gz > SHA256SUMS
+  )
+  scripts/sign-release "$release_dir"
+  scripts/check-release "$release_dir" "$tag" "$sha"
+)
 
 notes_file="$staging_dir/release-notes.md"
 "$source_worktree/scripts/render-release-notes" \

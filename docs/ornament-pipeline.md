@@ -7,6 +7,9 @@ stays `NOT_RUN`. The interlace band was removed with the pairing screen in
 the multi-machine cut, and the prow icon this delta shipped was replaced by
 the launcher mark ([launcher-mark.md](launcher-mark.md), D7), which owns the
 launcher identity from here on.
+2026-10-21: `scripts/gen-ornament` and its `--check` drift gate are deleted.
+`Ornament.kt` and the four launcher resources are frozen, hand-owned source.
+the pipeline below is the record of how that geometry was computed.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for tokens and shapes.
 
 [`design-language.md`](design-language.md) §7 (ornament families and
@@ -16,10 +19,9 @@ design; this document owns the build pipeline and implementation boundary.
 ## Outcome
 
 The app gains its three pieces of authored ornament — the Forge fret band,
-the valknut empty-state mark, and the adaptive app icon — all generated or
-authored at build time, checked in as source, drift-gated, and
-semantics-invisible. No ornament is computed on the
-phone at runtime beyond drawing pre-built paths.
+the valknut empty-state mark, and the adaptive app icon — computed once
+off-device, checked in as frozen source, and semantics-invisible. No ornament
+is computed on the phone at runtime beyond drawing pre-built paths.
 
 ## Goals and rules
 
@@ -36,17 +38,15 @@ phone at runtime beyond drawing pre-built paths.
   screen remains complete with ornament deleted (geometry-first rule).
 - **No ornament near errors or destructive surfaces** — the kill dialog and
   every error text stay bare.
-- Deterministic generation: the generator takes no clock, no randomness
-  beyond its fixed seed constants; same inputs, same bytes, forever.
 
 ## Capability contract
 
 ### Pipeline
 
-- `scripts/gen-ornament` (Python 3, stdlib only, no third-party imports)
-  deterministically emits every checked-in piece of ornament geometry —
-  `Ornament.kt` path-data constants for the two drawn marks, and the launcher
-  icon's own resources:
+- the deleted `scripts/gen-ornament` (Python 3, stdlib only, deterministic;
+  present at `12b1516`) emitted every checked-in piece of ornament
+  geometry — `Ornament.kt` path-data constants for the two drawn marks, and
+  the launcher icon's own resources:
   1. **Fret cell**: one chevron/key meander unit for the Forge title band
      (monoline, 45°/90° turns only, band height ≤ 16dp, sized so any target
      width tiles a whole number of units — bands are straight strips in v0,
@@ -61,16 +61,14 @@ phone at runtime beyond drawing pre-built paths.
      three gores, a shield row at the sheer, a masthead vane — authored as
      straight-edged polygon constants and emitted as the whole adaptive-icon
      set: three VectorDrawables (background, foreground, monochrome) and the
-     `<adaptive-icon>` descriptor that names them. The generator raises
+     `<adaptive-icon>` descriptor that names them. The generator raised
      rather than emitting a feature below the legibility floor or a point
-     outside the mask envelope; the geometry stays generator-internal with no
-     Kotlin constant, because nothing at runtime reads it (no dead code
-     ships). [`launcher-mark.md`](launcher-mark.md) owns its constants and
-     proofs.
-- the generated files are checked in. `scripts/gen-ornament --check` calls
-  `build_outputs()` once and byte-compares each result with its checked-in file.
-  `scripts/check static` runs this drift check. no repeated generation or
-  behavioral test suite is part of this check.
+     outside the mask envelope; the mark has no Kotlin constant, because
+     nothing at runtime reads it. [`launcher-mark.md`](launcher-mark.md) owns
+     its constants and proofs.
+- the output is frozen. a geometry change is a hand edit of the checked-in
+  files, or a regeneration from the generator in git history; no gate checks
+  legibility, the mask envelope, or drift.
 - Algorithms are reimplemented from the published construction methods
   (Bain grid-and-dot / parity weave); no third-party knot code is vendored
   (the GPL and unlicensed generators named in design language §7 stay out).
@@ -99,8 +97,8 @@ phone at runtime beyond drawing pre-built paths.
 
 - The flat non-adaptive `res/drawable/ic_launcher.xml` is deleted with the
   manifest repoint; no orphaned or dual icon resource remains.
-- The generator owns `Ornament.kt` and every icon resource entirely; hand
-  edits are forbidden and caught by the drift gate. Nothing else is removed.
+- `Ornament.kt` and every icon resource are owned source; nothing else is
+  removed.
 
 ## Work split
 
@@ -114,7 +112,7 @@ phone at runtime beyond drawing pre-built paths.
 ## Red / green / refactor
 
 historical implementation plan; [testing status](rules.md#testing) owns current
-checks. only generated-file drift checking remains from the proof plan below.
+checks. nothing from the proof plan below remains.
 
 Red (each observed failing first):
 
