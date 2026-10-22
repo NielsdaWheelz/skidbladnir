@@ -2,7 +2,7 @@
 
 problem: `skidbladnir serve` writes its content-free event log to stdout
 (`cmd/skidbladnir/main.go:57`). the standalone launchd plist
-(`internal/install/services.go:97-110`) sets no `StandardOutPath`, so launchd
+(`internal/install/services.go:98-112`) sets no `StandardOutPath`, so launchd
 discards those events on the macbook. linux keeps them in the user journal.
 
 the dev-server-era gateway wrote the same events to

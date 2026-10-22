@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (i *installer) writeOwned(path, text string) error {
@@ -101,7 +102,8 @@ func (i *installer) writeServices() error {
 		}
 		text += `</array><key>RunAtLoad</key><true/><key>KeepAlive</key><true/>`
 		if service.name == "dev.niels.skidbladnir" {
-			text += `<key>AbandonProcessGroup</key><true/>`
+			// Without Interactive, launchd runs serve, tmux and every agent at priority 20.
+			text += `<key>AbandonProcessGroup</key><true/><key>ProcessType</key><string>Interactive</string>`
 		}
 		text += `<key>EnvironmentVariables</key><dict>`
 		for _, key := range []string{"PATH", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
@@ -137,6 +139,19 @@ func (i *installer) startServices(ctx context.Context) error {
 	if e := command(ctx, i.stdout, i.stderr, filepath.Join(app, "Contents", "MacOS", "skid-notifications"), "register", app); e != nil {
 		return e
 	}
+	// The previous serve, which ran the same command, may still be exiting after
+	// bootout; only a serve absent from this table is the one bootstrap starts.
+	// A failed read is returned after bootstrap, so the check never leaves the
+	// jobs unloaded.
+	serve := filepath.Join(i.dirs.Data, "current", "skidbladnir") + " serve"
+	serves := func() (map[int]int, error) {
+		table, e := exec.CommandContext(ctx, "ps", "-xww", "-o", "pid=,ppid=,pri=,command=").Output()
+		if e != nil {
+			return nil, fmt.Errorf("list processes: %w", e)
+		}
+		return launchdChildren(table, serve)
+	}
+	previous, listErr := serves()
 	domain := "gui/" + strconv.Itoa(os.Getuid())
 	for _, path := range i.receipt.Services {
 		label := strings.TrimSuffix(filepath.Base(path), ".plist")
@@ -155,7 +170,51 @@ func (i *installer) startServices(ctx context.Context) error {
 			return e
 		}
 	}
-	return nil
+	if listErr != nil {
+		return listErr
+	}
+	// Every agent inherits serve's priority through tmux. Poll every 100 ms, up
+	// to 5 s, until the new serve appears; RunAtLoad spawns it at bootstrap.
+	for attempt := 0; attempt < 50; attempt++ {
+		time.Sleep(100 * time.Millisecond)
+		current, e := serves()
+		if e != nil {
+			return e
+		}
+		for pid, priority := range current {
+			if _, old := previous[pid]; old {
+				continue
+			}
+			if priority < 31 {
+				return fmt.Errorf("skid serve (pid %d) runs at scheduling priority %d, below interactive 31: check that `launchctl print %s/dev.niels.skidbladnir` reports an interactive spawn type, then reinstall", pid, priority, domain)
+			}
+			fmt.Fprintf(i.stdout, "skid serve (pid %d) runs at scheduling priority %d\n", pid, priority)
+			return nil
+		}
+	}
+	return fmt.Errorf("skid serve did not appear within 5 s of bootstrap, so its priority is unchecked: inspect `launchctl print %s/dev.niels.skidbladnir`", domain)
+}
+
+// launchdChildren maps each process whose parent is launchd (pid 1) and whose
+// argv is exactly command to its scheduling priority. table is `ps -xww -o
+// pid=,ppid=,pri=,command=` output, whose command column joins argv with spaces.
+func launchdChildren(table []byte, command string) (map[int]int, error) {
+	processes := map[int]int{}
+	for _, line := range strings.Split(string(table), "\n") {
+		pid, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
+		parent, rest, _ := strings.Cut(strings.TrimSpace(rest), " ")
+		priority, rest, _ := strings.Cut(strings.TrimSpace(rest), " ")
+		if parent != "1" || strings.TrimSpace(rest) != command {
+			continue
+		}
+		id, idErr := strconv.Atoi(pid)
+		level, levelErr := strconv.Atoi(priority)
+		if idErr != nil || levelErr != nil {
+			return nil, fmt.Errorf("unreadable process table row for %s", command)
+		}
+		processes[id] = level
+	}
+	return processes, nil
 }
 func (i *installer) stopServices(ctx context.Context) error {
 	if len(i.receipt.Services) == 0 {
