@@ -7,8 +7,8 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
 import android.util.TypedValue
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -18,6 +18,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebResourceErrorCompat
@@ -26,40 +27,18 @@ import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.core.net.toUri
-import java.util.ArrayDeque
 import org.json.JSONException
 import org.json.JSONObject
 
 private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
-private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024L
+private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024
 private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
 private const val MAXIMUM_SELECTION_BYTES = 256 * 1024
-private const val MAXIMUM_SAFE_JAVASCRIPT_INTEGER = 9_007_199_254_740_991L
 private const val TERMINAL_PAGE_READY_TIMEOUT_MILLIS = 10_000L
-
-private data class PendingPageOutput(
-    val sequence: String,
-    val bytes: ByteArray,
-)
-
-private enum class PageOutputAdvance {
-    Complete,
-    Continue,
-    Invalid,
-}
-
-private sealed interface TerminalPageCommand {
-    data object Focus : TerminalPageCommand
-    data class Accessory(val accessory: TerminalAccessory) : TerminalPageCommand
-    data object ResetInputState : TerminalPageCommand
-    data class ClearSelection(val generation: String) : TerminalPageCommand
-    data class FontSize(val fontSizeCssPx: Double) : TerminalPageCommand
-}
 
 internal interface TerminalPage {
     fun write(bytes: ByteArray)
-    fun focus()
     fun sendAccessory(accessory: TerminalAccessory)
     fun resetInputState()
     fun setTextSize(nominalSp: Int)
@@ -95,6 +74,7 @@ internal data class TerminalModifiers(
 
 internal interface TerminalPageListener {
     fun onReady(page: TerminalPage)
+    // xterm has written an output frame.
     fun onOutputApplied(page: TerminalPage)
     fun onInput(bytes: ByteArray)
     fun onResize(columns: Int, rows: Int)
@@ -109,6 +89,9 @@ internal interface TerminalPageListener {
     "SetJavaScriptEnabled", // justify-override: JavaScript is required only for the packaged asset-only xterm runtime.
     "ViewConstructor", // Code-only construction requires the terminal listener.
 )
+// Main-thread only: every entry (view and WebViewClient callbacks, the port
+// callback registered on the main looper, TerminalConnection's posted writes,
+// controller calls) runs on the UI thread, so its state needs no lock.
 internal class LockedTerminalWebView(
     context: Context,
     nominalTextSizeSp: Int,
@@ -119,27 +102,21 @@ internal class LockedTerminalWebView(
         .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
         .build()
     private val main = Handler(Looper.getMainLooper())
-    private val selectionController = TerminalSelectionController(
-        view = this,
-        sendClearSelection = { generation ->
-            sendPageCommand(TerminalPageCommand.ClearSelection(generation))
-        },
-        isPageLiveAuthoritatively = ::pageIsLive,
-        isInteractionAuthorized = ::selectionInteractionAuthorized,
-    )
+    private val selectionToolbar = TerminalSelectionToolbar(this) {
+        postCommand(JSONObject().put("kind", "ClearSelection"))
+    }
     private var pagePort: WebMessagePortCompat? = null
-    private var disposed = false
+    private var ready = false
     private var unavailable = false
-    private var pageReady = false
+    private var disposed = false
     private var orientation = resources.configuration.orientation
     private var textSizeSp = nominalTextSizeSp
+    // Output posted to the page that xterm has not yet written. Frames still
+    // queued on a busy main looper count only once write runs.
+    private var unappliedOutputBytes = 0
     private val pageReadinessDeadline = Runnable(::markUnavailable)
-    private val outputMonitor = Any()
-    private val pendingOutput = ArrayDeque<PendingPageOutput>()
-    private var pendingOutputBytes = 0L
-    private var outputInFlight = false
-    private var nextOutputSequence = 1L
     private var activeTouchEvent: MotionEvent? = null
+    private val live: Boolean get() = ready && !unavailable
 
     init {
         requireWebMessagePort()
@@ -187,43 +164,30 @@ internal class LockedTerminalWebView(
         super.scrollTo(0, 0)
     }
 
+    // Each frame goes to the page at once; the page acknowledges it when xterm
+    // has written it, and more than the budget unwritten fails the page.
     override fun write(bytes: ByteArray) {
-        val shouldDrain = synchronized(outputMonitor) {
-            if (disposed || unavailable) return
-            if (pendingOutputBytes + bytes.size > MAXIMUM_PAGE_OUTPUT_BYTES) {
-                clearOutputLocked()
-                unavailable = true
-                main.post(::reportUnavailable)
-                return
-            }
-            pendingOutput.addLast(PendingPageOutput((nextOutputSequence++).toString(), bytes))
-            pendingOutputBytes += bytes.size
-            if (outputInFlight) {
-                false
-            } else {
-                outputInFlight = true
-                true
-            }
+        if (!live) return
+        if (unappliedOutputBytes + bytes.size > MAXIMUM_PAGE_OUTPUT_BYTES) {
+            markUnavailable()
+            return
         }
-        if (shouldDrain) post(::sendNextOutput)
-    }
-
-    override fun focus() {
-        sendPageCommand(TerminalPageCommand.Focus)
+        unappliedOutputBytes += bytes.size
+        postToPage(WebMessageCompat(bytes))
     }
 
     override fun sendAccessory(accessory: TerminalAccessory) {
-        sendPageCommand(TerminalPageCommand.Accessory(accessory))
+        postCommand(JSONObject().put("kind", "Accessory").put("key", accessory.name))
     }
 
     override fun resetInputState() {
-        selectionController.resetForLiveLifecycle()
-        sendPageCommand(TerminalPageCommand.ResetInputState)
+        selectionToolbar.hide()
+        postCommand(JSONObject().put("kind", "ResetInputState"))
     }
 
     override fun setTextSize(nominalSp: Int) {
         textSizeSp = nominalSp
-        sendPageCommand(TerminalPageCommand.FontSize(fontSizeCssPx()))
+        postCommand(JSONObject().put("kind", "FontSize").put("fontSizeCssPx", fontSizeCssPx()))
     }
 
     // Android text scaling is applied exactly once, here; the page keeps
@@ -237,7 +201,7 @@ internal class LockedTerminalWebView(
     override fun setEnabled(enabled: Boolean) {
         if (!enabled && isEnabled) {
             cancelActiveTouch()
-            if (pageIsLive()) resetInputState()
+            resetInputState()
         }
         super.setEnabled(enabled)
     }
@@ -258,48 +222,34 @@ internal class LockedTerminalWebView(
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
-        if (!hasWindowFocus && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetInputState()
-        }
+        if (!hasWindowFocus) resetInputState()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        val previousOrientation = orientation
-        val nextOrientation = newConfig.orientation
-        val previousOrientationWasKnown = previousOrientation == Configuration.ORIENTATION_PORTRAIT ||
-            previousOrientation == Configuration.ORIENTATION_LANDSCAPE
-        val nextOrientationIsKnown = nextOrientation == Configuration.ORIENTATION_PORTRAIT ||
-            nextOrientation == Configuration.ORIENTATION_LANDSCAPE
-        val rotated = previousOrientation != nextOrientation &&
-            previousOrientationWasKnown &&
-            nextOrientationIsKnown
-        orientation = nextOrientation
-        if (rotated && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetInputState()
-        }
+        if (newConfig.orientation == orientation) return
+        orientation = newConfig.orientation
+        resetInputState()
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        selectionController.contentRectChanged()
+        selectionToolbar.contentRectChanged()
+    }
+
+    override fun onDetachedFromWindow() {
+        markUnavailable()
+        super.onDetachedFromWindow()
     }
 
     fun dispose() {
-        main.removeCallbacks(pageReadinessDeadline)
+        if (disposed) return
+        disposed = true
         cancelActiveTouch()
-        selectionController.pageFailedOrDisposed()
-        synchronized(outputMonitor) {
-            if (disposed) return
-            disposed = true
-            clearOutputLocked()
-            unavailable = true
-        }
-        pagePort?.close()
-        pagePort = null
+        closePage()
         stopLoading()
         clearHistory()
-        (parent as? android.view.ViewGroup)?.removeView(this)
+        (parent as? ViewGroup)?.removeView(this)
         removeAllViews()
         destroy()
     }
@@ -350,9 +300,7 @@ internal class LockedTerminalWebView(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
-            if (synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-                markUnavailable()
-            }
+            if (ready) markUnavailable()
         }
 
         override fun onReceivedError(
@@ -380,9 +328,11 @@ internal class LockedTerminalWebView(
         }
     }
 
+    // The packaged page port (version 6; docs/terminal-selection-copy.md lists
+    // every message). Commands and output go out through postToPage; page
+    // messages are decoded here.
     private fun attachPagePort(view: WebView) {
-        if (synchronized(outputMonitor) { disposed || unavailable }) return
-        if (pagePort != null) return
+        if (unavailable || pagePort != null) return
         val ports = WebViewCompat.createWebMessageChannel(view)
         val nativePort = ports[0]
         nativePort.setWebMessageCallback(
@@ -392,7 +342,7 @@ internal class LockedTerminalWebView(
                     port: WebMessagePortCompat,
                     message: WebMessageCompat?,
                 ) {
-                    if (synchronized(outputMonitor) { disposed || unavailable }) return
+                    if (unavailable) return
                     val payload = message?.data
                     if (payload == null) {
                         markUnavailable()
@@ -405,21 +355,10 @@ internal class LockedTerminalWebView(
                         return
                     }
                     when (objectValue.stringField("kind")) {
-                        "Ready" -> if (objectValue.hasExactKeys("kind")) {
-                            val firstReady = synchronized(outputMonitor) {
-                                if (disposed || unavailable || pageReady) {
-                                    false
-                                } else {
-                                    pageReady = true
-                                    true
-                                }
-                            }
-                            if (firstReady) {
-                                main.removeCallbacks(pageReadinessDeadline)
-                                listener.onReady(this@LockedTerminalWebView)
-                            } else {
-                                markUnavailable()
-                            }
+                        "Ready" -> if (objectValue.hasExactKeys("kind") && !ready) {
+                            ready = true
+                            main.removeCallbacks(pageReadinessDeadline)
+                            listener.onReady(this@LockedTerminalWebView)
                         } else {
                             markUnavailable()
                         }
@@ -453,11 +392,14 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
-                        "OutputApplied" -> if (objectValue.hasExactKeys("kind", "sequence")) {
-                            val sequence = objectValue.stringField("sequence")
-                            if (sequence == null) markUnavailable() else outputApplied(sequence)
-                        } else {
-                            markUnavailable()
+                        "OutputApplied" -> {
+                            val bytes = objectValue.intField("bytes")
+                            if (objectValue.hasExactKeys("kind", "bytes") && bytes != null) {
+                                unappliedOutputBytes -= bytes
+                                listener.onOutputApplied(this@LockedTerminalWebView)
+                            } else {
+                                markUnavailable()
+                            }
                         }
                         "ModifierState" -> if (objectValue.hasExactKeys("kind", "control", "alt", "shift")) {
                             val control = objectValue.modifierPhase("control")
@@ -476,73 +418,41 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
-                        "SelectionStarted" -> if (
-                            objectValue.hasExactKeys("kind", "generation")
-                        ) {
-                            val generation = objectValue.selectionGeneration("generation")
-                            if (generation == null || !selectionController.selectionStarted(generation)) {
-                                markUnavailable()
-                            }
+                        "SelectionStarted" -> if (objectValue.hasExactKeys("kind")) {
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         } else {
                             markUnavailable()
                         }
-                        "SelectionAvailable" -> if (
-                            objectValue.hasExactKeys(
-                                "kind",
-                                "generation",
-                                "anchorX",
-                                "anchorY",
-                                "text",
-                            )
-                        ) {
-                            val generation = objectValue.selectionGeneration("generation")
+                        "SelectionAvailable" -> if (objectValue.hasExactKeys("kind", "anchorX", "anchorY", "text")) {
                             val anchorX = objectValue.doubleField("anchorX")
                             val anchorY = objectValue.doubleField("anchorY")
                             val text = objectValue.stringField("text")
-                            if (generation == null || anchorX == null || anchorY == null ||
+                            if (anchorX == null || anchorY == null ||
                                 !anchorX.isFinite() || !anchorY.isFinite() ||
                                 anchorX !in 0.0..1.0 || anchorY !in 0.0..1.0 ||
                                 text.isNullOrEmpty() ||
-                                text.utf8ByteCountWithin(MAXIMUM_SELECTION_BYTES) == null ||
-                                !selectionController.selectionAvailable(
-                                    generation,
-                                    text,
-                                    anchorX,
-                                    anchorY,
-                                )
+                                text.utf8ByteCountWithin(MAXIMUM_SELECTION_BYTES) == null
                             ) {
                                 markUnavailable()
+                            } else if (isEnabled && hasWindowFocus()) {
+                                selectionToolbar.show(text, anchorX, anchorY)
+                            } else {
+                                postCommand(JSONObject().put("kind", "ClearSelection"))
                             }
                         } else {
                             markUnavailable()
                         }
-                        "SelectionCopyRejected" -> if (
-                            objectValue.hasExactKeys("kind", "generation", "reason") &&
-                            objectValue.stringField("reason") == "TooLarge" &&
-                            objectValue.selectionGeneration("generation")?.let(
-                                selectionController::selectionCopyRejected,
-                            ) == true
-                        ) {
-                            Unit
+                        "SelectionCleared" -> if (objectValue.hasExactKeys("kind")) {
+                            selectionToolbar.hide()
                         } else {
                             markUnavailable()
                         }
-                        "SelectionCleared" -> if (
-                            objectValue.hasExactKeys("kind", "generation") &&
-                            objectValue.selectionGeneration("generation")?.let(
-                                selectionController::selectionCleared,
-                            ) == true
-                        ) {
-                            Unit
+                        "SelectionTooLarge" -> if (objectValue.hasExactKeys("kind")) {
+                            Toast.makeText(context, R.string.terminal_selection_too_large, Toast.LENGTH_SHORT).show()
                         } else {
                             markUnavailable()
                         }
-                        "PageFailure" -> if (objectValue.hasExactKeys("kind")) {
-                            markUnavailable()
-                        } else {
-                            markUnavailable()
-                        }
-                        else -> markUnavailable()
+                        else -> markUnavailable() // PageFailure and anything unknown
                     }
                 }
             },
@@ -553,7 +463,7 @@ internal class LockedTerminalWebView(
             WebMessageCompat(
                 JSONObject()
                     .put("kind", "PagePort")
-                    .put("version", 5)
+                    .put("version", 6)
                     .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
                     .put("fontSizeCssPx", fontSizeCssPx())
                     .toString(),
@@ -561,13 +471,6 @@ internal class LockedTerminalWebView(
             ),
             "https://$LOCAL_ASSET_HOST".toUri(),
         )
-    }
-
-    override fun onDetachedFromWindow() {
-        if (!disposed) markUnavailable()
-        pagePort?.close()
-        pagePort = null
-        super.onDetachedFromWindow()
     }
 
     private fun blockedResponse(): WebResourceResponse =
@@ -587,165 +490,45 @@ internal class LockedTerminalWebView(
             WebViewFeature.WEB_MESSAGE_PORT_POST_MESSAGE,
             WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK,
             WebViewFeature.WEB_MESSAGE_PORT_CLOSE,
+            WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER,
         )
         check(required.all(WebViewFeature::isFeatureSupported)) // justify-service-invariant-check: the bearer-free native terminal boundary cannot be implemented without every message-port operation.
     }
 
-    private fun sendPageCommand(command: TerminalPageCommand) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            sendPageCommandNow(command)
-        } else if (pageCommandAllowed(command)) {
-            post { sendPageCommandNow(command) }
-        }
+    private fun postCommand(command: JSONObject) {
+        postToPage(WebMessageCompat(command.toString()))
     }
 
-    private fun sendPageCommandNow(command: TerminalPageCommand) {
-        if (!pageCommandAllowed(command)) return
-        val port = pagePort
-        if (port == null) {
-            markUnavailable()
-            return
-        }
+    private fun postToPage(message: WebMessageCompat) {
+        if (!live) return
+        val port = checkNotNull(pagePort) // every path that clears the port sets `unavailable` first
         try {
-            port.postMessage(WebMessageCompat(command.toPayload()))
+            port.postMessage(message)
         } catch (_: IllegalStateException) {
             markUnavailable()
         }
     }
 
-    // The view's own focus handling drives Focus, so it waits on the enabled
-    // view; every other command has an owner upstream.
-    private fun pageCommandAllowed(command: TerminalPageCommand): Boolean = pageIsLive() && when (command) {
-        TerminalPageCommand.Focus -> isEnabled
-        is TerminalPageCommand.Accessory, TerminalPageCommand.ResetInputState,
-        is TerminalPageCommand.ClearSelection, is TerminalPageCommand.FontSize,
-        -> true
-    }
-
-    private fun pageIsLive(): Boolean = synchronized(outputMonitor) {
-        pageReady && !disposed && !unavailable
-    }
-
-    private fun selectionInteractionAuthorized(): Boolean {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        return pageIsLive() && isEnabled && isAttachedToWindow && hasWindowFocus()
-    }
-
+    // The IME rises for a page tap only while the terminal can take input.
     private fun requestTerminalIme() {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        if (!terminalImeRequestAuthorized()) return
-        if (!requestFocus() || !hasFocus() || !terminalImeRequestAuthorized()) return
-        windowInsetsController?.show(WindowInsets.Type.ime())
-    }
-
-    private fun terminalImeRequestAuthorized(): Boolean =
-        pageIsLive() && isEnabled && isAttachedToWindow && hasWindowFocus() && isShown &&
-            selectionController.permitsTerminalTapIme()
-
-    private fun TerminalPageCommand.toPayload(): String = when (this) {
-        TerminalPageCommand.Focus -> "{\"kind\":\"Focus\"}"
-        is TerminalPageCommand.Accessory -> JSONObject()
-            .put("kind", "Accessory")
-            .put("key", accessory.name)
-            .toString()
-        TerminalPageCommand.ResetInputState -> "{\"kind\":\"ResetInputState\"}"
-        is TerminalPageCommand.ClearSelection -> JSONObject()
-            .put("kind", "ClearSelection")
-            .put("generation", generation)
-            .toString()
-        is TerminalPageCommand.FontSize -> JSONObject()
-            .put("kind", "FontSize")
-            .put("fontSizeCssPx", fontSizeCssPx)
-            .toString()
-    }
-
-    private fun sendNextOutput() {
-        val output = synchronized(outputMonitor) {
-            if (disposed || unavailable) return
-            pendingOutput.firstOrNull() ?: run {
-                outputInFlight = false
-                return
-            }
-        }
-        val port = pagePort
-        if (port == null) {
-            markUnavailable()
-            return
-        }
-        try {
-            port.postMessage(
-                WebMessageCompat(
-                    JSONObject()
-                        .put("kind", "Output")
-                        .put("sequence", output.sequence)
-                        .put("data", Base64.encodeToString(output.bytes, Base64.NO_WRAP))
-                        .toString(),
-                ),
-            )
-        } catch (_: IllegalStateException) {
-            markUnavailable()
-        }
-    }
-
-    private fun outputApplied(sequence: String) {
-        val advance = synchronized(outputMonitor) {
-            if (disposed || unavailable) return
-            val applied = pendingOutput.firstOrNull()
-            if (applied?.sequence != sequence) {
-                PageOutputAdvance.Invalid
-            } else {
-                pendingOutput.removeFirst()
-                pendingOutputBytes -= applied.bytes.size
-                if (pendingOutput.isEmpty()) {
-                    outputInFlight = false
-                    PageOutputAdvance.Complete
-                } else {
-                    PageOutputAdvance.Continue
-                }
-            }
-        }
-        when (advance) {
-            PageOutputAdvance.Complete -> listener.onOutputApplied(this)
-            PageOutputAdvance.Continue -> {
-                listener.onOutputApplied(this)
-                post(::sendNextOutput)
-            }
-            PageOutputAdvance.Invalid -> markUnavailable()
+        if (live && isEnabled && hasWindowFocus() && isShown && requestFocus()) {
+            windowInsetsController?.show(WindowInsets.Type.ime())
         }
     }
 
     private fun markUnavailable() {
-        main.removeCallbacks(pageReadinessDeadline)
-        val shouldReport = synchronized(outputMonitor) {
-            if (disposed || unavailable) {
-                false
-            } else {
-                unavailable = true
-                clearOutputLocked()
-                true
-            }
-        }
-        if (shouldReport) {
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                reportUnavailable()
-            } else {
-                main.post(::reportUnavailable)
-            }
-        }
-    }
-
-    private fun reportUnavailable() {
-        if (disposed) return
-        selectionController.pageFailedOrDisposed()
-        pagePort?.close()
-        pagePort = null
+        if (unavailable) return
+        closePage()
         listener.onUnavailable()
     }
 
-    private fun clearOutputLocked() {
-        pendingOutput.clear()
-        pendingOutputBytes = 0
-        outputInFlight = false
+    // Ends the page for good; idempotent.
+    private fun closePage() {
+        unavailable = true
+        main.removeCallbacks(pageReadinessDeadline)
+        selectionToolbar.hide()
+        pagePort?.close()
+        pagePort = null
     }
 
     private fun JSONObject.hasExactKeys(vararg expected: String): Boolean {
@@ -758,15 +541,6 @@ internal class LockedTerminalWebView(
 
     private fun JSONObject.stringField(name: String): String? = opt(name) as? String
 
-    private fun JSONObject.selectionGeneration(name: String): String? {
-        val value = stringField(name) ?: return null
-        if (!value.matches(Regex("[1-9][0-9]*"))) return null
-        val numeric = value.toLongOrNull() ?: return null
-        return value.takeIf {
-            numeric in 1..MAXIMUM_SAFE_JAVASCRIPT_INTEGER && numeric.toString() == value
-        }
-    }
-
     private fun JSONObject.modifierPhase(name: String): TerminalModifierPhase? =
         stringField(name)?.let { value -> TerminalModifierPhase.entries.singleOrNull { it.name == value } }
 
@@ -776,5 +550,4 @@ internal class LockedTerminalWebView(
 
     private fun WebResourceRequest.isTerminalAsset(): Boolean =
         url.scheme == "https" && url.host == LOCAL_ASSET_HOST && url.path?.startsWith("/assets/terminal/") == true
-
 }

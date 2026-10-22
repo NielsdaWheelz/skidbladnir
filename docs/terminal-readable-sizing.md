@@ -1,7 +1,8 @@
 # Readable terminal sizing
 
-[terminal shift](terminal-shift.md) owns the packaged page port's version-5
-extension and its qualification; this document retains the sizing contract.
+[selection copy's exact API](terminal-selection-copy.md#exact-packaged-page-api)
+lists the current (version-6) packaged page port; this document retains the
+sizing contract.
 historical qualification stays attributed to its recorded source.
 
 Status: implemented 2026-09-08 (merged with its paired dev-server change that
@@ -117,7 +118,7 @@ ordered queue; no lease, acknowledgment protocol, or geometry headers.
 
 | Boundary | Single accepted shape / API |
 | --- | --- |
-| Native → page initialization | `{"kind":"PagePort","version":5,"longPressMilliseconds":500,"fontSizeCssPx":16}`; numeric examples are platform-derived |
+| Native → page initialization | `{"kind":"PagePort","version":6,"longPressMilliseconds":500,"fontSizeCssPx":16}`; numeric examples are platform-derived; [exact list](terminal-selection-copy.md#exact-packaged-page-api) |
 | Native → page size update | `{"kind":"FontSize","fontSizeCssPx":16}`; finite positive number |
 | Page → native usable geometry | Existing `{"kind":"Resize","columns":40,"rows":18}` within `20..1024 × 5..512`, as owned by the architecture |
 | Page → native insufficient room | `{"kind":"ViewportTooSmall"}` |
@@ -126,7 +127,7 @@ ordered queue; no lease, acknowledgment protocol, or geometry headers.
 | Kotlin page API | Extend `TerminalPage` with typed font update; extend `TerminalPageListener` with too-small notification. Existing Resize callback means Fitted. |
 
 All decoders reject extra/missing keys, wrong types, unknown variants, and
-numeric-string coercion. page version 5 is the only accepted version; existing
+numeric-string coercion. page version 6 is the only accepted version; existing
 messages otherwise retain their exact contracts. No WSS font/policy field,
 protocol negotiation, new endpoint, generated client, or compatibility reader.
 

@@ -9,6 +9,7 @@
     var modifiers = { control: "Off", alt: "Off", shift: "Off" };
     var pendingProvenKey = null;
     var compositionActive = false;
+    var imeContainmentScheduled = false;
     var maximumInputBytes = 1024 * 1024;
     var maximumSelectionBytes = 256 * 1024;
     // The gateway's Resize bounds; the page fits down to them and never up.
@@ -23,9 +24,6 @@
     // Touch gesture state (section "touch gestures"); live from the handshake.
     var gesture = null;
     var longPressMilliseconds = 0;
-    var selectionGeneration = null;
-    var lastAcknowledgedSelectionGeneration = null;
-    var nextSelectionGeneration = 1;
 
     window.addEventListener("message", acceptPagePort);
     if (!terminalHost) {
@@ -145,28 +143,6 @@
         return count;
     }
 
-    function isUnicodeScalarSequence(value) {
-        for (var index = 0; index < value.length; index += 1) {
-            var first = value.charCodeAt(index);
-            if (first >= 0xd800 && first <= 0xdbff) {
-                var second = value.charCodeAt(index + 1);
-                if (second < 0xdc00 || second > 0xdfff) return false;
-                index += 1;
-            } else if (first >= 0xdc00 && first <= 0xdfff) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    function sendInput(value) {
-        if (typeof value !== "string" || utf8ByteCount(value, maximumInputBytes) === null) {
-            failPage();
-            return;
-        }
-        send({ kind: "Input", value: value });
-    }
-
     function controlValue(value) {
         if (value.length !== 1) return value;
         var code = value.charCodeAt(0);
@@ -181,7 +157,11 @@
         setModifiers("Off", "Off", "Off");
         if (keyProven && armed.control === "Armed") value = controlValue(value);
         if (keyProven && armed.alt === "Armed") value = "\u001b" + value;
-        sendInput(value);
+        if (utf8ByteCount(value, maximumInputBytes) === null) {
+            failPage();
+            return;
+        }
+        send({ kind: "Input", value: value });
     }
 
     function pasteInput(value) {
@@ -271,24 +251,9 @@
         }
     }
 
-    function decodeBase64(value) {
-        if (typeof value !== "string" || value.length % 4 !== 0 ||
-            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-            return null;
-        }
-        try {
-            var decoded = window.atob(value);
-            var bytes = new Uint8Array(decoded.length);
-            for (var index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
-            return bytes;
-        } catch (error) {
-            return null;
-        }
-    }
-
     function keyIsProven(event) {
         var domEvent = event && event.domEvent;
-        if (!domEvent || domEvent.isTrusted !== true || compositionActive || domEvent.isComposing) return false;
+        if (!domEvent || compositionActive || domEvent.isComposing) return false;
         if (domEvent.type !== "keydown" && domEvent.type !== "keypress") return false;
         if (domEvent.keyCode === 229 || domEvent.which === 229) return false;
         if (domEvent.key === "Process" || domEvent.key === "Unidentified") return false;
@@ -314,9 +279,13 @@
         acceptInput(value, keyProven);
     });
 
-    // Touch gestures. One prevented, trusted TouchEvent stream owns tap, scroll
-    // and selection: Idle (gesture null) | Composing | Pending | Scrolling |
-    // Selecting | Selected | PendingSelected | BlockingSelected | Blocked.
+    // Touch gestures. The page owns every screen touch stream and the selection:
+    // Idle (gesture null) | Composing | Pending | Scrolling | Selecting |
+    // Selected | PendingSelected | BlockingSelected | Blocked. Every state but
+    // Idle and Selected has a finger down, and all but Blocked exactly one.
+    // Native hears the selection as SelectionStarted, then one of
+    // SelectionAvailable, SelectionTooLarge or SelectionCleared at release, and
+    // SelectionCleared whenever a held selection drops for any reason.
     var touchSlop = 8;
 
     function cellAt(clientX, clientY) {
@@ -444,30 +413,6 @@
         if (!applySelection(active)) cancelGesture(true);
     }
 
-    function beginSelectionGeneration() {
-        if (selectionGeneration !== null && !selectionGeneration.clearAcknowledged) {
-            failPage();
-            return null;
-        }
-        var generation = String(nextSelectionGeneration);
-        nextSelectionGeneration += 1;
-        selectionGeneration = { value: generation, clearAcknowledged: false };
-        return generation;
-    }
-
-    function acknowledgeSelectionCleared() {
-        if (selectionGeneration === null) {
-            failPage();
-            return false;
-        }
-        if (!selectionGeneration.clearAcknowledged) {
-            selectionGeneration.clearAcknowledged = true;
-            lastAcknowledgedSelectionGeneration = selectionGeneration.value;
-            send({ kind: "SelectionCleared", generation: selectionGeneration.value });
-        }
-        return true;
-    }
-
     function holdsSelection(state) {
         return state === "Selecting" || state === "Selected" ||
             state === "PendingSelected" || state === "BlockingSelected";
@@ -493,44 +438,29 @@
         clearTimer(active);
         clearFrame(active);
         if (active.state === "Selecting") active.anchor.dispose();
-        gesture = blockTail && active.identifier !== undefined ?
-            { state: "Blocked", identifier: active.identifier, frame: null, timer: null } : null;
+        gesture = blockTail && active.state !== "Selected" ?
+            { state: "Blocked", frame: null, timer: null } : null;
         if (!holdsSelection(active.state)) return;
         terminal.clearSelection();
-        acknowledgeSelectionCleared();
+        send({ kind: "SelectionCleared" });
     }
 
     function cancelUnlessSelected() {
         if (gesture !== null && gesture.state !== "Selected") cancelGesture(true);
     }
 
-    function clearSelectionFromNative(generation) {
-        if (!/^[1-9][0-9]*$/.test(generation) || !Number.isSafeInteger(Number(generation))) {
-            failPage();
-            return;
-        }
-        if (selectionGeneration === null || generation !== selectionGeneration.value) {
-            if (lastAcknowledgedSelectionGeneration !== null &&
-                Number(generation) <= Number(lastAcknowledgedSelectionGeneration)) return;
-            failPage();
-            return;
-        }
-        if (selectionGeneration.clearAcknowledged) return;
-        var held = gesture !== null && holdsSelection(gesture.state);
-        cancelGesture(true);
-        if (pageFailed || held) return;
-        terminal.clearSelection();
-        acknowledgeSelectionCleared();
+    // Drops the gesture and swallows its stream until every finger lifts.
+    function blockGesture(event) {
+        cancelGesture(false);
+        gesture = event.touches.length === 0 ? null : { state: "Blocked", frame: null, timer: null };
     }
 
     function startSelection(active) {
         clearTimer(active);
         if (active.state === "PendingSelected") {
             terminal.clearSelection();
-            if (!acknowledgeSelectionCleared()) return;
+            send({ kind: "SelectionCleared" });
         }
-        var generation = beginSelectionGeneration();
-        if (generation === null) return;
         var buffer = terminal.buffer.active;
         var cols = terminal.cols;
         var word = wordAt(cellAt(active.startX, active.startY));
@@ -545,7 +475,7 @@
         active.timer = window.setInterval(function () {
             tickSelection(active);
         }, 50);
-        send({ kind: "SelectionStarted", generation: generation });
+        send({ kind: "SelectionStarted" });
     }
 
     function releaseSelection(active, touch) {
@@ -559,38 +489,16 @@
         active.anchor.dispose();
         gesture = null;
         var text = terminal.getSelection();
-        if (!isUnicodeScalarSequence(text)) {
+        if (text.length === 0 || utf8ByteCount(text, maximumSelectionBytes) === null) {
             terminal.clearSelection();
-            failPage();
-            return;
-        }
-        if (text.length === 0) {
-            terminal.clearSelection();
-            acknowledgeSelectionCleared();
-            return;
-        }
-        if (utf8ByteCount(text, maximumSelectionBytes) === null) {
-            terminal.clearSelection();
-            send({
-                kind: "SelectionCopyRejected",
-                generation: selectionGeneration.value,
-                reason: "TooLarge"
-            });
-            return;
-        }
-        var width = window.innerWidth;
-        var height = window.innerHeight;
-        if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-            terminal.clearSelection();
-            failPage();
+            send({ kind: text.length === 0 ? "SelectionCleared" : "SelectionTooLarge" });
             return;
         }
         gesture = { state: "Selected", frame: null, timer: null };
         send({
             kind: "SelectionAvailable",
-            generation: selectionGeneration.value,
-            anchorX: Math.max(0, Math.min(1, touch.clientX / width)),
-            anchorY: Math.max(0, Math.min(1, touch.clientY / height)),
+            anchorX: Math.max(0, Math.min(1, touch.clientX / window.innerWidth)),
+            anchorY: Math.max(0, Math.min(1, touch.clientY / window.innerHeight)),
             text: text
         });
     }
@@ -615,88 +523,49 @@
         });
     }
 
-    function isScreenTouch(event) {
-        var target = event.target;
-        return target === screen ||
-            (target && target.nodeType === Node.ELEMENT_NODE && screen.contains(target));
-    }
-
-    function containIgnoredTouch(event) {
+    // One handler takes every screen touch stream, and every stream while a
+    // gesture or a selection exists, before xterm sees it. A stream the page
+    // cannot own whole is blocked until every finger lifts: a second contact,
+    // a start during a claimed gesture, a non-cancelable start, or a start not
+    // strictly inside the screen (the screen target alone admits the .xterm
+    // padding and the screen's border pixels). Touch never fails the page.
+    function onTouch(event) {
+        var active = gesture;
+        var claimed = active !== null && active.state !== "Selected";
+        if (active === null && !screen.contains(event.target)) return;
         if (event.cancelable) event.preventDefault();
         event.stopImmediatePropagation();
-    }
-
-    function consumeTouch(event, requireCancelable) {
-        if (requireCancelable && !event.cancelable) {
-            event.stopImmediatePropagation();
-            failPage();
-            return false;
-        }
-        if (event.cancelable) {
-            event.preventDefault();
-            if (!event.defaultPrevented) {
-                event.stopImmediatePropagation();
-                failPage();
-                return false;
+        if (event.type === "touchstart") {
+            var touch = event.touches.length === 1 ? event.touches[0] : null;
+            var bounds = screen.getBoundingClientRect();
+            if (claimed || touch === null || !event.cancelable ||
+                !(touch.clientX > bounds.left && touch.clientX < bounds.right &&
+                    touch.clientY > bounds.top && touch.clientY < bounds.bottom)) {
+                blockGesture(event);
+            } else {
+                beginGesture(touch, active !== null, bounds.height / terminal.rows);
             }
-        }
-        event.stopImmediatePropagation();
-        return true;
-    }
-
-    function findTouch(list, identifier) {
-        var found = null;
-        for (var index = 0; index < list.length; index += 1) {
-            if (list[index].identifier !== identifier) continue;
-            if (found !== null) return null;
-            found = list[index];
-        }
-        return found;
-    }
-
-    function blockGesture(event) {
-        cancelGesture(true);
-        if (gesture === null) gesture = { state: "Blocked", frame: null, timer: null };
-        if (event.touches.length === 0) gesture = null;
-    }
-
-    function onTouchStart(event) {
-        if (pageFailed) return;
-        var ownsActiveStream = gesture !== null && gesture.state !== "Selected";
-        if (!ownsActiveStream && !isScreenTouch(event)) return;
-        if (event.isTrusted !== true) {
-            containIgnoredTouch(event);
             return;
         }
-        if (!consumeTouch(event, !ownsActiveStream)) return;
-        var retainedSelection = gesture !== null && gesture.state === "Selected";
-        if (gesture !== null && !retainedSelection) {
+        if (!claimed) return;
+        if (active.state === "Blocked") {
+            if (event.touches.length === 0) gesture = null;
+        } else if (event.type === "touchcancel") {
             blockGesture(event);
-            return;
+        } else if (event.type === "touchmove") {
+            moveGesture(active, event.touches[0]);
+        } else {
+            endGesture(active, event.changedTouches[0]);
         }
-        if (event.touches.length !== 1 || event.changedTouches.length !== 1) {
-            failPage();
-            return;
-        }
-        var touch = findTouch(event.touches, event.changedTouches[0].identifier);
-        var bounds = screen.getBoundingClientRect();
-        if (touch === null || !(touch.clientX > bounds.left && touch.clientX < bounds.right &&
-            touch.clientY > bounds.top && touch.clientY < bounds.bottom)) {
-            failPage();
-            return;
-        }
+    }
+
+    function beginGesture(touch, retainedSelection, rowHeight) {
         if (!retainedSelection && compositionActive) {
-            gesture = { state: "Composing", identifier: touch.identifier, frame: null, timer: null };
-            return;
-        }
-        var rowHeight = bounds.height / terminal.rows;
-        if (!Number.isFinite(rowHeight) || rowHeight <= 0) {
-            failPage();
+            gesture = { state: "Composing", frame: null, timer: null };
             return;
         }
         var pending = {
             state: retainedSelection ? "PendingSelected" : "Pending",
-            identifier: touch.identifier,
             startX: touch.clientX,
             startY: touch.clientY,
             previousY: touch.clientY,
@@ -713,24 +582,7 @@
         }, longPressMilliseconds);
     }
 
-    function onTouchMove(event) {
-        if (pageFailed) return;
-        var active = gesture;
-        if (active === null && !isScreenTouch(event)) return;
-        if (event.isTrusted !== true || active === null) {
-            containIgnoredTouch(event);
-            return;
-        }
-        if (!consumeTouch(event, false)) return;
-        if (active.state === "Blocked") {
-            if (event.touches.length === 0) gesture = null;
-            return;
-        }
-        var touch = event.touches.length === 1 ? findTouch(event.touches, active.identifier) : null;
-        if (touch === null) {
-            blockGesture(event);
-            return;
-        }
+    function moveGesture(active, touch) {
         if (active.state === "Selecting") {
             active.x = touch.clientX;
             active.y = touch.clientY;
@@ -747,87 +599,39 @@
                 return;
             }
             if (absoluteY <= absoluteX) {
-                blockGesture(event);
+                cancelGesture(true);
                 return;
             }
             active.state = "Scrolling";
         }
         if (active.state !== "Scrolling") return;
-        if (!Number.isFinite(touch.clientY)) {
-            cancelGesture(true);
-            return;
-        }
         active.accumulator += active.previousY - touch.clientY;
         active.previousY = touch.clientY;
         scheduleDispatch(active);
     }
 
-    function onTouchEnd(event) {
-        if (pageFailed) return;
-        var active = gesture;
-        if (active === null && !isScreenTouch(event)) return;
-        if (event.isTrusted !== true || active === null) {
-            containIgnoredTouch(event);
-            return;
-        }
-        if (!consumeTouch(event, false)) return;
-        if (active.state === "Blocked") {
-            if (event.touches.length === 0) gesture = null;
-            return;
-        }
-        var touch = event.touches.length === 0 && event.changedTouches.length === 1 ?
-            findTouch(event.changedTouches, active.identifier) : null;
-        if (touch === null || !Number.isFinite(touch.clientX) || !Number.isFinite(touch.clientY)) {
-            blockGesture(event);
-            return;
-        }
-        if (active.state === "Composing") {
-            gesture = null;
-            return;
-        }
-        if (active.state === "Pending") {
-            clearTimer(active);
-            gesture = null;
-            focusTerminal();
-            if (pageFailed) return;
-            sendTap(cellAt(touch.clientX, touch.clientY));
-            send({ kind: "ImeRequested" });
-            return;
-        }
-        if (active.state === "PendingSelected") {
-            clearTimer(active);
-            gesture = null;
-            terminal.clearSelection();
-            acknowledgeSelectionCleared();
-            return;
-        }
+    function endGesture(active, touch) {
         if (active.state === "Selecting") {
             releaseSelection(active, touch);
-            return;
-        }
-        if (active.state === "BlockingSelected") {
+        } else if (active.state === "BlockingSelected") {
             gesture = { state: "Selected", frame: null, timer: null };
-            return;
+        } else if (active.state === "Scrolling") {
+            // One bounded correction to the absolute travel, nothing after release.
+            clearFrame(active);
+            var target = Math.max(-terminal.rows, Math.min(terminal.rows,
+                Math.trunc((active.startY - touch.clientY) / active.rowHeight)));
+            var correction = Math.max(-terminal.rows, Math.min(terminal.rows, target - active.emittedRows));
+            if (correction !== 0) sendWheel(correction, active.cell);
+            gesture = null;
+        } else {
+            // Composing ends with no effect and PendingSelected drops the
+            // selection; a Pending tap focuses, clicks and asks for the IME.
+            cancelGesture(false);
+            if (active.state !== "Pending") return;
+            focusTerminal();
+            sendTap(cellAt(touch.clientX, touch.clientY));
+            send({ kind: "ImeRequested" });
         }
-        // Scrolling (a Selected gesture has no identifier, so it blocked above):
-        // one bounded correction to the absolute travel, nothing after release.
-        clearFrame(active);
-        var target = Math.max(-terminal.rows, Math.min(terminal.rows,
-            Math.trunc((active.startY - touch.clientY) / active.rowHeight)));
-        var correction = Math.max(-terminal.rows, Math.min(terminal.rows, target - active.emittedRows));
-        if (correction !== 0) sendWheel(correction, active.cell);
-        gesture = null;
-    }
-
-    function onTouchCancel(event) {
-        if (pageFailed) return;
-        if (gesture === null && !isScreenTouch(event)) return;
-        if (event.isTrusted !== true || gesture === null) {
-            containIgnoredTouch(event);
-            return;
-        }
-        if (!consumeTouch(event, false)) return;
-        blockGesture(event);
     }
 
     var input = document.querySelector(".xterm-helper-textarea");
@@ -843,10 +647,6 @@
     }
 
     function containImeGeometry() {
-        if (!input || !composition || !screen) {
-            failPage();
-            return;
-        }
         var screenBounds = screen.getBoundingClientRect();
         var compositionBounds = composition.getBoundingClientRect();
         var inputBounds = input.getBoundingClientRect();
@@ -862,17 +662,18 @@
         lockPageViewport();
     }
 
+    // One pass per frame, after the frame's IME events and xterm's own
+    // composition layout; the page-set maximum widths persist between passes.
     function scheduleImeContainment() {
-        containImeGeometry();
-        window.setTimeout(containImeGeometry, 0);
-        window.requestAnimationFrame(containImeGeometry);
+        if (imeContainmentScheduled) return;
+        imeContainmentScheduled = true;
+        window.requestAnimationFrame(function () {
+            imeContainmentScheduled = false;
+            containImeGeometry();
+        });
     }
 
     function focusTerminal() {
-        if (!input) {
-            failPage();
-            return;
-        }
         input.focus({ preventScroll: true });
         scheduleImeContainment();
     }
@@ -1013,25 +814,18 @@
 
     function acceptNativeMessage(message) {
         if (pageFailed) return;
-        var payload = parseObject(message.data);
-        if (!payload) {
-            failPage();
-            return;
-        }
-        if (payload.kind === "Output" && exactObject(payload, ["kind", "sequence", "data"]) &&
-            typeof payload.sequence === "string") {
-            var bytes = decodeBase64(payload.data);
-            if (bytes === null) {
-                failPage();
-                return;
-            }
-            terminal.write(bytes, function () {
-                send({ kind: "OutputApplied", sequence: payload.sequence });
+        // Output frames arrive as raw bytes; native counts them until xterm has
+        // written each one.
+        if (message.data instanceof ArrayBuffer) {
+            var output = new Uint8Array(message.data);
+            terminal.write(output, function () {
+                send({ kind: "OutputApplied", bytes: output.length });
             });
             return;
         }
-        if (payload.kind === "Focus" && exactObject(payload, ["kind"])) {
-            focusTerminal();
+        var payload = parseObject(message.data);
+        if (!payload) {
+            failPage();
             return;
         }
         if (payload.kind === "Accessory" && exactObject(payload, ["kind", "key"]) &&
@@ -1049,10 +843,12 @@
             scheduleFit();
             return;
         }
-        if (payload.kind === "ClearSelection" && exactObject(payload, ["kind", "generation"]) &&
-            typeof payload.generation === "string") {
-            clearProvenKey();
-            clearSelectionFromNative(payload.generation);
+        // The person closed the Copy toolbar. A selection still being made is
+        // newer than any toolbar, so only a released one drops.
+        if (payload.kind === "ClearSelection" && exactObject(payload, ["kind"])) {
+            if (gesture !== null && gesture.state !== "Selecting" && holdsSelection(gesture.state)) {
+                cancelGesture(true);
+            }
             return;
         }
         failPage();
@@ -1063,7 +859,7 @@
         var validHandshake = event.ports && event.ports.length === 1 &&
             handshake &&
             exactObject(handshake, ["kind", "version", "longPressMilliseconds", "fontSizeCssPx"]) &&
-            handshake.kind === "PagePort" && handshake.version === 5 &&
+            handshake.kind === "PagePort" && handshake.version === 6 &&
             typeof handshake.longPressMilliseconds === "number" &&
             Number.isFinite(handshake.longPressMilliseconds) &&
             Number.isInteger(handshake.longPressMilliseconds) &&
@@ -1085,10 +881,9 @@
         }
         terminal.options.fontSize = handshake.fontSizeCssPx;
         longPressMilliseconds = handshake.longPressMilliseconds;
-        window.addEventListener("touchstart", onTouchStart, { capture: true, passive: false });
-        window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-        window.addEventListener("touchend", onTouchEnd, { capture: true, passive: false });
-        window.addEventListener("touchcancel", onTouchCancel, { capture: true, passive: false });
+        ["touchstart", "touchmove", "touchend", "touchcancel"].forEach(function (name) {
+            window.addEventListener(name, onTouch, { capture: true, passive: false });
+        });
         input.addEventListener("blur", cancelUnlessSelected, true);
         window.addEventListener("blur", function () { cancelGesture(true); }, true);
         window.addEventListener("resize", cancelUnlessSelected, true);

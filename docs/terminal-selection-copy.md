@@ -1,8 +1,9 @@
 # v0 phone-local terminal selection copy
 
-The [readable-sizing target](terminal-readable-sizing.md) supersedes the
-version-3 handshake with version 4 and adds font/viewport messages. Selection
-semantics remain; historical evidence below does not prove the new protocol.
+The page port is version `6`; [exact packaged-page API](#exact-packaged-page-api)
+is its one complete list. Since terminal-page (2026-10-22) the page owns the
+selection and native owns only the floating Copy toolbar; historical evidence
+below does not prove that protocol.
 
 Status: implemented and published. The original xterm and unchanged-runtime API-36
 reds are complete, the source xterm matrix is green at `171` tests, routine
@@ -56,7 +57,10 @@ participates.
 An unfocused, below-slop primary tap is also guaranteed to acquire the native
 WebView and xterm helper focus and request the phone IME. An unfocused drag
 does not request it. This restores terminal input acquisition without creating
-a second native gesture classifier.
+a second native gesture classifier. Only that tap and the deck's keys focus the
+helper; input the page itself sends (xterm's automatic replies, wheel and tap
+reports) does not refocus it, so a `DECSET 1004` application sees a blur
+without an immediate focus-in.
 
 This is one phone-local presentation capability. Android, Gboard, or an OS
 cross-device service may retain or synchronize the resulting system clip; that
@@ -72,15 +76,15 @@ change.
 
 - Replace the page's PointerEvent path with one page-owned TouchEvent state
   machine; do not add a Kotlin gesture detector or a second touch path. Define
-  an eligible primary touch as exactly one trusted DOM touch contact that
-  starts inside the xterm screen. Screen-targeted untrusted TouchEvents are
-  consumed and ignored before xterm can observe them. Stylus behavior is not
-  claimed.
-- On eligible `touchstart`, synchronously require a cancelable event, call
-  `preventDefault()`, require `defaultPrevented`, and stop immediate propagation
-  before arming any gesture. Consume every remaining event in that owned stream
-  the same way. Otherwise fail the page closed. This makes the page the sole
-  touch owner and prevents Chromium compatibility mouse/context-menu promotion.
+  an eligible primary touch as exactly one DOM touch contact that starts
+  strictly inside the xterm screen. Stylus behavior is not claimed.
+- Screen-targeted events, and every event while a gesture or selection
+  exists, are prevented (when cancelable) and stopped before xterm sees them.
+  This makes the page the sole touch owner and prevents Chromium compatibility
+  mouse/context-menu promotion. A non-cancelable start, more than one contact,
+  a start not strictly inside the screen, or a start during a claimed gesture
+  blocks the stream until every finger lifts, drops any selection, and emits
+  nothing; touch never fails the page.
 - Retain the already-proven `8 CSS px` slop for both scrolling and selection.
   Native supplies only `ViewConfiguration.getLongPressTimeout()` during the
   exact page-port handshake; the page validates it once.
@@ -97,12 +101,11 @@ change.
   `terminal.input` (press only under X10, nothing when the application does
   not track the mouse), then emits one content-free `ImeRequested` intent.
   Native exact-decodes that intent and, only while the page is live, visible,
-  enabled, attached, window-focused, and selection-idle, acquires WebView focus
-  and requests `WindowInsets.Type.ime()`.
-- Track the sole `Touch.identifier` and resolve every move and final coordinate
-  from the matching touch, including `changedTouches` on end. Never index
-  `touches[0]`. A second contact cancels and drains all touches before a new
-  gesture may start; missing identifiers and invalid streams fail closed.
+  enabled, attached, and window-focused, acquires WebView focus and requests
+  `WindowInsets.Type.ime()`. The page never asks while it holds a selection.
+- A claimed stream has exactly one contact, because any later start blocks it,
+  so moves read `touches[0]` and the end reads `changedTouches[0]`. A second
+  contact cancels and drains all touches before a new gesture may start.
   Live lifecycle reset also preserves blocked ownership until the still-down
   stream drains; only page failure may abandon the tail.
 - At expiry, select the nearest xterm word (one cell when blank) and request one
@@ -114,8 +117,8 @@ change.
   by an xterm marker on its first row, so it follows its text while output
   scrolls the buffer; once that row leaves the buffer the hold clears with no
   `Copy`. Touch target retention carries an active contact outside the screen.
-  Release first reconciles the matching final `changedTouches` coordinate,
-  then retains the range, snapshots the exact xterm selection in page memory,
+  Release first reconciles the final `changedTouches[0]` coordinate, then
+  retains the range, snapshots the exact xterm selection in page memory,
   and opens the native action mode at the normalized release point.
 - Once selection exists, one new primary tap, action-mode dismissal, second
   contact, cancellation, attachment loss, backgrounding, disable, rotation,
@@ -123,11 +126,10 @@ change.
   dismisses the native action mode/selection; a subsequent Back retains the
   existing phone-detach contract.
 - Physical API-36 proof showed that the framework floating action mode does not
-  consume system Back. While and only while `Selected`, register one
-  view-resolved `OnBackInvokedCallback` at `PRIORITY_OVERLAY`; committed Back
-  enters correlated clearing before the default-priority Compose detach
-  handler. Unregister it before every transition out of `Selected` and on
-  failure/disposal. No Activity cast, Compose callback, key interception, or
+  consume system Back. While the Copy toolbar is shown, register one
+  view-resolved `OnBackInvokedCallback` at `PRIORITY_OVERLAY`; Back closes the
+  toolbar and sends `ClearSelection` before the default-priority Compose detach
+  handler sees it. Unregister it whenever the toolbar closes. No Activity cast, Compose callback, key interception, or
   legacy `onBackPressed` path exists.
 - xterm owns scrollback, selection rendering and the returned text
   (`getSelection()`). The page computes only the cell range—the word over
@@ -144,21 +146,19 @@ change.
   positioned with Android's
   [`ActionMode.Callback2`](https://developer.android.com/reference/android/view/ActionMode.Callback2)
   and remains framework-accessible.
-- A native `Idle | Selecting | Selected | Clearing` state machine accepts one
-  immutable release snapshot only after a matching `SelectionStarted`
-  generation. The user-visible
-  `Copy` action is the only transition that may write it to the clipboard.
+- Native keeps the release snapshot only while its toolbar is shown; the
+  toolbar's `Copy` action is the only path that writes it to the clipboard.
 - The page sends the transient release snapshot once in `SelectionAvailable`.
-  Native retains it only while `Selected`. This prevents redraw, reflow, or
+  This prevents redraw, reflow, or
   scrollback trimming from changing what Copy returns. Copy means “text visible
   at release”: later output may change cells under the retained highlight, but
   never the snapshot. Preserve the string exactly: no trim, ANSI parsing,
   newline conversion, reflow, sanitization, or Unicode normalization.
-- Empty selection clears quietly. Valid text is a Unicode scalar sequence (no
-  unpaired UTF-16 surrogate) and at most `256 KiB` in UTF-8. Page and native
-  independently apply the existing bounded UTF-8-counting pattern before the
-  side effect. Oversize selection is cleared and produces one resource-backed
-  failure toast; there is no file/share fallback.
+- Empty selection clears quietly. The page counts the release text's UTF-8
+  bytes (xterm yields Unicode scalars); over `256 KiB` it clears and sends
+  content-free `SelectionTooLarge`, and native shows one resource-backed
+  failure toast; there is no file/share fallback. Native applies the same
+  bound to `SelectionAvailable` before showing the toolbar.
 - Native creates `ClipData.newPlainText("Terminal selection", text)`, sets
   `ClipDescription.EXTRA_IS_REMOTE_DEVICE = true`, and calls
   `setPrimaryClip` on the main thread. It never reads the production clipboard.
@@ -167,40 +167,35 @@ change.
   on the API-36-only client, following Android's
   [copy-feedback guidance](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#Feedback).
 - `setPrimaryClip` is the sole irreversible effect and is called once per
-  explicit `Copy` activation, on the main thread, only while `Selected`; at
-  most one write may succeed for a selection. Immediately before constructing
-  the clip, Copy must pass the WebView owner's authoritative live, enabled,
-  attached, and foreground authorization. Its unavailable decision linearizes
-  under the existing output-state lock; failure committed before the queued
-  action executes forbids the write. A later failure is ordered after the
-  authorization, without holding a private lock across ClipboardManager IPC.
-  After `setPrimaryClip` returns, native enters
-  `Clearing`, drops the snapshot, sends `ClearSelection(generation)` once, and
-  programmatically closes the action mode. A `SecurityException` triggers no
-  automatic retry: it retains the selection and snapshot in `Selected`, shows
-  one content-free failure toast, and permits a new explicit Copy attempt.
-- Opening an action mode is a reentrancy-safe transaction. If lifecycle loss or
-  synchronous framework destruction occurs before `startActionMode()` returns,
-  the returned mode cannot resurrect `Selected`; finish it and retain the
-  already-chosen clearing/failure state. If `startActionMode()` returns null,
-  enter `Clearing` and send one correlated clear. Empty or vanished selection
-  sends `SelectionCleared` and closes quietly. Programmatic finish marks state
-  and suppresses its reentrant destroy callback before closing, so
-  `ClearSelection` is sent at most once.
+  explicit `Copy` activation, on the main thread, only while the toolbar is
+  shown; at most one write may succeed for a selection. The toolbar exists
+  only while the page is live, enabled, attached, and window-focused, because
+  every loss of those hides it synchronously on the UI thread first, so Copy
+  needs no re-check. After `setPrimaryClip` returns, native closes the
+  toolbar, drops the snapshot, and sends `ClearSelection` once. A
+  `SecurityException` triggers no automatic retry: it keeps the toolbar and
+  snapshot, shows one content-free failure toast, and permits a new explicit
+  Copy attempt.
+- The toolbar records its mode in `onCreateActionMode`; `onDestroyActionMode`
+  reports a dismissal (one `ClearSelection`) only for the current mode, so a
+  close native started itself stays quiet, and a mode destroyed inside
+  `startActionMode()` still clears the page. A null `startActionMode()` sends
+  `ClearSelection`. Empty or vanished selection sends `SelectionCleared`.
 - Clipboard text, selected text, hashes, previews, prompts, and terminal bytes
   never enter logs, analytics, saved state, crash context, or evidence.
 
 ## Architecture and composition
 
 ```text
-trusted primary touch
+primary touch
         |
         v
-page gesture owner ------ select(col,row,len) ------> stock xterm
-        |                                                   |
-        | Started / Available(snapshot) / Cleared           | getSelection()
-        v                                                   |
-LockedTerminalWebView --> TerminalSelectionController <-----+
+page gesture owner -- select(col,row,len), getSelection() --> stock xterm
+        |      ^
+        |      | ClearSelection (Copy, Back, dismissal)
+        | Started / Available(snapshot) / Cleared / TooLarge
+        v      |
+LockedTerminalWebView --> TerminalSelectionToolbar
                                 |
                     Android floating ActionMode
                                 |
@@ -234,74 +229,107 @@ from an element `copy` listener; one window capture `copy` listener calls
 `stopImmediatePropagation()` (no `preventDefault()`), so that handler never
 runs and the default copy action reaches only the helper textarea.
 
-Native transition table:
+The page owns the selection; native mirrors it with one toolbar. Page rules:
 
-| State + event | Next | Effect |
-| --- | --- | --- |
-| `Idle + SelectionStarted(g)` | `Selecting(g)` | One haptic |
-| `Selecting(g) + SelectionAvailable(g, valid)` and action mode starts | `Selected(g)` | Retain snapshot/action mode |
-| `Selecting(g) + SelectionAvailable(g, valid)` and action mode returns null | `Clearing(g)` | Drop snapshot; send one correlated clear |
-| `Selecting(g) + SelectionCopyRejected(g)` | `Clearing(g)` | Failure toast; send one correlated clear |
-| `Selected + Copy` and clipboard call returns | `Clearing` | One clipboard write; drop snapshot; one clear; suppressed programmatic finish |
-| `Selected + Copy` and clipboard call throws `SecurityException` | `Selected` | No automatic retry; keep snapshot/action mode; failure toast |
-| Any live non-idle state for `g` + `SelectionCleared(g)` | `Idle` | Drop snapshot; suppressed finish |
-| `Selected + user dismissal` or overlay Back | `Clearing` | Drop snapshot; unregister Back; send one clear and await its acknowledgement |
-| `Selecting`/`Selected + live lifecycle reset` | `Clearing` | Drop snapshot; send one clear; suppressed finish; await acknowledgement |
-| `Clearing + live lifecycle reset` | `Clearing` | Send nothing; await the existing acknowledgement |
-| Any state + page failure/disposal | `Idle` | Drop snapshot; finish; accept no later message; never replay |
+- P1 a long press that selects sends `SelectionStarted`.
+- P2 release sends exactly one of `SelectionAvailable` (page `Selected`),
+  `SelectionTooLarge` (cleared) or `SelectionCleared` (empty; cleared).
+- P3 whenever the page drops a selection it holds (`Selecting`, `Selected`,
+  `PendingSelected`, `BlockingSelected`) for any reason, it clears the
+  highlight and sends `SelectionCleared`; one path, `cancelGesture`.
+- P4 `ClearSelection` drops only a released selection (`Selected`,
+  `PendingSelected`, `BlockingSelected`); it is ignored while `Selecting` or
+  without a selection.
 
-`SelectionCleared(g)` is the one acknowledgement that completes `Clearing(g)`.
-The page assigns `1`, then each exact positive safe-integer successor, encoded
-as a canonical decimal string. Native retains the page-lifetime high-water,
-accepts only that sequence, and echoes the exact token in its clear command. A
-crossed clear for an already acknowledged older generation is
-idempotently ignored by the page and can never touch a newer selection. Every
-page-originated mismatched, duplicate, future, or out-of-order message fails
-native closed. The page keeps no copy snapshot after `SelectionAvailable`;
-native drops its snapshot immediately on entering `Clearing`, page failure, or
-disposal.
+Native rules:
 
-`LockedTerminalWebView` remains the exact message decoder and lifecycle owner.
-One new `TerminalSelectionController` owns the `ActionMode`, overlay-priority
-Back registration, state gate, clipboard metadata/write, haptic, and failure
-feedback. It exposes no generic clipboard service or test seam.
+- N1 `SelectionAvailable` shows the toolbar while the view is enabled and
+  window-focused, else answers `ClearSelection`; a toolbar that cannot start
+  also answers `ClearSelection`.
+- N2 `SelectionCleared` hides the toolbar quietly (idempotent).
+- N3 Copy success, overlay Back and framework dismissal close the toolbar and
+  send `ClearSelection`; a `SecurityException` keeps it and toasts.
+- N4 `resetInputState()` (disable, window-focus loss, rotation, sheets, leave)
+  hides the toolbar, then sends `ResetInputState`; page failure and disposal
+  hide it.
+- N5 `SelectionStarted` performs the `LONG_PRESS` haptic; it is never refused.
+- N6 `SelectionTooLarge` shows the too-large toast.
+
+Each direction of the one port is FIFO (native handles messages on the UI
+thread, the page on its JavaScript thread), so no correlation token exists. No
+orphan toolbar: the page sends `SelectionAvailable` for a selection before any
+`SelectionCleared` for it, so native shows before it hides, and a later
+selection's `SelectionAvailable` follows that hide; a `ResetInputState`
+crossing a `SelectionAvailable` reaches a `Selected` page, which clears and
+reports. No IME under a toolbar: the page sends `ImeRequested` only from
+`Pending`, which starts with no selection, and reaching it from any selection
+state passed through P2 or P3. Residual race, accepted: a `ClearSelection`
+still in flight after the page has started and released a new selection (at
+least one long-press timeout of same-device port latency) clears the new one;
+only its highlight is lost.
+
+`LockedTerminalWebView` remains the exact message decoder and lifecycle owner
+and owns the haptic and the too-large toast. `TerminalSelectionToolbar` owns
+the `ActionMode`, overlay-priority Back registration, clipboard
+metadata/write, and copy-failure toast. It exposes no generic clipboard
+service or test seam.
 `TerminalScreen`, the controller/model, key
 deck, Gboard paste path, gateway, WSS, PTY, and tmux remain unchanged.
 
 ## Exact packaged-page API
 
-The hard-cut handshake accepts only version `3`:
+The page port is internal to one APK; both ends ship together and the
+handshake accepts only version `6`, with no negotiation path. Native to page:
 
 ```json
-{"kind":"PagePort","version":3,"longPressMilliseconds":500}
+{"kind":"PagePort","version":6,"longPressMilliseconds":500,"fontSizeCssPx":16}
+{"kind":"Accessory","key":"Shift"}
+{"kind":"ResetInputState"}
+{"kind":"FontSize","fontSizeCssPx":16}
+{"kind":"ClearSelection"}
 ```
 
-The numeric values above are examples; native supplies the current validated
-platform values. Native to page:
-
-```json
-{"kind":"ClearSelection","generation":"7"}
-```
+`PagePort` is a window message carrying the one port; the numeric values are
+examples of the platform-derived ones. Output frames are binary: each is an
+`ArrayBuffer` of `1..65536` terminal bytes, posted as soon as it arrives, with
+no JSON or base64. Native admits at most `1 MiB` posted and not yet written by
+xterm; more fails the page. Whether a burst overflows depends on how far
+xterm's parsing lags delivery. Frames the socket thread has queued on a busy UI
+thread are not counted until it runs them, so that backlog is unbounded while
+the UI thread stalls. `Accessory.key` is one of `Escape`, `Slash`, `Shift`,
+`Home`, `Up`, `End`, `PageUp`, `Tab`, `Control`, `Alt`, `Left`, `Down`,
+`Right`, `PageDown`. `ResetInputState` drops any selection (the page reports
+`SelectionCleared`). `ClearSelection` means the person closed the Copy toolbar
+or native refused it.
 
 Page to native:
 
 ```json
+{"kind":"Ready"}
+{"kind":"Input","value":"..."}
+{"kind":"Resize","columns":80,"rows":24}
+{"kind":"ViewportTooSmall"}
+{"kind":"ModifierState","control":"Off","alt":"Armed","shift":"Off"}
 {"kind":"ImeRequested"}
-{"kind":"SelectionStarted","generation":"7"}
-{"kind":"SelectionAvailable","generation":"7","anchorX":0.50,"anchorY":0.50,"text":"..."}
-{"kind":"SelectionCleared","generation":"7"}
-{"kind":"SelectionCopyRejected","generation":"7","reason":"TooLarge"}
+{"kind":"OutputApplied","bytes":65536}
+{"kind":"SelectionStarted"}
+{"kind":"SelectionAvailable","anchorX":0.50,"anchorY":0.50,"text":"..."}
+{"kind":"SelectionCleared"}
+{"kind":"SelectionTooLarge"}
+{"kind":"PageFailure"}
 ```
 
+`Input` is at most `1 MiB` of UTF-8; `Resize` stays inside the gateway's
+`20..1024` columns and `5..512` rows; modifier phases are `Off` or `Armed`.
+`OutputApplied` comes from xterm's write callback, one per frame in frame
+order, and carries that frame's byte count; native returns it to the budget
+and tells its listener, whose first call is the output-presented signal.
 Anchors are finite normalized WebView coordinates in `[0, 1]`; native maps and
-clamps them only when producing the view-local content rectangle. All objects
-reject missing, extra, differently cased, wrongly typed, noncanonical,
-non-finite, or unknown fields/values. A generation is the canonical decimal
-rendering of an integer in `1..9007199254740991`: no sign, leading zero,
-exponent, fraction, or numeric JSON value is accepted. Versions `1` and `2`,
-DOM `copy`, `navigator.clipboard`, and unordered or unsolicited selection
-snapshots have no decoder or fallback. The protocol is internal to one APK and
-has no negotiation path.
+clamps them only when producing the view-local content rectangle. Selection
+text is non-empty and at most `256 KiB` of UTF-8. Every object rejects missing, extra, wrongly typed or
+unknown fields; a rejected message fails the receiving end. Deleted from
+version 5: `Output{sequence,data}`, `Focus`, `SelectionCopyRejected`, every
+selection `generation`, and `OutputApplied`'s sequence.
 
 ## Hard cut and cleanup
 
