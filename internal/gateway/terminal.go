@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/coder/websocket"
@@ -53,7 +52,7 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	}
 	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
-		writer.(*trackedResponseWriter).errorCode = logging.ErrorInvalidRequest
+		writer.(*trackedResponseWriter).errorCode = errorInvalidRequest.Code
 		return
 	}
 	connection.SetReadLimit(-1)
@@ -356,7 +355,7 @@ func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken 
 	})
 	cancelCleanup()
 	if err != nil {
-		gateway.log(logging.NewTerminalCleanupFailed())
+		gateway.logger.Info("Terminal.CleanupFailed")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -364,11 +363,7 @@ func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken 
 	if err := gateway.sessions.Kill(ctx, sessions.KillInput{TmuxID: tmuxID, IdentityToken: identityToken}); err != nil {
 		return err
 	}
-	event, err := logging.NewSessionKilled(tmuxID, time.Since(startedAt))
-	if err != nil {
-		panic("invalid session-killed log event")
-	}
-	gateway.log(event)
+	gateway.logger.Info("Session.Killed", "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds(), "skidbladnir.session.tmux_id", tmuxID)
 	return nil
 }
 

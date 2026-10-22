@@ -148,7 +148,7 @@ non-mapper work folded into the waves.
 | a3 activity-gated reuse, plus the architecture and session-latency amendments | [exec budget](tmux-exec-budget.md#a3-activity-gated-reuse) | W4.8, after W3.4 |
 | `ProcessType=Interactive` and the install priority check | [exec budget](tmux-exec-budget.md#priority-macbook-capacity-d7) | W1.7 |
 | zsh tty probe noise | terminal-context-tty-noise issue, resolved by #129 | W1.8 |
-| bounded mac serve log | [issue](issues/macos-serve-log-discarded.md) | W2.5 |
+| bounded mac serve log | [codebase map](codebase-map.md) | W2.5 |
 
 ## findings
 

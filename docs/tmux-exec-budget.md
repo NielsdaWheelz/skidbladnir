@@ -340,4 +340,4 @@ options a1-a3 ship with any later release and need no window.
 - the fenced hub transfer and lagging fleet revisions: the owner handles them
   separately, and W2.1 fixes the hub.
 - release pruning and receipt size: W2.2, `host-fleet:installer-receipt`.
-- the mac serve log sink: [its issue](issues/macos-serve-log-discarded.md).
+- the mac serve log sink: resolved by w2.5 (`serve.log`, see the [codebase map](codebase-map.md)).

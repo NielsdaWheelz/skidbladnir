@@ -68,7 +68,10 @@ steps:
    phone) and three applications, all `applied`; `skid list` on each computer
    shows devbox, macbook, arch in that order; the phone shows the three machines;
    a needs-input notification reaches the mac app and the phone; with push
-   configured, the phone's push status reaches `active`.
+   configured, the phone's push status reaches `active`. on macbook,
+   `${XDG_STATE_HOME:-~/.local/state}/skidbladnir/serve.log` exists with mode
+   0600 and gains `Request.Completed` lines; it stays at or under 8 MiB beside
+   at most one `serve.log.1`.
 7. rollback, only before step 8. each host: `skid uninstall` (keeps settings and
    private state; removes `current`, every release, `bin/skid`, the services,
    the shell blocks and the tailnet route), then the
@@ -85,8 +88,9 @@ steps:
    (`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`) delete `identity.json`,
    `host-state.json`, `resolved.json`, `authority.json`, `enrollment-*.json` and
    `notification-observer-v1.json.recovered-*`; on macbook and arch also
-   `notification-observer-v1.json` (inert on a member); from each config
-   directory delete `config.yaml.inactive`. the phone's `fleet-v1.json` stays as
+   `notification-observer-v1.json` (inert on a member); on macbook also
+   `gateway.log` (249 MB, the dev-server-era event log; nothing writes it); from
+   each config directory delete `config.yaml.inactive`. the phone's `fleet-v1.json` stays as
    inert app data. confirm each host has no `install-owned.json` and exactly one
    `releases/` entry, the one `current` names; then delete the two
    `install-owned.json` removals in `internal/install/install.go` (`Run` and

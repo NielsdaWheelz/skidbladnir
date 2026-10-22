@@ -155,13 +155,12 @@ encoding of the admitted fixed schema is a defect; size overflow is limit.
 `sessions` owns immutable `RecoveryChange`: `{at:instant, recovery:recovery,
 operation?:closed-label, errno?:positive-native-os-integer}`. absent optional
 values are omitted. supply `func(RecoveryChange)` through
-`StartRecovery(ctx, observe) func() error`; the gateway converts it to the existing
-logger. `logging` already imports `sessions`; no reverse edge, shared package,
-channel, event bus or constructor configuration.
+`StartRecovery(ctx, observe) func() error`; the gateway writes it to the process's
+event logger; no shared package, channel, event bus or constructor configuration.
 
 invoke after updating the fact, under the existing mutation lock, to preserve
 event order. callback may only format/write the event; no manager reentry or
-product effects. reuse `gateway.log` and its existing write-failure behavior.
+product effects. a failed log write is dropped.
 logging failure cannot change recovery, mutation success or retry policy.
 
 emit `Workspace.RecoveryChanged` with existing `event.name`,

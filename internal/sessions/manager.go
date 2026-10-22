@@ -126,16 +126,11 @@ func (manager *Manager) release() { <-manager.mutations }
 
 // List returns one admitted lifetime's sessions (tmux-exec-budget.md a1). The
 // inventory's B and E records prove that lifetime for every row and token.
-// Admission times the lock wait plus epoch admission, which runs only for a
-// lifetime List has not admitted and never stamps an absent or empty server.
-func (manager *Manager) List(ctx context.Context) (Inventory, ListDiagnostics, error) {
-	diagnostics := ListDiagnostics{Phase: "admission"}
-	started := time.Now()
-	err := manager.acquire(ctx)
-	admissionElapsed := time.Since(started)
-	diagnostics.Admission = &admissionElapsed
-	if err != nil {
-		return Inventory{}, diagnostics, err
+// Epoch admission runs only for a lifetime List has not admitted and never
+// stamps an absent or empty server.
+func (manager *Manager) List(ctx context.Context) (Inventory, error) {
+	if err := manager.acquire(ctx); err != nil {
+		return Inventory{}, err
 	}
 	locked := true
 	defer func() {
@@ -143,61 +138,44 @@ func (manager *Manager) List(ctx context.Context) (Inventory, ListDiagnostics, e
 			manager.release()
 		}
 	}()
-	diagnostics.Phase = "capture"
-	started = time.Now()
 	capture, err := manager.tmux.ReadCurrentInventory(ctx, manager.admitted)
-	captureElapsed := time.Since(started)
-	diagnostics.Capture = &captureElapsed
 	if err != nil {
-		return Inventory{}, diagnostics, err
+		return Inventory{}, err
 	}
 	if len(capture.Rows) > 0 && capture.Server != manager.admitted {
-		diagnostics.Phase = "admission"
-		started = time.Now()
 		observed, present, err := manager.tmux.InspectServer(ctx)
 		admit := err == nil && present && observed.SessionCount > 0
 		var server tmuxclient.ServerIdentity
 		if admit {
 			server, err = manager.admitRecoveryServer(ctx, observed.Identity)
 		}
-		admissionElapsed += time.Since(started)
 		if err != nil {
-			return Inventory{}, diagnostics, err
+			return Inventory{}, err
 		}
 		capture = tmuxclient.InventoryCapture{}
 		if admit {
 			manager.admitted = server
-			diagnostics.Phase = "capture"
-			started = time.Now()
 			capture, err = manager.tmux.ReadInventory(ctx, server)
-			captureElapsed += time.Since(started)
 			if err != nil {
-				return Inventory{}, diagnostics, err
+				return Inventory{}, err
 			}
 		}
 	}
 	if len(capture.Rows) == 0 {
-		diagnostics.Phase = "complete"
-		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, diagnostics, nil
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, nil
 	}
-	diagnostics.Phase = "normalize"
-	started = time.Now()
 	scan := manager.scanCapture(capture)
 	rows, err := manager.normalizeCharacters(ctx, scan, capture.Server)
 	if err == nil {
 		rows, err = manager.normalizeNames(ctx, rows, scan.names, capture.Server)
 	}
-	normalizeElapsed := time.Since(started)
-	diagnostics.Normalize = &normalizeElapsed
 	if err != nil {
-		return Inventory{}, diagnostics, err
+		return Inventory{}, err
 	}
 	observedAt := time.Now().UTC()
 	recovery := manager.recovery.fact
 	manager.release()
 	locked = false
-	diagnostics.Phase = "foreground"
-	started = time.Now()
 	sessions := make([]Session, 0, len(rows))
 	for _, row := range rows {
 		if err = ctx.Err(); err != nil {
@@ -209,13 +187,10 @@ func (manager *Manager) List(ctx context.Context) (Inventory, ListDiagnostics, e
 		// Enrichment ran outside any tmux client; a2 folds this into its bracket.
 		err = manager.requireServerIdentity(ctx, capture.Server)
 	}
-	foregroundElapsed := time.Since(started)
-	diagnostics.Foreground = &foregroundElapsed
 	if err != nil {
-		return Inventory{}, diagnostics, err
+		return Inventory{}, err
 	}
-	diagnostics.Phase = "complete"
-	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, diagnostics, nil
+	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, nil
 }
 
 // Kill deletes only the captured session lifetime. Pane/process changes and

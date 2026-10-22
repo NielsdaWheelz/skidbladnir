@@ -342,15 +342,12 @@ unavailable status only while the whole inventory budget remains. required
 projection and the whole five-second deadline still fail the host refresh. never extend an outer deadline or mint fresh `observedAt`
 after failed required validation.
 
-`Manager.List(ctx)` returns `(Inventory,ListDiagnostics,error)`, including diagnostics
-on failure. sessions owns admission/capture/normalize/foreground durations; gateway
-adds terminal/projection/total. replace `Sessions.Listed` with one `Sessions.Observed`
-event: outcome is `success|failed|canceled`; phase is `complete`, `admission`,
-`capture`, `normalize`, `foreground`, `terminal` or `projection`; include total ms,
-performed-stage ms and successful count
-only. deadline expiry is `failed`; parent cancellation is `canceled`; success uses
-`complete`. optional duration fields distinguish performed zero from unperformed.
-reuse the typed logger; no diagnostics enter the http DTO. no raw errors, names, paths,
+`Manager.List(ctx)` returns `(Inventory,error)`. `Request.Completed` for
+`GET /v1/sessions` (status and total ms) is the inventory latency signal. w2.5 cut
+`Sessions.Observed`, and with it per-stage ms, failed vs canceled, and the per-poll
+session count (the journal evidence for four sessions becoming three in the
+[v0.20.0 qualification](v0.20.0-installed-qualification.md)). a recurring
+investigation adds a temporary timer and deletes it. no diagnostics enter the http DTO. no raw errors, names, paths,
 option values, identities, terminal/provider content, tracing endpoint or metrics
 service. temporary qualification alone counts native child processes.
 
