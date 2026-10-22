@@ -17,7 +17,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal enum class FirebasePushStatus { Disabled, Ready, RestartRequired, Unavailable }
 private class FirebaseRegistration(val attempt: PushAttempt, val result: CompletableDeferred<PushRegistration?> = CompletableDeferred())
 
-/** The default SDK app is immutable for this process; signed pairing state owns the desired options. */
+/** The default SDK app is immutable for this process; the hub's fleet view owns the desired options. */
 internal class FirebasePush(private val context: Context) {
     private val store = PushStore(context)
     private val enrollment = Mutex()

@@ -10,30 +10,20 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 )
 
-// Hub returns the notification observer's machine handle.
-func (client *Client) Hub() (string, bool) {
-	client.mu.RLock()
-	defer client.mu.RUnlock()
-	return client.hub, client.hub != ""
-}
+// notificationRequest targets the hub, which fleet.json always lists.
 func (client *Client) notificationRequest(ctx context.Context, path string) (*http.Request, error) {
 	_ = client.Refresh() // justify-ignore-error: preserve the admitted cache while its durable replacement is unavailable.
-	hub, configured := client.Hub()
-	if !configured {
-		return nil, attention.ErrUnavailable
-	}
-	target, found := client.peerByMachine(hub)
-	if !found {
-		return nil, attention.ErrUnavailable
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.Origin+"/v1/notifications/"+path, nil)
+	client.mu.RLock()
+	hub := client.hub
+	client.mu.RUnlock()
+	target, _ := client.peerByMachine(hub)
+	request, err := fleet.NewRequest(ctx, target.Target, http.MethodGet, "/v1/notifications/"+path, nil)
 	if err != nil {
 		return nil, attention.ErrUnavailable
 	}
-	request.Header.Set("Authorization", "Bearer "+target.Bearer)
-	request.Header.Set("Skidbladnir-Machine", target.Machine)
 	return request, nil
 }
 func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot, error) {
@@ -57,7 +47,6 @@ func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot
 	if err != nil || len(data) > attention.MaximumSnapshotBytes || attention.Decode(data, &snapshot) != nil || !snapshot.Valid() {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
-	hub, _ := client.Hub()
 	if len(snapshot.Machines) != len(client.Machines()) {
 		return attention.Snapshot{}, attention.ErrUnavailable
 	}
@@ -65,9 +54,6 @@ func (client *Client) NotificationState(ctx context.Context) (attention.Snapshot
 		if _, found := client.peerByMachine(host.Machine); !found {
 			return attention.Snapshot{}, attention.ErrUnavailable
 		}
-	}
-	if _, found := client.peerByMachine(hub); !found {
-		return attention.Snapshot{}, attention.ErrUnavailable
 	}
 	return snapshot, nil
 }

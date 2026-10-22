@@ -1,8 +1,6 @@
 package fleet
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,25 +11,26 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
-	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
+
+const maximumRequestBytes = 64 << 10
 
 func (s *Service) Handler() http.Handler { return http.HandlerFunc(s.serveHTTP) }
 func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery {
-		writeHTTPError(w, invalidRequest())
+		writeError(w, invalidRequest())
 		return
 	}
 	if r.Method == "GET" {
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
 	}
-	if code := auth.BindMachine(r, s.options.Machine); code != "" {
+	if code := auth.BindMachine(r, s.machine.String()); code != "" {
 		status, message := code.Response()
-		writeHTTPError(w, &Error{Code: string(code), Message: message, Status: status})
+		writeError(w, &Error{Code: string(code), Message: message, Status: status})
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/local/") {
@@ -39,186 +38,156 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "POST" && r.URL.Path == "/v1/fleet/join" {
-		var request JoinRequest
-		if e := readBody(r, &request); e != nil {
-			writeHTTPError(w, e)
+		var request joinRequest
+		if err := readBody(r, &request); err != nil {
+			writeError(w, err)
 			return
 		}
-		state, e := s.Join(request, time.Now())
-		if e != nil {
-			writeHTTPError(w, e)
+		reply, err := s.join(request, time.Now())
+		if err != nil {
+			writeError(w, err)
 			return
 		}
 		if request.Kind == "phone" {
-			writeJSON(w, 201, state.Public)
-		} else {
-			writeJSON(w, 201, state)
+			reply = reply.public()
 		}
+		writeJSON(w, 201, reply)
 		return
 	}
-	member, e := s.Authenticate(r)
-	if e != nil {
-		writeHTTPError(w, e)
+	member, err := s.Authenticate(r)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/v1/fleet":
-		state, e := s.Snapshot()
-		respond(w, state.Public, e)
-	case r.Method == "GET" && r.URL.Path == "/v1/fleet/host-state":
+		s.mu.Lock()
+		current := s.doc.Fleet.State
+		s.mu.Unlock()
 		if member.Kind != "computer" {
-			writeHTTPError(w, &Error{Code: "Forbidden", Message: "computer membership required", Status: 403})
-			return
+			current = current.public()
 		}
-		state, e := s.Snapshot()
-		respond(w, state, e)
+		writeJSON(w, 200, current)
 	case r.Method == "GET" && r.URL.Path == "/v1/fleet/events":
 		s.events(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/fleet/apply":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
-		status, e := s.ApplyContext(r.Context())
-		respond(w, status, e)
+		status, err := s.apply()
+		respond(w, status, err)
 	case r.Method == "POST" && r.URL.Path == "/v1/fleet/invites":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
-		invite, e := s.Invite(time.Now())
-		respond(w, invite, e)
+		invitation, err := s.invite(time.Now())
+		respond(w, invitation, err)
 	case r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/v1/fleet/members/"):
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
-		id := strings.TrimPrefix(r.URL.Path, "/v1/fleet/members/")
-		if !ValidDeviceID(id) {
-			writeHTTPError(w, invalidRequest())
+		device := strings.TrimPrefix(r.URL.Path, "/v1/fleet/members/")
+		if !ValidDeviceID(device) {
+			writeError(w, invalidRequest())
 			return
 		}
-		status, e := s.Remove(id)
-		respond(w, status, e)
+		status, err := s.remove(device)
+		respond(w, status, err)
 	case r.Method == "PUT" && r.URL.Path == "/v1/fleet/self":
 		var report SelfReport
-		if e := readBody(r, &report); e != nil {
-			writeHTTPError(w, e)
+		if err := readBody(r, &report); err != nil {
+			writeError(w, err)
 			return
 		}
-		status, e := s.Report(member, report)
-		respond(w, status, e)
-	case r.Method == "POST" && r.URL.Path == "/v1/fleet/handoff/prepare":
-		var bundle TransferBundle
-		if e := readBody(r, &bundle); e != nil {
-			writeHTTPError(w, e)
-			return
-		}
-		transfer, e := s.Stage(member, bundle)
-		respond(w, transfer, e)
-	case r.Method == "POST" && r.URL.Path == "/v1/fleet/handoff/activate":
-		var activation Envelope
-		if e := readBody(r, &activation); e != nil {
-			writeHTTPError(w, e)
-			return
-		}
-		status, e := s.ActivateTransfer(member, activation)
-		respond(w, status, e)
-
-	case r.Method == "POST" && r.URL.Path == "/v1/fleet/handoff/abort":
-		var abort Envelope
-		if e := readBody(r, &abort); e != nil {
-			writeHTTPError(w, e)
-			return
-		}
-		e := s.AbortStaged(member, abort)
-		respond(w, struct{}{}, e)
+		status, err := s.report(member, report)
+		respond(w, status, err)
 	default:
 		http.NotFound(w, r)
 	}
 }
+
+// serveLocal admits only the installed local credential: the cli on this host.
 func (s *Service) serveLocal(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	if s.admissionUncertain {
-		s.mu.Unlock()
-		writeHTTPError(w, &Error{Code: "ControlUnavailable", Message: "identity write uncertain; restart to reconcile durable state", Status: 503})
-		return
-	}
-	credential, e := auth.ParseCredential(s.identity.LocalBearer)
-	s.mu.Unlock()
 	headers := r.Header.Values("Authorization")
-	if e != nil || len(headers) != 1 || !credential.Verify(headers[0]) {
-		writeHTTPError(w, &Error{Code: "Unauthenticated", Message: "installed local credential required", Status: 401})
+	if len(headers) != 1 || !s.local.Verify(headers[0]) {
+		writeError(w, &Error{Code: "Unauthenticated", Message: "installed local credential required", Status: 401})
 		return
 	}
 	switch {
-
+	case r.Method == "GET" && r.URL.Path == "/v1/local/status":
+		s.mu.Lock()
+		status := s.status()
+		s.mu.Unlock()
+		writeJSON(w, 200, status)
 	case r.Method == "PUT" && r.URL.Path == "/v1/local/network":
 		var input struct {
 			Origin string `json:"origin"`
 		}
-		if e := readBody(r, &input); e != nil {
-			writeHTTPError(w, e)
+		if err := readBody(r, &input); err != nil {
+			writeError(w, err)
 			return
 		}
-		status, e := s.SetOrigin(r.Context(), input.Origin)
-		respond(w, status, e)
-	case r.Method == "GET" && r.URL.Path == "/v1/local/status":
-		writeJSON(w, 200, s.Status())
+		status, err := s.setOrigin(r.Context(), input.Origin)
+		respond(w, status, err)
 	case r.Method == "POST" && r.URL.Path == "/v1/local/join":
 		var input struct {
 			Invitation Invitation `json:"invitation"`
 			Name       string     `json:"name"`
 		}
-		if e := readBody(r, &input); e != nil {
-			writeHTTPError(w, e)
+		if err := readBody(r, &input); err != nil {
+			writeError(w, err)
 			return
 		}
-		e := s.Enroll(r.Context(), input.Invitation, input.Name)
-		respond(w, s.Status(), e)
+		status, err := s.enroll(r.Context(), input.Invitation, input.Name)
+		respond(w, status, err)
 	case r.Method == "POST" && r.URL.Path == "/v1/local/apply":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
-		status, e := s.ApplyContext(r.Context())
-		respond(w, status, e)
+		status, err := s.localApply(r.Context())
+		respond(w, status, err)
 	case r.Method == "POST" && r.URL.Path == "/v1/local/recover":
-		if e := emptyBody(r); e != nil {
-			writeHTTPError(w, e)
+		if err := emptyBody(r); err != nil {
+			writeError(w, err)
 			return
 		}
-		status, e := s.Recover()
-		respond(w, status, e)
+		status, err := s.recover()
+		respond(w, status, err)
 	default:
 		http.NotFound(w, r)
 	}
 }
+
+// events streams revision hints, one per state revision. It authenticates again
+// on every wake, so a removed caller's stream ends at the next commit.
 func (s *Service) events(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeHTTPError(w, errors.New("streaming unavailable"))
+		writeError(w, errors.New("streaming unavailable"))
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	var sent uint64 // revisions start at 1
 	for {
 		s.mu.Lock()
-		if _, e := s.authenticate(r); e != nil {
-			s.mu.Unlock()
-			return
-		}
-		p := s.public
-		changed := s.changed
+		_, err := s.authenticate(r)
+		revision, changed := s.doc.Fleet.State.StateRevision, s.changed
 		s.mu.Unlock()
-		data, _ := json.Marshal(struct {
-			AuthorityEpoch uint64 `json:"authorityEpoch"`
-			StateRevision  uint64 `json:"stateRevision"`
-		}{p.AuthorityEpoch, p.StateRevision})
-		if _, e := fmt.Fprintf(w, "event: revision\ndata: %s\n\n", data); e != nil {
+		if err != nil {
 			return
 		}
-		flusher.Flush()
+		if revision != sent {
+			if _, err := fmt.Fprintf(w, "event: revision\ndata: {\"stateRevision\":%d}\n\n", revision); err != nil {
+				return
+			}
+			flusher.Flush()
+			sent = revision
+		}
 		select {
 		case <-r.Context().Done():
 			return
@@ -226,26 +195,25 @@ func (s *Service) events(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
 func invalidRequest() error {
 	return &Error{Code: "InvalidRequest", Message: "the request is not valid", Status: 400}
 }
+
+// readBody decodes one gateway request body strictly: it is network ingress.
 func readBody(r *http.Request, target any) error {
-	media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if e != nil || media != "application/json" || r.Header.Get("Content-Encoding") != "" {
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" || r.Header.Get("Content-Encoding") != "" {
 		return invalidRequest()
 	}
-	limit := hostconfig.MaximumBytes
-	if strings.HasPrefix(r.URL.Path, "/v1/fleet/handoff/") {
-		limit = MaximumStateBytes * 3
-	}
-	data, e := io.ReadAll(io.LimitReader(r.Body, int64(limit+1)))
-	if e != nil {
+	data, err := io.ReadAll(io.LimitReader(r.Body, maximumRequestBytes+1))
+	if err != nil {
 		return invalidRequest()
 	}
-	if len(data) > limit {
+	if len(data) > maximumRequestBytes {
 		return &Error{Code: "RequestTooLarge", Message: "the request is too large", Status: 413}
 	}
-	if e = strictjson.Decode(data, target); e != nil {
+	if strictjson.Decode(data, target) != nil {
 		return invalidRequest()
 	}
 	return nil
@@ -254,8 +222,8 @@ func emptyBody(r *http.Request) error {
 	if r.Header.Get("Content-Type") != "" || r.Header.Get("Content-Encoding") != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
 		return invalidRequest()
 	}
-	data, e := io.ReadAll(io.LimitReader(r.Body, 1))
-	if e != nil || len(data) != 0 {
+	data, err := io.ReadAll(io.LimitReader(r.Body, 1))
+	if err != nil || len(data) != 0 {
 		return invalidRequest()
 	}
 	return nil
@@ -263,147 +231,21 @@ func emptyBody(r *http.Request) error {
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	_ = json.NewEncoder(w).Encode(value) // a disconnected client cannot be answered
 }
-func respond(w http.ResponseWriter, value any, e error) {
-	if e != nil {
-		writeHTTPError(w, e)
+func respond(w http.ResponseWriter, value any, err error) {
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, 200, value)
 }
-func writeHTTPError(w http.ResponseWriter, e error) {
+
+// writeError answers {code,message}; an untyped error is an internal failure.
+func writeError(w http.ResponseWriter, err error) {
 	var typed *Error
-	if !errors.As(e, &typed) {
+	if !errors.As(err, &typed) {
 		typed = &Error{Code: "InternalError", Message: "skid could not complete the request", Status: 500}
 	}
-	payload := struct {
-		Code    string    `json:"code"`
-		Message string    `json:"message"`
-		Removal *Envelope `json:"removal,omitempty"`
-	}{typed.Code, typed.Message, typed.Removal}
-	writeJSON(w, typed.Status, payload)
-}
-func (s *Service) httpClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	return &http.Client{
-		Transport:     transport,
-		Timeout:       15 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-}
-func (s *Service) request(ctx context.Context, origin, machine, bearer, method, path string, body any, result any) error {
-	var encoded []byte
-	var e error
-	if body != nil {
-		encoded, e = json.Marshal(body)
-		if e != nil {
-			return e
-		}
-	}
-	request, e := http.NewRequestWithContext(ctx, method, origin+path, bytes.NewReader(encoded))
-	if e != nil {
-		return e
-	}
-	request.Header.Set("Authorization", "Bearer "+bearer)
-	request.Header.Set("Skidbladnir-Machine", machine)
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, e := s.httpClient().Do(request)
-	if e != nil {
-		return e
-	}
-	data, e := io.ReadAll(io.LimitReader(response.Body, MaximumStateBytes*3+1))
-	e = errors.Join(e, response.Body.Close())
-	if e != nil {
-		return e
-	}
-	if len(data) > MaximumStateBytes*3 {
-		return errors.New("fleet response too large")
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		var wire struct {
-			Code    string    `json:"code"`
-			Message string    `json:"message"`
-			Removal *Envelope `json:"removal,omitempty"`
-		}
-		if strictjson.Decode(data, &wire) != nil {
-			return errors.New("invalid fleet error response")
-		}
-		return &Error{wire.Code, wire.Message, response.StatusCode, wire.Removal}
-	}
-	return strictjson.Decode(data, result)
-}
-
-// RequestHub uses only a verified cached origin and the current device identity.
-// It never follows an unsigned redirect or automatically repeats a mutation.
-func (s *Service) RequestHub(ctx context.Context, method, path string, body any, result any) error {
-	s.mu.Lock()
-	if e := s.admissionError(); e != nil {
-		s.mu.Unlock()
-		return e
-	}
-	association := s.identity.ActiveFleet
-	if association == nil {
-		s.mu.Unlock()
-		return conflict("local mode; join a fleet or recover")
-	}
-	hub := Machine{}
-	for _, m := range s.public.Machines {
-		if m.Machine == s.public.ActiveHub {
-			hub = m
-		}
-	}
-	bearer := association.Bearer
-	s.mu.Unlock()
-	if hub.Origin == "" {
-		return &Error{Code: "HubUnavailable", Message: "hub offline; reconnect its tailscale network", Status: 503}
-	}
-	return s.request(ctx, hub.Origin, hub.Machine, bearer, method, path, body, result)
-}
-func (s *Service) Enroll(ctx context.Context, invitation Invitation, name string) error {
-	s.mu.Lock()
-	admissionErr := s.admissionError()
-	s.mu.Unlock()
-	if admissionErr != nil {
-		return admissionErr
-	}
-	identity := s.Identity()
-	if identity.ActiveFleet != nil && identity.ActiveFleet.FleetID == invitation.FleetID {
-		if e := ValidateInvitation(invitation, time.Now()); e != nil {
-			return e
-		}
-		if identity.ActiveFleet.PublicKey != invitation.PublicKey {
-			return errors.New("same-fleet invitation key mismatch")
-		}
-		var state HostState
-		if e := s.request(ctx, invitation.Hub.Origin, invitation.Hub.Machine, identity.ActiveFleet.Bearer, "GET", "/v1/fleet/host-state", nil, &state); e != nil {
-			return e
-		}
-		return s.Receive(state)
-	}
-	request, e := s.StageJoin(invitation, name)
-	if e != nil {
-		return e
-	}
-	s.mu.Lock()
-	pending := *s.identity.Pending
-	s.mu.Unlock()
-	// First recover a possibly committed response using only the staged credential.
-	var state HostState
-	e = s.request(ctx, invitation.Hub.Origin, invitation.Hub.Machine, pending.Association.Bearer, "GET", "/v1/fleet/host-state", nil, &state)
-	if e == nil {
-		return s.ConfirmJoin(state)
-	}
-	var typed *Error
-	if !errors.As(e, &typed) || typed.Status != 401 {
-		return e
-	}
-	e = s.request(ctx, invitation.Hub.Origin, invitation.Hub.Machine, "", "POST", "/v1/fleet/join", request, &state)
-	if e != nil {
-		return e
-	}
-	return s.ConfirmJoin(state)
+	writeJSON(w, typed.Status, typed)
 }

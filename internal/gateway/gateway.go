@@ -321,10 +321,9 @@ func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.R
 			writer.Header().Set("WWW-Authenticate", "Bearer")
 		}
 		writeJSON(writer, failure.Status, struct {
-			Code    string          `json:"code"`
-			Message string          `json:"message"`
-			Removal *fleet.Envelope `json:"removal,omitempty"`
-		}{failure.Code, failure.Message, failure.Removal})
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}{failure.Code, failure.Message})
 	} else {
 		writeError(writer, errorInternal)
 	}

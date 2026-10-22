@@ -77,13 +77,8 @@ internal fun closeFailureIsDefinitive(failure: GatewayFailure): Boolean = when (
 }
 
 @Serializable private data class ErrorResponse(val code: String, val message: String)
-internal class GatewayClient(private val onRemoval: ((Response) -> Unit)? = null) {
+internal class GatewayClient {
     internal val http = OkHttpClient.Builder()
-        .addInterceptor { chain ->
-            val response = chain.proceed(chain.request())
-            if (response.code == 403) onRemoval?.invoke(response)
-            response
-        }
         .proxy(Proxy.NO_PROXY)
         .retryOnConnectionFailure(false)
         .followRedirects(false)

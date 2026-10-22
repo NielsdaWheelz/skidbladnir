@@ -78,7 +78,6 @@ func (p AndroidPush) Validate() error {
 type Config struct {
 	AndroidPush    *AndroidPush        `yaml:"android_push,omitempty" json:"android_push,omitempty"`
 	Version        int                 `yaml:"version" json:"version"`
-	Hub            string              `yaml:"hub,omitempty" json:"hub,omitempty"`
 	Profiles       []Profile           `yaml:"profiles" json:"profiles"`
 	Shell          string              `yaml:"shell,omitempty" json:"shell,omitempty"`
 	Terminal       string              `yaml:"terminal,omitempty" json:"terminal,omitempty"`
@@ -274,10 +273,10 @@ func validHome(v string) bool {
 	return (filepath.IsAbs(v) || strings.HasPrefix(v, "~/")) && utf8.ValidString(v) && !strings.ContainsRune(v, 0)
 }
 
-// ValidateMachines admits sparse overrides against active and retired membership.
-func (c Config) ValidateMachines(active, retired []string) error {
+// ValidateMachines admits sparse overrides against the fleet's machine names.
+func (c Config) ValidateMachines(names []string) error {
 	known := map[string]bool{}
-	for _, n := range append(append([]string{}, active...), retired...) {
+	for _, n := range names {
 		known[strings.ToLower(n)] = true
 	}
 	seen := map[string]bool{}
@@ -292,9 +291,6 @@ func (c Config) ValidateMachines(active, retired []string) error {
 		if o.DefaultMachine != "" && !known[strings.ToLower(o.DefaultMachine)] {
 			return fmt.Errorf("machines.%s.default_machine: unknown machine", n)
 		}
-	}
-	if c.Hub != "" && !known[strings.ToLower(c.Hub)] {
-		return errors.New("hub: unknown machine")
 	}
 	if c.DefaultMachine != "" && !known[strings.ToLower(c.DefaultMachine)] {
 		return errors.New("default_machine: unknown machine")
@@ -372,17 +368,6 @@ func Resolve(c Config, name, home, loginShell string) (Settings, error) {
 	}
 	return s, nil
 }
-func ValidateTmuxVersion(version string) error {
-	if len(version) > 64 || !strings.HasPrefix(version, "tmux ") || strings.TrimSpace(strings.TrimPrefix(version, "tmux ")) == "" {
-		return errors.New("tmux version is invalid")
-	}
-	for _, c := range []byte(version) {
-		if c < 0x20 || c > 0x7e {
-			return errors.New("tmux version is invalid")
-		}
-	}
-	return nil
-}
 
 // validateShape forbids yaml's implicit scalar conversions before typed decode.
 func validateShape(n *yaml.Node, path string) error {
@@ -404,7 +389,7 @@ func validateShape(n *yaml.Node, path string) error {
 				shape = "machines"
 			case "android_push":
 				shape = "android_push"
-			case "hub", "shell", "terminal", "default_machine":
+			case "shell", "terminal", "default_machine":
 			default:
 				return fmt.Errorf("%s: unknown field", p)
 			}

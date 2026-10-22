@@ -395,8 +395,7 @@ internal class NotificationOwner(private val context: Context) {
 
     private suspend fun admit(value: ObserverSnapshot): Boolean {
         if (resetting) return false
-        val association = MachineStore(context).association() ?: return false
-        val fleet = association.envelope?.let { verifyPublicFleet(it, association.publicKey).machines } ?: return false
+        val fleet = MachineStore(context).association()?.view?.machines ?: return false
         if (value.machines.map { it.machine }.toSet() != fleet.map { it.machine }.toSet()) {
             unavailable = true
             snapshot = null

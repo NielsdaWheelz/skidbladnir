@@ -18,8 +18,6 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		writeError(writer, "InvalidRequest")
 		return
 	}
-	// Authentication precedes writer admission. Drain may run while the fleet
-	// mutation lock is held; no admitted writer can wait for that lock.
 	member, err := observer.fleet.Authenticate(request)
 	if err != nil {
 		writeFleetError(writer, err)
@@ -70,7 +68,7 @@ func (observer *Observer) ServeHTTP(writer http.ResponseWriter, request *http.Re
 func (observer *Observer) state(writer http.ResponseWriter) {
 	observer.mutex.Lock()
 	data, err := json.Marshal(observer.snapshot)
-	unavailable := observer.unavailable || observer.drained
+	unavailable := observer.unavailable
 	observer.mutex.Unlock()
 	if unavailable || err != nil || len(data) > attention.MaximumSnapshotBytes {
 		writeError(writer, "NotificationsUnavailable")
@@ -87,19 +85,17 @@ func (observer *Observer) events(writer http.ResponseWriter, request *http.Reque
 	}
 	subscriber := make(chan struct{}, 1)
 	observer.mutex.Lock()
-	if observer.unavailable || observer.drained {
+	if observer.unavailable {
 		observer.mutex.Unlock()
 		writeError(writer, "NotificationsUnavailable")
 		return
 	}
-	observer.streams.Add(1)
 	observer.subscribers[subscriber] = struct{}{}
 	observer.mutex.Unlock()
 	defer func() {
 		observer.mutex.Lock()
 		delete(observer.subscribers, subscriber)
 		observer.mutex.Unlock()
-		observer.streams.Done()
 	}()
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-store")
@@ -107,7 +103,7 @@ func (observer *Observer) events(writer http.ResponseWriter, request *http.Reque
 	for {
 		observer.mutex.Lock()
 		hint := attention.Hint{Schema: 1, Epoch: observer.file.Epoch, Revision: observer.file.Revision}
-		unavailable := observer.unavailable || observer.drained
+		unavailable := observer.unavailable
 		if index := observer.receiverIndex(device); index >= 0 && observer.file.Receivers[index].Removed {
 			unavailable = true
 		}
@@ -181,10 +177,9 @@ func writeFleetError(writer http.ResponseWriter, err error) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.WriteHeader(value.Status)
 	_ = json.NewEncoder(writer).Encode(struct {
-		Code    string          `json:"code"`
-		Message string          `json:"message"`
-		Removal *fleet.Envelope `json:"removal,omitempty"`
-	}{value.Code, value.Message, value.Removal}) // justify-ignore-error: a disconnected response cannot be repaired.
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}{value.Code, value.Message}) // justify-ignore-error: a disconnected response cannot be repaired.
 }
 func readRegistration(writer http.ResponseWriter, request *http.Request, value any) bool {
 	media, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))

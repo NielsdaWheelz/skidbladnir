@@ -2,31 +2,23 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/install"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/mdp/qrterminal/v3"
 	"golang.org/x/term"
 )
-
-const invitationPrefix = "skid://connect/"
 
 func installationCommand(arguments []string, stdout, stderr io.Writer) int {
 	if err := install.Run(context.Background(), arguments, stdout, stderr); err != nil {
@@ -44,29 +36,23 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 		fmt.Fprintln(stderr, "skid state unavailable")
 		return exitFailure
 	}
-	identity, err := fleet.LoadIdentity(directory)
+	local, err := fleet.ReadLocal(directory)
 	if err != nil {
 		fmt.Fprintln(stderr, "skid is not installed; run skid install")
 		return exitFailure
 	}
-	local := controlTarget{"http://127.0.0.1:7341", identity.Machine, identity.LocalBearer}
+	self, hub := local.Target(local.Machine), local.Target(local.Hub)
 	var status fleet.Status
 	switch arguments[0] {
-	case "status":
+	case "status", "apply", "recover":
 		if len(arguments) != 1 {
 			return exitUsage
 		}
-		err = controlRequest(ctx, local, "GET", "/v1/local/status", nil, &status)
-	case "apply":
-		if len(arguments) != 1 {
-			return exitUsage
+		method := "POST"
+		if arguments[0] == "status" {
+			method = "GET"
 		}
-		err = controlRequest(ctx, local, "POST", "/v1/local/apply", nil, &status)
-	case "recover":
-		if len(arguments) != 1 {
-			return exitUsage
-		}
-		err = controlRequest(ctx, local, "POST", "/v1/local/recover", nil, &status)
+		err = fleet.Call(ctx, self, method, "/v1/local/"+arguments[0], nil, &status)
 	case "join":
 		flags := flag.NewFlagSet("join", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -82,78 +68,78 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 			fmt.Fprintln(stderr, "invitation unavailable")
 			return exitFailure
 		}
-		encoded, found := strings.CutPrefix(strings.TrimSpace(line), invitationPrefix)
-		data, decodeErr := base64.RawURLEncoding.Strict().DecodeString(encoded)
-		var invitation fleet.Invitation
-		if !found || decodeErr != nil || strictjson.Decode(data, &invitation) != nil {
+		invitation, parseErr := fleet.ParseInvitation(strings.TrimSpace(line), time.Now())
+		if parseErr != nil {
 			fmt.Fprintln(stderr, "invalid invitation; run skid connect again")
 			return exitFailure
 		}
-		err = controlRequest(ctx, local, "POST", "/v1/local/join", struct {
+		err = fleet.Call(ctx, self, "POST", "/v1/local/join", struct {
 			Invitation fleet.Invitation `json:"invitation"`
 			Name       string           `json:"name"`
 		}{invitation, *name}, &status)
-	case "connect", "remove":
-		if arguments[0] == "connect" {
-			if len(arguments) != 1 {
-				return exitUsage
-			}
-			if err = controlRequest(ctx, local, "GET", "/v1/local/status", nil, &status); err != nil {
-				break
-			}
-			if status.Version != releaseVersion {
-				err = errors.New("installed service differs from this skid release; restart the installed service before connect")
-				break
-			}
-			origin, networkErr := connectNetwork(ctx)
-			if networkErr != nil {
-				fmt.Fprintln(stderr, networkErr)
-				return exitFailure
-			}
-			if err = controlRequest(ctx, local, "PUT", "/v1/local/network", struct {
-				Origin string `json:"origin"`
-			}{origin}, &status); err != nil {
-				break
-			}
-		} else if len(arguments) != 2 || !fleet.ValidDeviceID(arguments[1]) {
+	case "connect":
+		if len(arguments) != 1 {
 			return exitUsage
 		}
-		hub, hubErr := activeHub(directory, identity)
-		if hubErr != nil {
-			err = hubErr
+		if err = fleet.Call(ctx, self, "GET", "/v1/local/status", nil, &status); err != nil {
 			break
 		}
-		if arguments[0] == "remove" {
-			err = controlRequest(ctx, hub, "DELETE", "/v1/fleet/members/"+arguments[1], nil, &status)
+		if status.Version != releaseVersion {
+			fmt.Fprintln(stderr, "skid connect: installed service differs from this skid release; restart the installed service before connect")
+			return exitFailure
+		}
+		origin, networkErr := networkOrigin(ctx)
+		if networkErr == nil {
+			networkErr = install.ConfigureTailnetRoute(ctx, origin, fleet.LocalOrigin)
+		}
+		if networkErr != nil {
+			fmt.Fprintln(stderr, networkErr)
+			return exitFailure
+		}
+		if err = fleet.Call(ctx, self, "PUT", "/v1/local/network", struct {
+			Origin string `json:"origin"`
+		}{origin}, &status); err != nil {
 			break
+		}
+		if hub.Origin == "" {
+			fmt.Fprintln(stderr, "skid connect: "+hubWithoutOrigin)
+			return exitFailure
 		}
 		var invitation fleet.Invitation
-		if err = controlRequest(ctx, hub, "POST", "/v1/fleet/invites", nil, &invitation); err != nil {
+		if err = fleet.Call(ctx, hub, "POST", "/v1/fleet/invites", nil, &invitation); err != nil {
 			break
 		}
-		if err = fleet.ValidateInvitation(invitation, time.Now()); err != nil {
-			break
-		}
-		data, encodeErr := json.Marshal(invitation)
-		if encodeErr != nil {
-			err = encodeErr
-			break
-		}
-		value := invitationPrefix + base64.RawURLEncoding.EncodeToString(data)
+		line := fleet.EncodeInvitation(invitation)
 		if file, ok := stdout.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-			qrterminal.GenerateHalfBlock(value, qrterminal.L, stdout)
+			qrterminal.GenerateHalfBlock(line, qrterminal.L, stdout)
 		}
-		_, err = fmt.Fprintln(stdout, value)
-		if err != nil {
+		if _, err := fmt.Fprintln(stdout, line); err != nil {
 			return exitFailure
 		}
 		fmt.Fprintln(stderr, "scan with skid on your phone, or paste into skid join on another computer; expires in five minutes")
 		return 0
+	case "remove":
+		if len(arguments) != 2 || !fleet.ValidDeviceID(arguments[1]) {
+			return exitUsage
+		}
+		if hub.Origin == "" {
+			fmt.Fprintln(stderr, "skid remove: "+hubWithoutOrigin)
+			return exitFailure
+		}
+		err = fleet.Call(ctx, hub, "DELETE", "/v1/fleet/members/"+arguments[1], nil, &status)
 	default:
 		return exitUsage
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "skid %s: %v\n", arguments[0], err)
+		message := "skid service unavailable; check skid status and network access"
+		var failure *fleet.Error
+		if errors.As(err, &failure) {
+			message = "skid rejected the request"
+			if failure.Code != "" {
+				message = failure.Code + ": " + failure.Message
+			}
+		}
+		fmt.Fprintf(stderr, "skid %s: %s\n", arguments[0], message)
 		return exitFailure
 	}
 	if err := json.NewEncoder(stdout).Encode(status); err != nil {
@@ -162,85 +148,7 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	return 0
 }
 
-type controlTarget struct{ origin, machine, bearer string }
-
-func activeHub(directory string, identity fleet.Identity) (controlTarget, error) {
-	a := identity.ActiveFleet
-	if a == nil {
-		return controlTarget{}, errors.New("local mode; join a fleet or run skid recover")
-	}
-	key, err := fleet.ParsePublicKey(a.PublicKey)
-	if err != nil {
-		return controlTarget{}, err
-	}
-	state, err := fleet.LoadHostState(directory)
-	if err != nil {
-		return controlTarget{}, err
-	}
-	public, err := fleet.VerifyPublic(key, state.Public)
-	if err != nil || public.FleetID != a.FleetID {
-		return controlTarget{}, errors.New("fleet routing unavailable; check skid status")
-	}
-	for _, target := range public.Machines {
-		if target.Machine != public.ActiveHub {
-			continue
-		}
-		if target.Machine == identity.Machine {
-			return controlTarget{"http://127.0.0.1:7341", target.Machine, identity.LocalBearer}, nil
-		}
-		if target.Origin == "" {
-			return controlTarget{}, errors.New("hub has no remote address; connect tailscale on the hub and run skid connect there")
-		}
-		return controlTarget{target.Origin, target.Machine, a.Bearer}, nil
-	}
-	return controlTarget{}, errors.New("active hub unavailable")
-}
-
-func controlRequest(ctx context.Context, target controlTarget, method, path string, body, result any) error {
-	var data []byte
-	var err error
-	if body != nil {
-		data, err = json.Marshal(body)
-		if err != nil {
-			return err
-		}
-	}
-	request, err := http.NewRequestWithContext(ctx, method, target.origin+path, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+target.bearer)
-	request.Header.Set("Skidbladnir-Machine", target.machine)
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	defer transport.CloseIdleConnections()
-	client := http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	response, err := client.Do(request)
-	if err != nil {
-		return errors.New("skid service unavailable; check skid status and network access")
-	}
-	data, err = io.ReadAll(io.LimitReader(response.Body, fleet.MaximumStateBytes+1))
-	err = errors.Join(err, response.Body.Close())
-	if err != nil || len(data) > fleet.MaximumStateBytes {
-		return errors.New("skid response unavailable")
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		// Never surface arbitrary network response text, credentials or commands.
-		var failure struct {
-			Code    string          `json:"code"`
-			Message string          `json:"message"`
-			Removal *fleet.Envelope `json:"removal,omitempty"`
-		}
-		if strictjson.Decode(data, &failure) != nil {
-			return errors.New("skid rejected the request")
-		}
-		return errors.New(failure.Code + ": " + failure.Message)
-	}
-	return strictjson.Decode(data, result)
-}
+const hubWithoutOrigin = "hub has no remote address; connect tailscale on the hub and run skid connect there"
 
 func networkOrigin(ctx context.Context) (string, error) {
 	path, err := install.TailscalePath()
@@ -259,48 +167,4 @@ func networkOrigin(ctx context.Context) (string, error) {
 		return "", errors.New("tailscale is not connected; sign in to tailscale first")
 	}
 	return "https://" + strings.TrimSuffix(status.Self.DNSName, ".") + ":8443", nil
-}
-
-func connectNetwork(ctx context.Context) (string, error) {
-	origin, err := networkOrigin(ctx)
-	if err != nil {
-		return "", err
-	}
-	if err := install.ConfigureTailnetRoute(ctx, origin, "http://127.0.0.1:7341"); err != nil {
-		return "", err
-	}
-
-	return origin, nil
-}
-
-// The service environment may omit SHELL. Resolve the account's login shell at
-// this OS boundary rather than choosing a different shell on the user's behalf.
-func loginShell(ctx context.Context, home string) (string, error) {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell, nil
-	}
-	var command *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		command = exec.CommandContext(ctx, "/usr/bin/dscl", ".", "-read", "/Users/"+filepath.Base(home), "UserShell")
-	} else {
-		command = exec.CommandContext(ctx, "getent", "passwd", fmt.Sprint(os.Getuid()))
-	}
-	data, err := command.Output()
-	if err != nil {
-		return "", errors.New("login shell unavailable; set shell in config.yaml")
-	}
-	value := strings.TrimSpace(string(data))
-	if runtime.GOOS == "darwin" {
-		_, value, _ = strings.Cut(value, ": ")
-	} else {
-		fields := strings.Split(value, ":")
-		if len(fields) != 7 {
-			return "", errors.New("login shell unavailable")
-		}
-		value = fields[6]
-	}
-	if !filepath.IsAbs(value) {
-		return "", errors.New("login shell unavailable; set shell in config.yaml")
-	}
-	return value, nil
 }

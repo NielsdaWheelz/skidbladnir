@@ -49,15 +49,12 @@ func success(value any) Result {
 
 type Client struct {
 	peers          []peer
-	defaultMachine string
+	defaultMachine Machine
+	hub            string
+	self           fleet.Target
 	http           *http.Client
 	mu             sync.RWMutex
-	refreshMutex   sync.Mutex
 	directory      string
-	identity       fleet.Identity
-	public         fleet.Public
-	envelope       fleet.Envelope
-	hub            string
 }
 
 // Execute never retries a write, including after a lost acknowledgement.
@@ -506,10 +503,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
 	var value *struct {
-		Code     string          `json:"code"`
-		Message  string          `json:"message"`
-		Dispatch string          `json:"dispatch,omitempty"`
-		Removal  *fleet.Envelope `json:"removal,omitempty"`
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		Dispatch string `json:"dispatch,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -538,7 +534,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 
 func knownRejection(code string) bool {
 	switch code {
-	case "DeviceRemoved", "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
+	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
 		return true
 	default:
 		return false

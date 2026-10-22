@@ -39,12 +39,6 @@ and trust each other's outputs:
 - the accepted cost: a producer bug renders wrong data instead of crashing a client.
   repair the producer.
 
-same release is not same authority: a removed member runs the same binary. signed
-fleet state from another host keeps its consumer-side checks (signature, fleet-key
-binding, epoch and revision ordering, member removal), because they establish
-authority, not shape. their failure rejects that state as a modeled error, never a
-panic.
-
 ## copy and drafts
 
 - whoever produces an outcome renders its copy. clients display host error and status

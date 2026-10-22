@@ -31,7 +31,7 @@ arguments are removed from cli/api; current desktop/phone forms have no such con
 | --- | --- |
 | each installed host | local tmux, processes, terminal/native apis, local observation; never manages another host's tmux |
 | desktop/phone | compose enrolled host apis directly; hub is never an execution proxy |
-| active hub | accepted configuration, membership, observer and android publication; no elections or remote execution ownership |
+| hub | accepted configuration, membership, observer and android publication; fixed, no elections or remote execution ownership |
 | each notification device | acknowledgement, admission, exact focus/clicks, presentation; no fleet-wide acknowledgement |
 | optional hub fcm adapter | user-owned credentials, per-phone destinations and content-free hints; no project backend |
 | providers/user | provider installation, accounts, settings, history and daemon lifecycle |
@@ -55,7 +55,6 @@ this populated example is explanatory, not the installed default:
 
 ```yaml
 version: 1
-hub: devbox
 profiles:
   - name: work
     label: "codex · work"
@@ -79,7 +78,6 @@ machines:
 | field | exact meaning |
 | --- | --- |
 | `version` | required integer `1`; reject other versions, duplicate/unknown keys and multiple yaml documents |
-| `hub?` | enrolled machine name; omitted means current hub, self at bootstrap; desired placement, not active authority |
 | `profiles` | required ordered list; unique existing-valid profile keys; `label` defaults to `name`; nonempty opaque `command`; empty list is valid |
 | `provider?`, `home?` | observation metadata; provider `codex` or `claude`; home requires provider and is absolute or `~/…`; omitted home uses that provider's ordinary default |
 | `shell?` | absolute bash/zsh executable on the destination; omitted uses that host's login shell; unsupported shell is an actionable local error |
@@ -90,10 +88,10 @@ machines:
 
 machine names reuse existing case-insensitive uniqueness and display validation;
 stable `mh-` identity is separate. preserve existing display spelling. unknown
-override machines/profiles are errors. retired machine overrides become dormant;
-a retired desktop default resolves to self with existing selection recovery.
-removing a desired but not active hub cancels that pending transfer and reports
-`hub target removed; update config`. never rewrite human yaml automatically.
+override machines/profiles are errors. removed machines are not retained, so a
+removed machine still named in `machines:` or `default_machine` makes the next
+apply `ConfigInvalid` until the yaml drops it; meanwhile a desktop default naming
+it resolves to self. there is no `hub` key. never rewrite human yaml automatically.
 membership commands own names/order;
 append new machines. no yaml include, env interpolation, executable config,
 credentials, endpoint overrides or provider command preflight. `command` alone
@@ -106,34 +104,42 @@ generated private state uses existing xdg paths, directories `0700`, files `0600
 reuse machine handles, bearer generation, atomic replacement and notification stores.
 
 ```text
-identity.json       machine handle, active enrollment/key/bearer, pending enrollment
-host-state.json     coherent public/private signed pair (computers)
-resolved.json       immutable locally resolved settings + source revision/digest
-authority.json     hub signing key, members, accepted yaml, revisions, handoff state
-existing observer/device files   retained epoch, attention, acknowledgement
+config/machine-handle           `mh-…`, written once at first start
+state/fleet.json                machine, name, localBearer,
+                                fleet {deviceId, bearer, state},
+                                applied {settings, application},
+                                authority (hub only)
+state/notification-observer-v1.json   hub observer epoch, revision, records, receivers
+state/authority.lock            flock held for the `skid serve` lifetime
+existing device files           retained acknowledgement
 ```
-
-hub state stores accepted yaml bytes/settings; the human file can hold pending
-edits. caches are replaceable; identity/authority and observer state are not.
 
 ```text
-public: {schema:1, kind:"fleet", fleetId, authorityEpoch, stateRevision,
-         configRevision, activeHub, machines:[{machine,name,origin?}], androidPush?}
-host:   {schema:1, kind:"host", fleetId, authorityEpoch, stateRevision,
-         configRevision, settings, members:[{deviceId,kind,machine?,verifier}],
-         retired:[{deviceId,kind,machine?,name?,verifier,removal}]}
-envelope: {payload:<base64url exact json bytes>, signature:<base64url ed25519>}
+state:     {fleetId, hub, stateRevision, configRevision,
+            machines:[{machine,name,origin?}], androidPush?,
+            members?:[{deviceId,kind,machine?,verifier}], settings?}
+authority: {invites:[{verifier,expiresAt}], reports:{deviceId: report}}
 ```
 
-`fleetId` is the sha256 fingerprint of one ed25519 public key. sign exact payload
-bytes with a kind-specific domain prefix; verify before strict bounded decoding.
-no canonical-json framework or certificates. `authorityEpoch` increases on hub
-handoff; it is distinct from the existing notification observer epoch.
-`stateRevision` increases on control changes; `configRevision` increases on
-accepted settings changes. public/private snapshots share epoch/state revision.
-return/persist both as one host-state object; no cross-file commit protocol.
-reject wrong fleet/key, regressions and conflicting same-revision payloads.
-peers relay signed bytes; they cannot assert a new hub through unsigned discovery.
+`state` is the one wire and cache type: the hub persists it as authority, serves
+it from `GET /v1/fleet` and the join reply (phones get it without `members` and
+`settings`), and members cache it. `authority` exists only on the hub; its
+presence is the hub role, read once per process. `fleetId` is 32 random bytes as
+64 lowercase hex. `stateRevision` increases on membership, origin and settings
+changes; `configRevision` on accepted settings changes. `machines` lists the hub
+first, then join order. the hub stores accepted settings, not yaml bytes; the human
+file can hold pending edits. a member's cached `state` is replaceable; the handle, the
+hub's `authority` and observer state are not.
+
+one process writes these files. bootstrap, join, recover and every hub mutation
+commit with one atomic replace of `fleet.json`; creating a fleet resets the
+observer file before that replace, and the observer starts fresh from a file
+that names an earlier fleet (the exiting process may write it once more). `applied` persists: a host whose newly
+accepted settings do not resolve locally keeps its previous applied settings with
+`invalid_host` across restarts. a deleted handle with a surviving `fleet.json`
+refuses to start. there are no signatures, envelopes, authority epochs, relays or
+staging files: members fetch plain json only from the hub, over tailnet tls, with
+their own bearer.
 
 ## 3. application, enrollment and access
 
@@ -144,19 +150,28 @@ opening desktop skid on any computer requests hub application of its own yaml;
 hub service startup does likewise. coalesce concurrent requests under one hub
 mutation lock. accept the complete structurally valid file atomically, or retain
 the previous accepted file. clients never upload cached settings. no file watcher.
-publish authenticated revision hints; connected clients fetch on change/reconnect.
-reuse existing stream/backoff patterns; disconnected caches have no expiry.
+publish authenticated revision hints, one per state revision; connected clients
+fetch on change/reconnect. a member backs off from 1 s to 30 s while the hub is
+unreachable; a local apply or connect that reaches the hub resets it.
+disconnected caches have no expiry. the hub reloads push transport only when the
+accepted push options or its credential file change.
 
-membership admission is independent of local launch resolution. install newer
-signed membership first and close revoked connections even if the new shell/path
-is invalid. resolve settings locally, swap one immutable runtime snapshot, and
-report `{authorityEpoch, receivedStateRevision, desiredConfigRevision,
-appliedConfigRevision, status, reason?}`.
-status is `applied`, `pending_offline` or `invalid_host`. retain previous launch
-settings on local failure. every create/native read captures one revision;
-late results cannot restore invalidated account scopes after a config change.
-application acknowledgements do not themselves advance control revisions.
-revocation progress uses received state, not config revision or response delivery.
+membership admission is independent of local launch resolution. adopt the hub's
+membership first and close removed devices' connections even if the new
+shell/path is invalid. resolve settings locally, swap one immutable runtime
+snapshot, and report `{desiredConfigRevision, appliedConfigRevision, status,
+reason?}`. status is `applied`, `pending_offline` or `invalid_host`. retain
+previous launch settings on local failure. every create/native read captures one
+revision; late results cannot restore invalidated account scopes after a config
+change. a report advances `stateRevision` only when it changes the host's origin.
+
+identity and role are constants of a process (crash-only). after a committed join
+or recover, or any failed `fleet.json` write, the http reply is written and
+`skid serve` exits non-zero; launchd `KeepAlive` and systemd `Restart=on-failure`
+restart it, and `KillMode=process`/`AbandonProcessGroup` keep tmux. SIGTERM exits
+zero. inside the process one change notification plus a snapshot pull delivers
+each committed change to the gateway, session manager, desktop client and
+observer.
 
 retain `127.0.0.1:7341` and tailscale serve's https `8443` `/v1` route. installed
 clients may synthesize the loopback endpoint ONLY for their own stored machine
@@ -168,64 +183,77 @@ unusable invite. network authentication remains external.
 
 each enrolled device has its own random 256-bit bearer. hosts receive only its
 sha256 verifier, mapped to device id; retain constant-time authentication.
-computer members receive private host state; phones receive public routing only.
+computer members receive members and settings; phones receive public routing only.
 ordinary members have full fleet access, including future machines. this is one
 trusted user's fleet, not a role system. exact target-machine checks remain.
 
+every cli command prints json on stdout and exits 0 on success, 1 on failure and
+64 on usage errors. commands that need the hub call loopback with the local bearer
+on the hub, else the hub's origin with this host's fleet bearer; without a hub
+origin they fail with `hub has no remote address; connect tailscale on the hub
+and run skid connect there`.
+
 | cli | behavior |
 | --- | --- |
-| `skid connect` | request five-minute single-use invite at hub; print qr and pasteable invitation, never permanent credentials |
-| `skid join [--name NAME]` | read invite from stdin/prompt, pin fleet/key/origin; stage enrollment before request; adopt destination settings only after confirmation; save old yaml inactive without merging |
-| `skid remove DEVICE_ID` | remove that device; list offline hosts where revocation remains pending; refuse removing active hub |
-| `skid recover` | explicit new-fleet recovery from cached settings; new key/id, re-enroll machines/re-pair phones; never promotes a cache under old trust |
+| `skid connect` | refuse when the service version differs from the cli; configure the tailscale origin and serve route and report the origin; request a five-minute single-use invite from the hub; print one pasteable line, a qr only on a tty; never permanent credentials |
+| `skid join [--name NAME]` | read one invite line from stdin/prompt; the service posts a fresh device id and verifier to the invite's hub with no staging, and on success replaces this host's fleet in one write and restarts; failure leaves state untouched; local `config.yaml` stays untouched, no inactive copy |
+| `skid remove DEVICE_ID` | remove that device at the hub; refuse the hub's own device; no pending list |
+| `skid recover` | new fleet with this host as hub from its cached accepted settings (no `machines:` overrides, default machine self); new fleet id, printed; the service restarts and its startup apply adopts this host's `config.yaml` when valid; re-join computers and re-pair phones |
 | `skid apply` | request application of the hub's own yaml without opening the interactive browser |
-| `skid status` | installed version, active/desired hub, members, apply/revocation/receiver status; no terminal or account contents |
+| `skid status` | `{version, fleetId, hub, stateRevision, configRevision, members:[{deviceId,kind,machine?}], applications:[{deviceId,name,report:{origin?,version,application}}], message?}`; no terminal or account contents |
 
-invite payload: `{schema:1, fleetId, publicKey, hub:{machine,name,origin}, token,
-expiresAt, proof}`. `proof` is an exact-byte envelope signed under the `invitation`
-domain: `{schema:1,kind:"invitation",fleetId,hub,token,expiresAt}`. verify it and
-require exact claim equality before using the qr origin with any saved bearer.
-a public fleet fingerprint alone cannot authorize credential routing. invitation can authorize either device kind. joining submits
-`{token,deviceId,kind,name,machine?,origin?,verifier}`. the hub commits membership
-and consumes the invite together. stage a pending credential without replacing
-the active association; failed/expired invites must leave existing access intact.
-recover a lost response using that pending credential, then atomically adopt the
-confirmed membership; do not mint another principal or replay a consumed invite.
-same-fleet discovery repair first authenticates with the existing identity;
-it does not create another member. re-enrollment after removal uses a new device id.
-machine identity/tmux survive joining; former standalone phones do not join
-implicitly. duplicate names require an explicit new name, never silent renaming.
+invite: `skid://connect/` plus base64url (no padding) of `{fleetId,
+hub:{machine,name,origin}, token, expiresAt}`, at most 4096 decoded bytes, token
+32 random bytes. `skid join` and the phone parse it as human ingress: prefix,
+canonical base64url, strict json, valid handle/name/origin, unexpired. the hub
+stays authoritative for one-use and expiry; it stores only the token's sha256
+verifier and expiry, needs its own origin, prunes expired invites and admits at
+most 32 live ones. one invitation can enroll either device kind. joining posts
+`{token,deviceId,kind,name,machine?,origin?,verifier}` without a bearer. the hub
+validates the body, matches the token in constant time, consumes it only on
+success and commits membership in the same write. a computer whose machine is
+already a member (not the hub) replaces that member's device id, verifier and
+origin, keeping its position and, unless the request names a valid new one, its
+name; any other device is appended. a retried committed join gets 401 (token
+consumed): rerun `skid join` with a fresh invite. the phone persists a staged
+identity before joining and recovers a lost reply by fetching with it; same-fleet
+repair first authenticates with the saved identity, and only a 401 stages a new
+device id and joins. machine identity/tmux survive joining; former standalone
+phones do not join implicitly. duplicate names require an explicit new name,
+never silent renaming.
 
-revocation removes a computer from routing as well as its client credential.
-on receiving removal, that computer closes all old-fleet connections, rotates
-its own local credential and enters detached local mode; local terminals survive.
-it may join again or explicitly start a new fleet. no automatic old-fleet recovery.
-persist the new local bearer and `activeFleet:null` atomically. self routing/auth
-uses installed identity directly, ignoring old fleet caches while retaining
-resolved launch settings. restart finishes connection closure. never infer local
-authority from a loopback source address: tailscale serve uses loopback too.
-other machines reject/close the revoked principal when they receive the update;
-already accepted terminal effects are not undone.
-retain verifier tombstones for the fleet lifetime. a matching revoked credential
-receives `403 DeviceRemoved` with ONLY its signed content-free removal proof:
-`{schema:1,kind:"member-removed",fleetId,deviceId,authorityEpoch,stateRevision}`.
-distribute those proofs in private host state; any known member can return one.
-this lets an offline removed device learn its removal without granting continued
-operational/private-state access. admit proof only for its current fleet/device.
+revocation is 401. removing a device drops its member record (and a computer's
+machine and report) at the hub, which rejects its bearer at once; every other
+host rejects it after its next fetch from the hub and closes its connections.
+the removed device learns nothing else: it sees auth failures until a fresh
+invite re-enrolls it. a phone keeps its cache. a computer whose fetch gets 401
+drops its cached members, since no later removal can reach it, and then admits
+only its own local bearer; it keeps serving its own local terminals, and
+`skid status` says it was removed. already accepted terminal effects are not
+undone. never infer local authority from a loopback source address: tailscale
+serve uses loopback too; the installed local bearer authenticates as the host's
+own computer.
 
 | new/changed api | authority and result |
 | --- | --- |
-| `GET /v1/fleet`, `GET /v1/fleet/events` | any host: authenticated signed public cache/revision hints |
-| `GET /v1/fleet/host-state` | any host: computer members only, coherent signed public/private pair |
-| `POST /v1/fleet/apply` | hub: no settings body; accepts local yaml, reports desired/active hub and per-host application |
-| `POST /v1/fleet/invites`, `POST /v1/fleet/join` | hub: authenticated invite creation; join requires single-use invite |
-| `DELETE /v1/fleet/members/{deviceId}` | hub: durable removal, per-host pending status |
-| `PUT /v1/fleet/self` | hub: computer reports only its own origin/version/received control epoch/revision and config application status |
-| `POST /v1/fleet/handoff/{prepare,activate,abort}` | designated source/destination only; exact transfer contract below |
+| `GET /v1/fleet` | any member: plain json `state`; computers also get `members` and `settings`, phones public routing only |
+| `GET /v1/fleet/events` | any member: sse `event: revision` / `data: {"stateRevision":N}` now and on each change; ends when the caller stops authenticating |
+| `POST /v1/fleet/join` | hub, no bearer: single-use invite token; `201` with `state` (phones: public) |
+| `POST /v1/fleet/apply` | hub: no settings body; accepts the hub's yaml, returns status and per-host application |
+| `POST /v1/fleet/invites` | hub: five-minute single-use invite |
+| `DELETE /v1/fleet/members/{deviceId}` | hub: durable removal; refuses the hub; status `device removed` |
+| `PUT /v1/fleet/self` | hub: a computer reports only its own origin, version and config application status |
+| `/v1/local/{status,apply,recover,join,network}` | installed local bearer only: cli control; a member's apply and network report forward to the hub |
 
-reuse existing typed errors/envelopes. invalid input `400`, failed auth `401`,
-wrong device kind/target `403`, conflict/wrong authority `409`, unavailable hub `503`.
-wrong-hub errors carry no routing; do not blindly redirect credentials.
+reuse existing typed errors `{code,message}`. invalid input `400`, failed auth and
+unknown/expired/used invites `401`, wrong device kind/target `403`, conflict `409`
+(hub routes on a member: `FleetConflict` `this computer is not the hub`),
+unavailable hub `503`. errors carry no routing; never redirect credentials.
+request bodies decode strictly (unknown keys `400`, over 64 kib `413`); members,
+the cli and the phone decode responses tolerantly. there is no `DeviceRemoved`,
+removal proof, verifier tombstone, detached mode, host-state route or handoff
+route.
+
 preserve existing session/conversation/terminal/profile-usage endpoints and
 `t-`/`c-` handles. profile descriptors become
 `{key,label,provider?,historyScope?}` everywhere; absent metadata stays absent.
@@ -233,54 +261,17 @@ unannotated profiles remain selectable ordinary rows with unknown quota and no
 profile-native read; live provider detection does not depend on this annotation.
 only creation model/effort fields are removed, with strict unknown-field rejection.
 
-## 4. planned hub transfer
+## 4. fixed hub
 
-yaml `hub` requests placement. signed `activeHub` remains the old hub until the
-transfer commits. role never derives from yaml alone. only an enrolled compatible
-computer can receive authority. persist a finite transfer record:
-`{transferId, source, target, nextAuthorityEpoch, bundleDigest, phase}`.
-reuse private atomic files and one mutation lock, not a transaction framework.
-
-1. validate destination; unavailable destination leaves old hub active and
-   desired placement pending. freeze hub mutations and drain observer/receiver
-   writers. capture accepted yaml/settings, membership, signing key, receiver
-   generations and durable observer state in one digest-bound bundle.
-2. target durably stages the bundle and acknowledges its digest. it cannot
-   expire acknowledged staging on timeout. it remains inactive.
-3. source atomically records `fenced` plus the exact signed activation record,
-   relinquishing active-key ownership. startup obeys that fence. only then send
-   activation. no source writer may resume after this point.
-4. target validates source/transfer/digest, durably activates once, then starts
-   hub services and publishes the next-epoch routing. repeated activation of
-   that transfer is idempotent. source becomes an ordinary relay/member.
-5. retries use the same transfer and digest. pre-fence abort can resume source
-   and invalidate staging; stale staging cannot later activate. post-fence
-   uncertainty can pause hub work; never auto-unfence or elect another hub.
-
-an atomic-write error after rename does not prove the fence was absent. keep
-writers stopped and retry that exact durable fence; never interpret uncertain
-fsync as permission to resume. destination likewise confirms durable activation
-before publishing authority.
-
-transfer the observer epoch/counters/attention and receiver state, not in-memory
-freshness. use existing observer startup semantics: revision advances, hosts are
-`gap` until freshly observed. never retimestamp copied evidence. device memory
-stays device-local. old yaml becomes inactive; destination owns the accepted
-bytes/comments. report the new path. edits after fencing belong to the inactive
-file, not an implicit merge.
-receiver state includes configuration-bound active/pending destinations, challenge
-expiry/proof and generation fences. the old hub stops all fcm work before its
-fence; the new hub resumes that same state. private firebase credentials are
-NEVER included. when android_push is configured, target staging checks its own
-matching local credential before acknowledging; failure leaves transfer pending
-and source active. this check establishes local readiness, not guaranteed google
-availability. no event outbox.
-
-devices discover the new authority through any known reachable member. if a
-phone has lost every known endpoint, an explicit same-fleet `connect` scan repairs
-discovery while retaining valid identity/acknowledgement. permanent loss without
-usable private state requires `recover`, a NEW fleet. returned old hubs cannot
-override new trust. no advertised automatic failover.
+the hub is the machine that created the fleet or last ran `skid recover`. there
+is no transfer, placement, wrong-hub routing or relay. moving the hub is a new
+fleet: `skid recover` on the new hub (with configured push, place a matching
+private credential file there first), `skid join` with a fresh invite on each
+other computer, and a fresh scan on each phone after clearing its app data (a
+phone paired to the old fleet refuses another fleet's invite). observer epoch,
+attention records and receiver state are not carried; the new hub starts a fresh
+observer. a returned old hub cannot override new trust: recovered devices fetch
+only from the new hub. no automatic failover.
 
 ## 5. launch, observation and quota
 
@@ -371,12 +362,12 @@ credential fields, backend selector or enable flag. omission is disabled.
 firebase android app must use `dev.niels.skidbladnir`; users install the ordinary
 signed apk, never build their own. public client keys are not sender authority.
 
-publish accepted public options in signed `fleet.Public.androidPush`:
+publish accepted public options as `androidPush` in the hub's fleet state:
 `{id,projectId,applicationId,senderId,apiKey}`. `id` is lowercase sha256 of exact
 UTF-8 `skidbladnir.android-push.v1\nPROJECT\nAPPLICATION\nSENDER\nAPIKEY`, with
 no final newline; identifiers cannot contain newlines. use this identity in all
-registration state and messages. existing authenticated signed-fleet fetch after
-join transfers it automatically; no extra qr fields/manual phone setup.
+registration state and messages. the authenticated fleet fetch after join
+transfers it automatically; no extra qr fields/manual phone setup.
 
 private credential: fixed local
 `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/android-push-credentials.json`, regular
@@ -384,7 +375,7 @@ private credential: fixed local
 read at startup/ordinary apply, at most64kib; require `type:service_account`,
 matching project_id and a usable private key. use explicit oauth2/google json
 credentials with firebase.messaging scope; never ambient adc, shared yaml,
-command-line key values, fleet cache, handoff bundle or phone payloads. grant
+command-line key values, fleet cache or phone payloads. grant
 only `cloudmessaging.messages.create`; document firebase API/project creation,
 android app registration, key restrictions, file permissions, apply, pairing and
 revocation/rotation. no new config framework, editor or credential broker.
@@ -397,7 +388,7 @@ global relay/domain/dns/caddy deployment; cloud cleanup is separate.
 ### runtime android lifecycle: prove before implementation
 
 remove FirebaseInitProvider and all baked project values. leave messaging auto
-init off. synchronously restore only verified paired-fleet public options in
+init off. synchronously restore only paired-fleet public options in
 Application.onCreate before messaging services/receivers; unpaired/disabled
 startup initializes no FirebaseApp. initial pairing may initialize an absent
 DEFAULT app. only one active fleet/configuration exists in this apk.
@@ -459,25 +450,20 @@ fences, pending random challenge/ten-minute expiry and last confirmed proof.
 its existing private file is schema3: add optional `configuration`; each receiver
 owns `{deviceId,configuration,floor,active?,desired?,confirmed?,removed,
 registrationError,pushError}`. destinations contain
-`{generation,fid,clientNonce,challenge,expires}`. epoch/revision/records and
-import identity retain their existing meaning. no schema2 reader in final source.
+`{generation,fid,clientNonce,challenge,expires}`. epoch/revision/records retain
+their existing meaning. no schema2 reader in final source.
 persist pending proof BEFORE direct fcm send. keep an old active destination
 while replacing it within the SAME configuration; only exact nonce/challenge
 proof activates its replacement. confirmation-response loss is idempotent;
 expired challenge renews on existing bounded reconciliation. membership removal
 commits revocation and erases destinations locally before any further send; no
-external delete/cleanup operation. drain waits for bounded in-flight sends.
+external delete/cleanup operation.
 
 configuration change/disable retires all old active/pending destinations and
 proofs while preserving observer epoch/revision/records and device acknowledgement.
 keep per-device generation floors; new registration requires the current config
-identity. handoff carries observer/receiver state, never credentials. target
-preflight requires its own matching credential when push is configured; otherwise
-placement stays pending. explicit omission of android_push permits migration
-without firebase. transient fcm failure after activation affects push only.
-credential preflight failure is closed `AndroidPushCredentialsUnavailable`503;
-accepted apply reports placement pending with the fixed install-matching-file or
-disable-push action. never echo private credential errors or remote error text.
+identity. transient fcm failure after activation affects push only. never echo
+private credential errors or remote error text.
 
 fcm remains data-only `message.fid`, restricted apk package, 120s ttl, separate
 attention/sync/enrollment collapse keys; attention high priority, housekeeping
@@ -548,6 +534,10 @@ update host/phone together; no old-wire reader, ntfy branch or mixed-version mod
 uninstall removes only recorded skid services, links, files and exact owned shell
 blocks/tailscale routes. retain settings/private state, provider data, tmux and
 shared packages. no “purge everything” option in this scope.
+
+the next release's fresh-fleet cutover and every cross-repo obligation it carries
+are recorded in [release cutover](issues/release-cutover.md). the completed
+generalization cutover below is retained as its record.
 
 cutover preparation belongs to the root integrator and personal dev-server
 consumer, not a permanent legacy-config parser in skid:
@@ -620,7 +610,7 @@ repositories require their own scoped assignments before edits.
 
 content: reuse existing copy. new copy states fact, impact, one recovery action;
 no internal field names except config errors. examples: “config accepted; arch is
-offline”, “device removed; revocation pending on arch”. retain existing notification
+offline”, “device removed”. retain existing notification
 health/reason strings. receipts/logs contain no terminal excerpts, accounts,
 commands or credentials.
 
@@ -636,11 +626,11 @@ under the [testing policy](rules.md#testing).
 | --- | --- |
 | a. fresh local install | clean supported host, zero providers, empty profiles, no tailnet login/internet after install; shell/create/attach and local mac notices work; upgrade/uninstall preserve user/session data |
 | b. arbitrary fleet | three differently named hosts, new host auto-appears on running desktop/two phones; each gateway acts only locally; manual ssh remains source terminal; lost join response does not duplicate membership |
-| c. config/access | apply from non-hub; invalid yaml retains settings; invalid local shell does NOT block simultaneous revocation; offline host catches up; removal closes connections, preserves tmux and detaches server |
-| d. handoff/recovery | crash before/after staging ack, after fencing/before send, after activation/before reply; fsync uncertainty; stale abort/activation rejected; no double hub; direct terminals work; epoch/ack survive; new-fleet recovery rejects old trust |
+| c. config/access | apply from non-hub; invalid yaml retains settings; invalid local shell does NOT block simultaneous revocation; offline host catches up; removal closes connections, preserves tmux and the removed bearer gets 401 |
+| d. restart/recovery | join, recover and a failed state write restart the service with tmux intact; restart preserves membership; lost join reply re-joins with a fresh invite; new-fleet recovery rejects old trust; the release follows [release cutover](issues/release-cutover.md) |
 | e. command/capability | bash/zsh aliases/functions/env/quotes/composition/cwd/error options, return/failure/exec; no injected flags/daemon lifecycle; no helper still permits normal terminal api; jarvis exact-target/uncertain-write behavior retained |
 | f. quota/observation | native present/absent/stale, newer stale plus older fresh native plus fresh terminal, attributable codex/claude frames, missing/clipped/ambiguous accounts, config revision race; one row/profile, whole-source selection, unchanged model/effort/status |
-| g. push/admission | two independently paired phones, fid rotation, response loss/restart, wrong configuration/challenge/nonce/generation, removal during fcm outage followed by hub move; revoked receiver cannot resurrect; read success does not clear push failure |
+| g. push/admission | two independently paired phones, fid rotation, response loss/restart, wrong configuration/challenge/nonce/generation, removal during fcm outage; revoked receiver cannot resurrect; read success does not clear push failure |
 | h. actual presentation | current reason composites, sound, Unicode names, exact click/focus/output ack across mac/two phones; locked/reclaimed/dozing phone, tailscale loss/recovery, reordered hints, session replacement; only still-current unseen episodes |
 | i. parity/cutover | owner settings/rendering/keyboard and terminal flows before/after; both mac terminal adapters; no ntfy/dev-server runtime dependency; matching releases, one scan/phone, retained sessions/history/ack |
 
@@ -672,10 +662,11 @@ retain [the agreed tradeoffs](generalization.md): delayed offline revocation,
 hub-dependent edits/notifications, unknown unattributable usage, same-account
 profiles and supported-platform limits. android push is optional: its users own
 firebase project/credentials/maintenance and google services. skid operates no
-notification backend. project changes cost one phone app restart; planned hub
-moves need preinstalled matching private credentials or explicit push disable.
-this design retains signed-cache/handoff machinery and the approved temporary
-conversion app update. no consensus,
+notification backend. project changes cost one phone app restart; moving the hub
+is a new fleet and needs a matching private credential on the new hub when push
+is configured. join, recover and failed state writes restart the service. the
+fleet has no signatures, relays or handoff; this design retains the approved
+temporary conversion app update. no consensus,
 permanent legacy reader or automatic downgrade. deleting tests retains
 [the existing regression coverage gap](issues/test-system-reset.md).
 
@@ -692,5 +683,4 @@ remain `NOT_RUN`.
 2026-10-20 implementation clarification: jarvis api/schema changes remain in
 scope; the owner explicitly deferred its cross-user deployment integration.
 [the deployment blocker](issues/jarvis-installed-state-access.md) must remain
-visible and is not a standalone-skid release acceptance claim. signed invitation
-proof adds qr bytes to preserve secure same-fleet discovery repair.
+visible and is not a standalone-skid release acceptance claim.

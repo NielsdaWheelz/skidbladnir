@@ -36,7 +36,6 @@ profiles:
   - name: work
     command: claude-work
     provider: claude
-# hub: always-on-computer
 # terminal: ghostty
 ```
 
@@ -65,10 +64,11 @@ joins by installing skid and pasting the invitation into `skid join --name NAME`
 new enrolled machines appear automatically. `skid status` reports membership and
 configuration application; `skid remove DEVICE_ID` revokes a device.
 
-one machine is the hub for configuration, membership and notification observation.
-set `hub` to an enrolled machine name to request a planned move. cached direct
-terminal access survives hub loss; edits and notifications wait for a hub.
-`skid recover` explicitly creates a new fleet and requires fresh enrollment.
+one machine is the hub for configuration, membership and notification observation:
+the computer that created the fleet. cached direct terminal access survives hub
+loss; edits and notifications wait for a hub. `skid recover` explicitly creates a
+new fleet with this computer as hub; the other computers then `skid join` again and
+the phone re-pairs after clearing skid's app data. that is also how the hub moves.
 
 skid manages tmux only where skid is installed. manual ssh/mosh from an ordinary
 local terminal remains available for other machines.
