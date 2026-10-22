@@ -2,14 +2,11 @@ package notifier
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -18,49 +15,145 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 )
 
-type destination struct {
-	Generation  uint64 `json:"generation"`
-	FID         string `json:"fid"`
-	ClientNonce string `json:"clientNonce"`
-	Challenge   string `json:"challenge"`
-	Expires     int64  `json:"expires"`
-}
+// receiver is one phone's fcm destination for the file's push configuration.
+// Floor is the highest generation the phone registered; it survives
+// reconfiguration so a stale registration cannot return.
 type receiver struct {
-	DeviceID          string       `json:"deviceId"`
-	Configuration     string       `json:"configuration"`
-	Floor             uint64       `json:"floor"`
-	Active            *destination `json:"active,omitempty"`
-	Confirmed         *destination `json:"confirmed,omitempty"`
-	Desired           *destination `json:"desired,omitempty"`
-	Removed           bool         `json:"removed"`
-	RegistrationError bool         `json:"registrationError"`
-	PushError         bool         `json:"pushError"`
-}
-type receiverStatus struct {
-	Configuration     string `json:"configuration,omitempty"`
-	ActiveGeneration  uint64 `json:"activeGeneration"`
-	DesiredGeneration uint64 `json:"desiredGeneration"`
-	Status            string `json:"status"`
+	DeviceID string `json:"deviceId"`
+	Floor    uint64 `json:"floor"`
+	FID      string `json:"fid,omitempty"` // "" = no destination
+	Failed   bool   `json:"failed"`        // the last send to FID failed
 }
 
-func (value *receiver) UnmarshalJSON(data []byte) error {
-	var fields map[string]json.RawMessage
-	if attention.Decode(data, &fields) != nil {
+type receiverStatus struct {
+	Status string `json:"status"` // disabled | unconfigured | active | unavailable
+}
+
+// phones keeps the receivers of current phone members.
+func phones(receivers []receiver, members []fleet.Member) []receiver {
+	return slices.DeleteFunc(slices.Clone(receivers), func(value receiver) bool {
+		return !slices.ContainsFunc(members, func(member fleet.Member) bool { return member.Kind == "phone" && member.DeviceID == value.DeviceID })
+	})
+}
+
+// status is one phone's delivery as the hub knows it. The caller holds the mutex.
+func (observer *Observer) status(device string) receiverStatus {
+	index := slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == device })
+	switch {
+	case observer.file.Configuration == "":
+		return receiverStatus{"disabled"}
+	case observer.sender == nil:
+		return receiverStatus{"unconfigured"}
+	case index < 0 || observer.file.Receivers[index].FID == "" || observer.file.Receivers[index].Failed:
+		return receiverStatus{"unavailable"}
+	default:
+		return receiverStatus{"active"}
+	}
+}
+
+// ConfigurePush changes only the push transport; it is synchronous and offline.
+// A configuration change erases destinations but keeps floors.
+func (observer *Observer) ConfigurePush(push *hostconfig.AndroidPush, sender *fcmpush.Client) error {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.unavailable {
 		return attention.ErrUnavailable
 	}
-	for _, field := range []string{"deviceId", "configuration", "floor", "removed", "registrationError", "pushError"} {
-		if fields[field] == nil {
-			return attention.ErrUnavailable
+	configuration := ""
+	if push != nil {
+		configuration = push.ID()
+	} else {
+		sender = nil
+	}
+	if configuration != observer.file.Configuration {
+		file := observer.file
+		file.Configuration = configuration
+		file.Receivers = slices.Clone(file.Receivers)
+		for index := range file.Receivers {
+			file.Receivers[index].FID, file.Receivers[index].Failed = "", false
+		}
+		if err := observer.save(file); err != nil {
+			return err
 		}
 	}
-	type wire receiver
-	var decoded wire
-	if attention.Decode(data, &decoded) != nil {
-		return attention.ErrUnavailable
-	}
-	*value = receiver(decoded)
+	observer.sender = sender
+	wake(observer.send)
 	return nil
 }
+
+// ReconcileMembers deletes the receivers of devices no longer in the fleet; a
+// removed member can no longer authenticate to register again.
+func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.unavailable {
+		return attention.ErrUnavailable
+	}
+	receivers := phones(observer.file.Receivers, members)
+	if len(receivers) == len(observer.file.Receivers) {
+		return nil
+	}
+	file := observer.file
+	file.Receivers = receivers
+	return observer.save(file)
+}
+
+// register activates a phone's destination for a newer generation; the same
+// destination again is idempotent and anything else conflicts.
+func (observer *Observer) register(writer http.ResponseWriter, request *http.Request, device string) {
+	var input struct {
+		Configuration string `json:"configuration"`
+		Generation    uint64 `json:"generation"`
+		FID           string `json:"fid"`
+	}
+	if !readBody(writer, request, &input) {
+		return
+	}
+	if !digestValid(input.Configuration) || input.Generation == 0 || input.Generation >= math.MaxInt64 || !token(input.FID, 256) {
+		writeError(writer, http.StatusBadRequest, "InvalidRequest", "the request is not valid")
+		return
+	}
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	if observer.unavailable {
+		WriteUnavailable(writer)
+		return
+	}
+	index := slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == device })
+	var current receiver
+	if index >= 0 {
+		current = observer.file.Receivers[index]
+	}
+	// Push off has configuration "", which no valid digest equals.
+	configured := input.Configuration == observer.file.Configuration
+	switch {
+	case configured && input.Generation == current.Floor && input.FID == current.FID && current.FID != "":
+		writer.WriteHeader(http.StatusNoContent)
+	case configured && input.Generation > current.Floor:
+		file := observer.file
+		file.Receivers = slices.Clone(file.Receivers)
+		next := receiver{DeviceID: device, Floor: input.Generation, FID: input.FID}
+		if index < 0 {
+			file.Receivers = append(file.Receivers, next)
+		} else {
+			file.Receivers[index] = next
+		}
+		if observer.save(file) != nil {
+			WriteUnavailable(writer)
+			return
+		}
+		wake(observer.send)
+		writer.WriteHeader(http.StatusNoContent)
+	default:
+		writeError(writer, http.StatusConflict, "ReceiverConflict", "receiver generation changed")
+	}
+}
+
+func digestValid(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32 && hex.EncodeToString(decoded) == value
+}
+
 func token(value string, maximum int) bool {
 	if len(value) == 0 || len(value) > maximum {
 		return false
@@ -72,401 +165,55 @@ func token(value string, maximum int) bool {
 	}
 	return true
 }
-func (value receiver) valid() bool {
-	if !fleet.ValidDeviceID(value.DeviceID) || value.Configuration != "" && !digestValid(value.Configuration) {
-		return false
-	}
-	if value.Removed {
-		return value.Floor > 0 && value.Active == nil && value.Desired == nil && value.Confirmed == nil
-	}
-	if value.Configuration == "" {
-		return value.Active == nil && value.Desired == nil && value.Confirmed == nil
-	}
-	for _, target := range []*destination{value.Active, value.Desired, value.Confirmed} {
-		if target != nil && (target.Generation == 0 || target.Generation > value.Floor || !token(target.FID, 256) || !token(target.ClientNonce, 128) || !token(target.Challenge, 128) || target.Expires <= 0) {
-			return false
-		}
-	}
-	if value.Active != nil && (value.Confirmed == nil || *value.Active != *value.Confirmed || value.Desired != nil && (value.Active.Generation > value.Desired.Generation || value.Active.Generation == value.Desired.Generation && *value.Active != *value.Desired)) {
-		return false
-	}
-	return value.Desired == nil || value.Desired.Generation == value.Floor
-}
-func (observer *Observer) status(value receiver) receiverStatus {
-	result := receiverStatus{Configuration: observer.file.Configuration, DesiredGeneration: value.Floor, Status: "pending"}
-	if value.Active != nil {
-		result.ActiveGeneration = value.Active.Generation
-	}
-	if value.Active != nil && value.Desired != nil && *value.Active == *value.Desired {
-		result.Status = "active"
-	}
-	if value.RegistrationError || value.PushError {
-		result.Status = "unavailable"
-	}
-	if observer.push == nil {
-		result.Status = "disabled"
-	} else if observer.sender == nil {
-		result.Status = "unconfigured"
-	}
-	if value.Removed {
-		result.Status = "removed"
-	}
-	return result
-}
-func (observer *Observer) receiverIndex(device string) int {
-	return slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == device })
-}
-func (observer *Observer) saveReceiver(value receiver) error {
-	file := observer.file
-	file.Receivers = slices.Clone(file.Receivers)
-	index := observer.receiverIndex(value.DeviceID)
-	if index < 0 {
-		file.Receivers = append(file.Receivers, value)
-	} else {
-		file.Receivers[index] = value
-	}
-	return observer.save(file)
-}
-func revoked(value receiver) receiver {
-	return receiver{DeviceID: value.DeviceID, Configuration: value.Configuration, Floor: value.Floor + 1, Removed: true}
-}
-func retireAbsent(file observerFile, members []fleet.Member) (observerFile, bool) {
-	changed := false
-	file.Receivers = slices.Clone(file.Receivers)
-	for index, value := range file.Receivers {
-		if value.Removed || slices.ContainsFunc(members, func(member fleet.Member) bool { return member.Kind == "phone" && member.DeviceID == value.DeviceID }) {
-			continue
-		}
-		file.Receivers[index] = revoked(value)
-		changed = true
-	}
-	return file, changed
-}
 
-// ConfigurePush changes only push transport. It is synchronous and offline.
-// Configuration changes erase destinations but keep floors.
-func (observer *Observer) ConfigurePush(push *hostconfig.AndroidPush, sender *fcmpush.Client) error {
-	if push != nil && push.Validate() != nil {
-		return attention.ErrUnavailable
-	}
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		return attention.ErrUnavailable
-	}
-	if observer.sendCancel != nil {
-		observer.sendCancel()
-	}
-	configuration := ""
-	if push != nil {
-		copy := *push
-		push = &copy
-		configuration = push.ID()
-	} else {
-		sender = nil
-	}
-	if configuration != observer.file.Configuration {
-		file := observer.file
-		file.Configuration = configuration
-		file.Receivers = slices.Clone(file.Receivers)
-		for index, value := range file.Receivers {
-			value.Configuration = configuration
-			value.Active = nil
-			value.Confirmed = nil
-			value.Desired = nil
-			value.RegistrationError = false
-			value.PushError = false
-			file.Receivers[index] = value
-		}
-		if observer.save(file) != nil {
-			return attention.ErrUnavailable
-		}
-	}
-	observer.push = push
-	observer.sender = sender
-	observer.signal(false)
-	return nil
-}
-
-// ReconcileMembers retires the receivers of devices no longer in the fleet.
-func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		return attention.ErrUnavailable
-	}
-	file, changed := retireAbsent(observer.file, members)
-	if !changed {
-		return nil
-	}
-	if observer.sendCancel != nil {
-		observer.sendCancel()
-	}
-	if err := observer.save(file); err != nil {
-		return err
-	}
-	observer.signal(false)
-	return nil
-}
-
-func (observer *Observer) receiverState(writer http.ResponseWriter, device string) {
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	value := receiver{}
-	if index := observer.receiverIndex(device); index >= 0 {
-		value = observer.file.Receivers[index]
-	}
-	writeJSON(writer, observer.status(value))
-}
-func (observer *Observer) register(writer http.ResponseWriter, request *http.Request, device string) {
-	var input struct {
-		Configuration string `json:"configuration"`
-		Generation    uint64 `json:"generation"`
-		FID           string `json:"fid"`
-		ClientNonce   string `json:"clientNonce"`
-	}
-	if !readRegistration(writer, request, &input) {
-		return
-	}
-	if !digestValid(input.Configuration) || input.Generation == 0 || input.Generation >= math.MaxInt64 || !token(input.FID, 256) || !token(input.ClientNonce, 128) {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	if observer.push == nil || input.Configuration != observer.file.Configuration {
-		writeError(writer, "ReceiverConflict")
-		return
-	}
-	value := receiver{DeviceID: device, Configuration: input.Configuration}
-	if index := observer.receiverIndex(device); index >= 0 {
-		value = observer.file.Receivers[index]
-	}
-	if value.Removed {
-		writeError(writer, "Forbidden")
-		return
-	}
-	exact := value.Desired != nil && input.Generation == value.Desired.Generation && input.FID == value.Desired.FID && input.ClientNonce == value.Desired.ClientNonce
-	if !exact && input.Generation <= value.Floor {
-		writeError(writer, "ReceiverConflict")
-		return
-	}
-	if !exact {
-		desired, err := pendingDestination(input.Generation, input.FID, input.ClientNonce)
-		if err != nil {
-			writeError(writer, "NotificationsUnavailable")
-			return
-		}
-		value.Floor = input.Generation
-		value.Desired = desired
-		value.RegistrationError = false
-		if observer.sendCancel != nil {
-			observer.sendCancel()
-		}
-		if observer.saveReceiver(value) != nil {
-			writeError(writer, "NotificationsUnavailable")
-			return
-		}
-	}
-	observer.signal(false)
-	writeJSON(writer, observer.status(value))
-}
-func pendingDestination(generation uint64, fid, nonce string) (*destination, error) {
-	challenge := [32]byte{}
-	if _, err := rand.Read(challenge[:]); err != nil {
-		return nil, err
-	}
-	return &destination{Generation: generation, FID: fid, ClientNonce: nonce, Challenge: hex.EncodeToString(challenge[:]), Expires: time.Now().Add(10 * time.Minute).Unix()}, nil
-}
-func (observer *Observer) confirm(writer http.ResponseWriter, request *http.Request, device string) {
-	var input struct {
-		Configuration string `json:"configuration"`
-		Generation    uint64 `json:"generation"`
-		Challenge     string `json:"challenge"`
-	}
-	if !readRegistration(writer, request, &input) {
-		return
-	}
-	if !digestValid(input.Configuration) || input.Generation == 0 || input.Generation >= math.MaxInt64 || !token(input.Challenge, 128) {
-		writeError(writer, "InvalidRequest")
-		return
-	}
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	if observer.push == nil || input.Configuration != observer.file.Configuration {
-		writeError(writer, "ReceiverConflict")
-		return
-	}
-	index := observer.receiverIndex(device)
-	if index < 0 {
-		writeError(writer, "ReceiverConflict")
-		return
-	}
-	value := observer.file.Receivers[index]
-	if value.Removed {
-		writeError(writer, "Forbidden")
-		return
-	}
-	// Preserve the last committed proof even while its successor is pending.
-	if value.Confirmed != nil && value.Confirmed.Generation == input.Generation && value.Confirmed.Challenge == input.Challenge {
-		writeJSON(writer, observer.status(value))
-		return
-	}
-	if value.Desired == nil || value.Desired.Generation != input.Generation || value.Desired.Challenge != input.Challenge || value.Desired.Expires <= time.Now().Unix() {
-		observer.signal(false)
-		writeError(writer, "ReceiverConflict")
-		return
-	}
-	value.Active = value.Desired
-	value.Confirmed = value.Desired
-	value.RegistrationError = false
-	if observer.saveReceiver(value) != nil {
-		writeError(writer, "NotificationsUnavailable")
-		return
-	}
-	observer.signal(false)
-	writeJSON(writer, observer.status(value))
-}
-
-// The existing worker owns all sends. Its snapshot is checked again after Google
-// HTTP; the observer lock is not held across the request.
-func (observer *Observer) sendReceiver(ctx context.Context, device, urgency string, enrollment bool) {
-	observer.mutex.Lock()
-	if observer.unavailable || observer.push == nil || observer.sender == nil {
-		observer.mutex.Unlock()
-		return
-	}
-	index := observer.receiverIndex(device)
-	if index < 0 || observer.file.Receivers[index].Removed {
-		observer.mutex.Unlock()
-		return
-	}
-	value := observer.file.Receivers[index]
-	if enrollment && value.Desired != nil && (value.Active == nil || value.Desired.Generation != value.Active.Generation) && value.Desired.Expires <= time.Now().Unix() {
-		desired, err := pendingDestination(value.Desired.Generation, value.Desired.FID, value.Desired.ClientNonce)
-		if err != nil {
-			observer.mutex.Unlock()
-			return
-		}
-		value.Desired = desired
-		if observer.saveReceiver(value) != nil {
-			observer.mutex.Unlock()
-			return
-		}
-	}
-	configuration := observer.file.Configuration
-	sender := observer.sender
-	if enrollment && (value.Desired == nil || value.Active != nil && value.Desired.Generation == value.Active.Generation) {
-		observer.mutex.Unlock()
-		return
-	}
-	var message fcmpush.Message
-	if enrollment {
-		target := value.Desired
-		message = fcmpush.MessageFor(target.FID, "enrollment", "NORMAL", map[string]string{"kind": "enrollment", "fleetId": observer.file.FleetID, "deviceId": device, "configuration": configuration, "generation": strconv.FormatUint(target.Generation, 10), "clientNonce": target.ClientNonce, "challenge": target.Challenge})
-	} else if value.Active != nil {
-		priority := "NORMAL"
-		if urgency == "attention" {
-			priority = "HIGH"
-		}
-		message = fcmpush.MessageFor(value.Active.FID, urgency, priority, map[string]string{"kind": "hint", "schema": "1", "fleetId": observer.file.FleetID, "deviceId": device, "configuration": configuration, "receiverGeneration": strconv.FormatUint(value.Active.Generation, 10), "epoch": observer.file.Epoch, "revision": strconv.FormatInt(observer.file.Revision, 10), "urgency": urgency})
-	} else {
-		observer.mutex.Unlock()
-		return
-	}
-	request, cancel := context.WithTimeout(ctx, 10*time.Second)
-	observer.sendCancel = cancel
-	observer.mutex.Unlock()
-	err := sender.Send(request, message)
-	cancel()
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	observer.sendCancel = nil
-	if observer.unavailable || observer.file.Configuration != configuration || observer.sender != sender {
-		return
-	}
-	index = observer.receiverIndex(device)
-	if index < 0 {
-		return
-	}
-	current := observer.file.Receivers[index]
-	if current.Removed || enrollment && (current.Desired != value.Desired || current.Active != nil && current.Active.Generation == value.Desired.Generation) || !enrollment && current.Active != value.Active {
-		return
-	}
-	if enrollment {
-		current.RegistrationError = err != nil
-	} else {
-		current.PushError = err != nil
-	}
-	var invalid *fcmpush.Error
-	if errors.As(err, &invalid) && invalid.Status == http.StatusGone {
-		if enrollment {
-			current.Desired = nil
-		} else {
-			current.Active = nil
-			if current.Desired != nil && *current.Desired == *value.Active {
-				current.Desired = nil
-			}
-		}
-	}
-	_ = observer.saveReceiver(current) // justify-ignore-error: save fences the observer on durable write failure.
-}
-func (observer *Observer) publish(ctx context.Context) {
-	pulse := time.NewTicker(time.Minute)
-	defer pulse.Stop()
-	observer.mutex.Lock()
-	observer.signal(false)
-	observer.mutex.Unlock()
+// sendHints is the only fcm sender. It wakes on every projection change,
+// registration and push reconfiguration, sends one content-free hint to each
+// destination, and stops with ctx. A failed send waits for the next change.
+func (observer *Observer) sendHints(ctx context.Context) {
 	for {
 		select {
-		case <-observer.changed:
-		case <-pulse.C:
-			observer.mutex.Lock()
-			for subscriber := range observer.subscribers {
-				select {
-				case subscriber <- struct{}{}:
-				default:
-				}
-			}
-			observer.mutex.Unlock()
 		case <-ctx.Done():
 			return
+		case <-observer.send:
 		}
 		observer.mutex.Lock()
-		if observer.unavailable {
+		if observer.unavailable || observer.sender == nil {
 			observer.mutex.Unlock()
-			return
+			continue
 		}
-		urgency := "sync"
-		if observer.attentionPending {
-			urgency = "attention"
+		sender, configuration := observer.sender, observer.file.Configuration
+		urgency, priority := "sync", "NORMAL"
+		if observer.urgent {
+			urgency, priority = "attention", "HIGH"
 		}
-		observer.attentionPending = false
-		devices := make([]string, 0, len(observer.file.Receivers))
-		for _, value := range observer.file.Receivers {
-			if !value.Removed {
-				devices = append(devices, value.DeviceID)
-			}
-		}
+		observer.urgent = false
+		targets := slices.DeleteFunc(slices.Clone(observer.file.Receivers), func(value receiver) bool { return value.FID == "" })
 		observer.mutex.Unlock()
-		for _, device := range devices {
+		for _, target := range targets {
+			request, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err := sender.Send(request, fcmpush.Message{FID: target.FID, Data: map[string]string{"kind": "hint"}, Android: fcmpush.AndroidConfig{CollapseKey: urgency, Priority: priority, TTL: "2419200s", RestrictedPackageName: "dev.niels.skidbladnir"}})
+			cancel()
 			if ctx.Err() != nil {
 				return
 			}
-			observer.sendReceiver(ctx, device, urgency, true)
-			observer.sendReceiver(ctx, device, urgency, false)
+			observer.mutex.Lock()
+			// A reconfiguration or re-registration during the send owns the receiver now.
+			index := slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == target.DeviceID })
+			if !observer.unavailable && observer.sender == sender && observer.file.Configuration == configuration && index >= 0 && observer.file.Receivers[index].Floor == target.Floor && observer.file.Receivers[index].FID == target.FID {
+				next := observer.file.Receivers[index]
+				next.Failed = err != nil
+				var failure *fcmpush.Error
+				if errors.As(err, &failure) && failure.Status == http.StatusGone {
+					next.FID = ""
+				}
+				if next != observer.file.Receivers[index] {
+					file := observer.file
+					file.Receivers = slices.Clone(file.Receivers)
+					file.Receivers[index] = next
+					_ = observer.save(file) // a failed save latches the observer unavailable
+				}
+			}
+			observer.mutex.Unlock()
 		}
 	}
 }

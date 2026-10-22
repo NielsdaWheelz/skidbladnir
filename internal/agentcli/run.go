@@ -48,7 +48,6 @@ skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 skid shell HANDLE                         new terminal here
 skid group HANDLE (--set LABEL | --clear)
 skid notifications setup                  open macos notification setup
-skid notifications reset                  reset linux notification memory
 
 existing targets: HANDLE [--machine HOST] or --ref VALUE
 terminal handles: t- plus 16 lowercase hex characters
@@ -413,7 +412,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if failure != nil {
 			return render(parsed, fleetclient.Result{Error: failure}, stdout, stderr)
 		}
-		result := terminalclient.Run(ctx, client, ref.Encode(), nil, stdin.(*os.File), stdout.(*os.File))
+		result := terminalclient.Run(ctx, client, ref.Encode(), stdin.(*os.File), stdout.(*os.File))
 		if result.NotificationErr != nil {
 			fmt.Fprintln(stderr, "notifications unavailable")
 		}

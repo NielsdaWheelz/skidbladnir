@@ -17,8 +17,8 @@ terminal wait states; [terminal control](terminal-agent-control.md) owns termina
 targets, capture mechanics, rendered reads, exact terminal effects and wait's
 polling loop. [terminal attention](reply-notifications.md) owns the existing
 transition predicates. [native notifications](native-notifications.md) supersedes
-its device-local reducer and visit clauses: the hub owns readiness, each device
-owns acknowledgement and native presentation. [terminal-only control](terminal-only-control.md)
+its device-local reducer and visit clauses: the hub owns readiness and the owner's
+acknowledgement; devices own native presentation. [terminal-only control](terminal-only-control.md)
 owns the terminal capability boundary and read-only account quota. stop retains
 the terminal; close reports interruption and terminal closure separately.
 [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records its source
@@ -56,7 +56,7 @@ and compact current-location display.
 [desktop usage](desktop-usage.md) owns remaining presentation and its isolated
 qualification; [native usage](profile-usage.md) owns codex account reads.
 [native notifications](native-notifications.md) owns needs-input alerts,
-background observation and device acknowledgement. source is implemented;
+background observation and hub acknowledgement. source is implemented;
 [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md) records verified boundaries;
 [remaining device acceptance](issues/unrun-acceptance.md) stays open.
 [jarvis orchestration](jarvis-orchestration.md) owns profile selection,
@@ -135,7 +135,7 @@ machine does not block or authorize action against another.
 | auth | independent256-bit bearer per device; hosts store sha256 verifiers; one-use five-minute invitation token, no signed routing; exact machine header remains required |
 | profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; no per-machine overrides; terminal remains a separate launch choice |
 | agent control | foreground provider/account observation and terminal controls under [agent control](agent-control.md); read-only account quota; no conversation hooks, targeting or execution supervisor |
-| state | tmux owns live terminals; providers own history/execution; fleet owns one machine file per host plus the write-once machine handle; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
+| state | tmux owns live terminals; providers own history/execution; fleet owns one machine file per host plus the write-once machine handle; hub retains content-free attention, acknowledgement and receiver state |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -289,10 +289,10 @@ outside every view. recovery adds no controls or saved client state.
   label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
   copy and tone; only `ready` is green.
   readiness is inferred, never proof of unseen text or completion.
-  [terminal attention](reply-notifications.md) owns dismissal, visit boundaries
-  and durable memory across uncertain observations. the device-local v2 owner
-  remembers non-idle until idle, and actual output presentation acknowledges
-  ready while preserving armed work. no human reply viewer or read receipt. every card shows
+  [native notifications](native-notifications.md) owns dismissal, visit
+  boundaries and the hub's durable memory across uncertain observations. the hub
+  remembers non-idle until idle, and a visit's first output acknowledges ready
+  while preserving armed work. no human reply viewer or read receipt. every card shows
   machine context. the accepted roster puts the dwarf beside status when space
   permits and profile/host/path in a full-width wrapping footer. the flat
   needs-input queue adds one quiet group-context line; only `all` retains group
@@ -848,20 +848,20 @@ and treat a mismatch as a defect; their cleanup slices convert them.
 - an empty store opens connect. scan `skid connect`'s five-minute one-use invite qr,
   persist a staged credential before joining, and recover lost replies using
   that same credential. saved bearers go only to the cached hub or the scanned
-  invite's hub. same-fleet repair retains identity and acknowledgement. a removed
+  invite's hub. same-fleet repair retains identity. a removed
   phone sees auth failures until a fresh scan re-enrolls it with a new device
   identity. tailscale login remains external.
-- optional fcm carries only configuration/generation-fenced challenges and current-state hints.
+- optional fcm carries only change hints.
   one standard apk initializes the default firebase app from durable
   public fleet options before cold service startup. options changes fence old
   push immediately and require one app restart; the changed project is explicitly
-  unregistered then registered before proving delivery. omitted configuration is
+  unregistered then registered again. omitted configuration is
   healthy disabled operation. [setup](android-push-setup.md) owns credential setup,
   local storage and new-hub prerequisites.
-  background jobs refresh fleet routing from the hub, fetch authenticated snapshots and
-  use the existing device admission/effect owner. failed reads receive bounded
+  background jobs fetch the hub's authenticated state with the process's cached hub
+  credential and use the notification owner's stateless reconcile; only
+  enrollment refreshes fleet routing, and the foreground refreshes the rest. failed reads receive bounded
   retries; snapshots alone cannot clear independent push-transport failure.
-  android stores its own acknowledgement, never a fleet-wide read receipt.
   approved temporary conversion preserves old memory; final source has no
   schema3/ntfy/pairing reader.
 - dashboard fleet collection, exclusive views, one machines/details disclosure,
@@ -1113,8 +1113,8 @@ gateways at their existing cadence and retains only content-free transition
 summaries; execution/history, terminal authority and direct controls retain their
 owners. this narrowly extends topology/state with notification-only observation
 and current-state endpoints, and platform packaging with the mac app and private
-ntfy origin. each device owns ready acknowledgement and alert handling; no shared
-unread, execution coordinator or historical replay. the spec supersedes affected
+ntfy origin. the hub holds the owner's acknowledgement; no execution coordinator
+or historical replay. the spec supersedes affected
 device-local readiness/visit clauses, defines schemas, disjoint implementation
 paths and temporary end-to-end/live acceptance. source is implemented; [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md)
 records tested boundaries. release and fleet deployment remain separate actions.

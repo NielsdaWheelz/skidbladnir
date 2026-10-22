@@ -1,23 +1,17 @@
 package fleetclient
 
 import (
+	"bufio"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"os"
-	"path/filepath"
-	"syscall"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
-	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 )
 
-func NotificationKey(ref Reference) attention.Key {
-	return attention.Key{Machine: ref.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken, PaneID: ref.PaneID}
-}
+// NotificationForeground is the exact agent lifetime attention binds to.
 func NotificationForeground(session Session) *attention.Foreground {
 	if session.Agent == nil || session.Connection != nil {
 		return nil
@@ -25,138 +19,61 @@ func NotificationForeground(session Session) *attention.Foreground {
 	return &attention.Foreground{Provider: session.Agent.Provider, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity}
 }
 
-// NotificationReady qualifies the queue against both current direct and producer evidence.
-func NotificationReady(device attention.DeviceSnapshot, session Session, producer attention.Snapshot) bool {
-	if device.ObserverEpoch != producer.Epoch || !attention.Idle(session.TerminalStatus) {
-		return false
-	}
-	ref, err := DecodeReference(session.Ref)
-	if err != nil {
-		return false
-	}
-	row, found := producer.Session(NotificationKey(ref))
-	return found && attention.SameForeground(row.Record.Foreground, NotificationForeground(session)) && row.Record.Foreground != nil && device.Pending(row)
+// notificationHub is the hub's route; fleet.json always lists the hub.
+func (client *Client) notificationHub() fleet.Target {
+	_ = client.Refresh() // an unreadable fleet.json keeps the admitted routes
+	client.mu.RLock()
+	hub := client.hub
+	client.mu.RUnlock()
+	target, _ := client.peerByMachine(hub)
+	return target.Target
 }
 
-type NotificationStore struct{ path string }
-
-func DefaultNotificationStore() (*NotificationStore, error) {
-	directory, err := attention.StateDirectory()
-	if err != nil {
-		return nil, err
+// NotificationState reads the hub's verdicts. The hub ships in the same
+// release and owns their invariants, so nothing here re-checks them.
+func (client *Client) NotificationState(ctx context.Context) (attention.State, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	var state attention.State
+	if fleet.Call(ctx, client.notificationHub(), http.MethodGet, "/v1/notifications/state", nil, &state) != nil {
+		return attention.State{}, attention.ErrUnavailable
 	}
-	return &NotificationStore{path: filepath.Join(directory, "notifications-v4.json")}, nil
-}
-func (store *NotificationStore) Read(ctx context.Context) (attention.DeviceSnapshot, error) {
-	return store.Update(ctx, func(*attention.DeviceSnapshot) (bool, error) { return false, nil })
-}
-func (store *NotificationStore) Admit(ctx context.Context, producer attention.Snapshot) (attention.DeviceSnapshot, error) {
-	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) { return attention.Admit(device, producer) })
-}
-func (store *NotificationStore) Presented(ctx context.Context, resetID string, key attention.Key, foreground *attention.Foreground, token attention.ReadyToken) (attention.DeviceSnapshot, error) {
-	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) {
-		if resetID != device.ResetID {
-			return false, nil
-		}
-		return attention.Presented(device, key, foreground, token), nil
-	})
-}
-func (store *NotificationStore) Reset(ctx context.Context) (attention.DeviceSnapshot, error) {
-	return store.Update(ctx, func(device *attention.DeviceSnapshot) (bool, error) {
-		var identity [16]byte
-		if _, err := rand.Read(identity[:]); err != nil {
-			return false, attention.ErrUnavailable
-		}
-		device.ResetID = hex.EncodeToString(identity[:])
-		device.ObserverEpoch = ""
-		device.AdmittedRevision = 0
-		device.Records = []attention.DeviceRecord{}
-		return true, nil
-	})
+	return state, nil
 }
 
-// Update holds the stable sidecar lock across read, merge and atomic replacement.
-func (store *NotificationStore) Update(ctx context.Context, update func(*attention.DeviceSnapshot) (bool, error)) (snapshot attention.DeviceSnapshot, result error) {
-	if err := ctx.Err(); err != nil {
-		return attention.DeviceSnapshot{}, err
-	}
-	if os.MkdirAll(filepath.Dir(store.path), 0700) != nil {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
-	lock, err := os.OpenFile(store.path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+// NotificationEvents holds one hint stream open and calls wake for every
+// event; reconnecting belongs to the caller. It returns when the stream ends.
+func (client *Client) NotificationEvents(ctx context.Context, wake func()) error {
+	request, err := fleet.NewRequest(ctx, client.notificationHub(), http.MethodGet, "/v1/notifications/events", nil)
 	if err != nil {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
+		return attention.ErrUnavailable
 	}
-	defer func() {
-		if lock.Close() != nil {
-			result = attention.ErrUnavailable
-		}
-	}()
-	for {
-		err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
-			return attention.DeviceSnapshot{}, attention.ErrUnavailable
-		}
-		timer := time.NewTimer(25 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return attention.DeviceSnapshot{}, ctx.Err()
-		case <-timer.C:
-		}
-	}
-	defer func() {
-		if syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) != nil {
-			result = attention.ErrUnavailable
-		}
-	}()
-	if err := ctx.Err(); err != nil {
-		return attention.DeviceSnapshot{}, err
-	}
-	snapshot = attention.DeviceSnapshot{Schema: 4, Records: []attention.DeviceRecord{}}
-	data, err := privatefile.Read(store.path, attention.MaximumSnapshotBytes)
-	initializing := errors.Is(err, os.ErrNotExist)
-	if err != nil && !initializing {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
-	if initializing {
-		var identity [16]byte
-		if _, err := rand.Read(identity[:]); err != nil {
-			return attention.DeviceSnapshot{}, attention.ErrUnavailable
-		}
-		snapshot.ResetID = hex.EncodeToString(identity[:])
-	} else if attention.Decode(data, &snapshot) != nil || !snapshot.Valid() {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
-	if err := ctx.Err(); err != nil {
-		return attention.DeviceSnapshot{}, err
-	}
-	changed, err := update(&snapshot)
+	streaming := *client.http
+	streaming.Timeout = 0
+	response, err := streaming.Do(request)
 	if err != nil {
-		return attention.DeviceSnapshot{}, err
+		return attention.ErrUnavailable
 	}
-	if err := ctx.Err(); err != nil {
-		return attention.DeviceSnapshot{}, err
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return attention.ErrUnavailable
 	}
-	if !changed && !initializing {
-		return snapshot, nil
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 512), 512)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "data:") {
+			wake()
+		}
 	}
-	snapshot.LocalRevision++
-	if !snapshot.Valid() {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
+	return attention.ErrUnavailable
+}
+
+// NotificationHandled sends the owner's acknowledgement to the hub.
+func (client *Client) NotificationHandled(ctx context.Context, handled attention.Handled) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if fleet.Call(ctx, client.notificationHub(), http.MethodPost, "/v1/notifications/handled", handled, nil) != nil {
+		return attention.ErrUnavailable
 	}
-	data, err = json.Marshal(snapshot)
-	if err != nil || len(data) > attention.MaximumSnapshotBytes {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
-	if err := ctx.Err(); err != nil {
-		return attention.DeviceSnapshot{}, err
-	}
-	if attention.WriteFile(store.path, data) != nil {
-		return attention.DeviceSnapshot{}, attention.ErrUnavailable
-	}
-	return snapshot, nil
+	return nil
 }

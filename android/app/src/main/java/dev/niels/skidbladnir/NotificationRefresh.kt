@@ -10,17 +10,12 @@ import androidx.work.WorkManager
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OutOfQuotaPolicy
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.encodeToString
 
-/** A bounded wake fetches current state; neither push bytes nor the worker can admit attention. */
+/** A bounded wake re-reads the hub and reconciles the shade; push bytes never admit attention. */
 class NotificationRefresh(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
         if (applicationContext.firebasePush().target() == null) return Result.success()
-        val completed = withTimeoutOrNull(10_000) {
-            val hint = PushStore(applicationContext).read()?.hint
-            if (hint != null) applicationContext.notificationOwner().receiveHint(productJson.encodeToString(hint).encodeToByteArray())
-            else applicationContext.notificationOwner().refreshAndPresent()
-        }
+        val completed = withTimeoutOrNull(10_000) { applicationContext.notificationOwner().refreshAndPresent() }
         return if (completed == true) Result.success() else if (runAttemptCount < 3) Result.retry() else Result.failure()
     }
     internal companion object {

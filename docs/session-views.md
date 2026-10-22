@@ -37,7 +37,7 @@ the first view answers: what is ready for my input or needs my intervention?
 it combines pending availability attention with currently observed requests and
 abnormal-stop notices. it is neither the complete agent roster nor a claim that
 work succeeded. `ready` means observed non-idle followed by idle, unacknowledged
-on this device. quiet idle includes both acknowledged ready and first-observed
+by the owner on any device. quiet idle includes both acknowledged ready and first-observed
 idle, where no preceding activity was seen.
 
 the change stays in existing client state and presentation owners. no new host

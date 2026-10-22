@@ -76,24 +76,17 @@ static void Reply(uint64_t request, BOOL ok, id value) {
     Emit(@{@"kind": @"result", @"request": @(request), @"ok": @(ok), @"value": value ?: @{}});
 }
 
+// An older build's notice lacks machine: it reads as an unknown machine and
+// is cancelled on the first fresh state.
 static NSDictionary *Notice(UNNotificationRequest *request) {
     NSDictionary *metadata = request.content.userInfo;
     if (![metadata[@"episode"] isKindOfClass:NSNumber.class] ||
-        ![metadata[@"readyGeneration"] isKindOfClass:NSNumber.class] ||
-        ![metadata[@"epoch"] isKindOfClass:NSString.class] ||
-        ![metadata[@"ref"] isKindOfClass:NSString.class] ||
         ![metadata[@"slot"] isEqual:request.identifier]) return nil;
-    return @{@"slot": request.identifier, @"episode": metadata[@"episode"],
-             @"epoch": metadata[@"epoch"], @"readyGeneration": metadata[@"readyGeneration"],
-             @"ref": metadata[@"ref"], @"title": request.content.title,
+    NSString *machine = [metadata[@"machine"] isKindOfClass:NSString.class] ? metadata[@"machine"] : @"";
+    NSString *ref = [metadata[@"ref"] isKindOfClass:NSString.class] ? metadata[@"ref"] : @"";
+    return @{@"slot": request.identifier, @"machine": machine, @"ref": ref,
+             @"episode": metadata[@"episode"], @"title": request.content.title,
              @"body": request.content.body};
-}
-
-static NSAppleEventDescriptor *Script(NSString *source) {
-    NSAppleScript *script = [[NSAppleScript alloc] initWithSource:source];
-    NSDictionary *error = nil;
-    NSAppleEventDescriptor *result = [script executeAndReturnError:&error];
-    return error == nil ? result : nil;
 }
 
 @interface SkidDelegate : NSObject <NSApplicationDelegate, UNUserNotificationCenterDelegate>
@@ -147,14 +140,14 @@ static NSAppleEventDescriptor *Script(NSString *source) {
         NSString *kind = [response.actionIdentifier isEqual:UNNotificationDismissActionIdentifier] ?
             @"dismiss" : @"click";
         Emit(@{@"kind": kind, @"slot": notice[@"slot"], @"episode": notice[@"episode"],
-               @"epoch": notice[@"epoch"], @"ref": notice[@"ref"]});
+               @"ref": notice[@"ref"]});
     }
     completion();
 }
 
 - (void)showWindow {
     if (self.setupWindow == nil) {
-        NSRect frame = NSMakeRect(0, 0, 450, 235);
+        NSRect frame = NSMakeRect(0, 0, 450, 206);
         self.setupWindow = [[NSWindow alloc] initWithContentRect:frame
             styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
             backing:NSBackingStoreBuffered defer:NO];
@@ -163,17 +156,17 @@ static NSAppleEventDescriptor *Script(NSString *source) {
         [self.setupWindow center];
         NSView *content = self.setupWindow.contentView;
         self.health = [NSTextField wrappingLabelWithString:@"notification setup required."];
-        self.health.frame = NSMakeRect(24, 160, 402, 50);
+        self.health.frame = NSMakeRect(24, 131, 402, 50);
         [content addSubview:self.health];
         NSTextField *instructions = [NSTextField wrappingLabelWithString:
             @"keep tailscale connected. notification setup uses the active hub in skid’s fleet configuration."];
-        instructions.frame = NSMakeRect(24, 110, 402, 48);
+        instructions.frame = NSMakeRect(24, 81, 402, 48);
         [content addSubview:instructions];
-        NSArray<NSString *> *titles = @[@"allow notifications", @"open notification settings", @"reset notification memory"];
-        SEL actions[] = {@selector(allow:), @selector(settings:), @selector(reset:)};
+        NSArray<NSString *> *titles = @[@"allow notifications", @"open notification settings"];
+        SEL actions[] = {@selector(allow:), @selector(settings:)};
         for (NSUInteger index = 0; index < titles.count; index++) {
             NSButton *button = [NSButton buttonWithTitle:titles[index] target:self action:actions[index]];
-            button.frame = NSMakeRect(24, 80 - index * 29, 270, 26);
+            button.frame = NSMakeRect(24, 51 - index * 29, 270, 26);
             [content addSubview:button];
         }
     }
@@ -195,8 +188,6 @@ static NSAppleEventDescriptor *Script(NSString *source) {
     [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:
         @"x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=dev.niels.skidbladnir"]];
 }
-
-- (void)reset:(id)sender { Emit(@{@"kind": @"reset"}); }
 @end
 
 static SkidDelegate *delegate;
@@ -227,15 +218,14 @@ void skid_native_send(uint64_t request, const char *operation, const char *paylo
         NSString *op = [NSString stringWithUTF8String:operation];
         NSData *data = [[NSString stringWithUTF8String:payload] dataUsingEncoding:NSUTF8StringEncoding];
         if ([op isEqual:@"post"]) {
-            // UserNotifications permits initiation from any app thread. The Go
-            // owner invokes this before accepting another hint; it never waits for
-            // completion. AppKit and AppleEvents below remain on main.
+            // UserNotifications permits initiation from any app thread. AppKit
+            // and AppleEvents below remain on main.
             NSDictionary *args = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             UNMutableNotificationContent *content = [UNMutableNotificationContent new];
             content.title = args[@"title"];
             content.body = args[@"body"];
             content.categoryIdentifier = @"needs-input";
-            content.userInfo = @{@"slot": args[@"slot"], @"epoch": args[@"epoch"], @"episode": args[@"episode"], @"ref": args[@"ref"], @"readyGeneration": args[@"readyGeneration"]};
+            content.userInfo = @{@"slot": args[@"slot"], @"machine": args[@"machine"], @"ref": args[@"ref"], @"episode": args[@"episode"]};
             BOOL silent = [args[@"silent"] boolValue];
             content.sound = silent ? nil : UNNotificationSound.defaultSound;
             content.interruptionLevel = silent ? UNNotificationInterruptionLevelPassive : UNNotificationInterruptionLevelActive;
@@ -277,36 +267,14 @@ void skid_native_send(uint64_t request, const char *operation, const char *paylo
                     }];
                 }];
             } else if ([op isEqual:@"cancel"]) {
-                NSArray *identifiers = args[@"slots"];
+                NSArray *identifiers = @[args[@"slot"]];
                 [center removePendingNotificationRequestsWithIdentifiers:identifiers];
                 [center removeDeliveredNotificationsWithIdentifiers:identifiers];
                 Reply(request, YES, @{});
-            } else if ([op isEqual:@"focus"]) {
-                NSString *bundle = NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier;
-                NSString *source = nil;
-                if ([bundle isEqual:@"com.mitchellh.ghostty"]) {
-                    source = @"with timeout of 2 seconds\n"
-                        "tell application id \"com.mitchellh.ghostty\"\n"
-                        "if frontmost then return id of focused terminal of selected tab of front window\n"
-                        "return \"\"\nend tell\nend timeout";
-                } else if ([bundle isEqual:@"com.apple.Terminal"]) {
-                    source = @"with timeout of 2 seconds\n"
-                        "tell application id \"com.apple.Terminal\"\n"
-                        "if frontmost and (count windows) > 0 then\n"
-                        "if not miniaturized of front window then\n"
-                        "return \"apple-terminal:\" & (id of front window as text) & \":\" & (tty of selected tab of front window)\n"
-                        "end if\nend if\nreturn \"\"\nend tell\nend timeout";
-                }
-                if (source == nil) {
-                    Reply(request, YES, @{@"id": @""});
-                } else {
-                    NSAppleEventDescriptor *result = Script(source);
-                    BOOL stillForeground = [NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier isEqual:bundle];
-                    Reply(request, result != nil, @{@"id": stillForeground ? (result.stringValue ?: @"") : @""});
-                }
             } else if ([op isEqual:@"launch"]) {
-                NSAppleEventDescriptor *result = Script(args[@"script"]);
-                Reply(request, result != nil && result.stringValue.length > 0, @{@"id": result.stringValue ?: @""});
+                NSDictionary *error = nil;
+                [[[NSAppleScript alloc] initWithSource:args[@"script"]] executeAndReturnError:&error];
+                Reply(request, error == nil, @{});
             } else if ([op isEqual:@"health"]) {
                 if (delegate.health != nil) delegate.health.stringValue = args[@"text"];
                 Reply(request, YES, @{});

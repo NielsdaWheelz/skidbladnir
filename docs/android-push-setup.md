@@ -100,10 +100,10 @@ secret. ordinary fcm outages affect push alone.
 | unconfigured | finish public configuration and the hub's private credential file, then apply |
 | permission blocked | enable notifications/google play services on the phone |
 | restart required | stop and reopen skid to activate changed firebase options |
-| pending | keep skid open and networking available until registration and possession proof complete |
+| setup required | keep skid open and networking available until registration completes |
 | unavailable | check hub credential access and outbound google connectivity, then retry through ordinary apply/resume |
 
-snapshot access never clears a separate push transport failure. only unseen,
-current attention admitted by the device can produce a notice. force-stopping
+snapshot access never clears a separate push transport failure. only unhandled,
+current attention on the hub can produce a notice. force-stopping
 android suppresses push until reopening; delivery before first unlock is not
 supported. users remain responsible for project/key access and maintenance.

@@ -3,9 +3,9 @@
 tmux owns session state and process lifetimes. each gateway owns one host;
 clients compose independent gateways. there is no application database.
 
-the table describes current source. the
-[attention owner](reply-notifications.md#owner-schemas-and-interfaces) persists
-quiet/armed/ready and revision fences; the clients own freshness and local visits.
+the table describes current source. the hub's notifier persists attention
+records and the owner's acknowledgements; clients reconcile native notices against
+its state and keep no notification memory.
 
 | slice | owner | boundary |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ quiet/armed/ready and revision fences; the clients own freshness and local visit
 | host resources | `internal/workdir`, `internal/pressure` | bounded directory browsing and native pressure observation; each owns its wire json |
 | gateway transport and access | `internal/gateway`, `internal/auth`, `internal/fleet`, `internal/strictjson`, `internal/logging`, `internal/terminal` | authenticated http through one `ServeMux` route table (`gateway.go`), strict messages, owned websocket/pty lifetime, live connections and revocation (`terminal.go`); content-free event lines (`internal/logging`: one slog json handler per serve process; darwin `$XDG_STATE_HOME/skidbladnir/serve.log`, 8 MiB plus `serve.log.1`, timed lines; linux stdout to the journal) |
 | desktop clients | `internal/fleetclient`, `internal/agentcli`, `internal/sessionui`, `internal/terminalclient` | shared peer routing and references; `fleetclient/status.go` owns typed status and queue category, alongside the strict request predicate for cli wait; `sessionui` owns one selected view, scoped machine inventory and browser presentation; local tty attachment stays in `terminalclient` |
-| terminal attention | desktop `internal/fleetclient/notifications.go`, phone `NotificationStore.kt` | serialized v2 quiet/armed/ready persistence, scoped observation and visit operations; private transition reduction and committed-ready projection; clients keep freshness, read-sequence and visit gates; no native-history feed |
+| notifications | hub `internal/notifier` (observation, acknowledgement, projection, fcm receivers); contract `internal/attention`; clients `fleetclient/notifications.go`, `internal/macnotifications` (mac app), phone `NotificationOwner.kt`, `NotificationState.kt`, `NativeNotifications.kt`, push files | one durable owner on the hub; clients stateless against the os, one in-memory alert map per process |
 | phone fleet and dashboard | `MachineStore.kt`, `FleetClient.kt`, `FleetInvite.kt`, `GatewayClient.kt`, `SkidbladnirController.kt`, `SessionCard.kt`, `ActionMenu.kt`, dashboard/forge/group/chooser files | encrypted device identity, hub routing, reconciliation, selection and mutations; `TerminalControl.kt` status types and validity; `ProductModel.kt` `sessionStatusContent` owns typed queue membership and status; `Groups.kt` `dashboardItems` owns grouped all, flat selected groups and the fleet-wide flat queue; `DashboardEntryState.kt` owns one selected view and schema-4 restoration; `DashboardMain` owns the scrolling view strip and one machines/details disclosure; `SessionCard.kt` the [session card](session-card.md); `ActionMenu.kt` shared action rows/overflow and the session lifetime-action list |
 | phone polling and ordering | `Polling.kt` | coalesced reads, per-machine mutation fences and awaited inventory reads; the controller owns lane lifetimes |
 | phone machine pressure | `Pressure.kt`, `PressurePresentation.kt`, `MachinePressureRail.kt` | strict pressure contract and state, dashboard visibility and content, rendered rail and details |

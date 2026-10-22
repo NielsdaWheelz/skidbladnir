@@ -103,7 +103,8 @@ steps:
    `install-owned.json` removals in `internal/install/install.go` (`Run` and
    `uninstall`).
 9. obligations of later campaign waves:
-   - w3.1: hub-owned attention discards per-device notification memory.
+   - w3.1: hub-owned attention (#144) is its own lockstep cutover in the next
+     release; see [attention cutover](attention-cutover.md).
    - hosts and apk ship in lockstep for w2.1 and w3.1; after w4.1 the phone
      decodes tolerantly and additive wire changes stop requiring lockstep.
    - w3.2: host archives no longer carry `native-helper/` or `providers/quota-read`

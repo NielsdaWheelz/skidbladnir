@@ -5,27 +5,22 @@ package macnotifications
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 )
 
-type presentedArgs struct {
-	VisitID string               `json:"visitId"`
-	ResetID string               `json:"resetId,omitempty"`
-	Token   attention.ReadyToken `json:"token"`
-}
-
+// listenSocket admits one app per state directory: the flock is held for the
+// app's lifetime and the socket is replaced only by its holder.
 func listenSocket() (*net.UnixListener, *os.File, error) {
-	path, err := SocketPath()
+	path, err := socketPath()
 	if err != nil || os.MkdirAll(filepath.Dir(path), 0700) != nil {
 		return nil, nil, attention.ErrUnavailable
 	}
@@ -34,151 +29,52 @@ func listenSocket() (*net.UnixListener, *os.File, error) {
 		return nil, nil, attention.ErrUnavailable
 	}
 	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
-		_ = lock.Close() // justify-ignore-error: failed admission owns no store or socket.
+		_ = lock.Close()
 		return nil, nil, errors.New("notification app is already running")
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		_ = lock.Close() // justify-ignore-error: the socket removal failure is primary.
+		_ = lock.Close()
 		return nil, nil, attention.ErrUnavailable
 	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
-		_ = lock.Close() // justify-ignore-error: the failed bind owns no listener.
+		_ = lock.Close()
 		return nil, nil, attention.ErrUnavailable
 	}
 	if os.Chmod(path, 0600) != nil {
-		_ = listener.Close() // justify-ignore-error: failed admission does not publish an owner.
-		_ = lock.Close()     // justify-ignore-error: releasing failed owner admission cannot repair chmod.
+		_ = listener.Close()
+		_ = lock.Close()
 		return nil, nil, attention.ErrUnavailable
 	}
 	return listener, lock, nil
 }
 
-func (owner *owner) serve(listener *net.UnixListener) {
-	var next atomic.Uint64
+// serve answers one `setup` line per connection with `ok` once the setup
+// window is shown, or `unavailable`. It stops accepting when ctx ends.
+func serve(ctx context.Context, listener *net.UnixListener) {
 	var connections sync.WaitGroup
 	defer connections.Wait()
-	stop := context.AfterFunc(owner.ctx, func() {
-		_ = listener.Close() // justify-ignore-error: cancellation owns listener teardown.
-	})
+	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
 	for {
 		connection, err := listener.AcceptUnix()
 		if err != nil {
 			return
 		}
-		id := next.Add(1)
-		connections.Go(func() { owner.serveConnection(connection, id) })
+		connections.Go(func() {
+			defer connection.Close()
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			deadline, _ := ctx.Deadline()
+			if connection.SetDeadline(deadline) != nil {
+				return
+			}
+			reply := "unavailable\n"
+			line, err := bufio.NewReader(io.LimitReader(connection, 64)).ReadString('\n')
+			if err == nil && line == "setup\n" && bridge.call(ctx, "setup", struct{}{}, nil) == nil {
+				reply = "ok\n"
+			}
+			_, _ = io.WriteString(connection, reply)
+		})
 	}
-}
-
-func (owner *owner) serveConnection(connection *net.UnixConn, id uint64) {
-	defer connection.Close()                                                  // justify-ignore-error: disconnect retires all connection-owned visits.
-	defer func() { _, _ = owner.request(owner.ctx, "disconnect", id, nil) }() // justify-ignore-error: process shutdown already retires ephemeral visits.
-	stop := context.AfterFunc(owner.ctx, func() {
-		_ = connection.Close() // justify-ignore-error: app cancellation closes every live attachment rpc.
-	})
-	defer stop()
-	reader := bufio.NewReader(connection)
-	for {
-		line, err := readLine(reader, 4096)
-		if err != nil {
-			return
-		}
-		ctx, cancel := context.WithTimeout(owner.ctx, operationTimeout)
-		var request struct {
-			Op   string          `json:"op"`
-			Args json.RawMessage `json:"args"`
-		}
-		var value any
-		valid := attention.Decode(line, &request) == nil && len(request.Args) != 0
-		if valid {
-			switch request.Op {
-			case "read":
-				var args struct{}
-				valid = attention.Decode(request.Args, &args) == nil
-			case "prepare":
-				var args attention.Slot
-				valid = attention.Decode(request.Args, &args) == nil && args.Valid()
-				value = args
-			case "abandon":
-				var args struct {
-					LaunchNonce string `json:"launchNonce"`
-				}
-				valid = attention.Decode(request.Args, &args) == nil && attention.EpochValid(args.LaunchNonce)
-				value = args.LaunchNonce
-			case "setup":
-				var args *struct{}
-				valid = attention.Decode(request.Args, &args) == nil && args != nil
-			case "register":
-				var wire struct {
-					Key         attention.Key         `json:"key"`
-					Foreground  *attention.Foreground `json:"foreground,omitempty"`
-					ResetID     string                `json:"resetId,omitempty"`
-					Presented   *bool                 `json:"presented"`
-					LaunchNonce string                `json:"launchNonce,omitempty"`
-					Surface     *SurfaceAssociation   `json:"surface,omitempty"`
-				}
-				valid = attention.Decode(request.Args, &wire) == nil && wire.Presented != nil
-				args := RegisterArgs{Key: wire.Key, Foreground: wire.Foreground, ResetID: wire.ResetID, LaunchNonce: wire.LaunchNonce, Surface: wire.Surface}
-				if valid {
-					args.Presented = *wire.Presented
-				}
-				valid = valid && args.Key.Valid() && (args.Foreground == nil || args.Foreground.Valid()) && (args.ResetID == "" || args.Presented && attention.EpochValid(args.ResetID)) && (args.LaunchNonce == "" || attention.EpochValid(args.LaunchNonce)) && (args.Surface == nil || validSurface(*args.Surface)) && (args.Surface == nil || args.LaunchNonce == "" || args.Surface.Nonce == args.LaunchNonce)
-				value = args
-			case "presented":
-				var wire struct {
-					VisitID string                `json:"visitId"`
-					ResetID string                `json:"resetId,omitempty"`
-					Token   *attention.ReadyToken `json:"token"`
-				}
-				valid = attention.Decode(request.Args, &wire) == nil && wire.Token != nil && attention.EpochValid(wire.VisitID)
-				args := presentedArgs{VisitID: wire.VisitID, ResetID: wire.ResetID}
-				if valid {
-					args.Token = *wire.Token
-				}
-				valid = valid && validToken(args.Token) && (args.ResetID == "" && args.Token == (attention.ReadyToken{}) || attention.EpochValid(args.ResetID))
-				value = args
-			case "end":
-				var args struct {
-					VisitID string `json:"visitId"`
-				}
-				valid = attention.Decode(request.Args, &args) == nil && attention.EpochValid(args.VisitID)
-				value = args.VisitID
-			default:
-				valid = false
-			}
-		}
-		var result any
-		if valid {
-			if request.Op == "setup" {
-				err = bridge.call(ctx, "setup", struct{}{}, nil)
-				result = struct{}{}
-			} else {
-				result, err = owner.request(ctx, request.Op, id, value)
-			}
-		} else {
-			err = errors.New("invalid")
-		}
-		cancel()
-		reply := map[string]any{"ok": true, "value": result}
-		if err != nil {
-			code := "unavailable"
-			if !valid {
-				code = "invalid"
-			}
-			reply = map[string]any{"ok": false, "error": code}
-		}
-		encoded, encodeErr := json.Marshal(reply)
-		if encodeErr != nil || len(encoded)+1 > attention.MaximumSnapshotBytes || connection.SetWriteDeadline(time.Now().Add(operationTimeout)) != nil {
-			return
-		}
-		if _, err := connection.Write(append(encoded, '\n')); err != nil {
-			return
-		}
-	}
-}
-
-func validToken(token attention.ReadyToken) bool {
-	return token == (attention.ReadyToken{}) || attention.EpochValid(token.Epoch) && token.Generation > 0
 }

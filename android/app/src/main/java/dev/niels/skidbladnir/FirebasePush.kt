@@ -17,6 +17,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal enum class FirebasePushStatus { Disabled, Ready, RestartRequired, Unavailable }
 private class FirebaseRegistration(val attempt: PushAttempt, val result: CompletableDeferred<PushRegistration?> = CompletableDeferred())
 
+/** Unreadable pairing or push state grants no push authority and never interrupts session management. */
+private inline fun <T> guarded(fallback: T, block: () -> T): T = try { block() }
+    catch (_: IOException) { fallback }
+    catch (_: GeneralSecurityException) { fallback }
+    catch (_: IllegalArgumentException) { fallback } // includes SerializationException
+
 /** The default SDK app is immutable for this process; the hub's fleet view owns the desired options. */
 internal class FirebasePush(private val context: Context) {
     private val store = PushStore(context)
@@ -24,19 +30,12 @@ internal class FirebasePush(private val context: Context) {
     @Volatile private var options: AndroidPush? = null
     @Volatile private var request: FirebaseRegistration? = null
 
-    private fun desired(): Pair<AndroidPush, PushTarget>? {
-        val fleet = MachineStore(context).association() ?: return null
-        val value = fleet.androidPush() ?: return null
+    private fun desired(fleet: PhoneFleet? = MachineStore(context).association()): Pair<AndroidPush, PushTarget>? {
+        val value = fleet?.androidPush() ?: return null
         return value to PushTarget(value.id, fleet.fleetId, fleet.deviceId)
     }
-    fun target(): PushTarget? = try {
-        val desired = desired()
-        desired?.second?.takeIf { options == desired.first }
-    } catch (_: IOException) { null }
-      catch (_: GeneralSecurityException) { null }
-      catch (_: IllegalArgumentException) { null }
-      catch (_: kotlinx.serialization.SerializationException) { null }
-    @Synchronized fun reconcile(): FirebasePushStatus {
+    fun target(): PushTarget? = guarded(null) { desired()?.takeIf { options == it.first }?.second }
+    @Synchronized private fun reconcile(): FirebasePushStatus {
         val desired = desired()
         store.reconcile(desired?.second)
         if (desired == null) {
@@ -65,11 +64,7 @@ internal class FirebasePush(private val context: Context) {
         }
         return FirebasePushStatus.Ready
     }
-    fun status(): FirebasePushStatus = try { reconcile() }
-        catch (_: IOException) { FirebasePushStatus.Unavailable }
-        catch (_: GeneralSecurityException) { FirebasePushStatus.Unavailable }
-        catch (_: IllegalArgumentException) { FirebasePushStatus.Unavailable }
-        catch (_: kotlinx.serialization.SerializationException) { FirebasePushStatus.Unavailable }
+    fun status(): FirebasePushStatus = guarded(FirebasePushStatus.Unavailable) { reconcile() }
 
     suspend fun register(): PushRegistration? = enrollment.withLock {
         if (status() != FirebasePushStatus.Ready) return@withLock null
@@ -95,43 +90,25 @@ internal class FirebasePush(private val context: Context) {
         val captured = request
         if (captured == null) {
             // Rotation is a wake-up only. Never bind its unscoped raw callback to a fleet.
-            if (status() == FirebasePushStatus.Ready) NotificationEnrollment.schedule(context, androidx.work.ExistingWorkPolicy.KEEP)
+            NotificationEnrollment.schedule(context, androidx.work.ExistingWorkPolicy.KEEP)
             return
         }
         if (target() != captured.attempt.target) return
         FirebaseInstallations.getInstance().id.addOnCompleteListener { task ->
             if (!task.isSuccessful || task.result != fid) return@addOnCompleteListener
-            try {
+            captured.result.complete(guarded(null) {
                 MachineStore(context).withAssociation { fleet ->
-                    val desired = fleet?.androidPush()
-                    val target = desired?.let { PushTarget(it.id, checkNotNull(fleet).fleetId, fleet.deviceId) }
-                    if (request === captured && options == desired && target == captured.attempt.target)
-                        captured.result.complete(store.registered(captured.attempt, fid))
+                    val desired = desired(fleet)
+                    if (request === captured && desired != null && options == desired.first && desired.second == captured.attempt.target) {
+                        store.registered(captured.attempt, fid)
+                    } else null
                 }
-            } catch (_: IOException) { captured.result.complete(null) }
-              catch (_: GeneralSecurityException) { captured.result.complete(null) }
-              catch (_: IllegalArgumentException) { captured.result.complete(null) }
-              catch (_: kotlinx.serialization.SerializationException) { captured.result.complete(null) }
+            })
         }
     }
 
-    fun accept(sender: String?, data: Map<String, String>): Boolean = MachineStore(context).withAssociation { fleet ->
-        val desired = fleet?.androidPush() ?: return@withAssociation false
-        if (options != desired || sender != desired.senderId) return@withAssociation false
-        store.accept(PushTarget(desired.id, fleet.fleetId, fleet.deviceId), data)
-    }
-    fun unavailable() {
-        try {
-            MachineStore(context).withAssociation { fleet ->
-                val desired = fleet?.androidPush()
-                if (desired != null && options == desired) store.unavailable(PushTarget(desired.id, checkNotNull(fleet).fleetId, fleet.deviceId))
-            }
-        } catch (_: IOException) { /* push status already reports inaccessible push storage */ }
-          catch (_: GeneralSecurityException) { /* inaccessible pairing grants no push authority */ }
-          catch (_: IllegalArgumentException) { /* invalid optional push state cannot interrupt session management */ }
-          catch (_: kotlinx.serialization.SerializationException) { /* invalid optional push state cannot interrupt session management */ }
-    }
-
+    /** A hint counts only from the sender of the options this process runs. */
+    fun accept(sender: String?): Boolean = guarded(false) { desired()?.first?.let { options == it && sender == it.senderId } == true }
 }
 
 private suspend fun Task<Void>.completed(): Boolean = suspendCancellableCoroutine { continuation ->

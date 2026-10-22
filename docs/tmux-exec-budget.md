@@ -43,7 +43,7 @@ capture commands per agent pane for h selected rows.
 
 | caller | cadence | when |
 | --- | --- | --- |
-| hub observer lane, per machine | 5 s (`internal/notifier/observer.go:445-469` → `internal/fleetclient/client.go:214-222`) | always on the hub, for closed-client attention (`justify-polling` at `observer.go:446`); reaches each host's `/v1/sessions` |
+| hub observer lane, per machine | 5 s (`internal/notifier/observer.go:267-290` → `internal/fleetclient/client.go:214-222`) | always on the hub, for closed-client attention (`Observer.Run`); reaches each host's `/v1/sessions` |
 | foreground phone | 5 s per machine | phone open |
 | desktop browser | 5 s (`internal/sessionui/session.go:131`) | browser open |
 

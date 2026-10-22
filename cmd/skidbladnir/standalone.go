@@ -63,7 +63,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 	if networkErr != nil {
 		origin = "" // local access needs no tailnet login
 	}
-	observerPath := filepath.Join(state, "notification-observer-v1.json")
+	observerPath := filepath.Join(state, "notification-observer-v2.json")
 	control, err := fleet.Open(fleet.Options{
 		Directory: state, ConfigPath: filepath.Join(config, "config.yaml"), HandlePath: filepath.Join(config, "machine-handle"), ObserverPath: observerPath,
 		Name: name, Origin: origin, Home: home, LoginShell: loginShell(ctx, home), Version: releaseVersion,
@@ -100,7 +100,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 	notifications := &notificationHost{logger: logger}
 	configuredPush := pushKey(credentials, local.Push)
 	if local.Hub == local.Machine {
-		observer, err := notifier.New(notifier.Config{FleetID: local.FleetID, Client: client, Machine: handle, StatePath: observerPath, Fleet: control, Push: local.Push, Sender: pushSender(credentials, local.Push), Members: local.Members})
+		observer, err := notifier.New(notifier.Config{FleetID: local.FleetID, Client: client, StatePath: observerPath, Fleet: control, Push: local.Push, Sender: pushSender(credentials, local.Push), Members: local.Members})
 		if err != nil {
 			notifications.fail()
 		} else {
@@ -156,7 +156,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 				if observer.ReconcileMembers(next.Members) != nil {
 					notifications.fail()
 				}
-				// Reconfiguring cancels a send in flight, so only a changed transport does.
+				// Only a changed transport reconfigures: a new sender drops its cached token and discards the result of a send in flight.
 				if key := pushKey(credentials, next.Push); key != configuredPush {
 					configuredPush = key
 					if observer.ConfigurePush(next.Push, pushSender(credentials, next.Push)) != nil {
@@ -175,8 +175,10 @@ func serveStandalone(stdout io.Writer) (result error) {
 	return errors.Join(result, control.Err())
 }
 
-// notificationHost serves the hub's observer. The observer is fixed before the
-// gateway serves; a failed observer answers 503 until the process restarts.
+// notificationHost serves the hub's observer, which is fixed before the
+// gateway serves and itself answers 503 after a failed save until restart.
+// Without an observer, a hub whose observer failed to start and a member both
+// answer 503.
 type notificationHost struct {
 	observer *notifier.Observer
 	failed   atomic.Bool
@@ -184,18 +186,20 @@ type notificationHost struct {
 }
 
 func (host *notificationHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if host.observer != nil && !host.failed.Load() {
+	switch {
+	case host.observer != nil:
 		host.observer.ServeHTTP(w, r)
-		return
+	case host.failed.Load():
+		notifier.WriteUnavailable(w)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"code":"NotificationsUnavailable","message":"notification hub unavailable; check skid status and service logs"}`+"\n") // a disconnected client cannot be answered
 	}
-	message := "notification hub unavailable; check skid status and service logs"
-	if host.failed.Load() {
-		message = "notification state unavailable; repair its state and restart the skid service"
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusServiceUnavailable)
-	_, _ = io.WriteString(w, "{\"code\":\"NotificationsUnavailable\",\"message\":\""+message+"\"}\n") // a disconnected client cannot be answered
 }
+
+// fail reports the hub's notification failure once; a running observer has
+// already latched itself unavailable.
 func (host *notificationHost) fail() {
 	if !host.failed.Swap(true) {
 		host.logger.Info("Notifications.Unavailable")

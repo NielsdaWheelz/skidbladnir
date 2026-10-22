@@ -31,7 +31,7 @@ no license choice is made here.
 | retained behavior | existing owner |
 | --- | --- |
 | terminal creation/control, exact targets, input uncertainty, and unsupported-program behavior, except the explicitly agreed launch changes | [terminal control](terminal-agent-control.md) and [terminal continuity](terminal-continuity.md) |
-| notification causes, display copy, device-local acknowledgement/dismissal, foreground suppression, exact-session clicks, and current-state reconciliation | [native notifications](native-notifications.md), with [session latency](session-latency.md) amendments |
+| notification causes, display copy, hub-held acknowledgement, exact-session clicks, and current-state reconciliation | [native notifications](native-notifications.md), with [session latency](session-latency.md) amendments |
 | service startup and preservation of accounts, histories, identities, and running tmux sessions during installation | [deployment contract](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/dev-server-handoff.md); move installation ownership to skid |
 | signed/checksummed immutable releases, coordinated matching-version updates, and verification boundaries | [distribution](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/public-fleet-distribution.md) as amended by [testing policy](rules.md#testing) |
 
@@ -314,14 +314,12 @@ use remains in the user's chosen terminal independently of the notification-clic
 selection. the cost is maintaining and qualifying a second launch/focus
 integration; mac automation permission remains.
 
-the current [mac launch](../internal/macnotifications/app_darwin.go) and
-[foreground detection](../internal/macnotifications/native_darwin.m) use ghostty.
-the added apple terminal integration must preserve exact session targeting,
-acknowledgement after first actual output, and proof that the exact session is
-foreground before suppressing later alerts. exact attachment and first-output
+the current [mac launch](../internal/macnotifications/app_darwin.go) uses ghostty.
+the added apple terminal integration must preserve exact session targeting and
+acknowledgement after first actual output. exact attachment and first-output
 acknowledgement already work independently of the terminal app through the
-[entry visit](../internal/terminalclient/visit.go); launch and focus need each
-app's interface.
+[entry visit](../internal/terminalclient/terminal.go); launch needs each app's
+interface.
 
 [apple terminal is scriptable](https://support.apple.com/en-lb/guide/terminal/trml1003/mac).
 read-only inspection of the installed `Terminal.sdef` found command execution
@@ -394,11 +392,10 @@ session name plus the existing closed reason phrases. do not introduce machine,
 profile, directory, question, or transcript text. the earlier machine/session
 wording does not require adding labels absent from the existing product.
 
-retain the existing notification behavior: device-local acknowledgement and
-dismissal, exact foreground suppression and click targeting, one notice per
-session lifetime, and only unseen, still-current attention after reconnect.
-multiple phones require separate registrations, not a new shared acknowledgement
-policy. keep the current android adapter and platform/channel settings; no new
+retain the existing notification behavior, as since amended by [native
+notifications](native-notifications.md): hub-held acknowledgement, exact click
+targeting, one notice per session lifetime, and only unhandled, still-current
+attention after reconnect. multiple phones require separate registrations. keep the current android adapter and platform/channel settings; no new
 lock-screen privacy setting is part of this work.
 
 2026-10-20 cutover decision: one fresh `skid connect` qr scan per phone is accepted
@@ -411,16 +408,15 @@ it. temporary host tooling does the equivalent for observer state. this adds one
 staged phone update during cutover; the final product retains no legacy reader.
 
 adapt fcm at the existing boundary: a content-free revision hint prompts an
-authenticated current-state fetch, then the existing device owner decides
-presentation. session names and reasons arrive over the private connection.
+authenticated current-state fetch, then the device reconciles its notices
+against the hub's verdicts. session names and reasons arrive over the private connection.
 the proposed encrypted summary displayed directly from a push is withdrawn:
 it was not agreed and would require changing current snapshot-admission
 semantics. do not add content-encryption key machinery merely for that proposal.
 
-retain per-phone registration rotation, possession proof, revocation, hub
-fleet routing, notification admission and device-local acknowledgement. bind
-registration, challenge and hints to the accepted public firebase configuration
-and receiver generation. changing/clearing configuration invalidates old
+retain per-phone registration rotation, revocation and hub fleet routing; the
+hub holds acknowledgement. bind registration to the accepted public firebase
+configuration and receiver generation. changing/clearing configuration invalidates old
 registrations without resetting attention or acknowledgement memory. google
 observes delivery metadata; notification details come only from authenticated
 hub reads over tailscale. no terminal or notification content goes through fcm.

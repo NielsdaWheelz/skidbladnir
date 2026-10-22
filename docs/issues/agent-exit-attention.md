@@ -9,8 +9,8 @@ process disappearance alone does not distinguish crash, intentional quit,
 normal exit or replacement.
 
 evidence: [attention identity rules](../reply-notifications.md#identity-and-lifetime),
-`internal/fleetclient/notifications.go` foreground reconciliation and android's
-matching notification owner. [session views](../session-views.md) deliberately
+the hub's foreground reconciliation in `internal/notifier/transitions.go`
+`observe()`, which every client's notices follow. [session views](../session-views.md) deliberately
 retains that contract. this is a source-derived limitation, not a reproduced
 crash or an accepted lifecycle feature.
 
