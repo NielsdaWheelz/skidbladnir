@@ -184,9 +184,10 @@ commands:
 - ornament geometry and the launcher icon are frozen source with no drift gate. the
   catalogue has no pre-release check: the gateway loader rejects invalid or duplicate
   keys and names at startup; [dvergatal](dvergatal.md) owns admission rules.
-- terminal vendor files have no retained check: git tracks their bytes, and
-  `scripts/build-terminal-xterm` rebuilds the patched bundle on demand; an empty
-  `git diff` afterwards proves it reproducible.
+- terminal vendor files are verbatim upstream npm and release bytes with no build
+  step and no retained check; git tracks them, and
+  [touch scroll](terminal-touch-scroll.md) records their sources, integrity and
+  re-verify recipe.
 - `scripts/release TAG` builds and signs every artifact from a fresh clone of exact
   canonical main, runs `scripts/check-release` on the result, then drafts a release;
   publication is separate. `scripts/check-release [--reproduce] [--source DIR]

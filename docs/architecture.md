@@ -140,7 +140,7 @@ machine does not block or authorize action against another.
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
-| Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
+| Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with stock xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
 | cutover | matching signed host/phone releases in lockstep with a fresh fleet per [release cutover](issues/release-cutover.md); no converters, old reader, auth path, ntfy or mixed-version mode |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
@@ -918,13 +918,13 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   viewport movement.
   One prevented, trusted DOM TouchEvent stream owns terminal tap, scroll, and
   selection on the API-36 client. A primary one-finger vertical drag over the
-  xterm screen becomes a normalized xterm line-wheel input; xterm alone routes
-  it to exact local scrollback, cursor fallback, or negotiated mouse reporting.
-  A completed sub-threshold tap becomes a semantic xterm primary tap; xterm's
-  active mouse protocol alone decides whether press/release input exists. Physical DOM wheels and
-  semantic line-wheel input share one xterm-owned router. There is no
-  transcript, mode detector, application-side router, synthetic wheel-event
-  injection, or tmux scroll command. The closed implementation and proof
+  xterm screen becomes wheel units at the touched cell, routed from xterm's
+  public state: one SGR wheel report when the application tracks the mouse,
+  else one normal/application-cursor Up or Down in the alternate screen, else
+  exact local scrollback. A completed sub-threshold tap sends one SGR primary
+  press and release (press only under X10) when the application tracks the
+  mouse. There is no transcript, synthetic wheel-event injection, or tmux
+  scroll command. The closed implementation and proof
   boundary is [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
   If IME composition is active when an otherwise eligible touch begins and no
   released selection already owns the interaction, the page latches that
@@ -934,9 +934,9 @@ and treat a mismatch as a defect; their cleanup slices convert them.
   composition outcome through xterm's existing literal input path; the next
   fresh gesture resumes ordinary terminal routing.
   A single-contact long press instead claims phone-local selection even under
-  negotiated mouse reporting; hold-drag extends through xterm's own selection
-  owner. Release snapshots at most `256 KiB` of well-formed UTF-8 text into one
-  transient native floating action mode. Its explicit `Copy` writes that exact
+  negotiated mouse reporting; hold-drag extends a range the page applies
+  through xterm's public selection API. Release snapshots at most `256 KiB` of
+  well-formed UTF-8 text into one transient native floating action mode. Its explicit `Copy` writes that exact
   snapshot once to Android's primary plain-text clipboard and clears it. The
   path emits no terminal input and has no WSS, tmux, provider, transcript,
   browser-clipboard, persistence, or clipboard-read capability. The closed

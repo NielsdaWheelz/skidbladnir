@@ -557,7 +557,8 @@ The phone has no screen-reader support (owner cut, 2026-10-21). It ships no
 curated narration, custom actions, roles, headings, live regions, traversal
 order, state descriptions or terminal wheel actions; TalkBack gets only
 Compose's merged visible text. xterm's `screenReaderMode` stays on only
-because it also selects the ime input path every phone qualification ran on.
+because it selects the ime input path the phone qualified; with it off, Gboard
+lost the first letter after the keyboard opened in 4 of 72 emulator runs.
 Labels carry no bidi isolates,
 so an rtl machine, group or folder name may reorder neighbouring punctuation;
 paths keep their explicit left-to-right direction. Drawn

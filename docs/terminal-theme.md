@@ -77,7 +77,7 @@ theme: {
 - Options: `minimumContrastRatio: 3` (safety net for arbitrary truecolor
   agent output; the designed table already exceeds it, so designed colors are
   never mutated), `fontFamily: '"JetBrains Mono", monospace'`. `fontSize`,
-  `cursorBlink`, `scrollback`, `screenReaderMode`, and the existing adaptive
+  `cursorBlink`, `scrollback`, and the existing adaptive
   glyph-scale logic are unchanged.
 
 ### Fonts
@@ -99,9 +99,8 @@ theme: {
   are harmless: they publish nothing. On load failure the page proceeds with
   `monospace` — honest degradation, never a blocked terminal.
 - The vendored `xterm-6.0.0.css` hard-codes `font-family: monospace` on the
-  screen-reader accessibility tree; that tree is non-visual and the vendored
-  file is not modified — accepted, noted here so review does not rediscover
-  it.
+  screen-reader accessibility tree, whose text is transparent (`screenReaderMode`
+  stays on for the ime input path); the vendored file is not modified.
 
 ### CSP
 
