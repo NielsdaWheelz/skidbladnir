@@ -1,23 +1,22 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
-	"io"
 	"os"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 )
 
-// The initialized destination shell evaluates this opaque text exactly once.
-// This child decodes data only; it never launches a provider or changes its environment.
+// agentExec writes the launch's command text, base64url without padding, for
+// the initialized destination shell to evaluate exactly once. It decodes data
+// only: it never launches a provider or changes its environment.
 func agentExec(arguments []string) error {
 	if len(arguments) != 1 {
 		return errors.New("invalid agent invocation")
 	}
-	launch, err := agentruntime.DecodeLaunch(arguments[0])
+	command, err := base64.RawURLEncoding.Strict().DecodeString(arguments[0])
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(os.Stdout, launch.Command)
+	_, err = os.Stdout.Write(command)
 	return err
 }

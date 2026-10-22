@@ -23,11 +23,7 @@ func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *ht
 	for index, usage := range observed.Profiles {
 		configured[index] = usage.Profile
 	}
-	profiles, err := mapProfiles(configured)
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
+	profiles := mapProfiles(configured)
 	mapped := make([]profileUsageDTO, len(profiles))
 	for index, profile := range profiles {
 		report := observed.Profiles[index].Report

@@ -401,8 +401,10 @@ clients never use the saved recipe as inventory or revive old terminal authority
 [terminal observation](terminal-observation.md) owns status;
 [terminal control](terminal-agent-control.md) owns bounded reads/controls.
 `agentcontrol` enriches the collected tmux inventory outside the session lock,
-using one focused observation per session: sessions captures bounded screen
-regions of the exact target and revalidates the foreground it sampled
+using one focused observation per changed session (an unchanged screen reuses its
+last detection, [exec budget a3](tmux-exec-budget.md#a3-activity-gated-reuse)):
+sessions captures bounded screen regions of the exact target and revalidates the
+foreground it sampled
 ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
 then a pure provider classifier interprets them. inventory makes no provider
 history/status calls. enrichment shares one two-second deadline and reuses the
@@ -482,7 +484,8 @@ the exact configured command and provider settings own those choices. both carry
    and starts the configured login shell. an agent launch is a one-shot
    foreground child of that shell; the shell persists after provider exit.
    terminal uses the same shell without an initial provider. the private
-   current-binary entrypoint carries the launch envelope without shell quoting.
+   current-binary entrypoint carries the launch (the profile's command text,
+   base64url) without shell quoting.
    omitted names create automatic ownership in that queue. an explicitly
    supplied name is manual skid intent only. neither provider receives a name; configured
    configured command flags belong to the user. A later queue failure
@@ -696,10 +699,9 @@ history item is `current`.
   settings without blocking newer membership or revocation. no json host config,
   injected provider command policy or daemon lifecycle remains.
   `internal/process` owns foreground observation for
-  process identity and command revalidation, not work state.
+  process identity and foreground revalidation, not work state.
   `internal/agentruntime` owns provider/profile validation,
-  foreground classification, and
-  opaque command envelopes and optional observation metadata. Linux process and
+  foreground classification and optional observation metadata. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed

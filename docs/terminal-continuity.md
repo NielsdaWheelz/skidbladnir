@@ -134,12 +134,13 @@ retain a closed allowlist: `CODEX_HOME`, `HOME`, `SKIDBLADNIR_CONNECTION`; the l
 key serves transport observation below. preserve missing versus empty. native APIs
 return an environment block: require eof within 1 mib, reading one extra byte to
 detect overflow; discard other entries, reject incomplete records and duplicate
-requested keys, never log the buffer. revalidate foreground,
-tty, pid/start and executable/argv around the read; exec can preserve pid/start.
+requested keys, never log the buffer. after the read, require the foreground
+(tty, pid/start, executable) to equal the caller's fresh sample; exec can
+preserve pid/start.
 stable-process read failure omits profile; a distinct foreground-mismatch error
 discards/reobserves the whole agent, never retains stale provider identity.
 
-reuse `MatchProfileEnvironment`: explicit home must exactly match a configured
+reuse `MatchProfile`: explicit home must exactly match a configured
 absolute home. empty/relative/unlisted is unknown. an absent home may use observed
 absolute `HOME/.codex` only after a complete successful read. never use the
 gateway's home, launch metadata, ancestors, provider files or terminal text.

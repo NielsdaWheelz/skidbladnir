@@ -1,9 +1,10 @@
 # claude screen grammar
 
-status: implemented in `internal/agentcontrol/claude.go`, whose comments cite
-the sections below. qualified live for claude 2.1.286 on darwin and claude
-2.1.284 on linux as §1 records; §2.6 rule 24 (theme setup) is qualified on both
-versions, except the narrow widths §5 c18 accepts. the
+status: implemented in `internal/agentcontrol/claude.go` (2.0-2.2),
+`claude_composer.go` (2.3, 2.4, 2.8) and `claude_families.go` (2.6), whose
+comments cite the sections below. qualified live for claude 2.1.286 on darwin
+and claude 2.1.284 on linux as §1 records; §2.6 rule 24 (theme setup) is
+qualified on both versions, except the narrow widths §5 c18 accepts. the
 [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
 holds the evidence and its limits, and [the spec](terminal-observation.md) owns
 the status contract this grammar feeds.
@@ -1004,8 +1005,8 @@ feeds [terminal model and effort](terminal-model-effort.md), without changing
 the status/composer grammar or its existing qualification.
 
 use only the ordinary composer's established `bottom` and `footer.mode` anchors,
-as `claudeReadUsage` does. the final physical row before the mode row must have
-exactly three or four ` │ `-separated fields:
+as the usage read in `claudeReadStatusline` does. the final physical row before
+the mode row must have exactly three or four ` │ `-separated fields:
 
 ```text
 <prefix> │ <native model/effort phrase> │ ctx <integer%|-->
@@ -1020,7 +1021,7 @@ quota may be absent; a footer value does not require `TerminalUsage`.
 
 require both phrase boundaries and the whole recognized suffix, no extra fields,
 and no second matching candidate anywhere in the anchored footer. reuse the
-conservative bound from `claudeReadUsage`:
+conservative bound from the usage read:
 `utf8ByteLength(all text before " │ ctx ") + runeCount(complete recognized suffix starting " │ ctx ") < paneWidth`.
 this counts the model phrase as well as the prefix; it works without quota.
 a row touching the bound omits. missing/unparseable

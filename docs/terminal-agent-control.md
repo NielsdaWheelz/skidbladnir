@@ -92,7 +92,8 @@ do not introduce a second pane/provider identity or per-action capability map.
 sessions never imports its higher-level observer. no provider-session or
 conversation identity is projected or used for controls.
 
-one sample serves inventory, inspect and guarded send:
+one sample serves inspect and guarded send; inventory takes the same steps
+through one capture batch:
 
 1. a failed foreground sample is unavailable `process_failed`. an ssh/mosh
    connection is `remote_context`; a foreground that is not a recognized local
@@ -100,7 +101,14 @@ one sample serves inventory, inspect and guarded send:
 2. `Manager.ObservePane` takes the session that List, ResolveTerminal or
    creation returned in the same request and never re-resolves it. it captures
    through `tmux.Client.ObservePane`, then re-observes the pane foreground and
-   requires `process.SameObservation` with the session's own sample. an absent
+   requires it to equal the session's own sample. inventory captures every
+   agent pane in one bracketed script
+   ([exec budget a2](tmux-exec-budget.md#a2-all-captures-in-one-exec)):
+   `Manager.CapturePanes` guards each pane's block by the row's lifetime,
+   session, pane, pane pid and screen and applies the same re-sample; a refused
+   block falls back to `ObservePane` for that pane alone, and an unchanged
+   screen reuses its last detection
+   ([a3](tmux-exec-budget.md#a3-activity-gated-reuse)). an absent
    or different foreground is `foreground_changed`; a kernel failure is
    `process_failed`; a tmux failure or screen change is `capture_failed`. an
    expired deadline is `observation_timeout`, chosen before the failed stage. a
@@ -116,8 +124,10 @@ state under the exact target guard. the second is one guarded `if-shell` that ru
 one `capture-pane -p -e` per row in one tmux command queue, only while the target
 and that screen read are unchanged; any change refuses the whole sample. one `-e`
 capture carries style from row to row on tmux 3.7c, so each row is its own capture
-and parses from the default style. rows are physical (no `-J`), complete utf-8,
-keep their escape sequences and are never joined; scrollback is never read.
+and parses from the default style. inventory's batch runs the same per-row
+captures in one guarded block per pane, against the screen its row read. rows
+are physical (no `-J`), complete utf-8, keep their escape sequences and are
+never joined; scrollback is never read.
 [observation §3](terminal-observation.md#3-composition-and-observation-boundary)
 owns the regions and their row and byte limits. the public plain-text read keeps
 its own capture.
@@ -135,7 +145,7 @@ content-free `Terminal.ObservationFailed` event with its reason and the
 milliseconds since the observing call began.
 
 a local provider is recognized only from fresh kernel facts about the foreground
-process; `ClassifyForeground` in `internal/agentruntime` owns matching, and a
+process; `Classify` in `internal/agentruntime` owns matching, and a
 provider behind npm's node launcher stays [unrecognized](issues/provider-wrapper-recognition.md).
 a process matching more than one provider is unrecognized.
 
@@ -266,7 +276,8 @@ unknown/duplicate keys, old pid/start/mode/method/conversation bodies reject.
 
 read defaults to 16 kib, maximum 32 kib; alternate screen means visible capture,
 otherwise bounded retained terminal tail. text is nonempty valid utf-8, <=32 kib,
-without nul. keep the existing 1–16 logical-key vocabulary. content stays out of
+without nul. keep the existing 1–16 logical-key vocabulary. the gateway checks
+these bounds once, before resolution; tmux keeps only key-name encoding. content stays out of
 logs, saved state and evidence. capture/parse never executes captured text.
 
 2026-10-02 launch composition: optional `initialProfile` is a nonempty configured

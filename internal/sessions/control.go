@@ -14,6 +14,7 @@ var (
 	ErrTerminalTargetChanged      = tmuxclient.ErrTargetChanged
 	ErrTerminalUnavailable        = tmuxclient.ErrUnavailable
 	ErrTerminalWriteUnknown       = tmuxclient.ErrWriteUnknown
+	ErrTerminalScreenChanged      = tmuxclient.ErrScreenChanged // a CapturePanes block refused: only ObservePane can tell why
 	ErrTerminalObservationChanged = errors.New("terminal foreground changed during observation")
 	ErrTerminalProcessFailed      = errors.New("terminal foreground process could not be identified")
 	ErrTerminalCaptureFailed      = errors.New("terminal screen could not be captured")
@@ -24,10 +25,6 @@ type TerminalTarget struct {
 	TmuxID        string `json:"-"`
 	IdentityToken string `json:"identityToken"`
 	PaneID        string `json:"paneId"`
-}
-
-func TargetOf(session Session) TerminalTarget {
-	return TerminalTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.ActivePaneID}
 }
 
 // Called only after resolution has accepted this exact lifetime token.
@@ -53,8 +50,8 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if row.PaneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session := manager.enrichSession(server, row)
-	err = manager.requireServerIdentity(ctx, server)
+	session := enrichSession(server, row, manager.settings.Load())
+	err = manager.RequireServer(ctx, server)
 	// An expired ctx fails the identity read and degrades enrichment without
 	// saying anything about the target, so it outranks the read's failure.
 	if ctx.Err() != nil {
@@ -94,42 +91,75 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 // ObservePane captures the bounded screen regions of session's exact target and
 // then revalidates the pane foreground against session's own sample. session
 // comes from List or ResolveTerminal in the same request and is never
-// re-resolved. Precondition: the session's foreground sample either failed or
-// found a foreground (Agent != nil guarantees one); a session sampled without a
-// foreground is a caller defect.
-// Errors: ErrTerminalProcessFailed (the session's foreground sample failed, or
-// re-observing it failed), ErrTerminalCaptureFailed (tmux failure or
-// dimension/screen change), ErrTerminalObservationChanged (foreground absent or
-// different in the same target), ErrTerminalTargetChanged (session lifetime or
-// selected pane changed).
+// re-resolved. Precondition: session has an Agent, so its sample holds a
+// foreground.
+// Errors: ErrTerminalCaptureFailed (tmux failure or dimension/screen change),
+// ErrTerminalProcessFailed (re-observing the foreground failed),
+// ErrTerminalObservationChanged (foreground absent or different in the same
+// target), ErrTerminalTargetChanged (session lifetime or selected pane
+// changed).
 // Callers check ctx first: an expired context is a timeout at any stage.
 func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
-	if session.ForegroundFailed() {
-		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
-	}
-	if session.foreground == nil {
-		panic("observed terminal session has no foreground") // justify-defect: callers observe only a recognized agent, whose sample holds its foreground.
-	}
-	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
+	observation, err := manager.tmux.ObservePane(ctx, session.screen.PaneTarget)
 	if errors.Is(err, ErrTerminalTargetChanged) {
 		return tmuxclient.PaneObservation{}, err
 	}
 	if err != nil {
 		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
 	}
-	foreground, err := paneForeground(session.panePID)
-	if err != nil {
-		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
-	}
-	if foreground == nil || !processinfo.SameObservation(*session.foreground, *foreground) {
-		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
+	if err := resample(session); err != nil {
+		return tmuxclient.PaneObservation{}, err
 	}
 	return observation, nil
 }
 
+// CapturePanes captures targets, agent sessions of one inventory of server, in
+// one tmux client (tmux-exec-budget.md a2) and re-samples each captured pane's
+// foreground against the session's own sample. On a nil error captures[i] is
+// targets[i]'s observation or its error: ErrTerminalScreenChanged (refused),
+// ErrTerminalCaptureFailed, ErrTerminalProcessFailed or
+// ErrTerminalObservationChanged. err is tmuxclient.WorkspaceSourceChanged when
+// the bracket proved another lifetime or none; any other err means no
+// bracketed transcript exists.
+func (manager *Manager) CapturePanes(ctx context.Context, server tmuxclient.ServerIdentity, targets []Session) ([]tmuxclient.PaneCapture, error) {
+	screens := make([]tmuxclient.ScreenTarget, len(targets))
+	for index, session := range targets {
+		screens[index] = session.screen
+	}
+	observed, captures, err := manager.tmux.CapturePanes(ctx, screens)
+	if err != nil {
+		return nil, err
+	}
+	if observed != server {
+		return nil, tmuxclient.WorkspaceSourceChanged
+	}
+	for index := range captures {
+		switch err := captures[index].Err; {
+		case errors.Is(err, ErrTerminalScreenChanged):
+		case err != nil:
+			captures[index].Err = ErrTerminalCaptureFailed
+		default:
+			captures[index].Err = resample(targets[index])
+		}
+	}
+	return captures, nil
+}
+
+// resample requires the pane's foreground to still be session's own sample.
+func resample(session Session) error {
+	foreground, err := paneForeground(processinfo.PID(session.screen.PanePID))
+	if err != nil {
+		return ErrTerminalProcessFailed
+	}
+	if foreground == nil || *foreground != *session.foreground {
+		return ErrTerminalObservationChanged
+	}
+	return nil
+}
+
 // expected guards provider-specific input. nil deliberately permits generic
 // input without requiring process recognition or an available kernel sample.
-func (manager *Manager) SendTerminal(ctx context.Context, target TerminalTarget, text string, expected *agentruntime.AgentRuntime) error {
+func (manager *Manager) SendTerminal(ctx context.Context, target TerminalTarget, text string, expected *agentruntime.Agent) error {
 	session, err := manager.ResolveTerminal(ctx, target)
 	if err != nil {
 		return err
@@ -142,7 +172,7 @@ func (manager *Manager) SendTerminal(ctx context.Context, target TerminalTarget,
 	})
 }
 
-func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget, keys []string, expected *agentruntime.AgentRuntime) error {
+func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget, keys []string, expected *agentruntime.Agent) error {
 	session, err := manager.ResolveTerminal(ctx, target)
 	if err != nil {
 		return err
@@ -158,7 +188,7 @@ func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget,
 	return manager.tmux.Keys(ctx, target.paneTarget(), keys)
 }
 
-func (manager *Manager) revalidateForeground(ctx context.Context, target TerminalTarget, before Session, expected *agentruntime.AgentRuntime) error {
+func (manager *Manager) revalidateForeground(ctx context.Context, target TerminalTarget, before Session, expected *agentruntime.Agent) error {
 	after, err := manager.ResolveTerminal(ctx, target)
 	if err != nil {
 		return err
@@ -172,15 +202,14 @@ func (manager *Manager) revalidateForeground(ctx context.Context, target Termina
 	return nil
 }
 
-func requireForeground(session Session, expected *agentruntime.AgentRuntime) error {
+func requireForeground(session Session, expected *agentruntime.Agent) error {
 	if expected == nil {
 		return nil
 	}
 	if session.foreground == nil {
 		return ErrTerminalUnavailable
 	}
-	agent := session.Agent
-	if agent == nil || agent.PaneID != expected.PaneID || agent.PID != expected.PID || agent.StartIdentity != expected.StartIdentity || agent.Provider != expected.Provider || agent.Profile != expected.Profile {
+	if session.Agent == nil || *session.Agent != *expected {
 		return ErrTerminalTargetChanged
 	}
 	return nil
@@ -190,7 +219,7 @@ func sameForeground(left, right Session) bool {
 	if left.foreground == nil || right.foreground == nil {
 		return left.foreground == nil && right.foreground == nil
 	}
-	return processinfo.SameObservation(*left.foreground, *right.foreground)
+	return *left.foreground == *right.foreground
 }
 
 func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profile, bool) {

@@ -222,15 +222,15 @@ func (gateway *Gateway) machineDTO() machineDTO {
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
 	defer cancel()
-	inventory, err := gateway.sessions.List(ctx)
+	inventory, failures, err := gateway.agents.Inventory(ctx)
+	for _, failure := range failures {
+		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
+	}
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	for _, failure := range gateway.agents.Enrich(ctx, inventory.Sessions) {
-		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
-	}
-	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
+	response, err := mapSessionsResponse(gateway.machineDTO(), inventory)
 	// The five-second budget covers enrichment and projection: a late inventory fails whole.
 	if err != nil || ctx.Err() != nil {
 		writeError(writer, errorInternal)
@@ -317,11 +317,11 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 	}
 	// Session.Created times creation alone; the status observation below is response latency.
 	elapsed := time.Since(startedAt)
-	observed := []sessions.Session{created.Session}
-	for _, failure := range gateway.agents.Enrich(ctx, observed) {
-		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
+	observing := time.Now()
+	created.Session = gateway.agents.EnrichCreated(ctx, created.Session)
+	if status := created.Session.TerminalStatus; status.Source == sessions.SourceUnavailable {
+		gateway.logObservationFailure(created.Session.TmuxID, status.Reason, time.Since(observing))
 	}
-	created.Session = observed[0]
 	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
 	if err != nil {
 		failure := errorInternal

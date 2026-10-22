@@ -48,12 +48,10 @@ func (target PaneTarget) refusal(marker string) string {
 		commandText("display-message", "-p", "-l", marker), commandText("display-message", "-p", "-l", identityMismatchMarker))
 }
 
-// CapturePane is the public plain-text read: the retained tail, or the visible
-// screen of an alternate-screen program, under the exact target guard.
+// CapturePane is the public plain-text read: the retained tail, at most
+// maxBytes, or the visible screen of an alternate-screen program, under the
+// exact target guard. The gateway bounds maxBytes.
 func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int) (Capture, error) {
-	if maxBytes < 1 || maxBytes > 32768 {
-		return Capture{}, ErrInputInvalid
-	}
 	pane := commandToken(target.PaneID)
 	branch := "display-message -p -t " + pane + " '#{alternate_on}' ; " + commandText("if-shell", "-F", "-t", target.PaneID, "#{alternate_on}",
 		"capture-pane -p -J -t "+pane, "capture-pane -p -J -t "+pane+" -S -"+strconv.Itoa(maxBytes))
@@ -79,10 +77,8 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 
 // Paste stages a unique buffer before the caller's final foreground check.
 // Both paste and submit are inside one successful lifetime/active-pane branch.
+// The gateway bounds text.
 func (client Client) Paste(ctx context.Context, target PaneTarget, text string, revalidate func() error) error {
-	if text == "" || len(text) > 32768 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
-		return ErrInputInvalid
-	}
 	var entropy [16]byte
 	rand.Read(entropy[:]) // never fails since go 1.24
 	name := "skid-input-" + hex.EncodeToString(entropy[:])
@@ -104,10 +100,9 @@ func (client Client) Paste(ctx context.Context, target PaneTarget, text string, 
 	return client.write(ctx, target, branch)
 }
 
+// Keys sends named keys; an unknown name is ErrInputInvalid. The gateway
+// bounds their count.
 func (client Client) Keys(ctx context.Context, target PaneTarget, keys []string) error {
-	if len(keys) < 1 || len(keys) > 16 {
-		return ErrInputInvalid
-	}
 	encoded := make([]string, 0, len(keys))
 	for _, key := range keys {
 		switch key {

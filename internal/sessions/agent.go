@@ -27,12 +27,16 @@ func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 	return &foreground, nil
 }
 
-func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
+// observeAgent samples the pane's foreground once, recognizes a local provider
+// and attributes its profile from profiles. A foreground change during the
+// environment read fails the sample; another failed read leaves the profile
+// unattributed.
+func observeAgent(panePID processinfo.PID, profiles []agentruntime.Profile) (*agentruntime.Agent, *processinfo.Observation, error) {
 	foreground, err := paneForeground(panePID)
 	if err != nil || foreground == nil {
 		return nil, nil, err
 	}
-	agent, found := agentruntime.Project(*foreground)
+	agent, found := agentruntime.Classify(*foreground)
 	if !found {
 		return nil, foreground, nil
 	}
@@ -41,18 +45,9 @@ func (manager *Manager) observeAgent(paneID string, panePID processinfo.PID) (*a
 		return nil, nil, err
 	}
 	if err == nil {
-		agent.Profile = observedProfile(manager.Profiles(), agent.Provider, environment)
+		agent.Profile = agentruntime.MatchProfile(profiles, agent.Provider, environment)
 	}
-	agent.PaneID = paneID
 	return &agent, foreground, nil
-}
-
-func observedProfile(profiles []agentruntime.Profile, provider agentruntime.Provider, environment map[string]string) agentruntime.ProfileKey {
-	profile, _ := agentruntime.MatchProfileEnvironment(profiles, provider, func(name string) (string, bool) {
-		value, present := environment[name]
-		return value, present
-	})
-	return profile
 }
 
 // connectionTransport names the remote-connection client a foreground runs, or "".
@@ -102,8 +97,8 @@ func (manager *Manager) TerminalContext(connection string) (TerminalContext, err
 		return TerminalContext{}, terminalcontext.ErrUnavailable
 	}
 	result := TerminalContext{ObservedAt: time.Now().UTC(), CWD: cwd}
-	if agent, found := agentruntime.Project(foreground); found {
-		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: observedProfile(manager.Profiles(), agent.Provider, environment)}
+	if agent, found := agentruntime.Classify(foreground); found {
+		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: agentruntime.MatchProfile(manager.Profiles(), agent.Provider, environment)}
 	}
 	return result, nil
 }

@@ -84,7 +84,9 @@ func (manager *Manager) ResolveSession(ctx context.Context, id, token string) er
 	return err
 }
 
-func (manager *Manager) requireServerIdentity(ctx context.Context, expected tmuxclient.ServerIdentity) error {
+// RequireServer proves that expected is the running server's lifetime: any
+// other server, or none, is WorkspaceSourceChanged.
+func (manager *Manager) RequireServer(ctx context.Context, expected tmuxclient.ServerIdentity) error {
 	observed, present, err := manager.tmux.InspectServer(ctx)
 	if err != nil {
 		return err

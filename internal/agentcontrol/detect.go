@@ -18,14 +18,15 @@ type detection struct {
 }
 
 // composer says whether guarded send may paste into the ordinary composer. Its
-// zero value is unknown, so a grammar that never establishes it refuses send.
-type composer uint8
+// zero value is unknown, so a grammar that never establishes it refuses send;
+// a known value names its rule suffix.
+type composer string
 
 const (
-	composerUnknown composer = iota
-	composerEmpty            // the ordinary composer shows only its placeholder
-	composerDraft            // the ordinary composer holds input
-	composerBlocked          // the ordinary composer visibly refuses ordinary input
+	composerUnknown composer = ""
+	composerEmpty   composer = "empty"   // the ordinary composer shows only its placeholder
+	composerDraft   composer = "draft"   // the ordinary composer holds input
+	composerBlocked composer = "blocked" // the ordinary composer visibly refuses ordinary input
 )
 
 // reading is what one grammar read on a screen: each dimension's value, or the
@@ -38,22 +39,11 @@ type reading struct {
 	interaction      sessions.Interaction
 	interactionCause unknownCause // given only when interaction is unknown
 	composer         composer
-	notice           turnNotice
+	notice           sessions.Notice // the latest turn's abnormal end; zero is none
 	usage            *sessions.TerminalUsage
 	footer           *sessions.TerminalFooter
 	rules            []string
 }
-
-// turnNotice is how the latest turn ended when it ended abnormally: the
-// provider's interruption or error marker as the transcript's last item. Its
-// zero value is no notice.
-type turnNotice uint8
-
-const (
-	noticeNone turnNotice = iota
-	noticeInterrupted
-	noticeError
-)
 
 // unknownReading is a reading that classified neither dimension, for cause.
 func unknownReading(cause unknownCause) reading {
@@ -82,34 +72,17 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 		read = detectCodex(parsed)
 	case agentruntime.ProviderClaude:
 		read = detectClaude(parsed)
-	default:
-		panic("terminal detection for an unknown provider") // justify-defect: recognition yields only the closed providers.
 	}
 
 	conflict, clipped, unknown := false, false, 0
-	for _, dimension := range [...]struct {
-		unknown bool
-		cause   unknownCause
-	}{
-		{read.activity == sessions.ActivityUnknown, read.activityCause},
-		{read.interaction == sessions.InteractionUnknown, read.interactionCause},
-	} {
-		if !dimension.unknown {
-			if dimension.cause != causeUnrecognized {
-				panic("classified terminal dimension with an unknown cause") // justify-defect: grammars give a cause only to an unknown dimension.
-			}
-			continue
-		}
+	if read.activity == sessions.ActivityUnknown {
 		unknown++
-		switch dimension.cause {
-		case causeUnrecognized:
-		case causeClipped:
-			clipped = true
-		case causeConflict:
-			conflict = true
-		default:
-			panic("unknown terminal dimension cause") // justify-defect: the causes are closed.
-		}
+		conflict, clipped = read.activityCause == causeConflict, read.activityCause == causeClipped
+	}
+	if read.interaction == sessions.InteractionUnknown {
+		unknown++
+		conflict = conflict || read.interactionCause == causeConflict
+		clipped = clipped || read.interactionCause == causeClipped
 	}
 	reason := sessions.ReasonRecognized
 	switch {
@@ -122,20 +95,13 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	case unknown == 2:
 		reason = sessions.ReasonLayoutUnknown
 	}
-	var notice sessions.Notice
-	switch read.notice {
-	case noticeNone:
+	notice := read.notice
+	if notice == "" {
 		notice = sessions.NoticeNone
-	case noticeInterrupted:
-		notice = sessions.NoticeInterrupted
-	case noticeError:
-		notice = sessions.NoticeError
-	default:
-		panic("unknown terminal notice") // justify-defect: the notices are closed.
 	}
 	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: notice, Source: sessions.SourceTerminal, Reason: reason}
 	if !status.Valid() {
-		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
+		panic("terminal detection produced an invalid status") // recognition yields only the two providers, whose grammars set closed dimension values
 	}
 	return detection{status: status, composer: read.composer, usage: read.usage, footer: read.footer, rules: read.rules}
 }

@@ -59,7 +59,7 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 type TerminalGreeting struct {
 	AttachedClients int
 	PaneID          string
-	Foreground      *agentruntime.Foreground
+	Foreground      *agentruntime.Agent // never profile-attributed
 }
 
 // Greeting samples the owned client's final pane without inventory or account
@@ -76,8 +76,8 @@ func (attachment *TerminalAttachment) Greeting(ctx context.Context) (TerminalGre
 	}
 	b, bErr := paneForeground(processinfo.PID(after.PanePID))
 	greeting := TerminalGreeting{AttachedClients: after.AttachedClients, PaneID: after.PaneID}
-	if before.PaneID == after.PaneID && before.PanePID == after.PanePID && aErr == nil && bErr == nil && a != nil && b != nil && processinfo.SameObservation(*a, *b) {
-		if foreground, found := agentruntime.ClassifyForeground(*b); found {
+	if before.PaneID == after.PaneID && before.PanePID == after.PanePID && aErr == nil && bErr == nil && a != nil && b != nil && *a == *b {
+		if foreground, found := agentruntime.Classify(*b); found {
 			greeting.Foreground = &foreground
 		}
 	}

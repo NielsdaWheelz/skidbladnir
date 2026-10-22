@@ -162,7 +162,7 @@ PaneObservation = {
   only that row unparseable: present but unrecognized in both grammars, never
   clipped evidence.
 - dimension/alternate-screen changes during capture invalidate the sample.
-  reuse before/after exact target and `process.SameObservation` validation.
+  reuse before/after exact target and foreground equality validation.
   this is a bounded sample, not an atomic snapshot of provider execution.
 - inventory passes its existing captured identity into focused observation; no
   full session-discovery or enrichment pass runs per sample. explicit controls
@@ -175,7 +175,9 @@ the row/byte limits are named internal constants, not new configuration knobs.
 raise them only if the required live layouts demonstrate a real need; keep a
 bounded envelope and remeasure the existing deadline.
 
-exclude title/progress classification and emission watchers/caches. tmux retains values across process
+exclude title/progress classification and emission watchers; the only reuse is
+[exec budget a3](tmux-exec-budget.md#a3-activity-gated-reuse)'s activity-gated
+detection reuse. tmux retains values across process
 replacement; matching a provider composer does not establish their freshness.
 do not collect redundant metadata solely to claim parity with herdr. the accepted
 cost is unknown behind obscuring views even where herdr would guess from titles.
@@ -221,8 +223,6 @@ signal under this screen-only contract. do not replace its custom statusline or
 force accessibility mode.
 unsupported display settings must be resolved during qualification, not silently
 dropped or routed through an old detector.
-in json launch arguments, `-c` and the expression are separate argv elements;
-the expression contains no surrounding shell quote characters.
 
 manual claude recognition is a prerequisite, not a footer problem.
 [claude update recognition](claude-update-recognition.md) owns the replacement
