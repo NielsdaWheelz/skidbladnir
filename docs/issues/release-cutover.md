@@ -16,8 +16,8 @@ then join order. until a host joins, it serves only its own terminals.
 evidence:
 - skid: `internal/fleet` reads only `fleet.json` and `machine-handle`; without
   `fleet.json` it bootstraps a new fleet with itself as hub from `config.yaml`,
-  checking `machines:` and `default_machine` against its own name only.
-  `internal/hostconfig` rejects `hub` as an unknown key. `MachineStore.kt` reads
+  checking `default_machine` against its own name only. `internal/hostconfig`
+  rejects `hub` and `machines` as unknown keys. `MachineStore.kt` reads
   `fleet-v2.json`, so `fleet-v1.json` is inert. `internal/install/install.go`
   refuses a downgrade by reading `current/release.json`, ignores the old
   `install-owned.json` receipt (48,821 entries on the macbook) and, on its first

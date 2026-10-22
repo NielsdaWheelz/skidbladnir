@@ -44,7 +44,7 @@ aliases, functions, environment and provider settings remain effective. skid add
 no provider flags and starts no provider daemon. optional `provider` and `home`
 metadata enable attributable account observation; commands without them still run.
 see the [configuration contract](docs/generalization-plan.md#2-configuration-and-durable-state)
-for sparse machine overrides. opening skid on any enrolled computer asks the hub
+for every field; all hosts share them. opening skid on any enrolled computer asks the hub
 to apply pending edits; `skid apply` does so without opening the browser. invalid
 edits retain the accepted settings.
 

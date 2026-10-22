@@ -162,8 +162,10 @@ state are not carried.
 there is one authoritative editable yaml file on the hub. it defines profiles and
 shared settings. other machines retain generated
 identity/connection state and a last accepted configuration snapshot, not another
-human-maintained copy of the shared settings. any necessary host overrides should
-live in that same logical configuration. an external provisioner may maintain
+human-maintained copy of the shared settings. there are no per-machine overrides
+(2026-10-21 owner decision, cleanup w2.3): every host reads the same top-level
+shell, terminal and default_machine, and `machines:` is an unknown key. an
+external provisioner may maintain
 that file through the same configuration contract; skid remains the sole
 application authority.
 
@@ -271,9 +273,8 @@ directory, unless the existing creation form, explicit cli/api cwd, or
 new-terminal-here action sets it.
 
 the recommended shell setting is optional: use the destination machine's login
-shell by default, with an explicit override in the shared yaml. machine-specific
-overrides belong in that same file when executable paths or preferences differ;
-this does not introduce separately edited host configuration files. resolve and
+shell by default, with an explicit override in the shared yaml. hosts whose shells
+differ rely on each host's login shell. resolve and
 validate the shell on the destination machine. if the selected or default shell
 is unsupported, require an explicit bash/zsh selection for skid rather than
 silently substituting another shell or changing the user's system login shell.

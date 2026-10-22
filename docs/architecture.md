@@ -133,7 +133,7 @@ machine does not block or authorize action against another.
 | network | local loopback works offline; remote endpoints require tailscale serve https8443; optional hub→fcm uses outbound https; no skid public ingress |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | auth | independent256-bit bearer per device; hosts store sha256 verifiers; one-use five-minute invitation token, no signed routing; exact machine header remains required |
-| profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; sparse machine overrides; terminal remains a separate launch choice |
+| profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; no per-machine overrides; terminal remains a separate launch choice |
 | agent control | foreground provider/account observation and terminal controls under [agent control](agent-control.md); read-only account quota; no conversation hooks, targeting or execution supervisor |
 | state | tmux owns live terminals; providers own history/execution; fleet owns one machine file per host plus the write-once machine handle; hub retains content-free attention/receiver state; each device owns independent acknowledgement |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |

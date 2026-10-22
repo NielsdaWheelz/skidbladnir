@@ -52,7 +52,7 @@ func (s *Service) acceptConfig(next *document) error {
 	accepted, _ := json.Marshal(c)
 	if !bytes.Equal(previous, accepted) {
 		current := &next.Fleet.State
-		current.Settings, current.AndroidPush = &c, publicAndroidPush(c.AndroidPush)
+		current.Settings = &c
 		current.StateRevision++
 		current.ConfigRevision++
 	}
@@ -259,7 +259,7 @@ func (s *Service) recover() (Status, error) {
 	defer s.mu.Unlock()
 	previous := s.draft()
 	c := *previous.Fleet.State.Settings
-	c.Machines, c.DefaultMachine = nil, previous.Name
+	c.DefaultMachine = previous.Name
 	next, err := s.newFleet(document{Machine: previous.Machine, Name: previous.Name, LocalBearer: previous.LocalBearer, Applied: previous.Applied}, c)
 	if err != nil {
 		return Status{}, err

@@ -40,7 +40,8 @@ type Member struct {
 	Verifier string `json:"verifier,omitempty"` // cleared in Status
 }
 
-// AndroidPush is the public firebase client configuration the phone reads.
+// AndroidPush is the public firebase client configuration the phone reads. Only
+// state.public() sets it, from the accepted settings.
 type AndroidPush struct {
 	ID            string `json:"id"`
 	ProjectID     string `json:"projectId"`
@@ -123,7 +124,8 @@ type invite struct {
 }
 
 // state is the one wire-and-cache type: the hub's authority, the GET /v1/fleet and
-// join reply, and every member's cache. Phones receive public().
+// join reply, and every member's cache. Phones receive public(), which adds
+// androidPush.
 type state struct {
 	FleetID        string             `json:"fleetId"`
 	Hub            string             `json:"hub"`
@@ -135,15 +137,15 @@ type state struct {
 	Settings       *hostconfig.Config `json:"settings,omitempty"`
 }
 
+// public is the phone's view: no members or settings, plus the accepted push
+// options with their id. Every committed state has settings: commit resolves them.
 func (s state) public() state {
+	s.AndroidPush = nil
+	if p := s.Settings.AndroidPush; p != nil {
+		s.AndroidPush = &AndroidPush{p.ID(), p.ProjectID, p.ApplicationID, p.SenderID, p.APIKey}
+	}
 	s.Members, s.Settings = nil, nil
 	return s
-}
-func publicAndroidPush(p *hostconfig.AndroidPush) *AndroidPush {
-	if p == nil {
-		return nil
-	}
-	return &AndroidPush{p.ID(), p.ProjectID, p.ApplicationID, p.SenderID, p.APIKey}
 }
 
 // Local is this installation's fleet as one value. ReadLocal returns it out of
