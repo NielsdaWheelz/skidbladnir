@@ -146,10 +146,12 @@ admission: deletion can prevent completion. after successful execution, differin
 complete membership is topology_changed; missing completion, duplicates and
 malformed structure are protocol_invalid. remove the manager's cause-erasing wrapper.
 
-the checkpoint store returns each failure classified and labelled with its
-failing step. the primary failure wins over cleanup. keep the current
-temporary-file → sync → close → rename → parent-sync sequence and success
-boundary. a json encoding failure is io; size overflow is limit.
+the checkpoint store returns each failure classified. a read failure is
+labelled with its failing step (`open`, `read`, `close`). replacement goes
+through `privatefile.WriteFile` (temporary file → sync → close → rename →
+parent sync; success only after the parent sync), and any replacement failure
+is labelled `write` and classified by its errno; the primary failure wins over
+cleanup. a json encoding failure is io; size overflow is limit.
 
 ## diagnostics and composition
 
@@ -171,8 +173,7 @@ failure fields exist only for delayed/broken. errno exists only when extracted
 from an actual syscall error. operation is a source-authored constant naming
 the failed boundary, never `err.Error()`, command arguments or observed data.
 operation literals: `mkdir`, `chmod`, `open`, `lock`, `read`, `close`,
-`create`, `write`, `file_sync`, `rename`, `directory_open`, `directory_sync`,
-`directory_close`, `cleanup`, `boot_identity`, `process_observe`, `server_inspect`,
+`write`, `boot_identity`, `process_observe`, `server_inspect`,
 `server_identity`, `normalize`, `capture`, `validate`, `restore_preflight`,
 `restore_execute`. no invented errno or elapsed duration.
 

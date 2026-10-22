@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
@@ -101,9 +102,9 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 	return &recipe, nil
 }
 
-// writeCheckpoint returns success only after the directory entry is durable.
-// The caller retains its last acknowledged fact when replacement is uncertain.
-func (manager *Manager) writeCheckpoint(recipe checkpoint) (failure *recoveryFailure) {
+// writeCheckpoint returns success only after the replacement is durable. The
+// caller retains its last acknowledged fact when replacement is uncertain.
+func (manager *Manager) writeCheckpoint(recipe checkpoint) *recoveryFailure {
 	encoded, err := json.Marshal(recipe)
 	if err != nil {
 		return &recoveryFailure{phase: RecoveryPhaseCheckpointWrite, cause: RecoveryCauseIO, operation: "write"}
@@ -111,42 +112,8 @@ func (manager *Manager) writeCheckpoint(recipe checkpoint) (failure *recoveryFai
 	if len(encoded) > maximumCheckpointBytes {
 		return &recoveryFailure{phase: RecoveryPhaseCheckpointWrite, cause: RecoveryCauseLimit, operation: "write"}
 	}
-	directory := filepath.Dir(manager.recovery.path)
-	file, err := os.CreateTemp(directory, ".workspace-*")
-	if err != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "create", err, RecoveryCauseIO)
-	}
-	name := file.Name()
-	defer func() {
-		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) && failure == nil {
-			failure = osFailure(RecoveryPhaseCheckpointWrite, "cleanup", err, RecoveryCauseIO)
-		}
-	}()
-	if _, err := file.Write(encoded); err != nil {
-		_ = file.Close() // justify-ignore-error: the write failure is authoritative; nothing was published.
+	if err := privatefile.WriteFile(manager.recovery.path, encoded); err != nil {
 		return osFailure(RecoveryPhaseCheckpointWrite, "write", err, RecoveryCauseIO)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close() // justify-ignore-error: the sync failure is authoritative; nothing was published.
-		return osFailure(RecoveryPhaseCheckpointWrite, "file_sync", err, RecoveryCauseIO)
-	}
-	if err := file.Close(); err != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "close", err, RecoveryCauseIO)
-	}
-	if err := os.Rename(name, manager.recovery.path); err != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "rename", err, RecoveryCauseIO)
-	}
-	parent, err := os.Open(directory)
-	if err != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "directory_open", err, RecoveryCauseIO)
-	}
-	syncErr := parent.Sync()
-	closeErr := parent.Close()
-	if syncErr != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "directory_sync", syncErr, RecoveryCauseIO)
-	}
-	if closeErr != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "directory_close", closeErr, RecoveryCauseIO)
 	}
 	return nil
 }

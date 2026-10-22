@@ -1,7 +1,10 @@
 # codebase map
 
 tmux owns session state and process lifetimes. each gateway owns one host;
-clients compose independent gateways. there is no application database.
+clients compose independent gateways. there is no application database. every
+private state file (fleet, machine handle, notification observer, workspace
+checkpoint, terminal contexts) is written through `internal/privatefile`, the
+only package that syncs a directory.
 
 the table describes current source. the hub's notifier persists attention
 records and the owner's acknowledgements; clients reconcile native notices against

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
@@ -71,19 +72,7 @@ func Register(connectionID string, shellPID process.PID) error {
 		return err
 	}
 	value, _ := json.Marshal(record{BootID: boot, PID: root.PID, Start: root.StartIdentity, TTY: root.TerminalDevice}) // justify-ignore-error: strings and integers always encode.
-	file, err := os.CreateTemp(directory, ".new-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	if _, err := file.Write(value); err != nil {
-		file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), filepath.Join(directory, connectionID+".json"))
+	return privatefile.WriteFile(filepath.Join(directory, connectionID+".json"), value)
 }
 
 // Observe returns the live root registered for connectionID on this boot.
@@ -124,7 +113,7 @@ func contextDirectory() (string, error) {
 }
 
 // prune removes records from another boot, unreadable ones and those whose root
-// has gone; Register's temporary .new-* files are not records. It runs unlocked:
+// has gone; Register's temporary files are not records. It runs unlocked:
 // Register renames whole records into place, and one connection id registers
 // once, so a racing prune sees no record or one whose root is live.
 func prune(directory, boot string) error {
