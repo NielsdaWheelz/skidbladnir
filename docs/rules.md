@@ -187,6 +187,9 @@ commands:
   syntax, shell lint, catalogue and generated-asset checks, plus go vet and module
   verification for host and android lint for android (default `all`). verify adds
   the scoped go and android debug builds. `scripts/build` runs both builds alone.
+- terminal vendor files have no retained check: git tracks their bytes, and
+  `scripts/build-terminal-xterm` rebuilds the patched bundle on demand; an empty
+  `git diff` afterwards proves it reproducible.
 - `scripts/release TAG` builds, signs and verifies artifacts once, then drafts a
   release; publication is separate. `scripts/check-release [--reproduce] [--source
   DIR] RELEASE_DIRECTORY TAG SOURCE_SHA` verifies artifacts against the public

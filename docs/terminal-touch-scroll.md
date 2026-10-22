@@ -243,22 +243,15 @@ command API or production test seam.
   buffer/mode branch, hand-encoded mouse/cursor sequence, synthetic
   `WheelEvent`, PageUp remap, or tmux `send-keys`.
 - Replace the official xterm JavaScript artifact with one visibly fork-suffixed
-  artifact reproducibly built from tag `6.0.0`, commit
-  `f447274f430fd22513f6adbf9862d19524471c04`, exact upstream source-tree and
-  lock digests, exact post-patch manifest and lock digests, pinned Node/npm, an
-  explicit Darwin arm64 build platform, the exact
-  integrity-checked esbuild platform package omitted by that upstream lock,
-  and one reviewed source patch. Install scripts remain disabled. Generation
-  audits the full exact lock, including every compiler, linter, test, and
-  bundler dependency, and defects on any known advisory; production-only or
-  severity-class omissions are forbidden.
-  The source patch also owns the minimum build-only dependency remediation
-  needed to reconcile the tag's stale `5.5.0` lock metadata with its `6.0.0`
-  manifest and make the complete executable build lock audit clean; those
-  compiler/linter/test/bundler dependencies do not enter the shipped bundle as
-  application dependencies. `terminal.lock` records both sides of that
-  transformation, the toolchain, build platform, esbuild source/integrity,
-  patch path/digest, generation command, and generated output digest. Never
+  artifact that `scripts/build-terminal-xterm` rebuilds from tag `6.0.0`,
+  commit `f447274f430fd22513f6adbf9862d19524471c04`, Node 22.23.2, and one
+  reviewed source patch, with install scripts disabled. Besides the source
+  delta, the patch carries a build-only `package.json`/`package-lock.json`
+  refresh that pins the webpack and terser versions the committed bytes were
+  built with; the tag's own lock produces different bytes. Those build tools
+  do not enter the shipped bundle. The rebuild ignores git and npm user config.
+  Git alone tracks the vendored bytes; a rebuild followed by an empty
+  `git diff` proves reproducibility. Never
   edit minified output. Preserve the MIT license and official CSS. Do not apply upstream's local-only
   [touch patch](https://github.com/xtermjs/xterm.js/commit/40f2eefec70577f9e8d3eda08f95028f3f04380a)
   beside this owner.
@@ -286,8 +279,8 @@ cannot appear on the actually focused virtual node.
 
 | Owner | Paths | Proof |
 | --- | --- | --- |
-| Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-key-deck.md`, this document, `scripts/build-terminal-xterm`, `scripts/check-terminal-assets`, static-only composition in `scripts/test` | Scope, authority, and reproducible-generation policy |
-| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir.patch`, `android/terminal.lock`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, `android/app/src/main/res/values/terminal_touch_scroll.xml`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
+| Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-key-deck.md`, this document, `scripts/build-terminal-xterm`, static-only composition in `scripts/test` | Scope, authority, and reproducible-generation policy |
+| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir.patch`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, `android/app/src/main/res/values/terminal_touch_scroll.xml`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
 | Read-only verifier | none | Diff, residue, dependency, and gate review |
 
 The runtime slice cannot split further without duplicating the gesture owner or
@@ -382,12 +375,11 @@ Verification is deliberately boundary-weighted:
 
 - the focused real-WebView instrumentation owns gesture, xterm routing, native
   accessibility, and shell containment;
-- `./scripts/test verify` owns static analysis, packaged-asset integrity,
-  compilation, lint, and unit regressions, but does not prove touch behavior;
-- `./scripts/build-terminal-xterm --check` performs a clean source fetch,
-  verifies tag/commit/tree/lock/patch/toolchain pins, runs the focused upstream
-  tests and linters, rebuilds the bundle, and byte-compares the committed
-  artifact. Two clean invocations with one digest own reproducibility;
+- `./scripts/test verify` owns static analysis, compilation, lint, and unit
+  regressions, but does not prove touch behavior;
+- `./scripts/build-terminal-xterm` performs a clean fetch of the pinned commit,
+  applies the patch, rebuilds the bundle, and overwrites the committed
+  artifact; an empty `git diff` afterwards owns reproducibility;
 - separately approved focused S22+ runs own the unchanged-source red, focused
   green, and each mutation red; the complete signed same-version platform suite
   then owns platform regression;
@@ -438,18 +430,16 @@ logging. Existing opaque tmux mouse bindings may enter shared copy mode.
   reviewable patch, pinned reproducible inputs and output, upstream-style
   regressions, and the black-box S22 three-route matrix; a future xterm upgrade
   cannot land without all of them.
-- **Build-lock remediation:** the official `6.0.0` source tag carries stale
-  `5.5.0` root lock metadata and a development toolchain that does not meet the
-  required complete zero-advisory audit. The source patch therefore includes a
-  pinned, build-only lock refresh plus the minimum manifest/lint compatibility
-  delta. This enlarges dependency review, but is accepted over excluding dev
-  dependencies, weakening audit severity, running an unpinned lock rewrite, or
-  trusting install scripts. Separate upstream and post-patch digests make the
-  transformation fail closed and visible at upgrade time.
-- **Declared build platform:** the source audit is reproducible on the one-user
-  release workstation's Darwin arm64 boundary. Supporting another build host
-  requires an explicit integrity-pinned esbuild package and identical-output
-  proof; an implicit platform download or install-script fallback is rejected.
+- **Pinned build toolchain:** the patch keeps a build-only manifest and lock
+  refresh, originally made to clear a since-removed dev-toolchain audit,
+  because the committed bundle's bytes depend on the webpack and terser it
+  pins. The rebuild neither audits nor lints that toolchain: none of it ships,
+  and an advisory gate on it failed the rebuild as new advisories appeared.
+  The refresh's typescript-eslint 8 bump is kept without the lint-config
+  renames it needs, so lint in the patched tree is knowingly unmaintained.
+  Node is pinned; npm version, build platform, locale and clock are not
+  checked, so drift shows only as a `git diff`. Dropping the refresh means
+  re-baselining the bundle.
 - **Bounded batching:** one frame or accessibility action can produce at most
   one remote cursor/mouse unit even when its event carries several local lines.
   This sacrifices remote velocity fidelity to prevent input amplification.

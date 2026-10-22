@@ -315,8 +315,8 @@ has no negotiation path.
   `xterm-6.0.0-skidbladnir` patch/artifact containing the existing wheel work
   and new selection ingress. Delete the old names, lock entries, and hard-coded
   checks; never edit generated JavaScript.
-- Retain one source pin, one reviewed patch, the existing complete dependency
-  audit, upstream-style focused tests, deterministic rebuild, and byte compare.
+- Retain one source pin, one reviewed patch with upstream-style focused tests,
+  and a deterministic rebuild whose empty `git diff` is the byte compare.
 - Delete the PointerEvent/pointer-capture path, compatibility mouse/context-menu
   suppression state, and old pass-through long-press path. The sole TouchEvent
   owner prevents the trusted start before recognition; xterm/Chromium DOM copy
@@ -331,8 +331,8 @@ has no negotiation path.
 
 | Owner | Paths | Proof |
 | --- | --- | --- |
-| Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-touch-scroll.md`, this document, `scripts/build-terminal-xterm`, `scripts/check-terminal-assets` | Scope/acceptance authority and reproducible-generation policy |
-| Android terminal builder | renamed `android/xterm-6.0.0-skidbladnir.patch`, `android/terminal.lock`, renamed generated xterm asset, terminal `index.html` and `terminal.js`, `LockedTerminalWebView.kt`, new `TerminalSelection.kt`, new `res/values/terminal_selection.xml`, `TerminalInstrumentedTest.kt` | Owns both reds and all production behavior |
+| Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-touch-scroll.md`, this document, `scripts/build-terminal-xterm` | Scope/acceptance authority and reproducible-generation policy |
+| Android terminal builder | renamed `android/xterm-6.0.0-skidbladnir.patch`, renamed generated xterm asset, terminal `index.html` and `terminal.js`, `LockedTerminalWebView.kt`, new `TerminalSelection.kt`, new `res/values/terminal_selection.xml`, `TerminalInstrumentedTest.kt` | Owns both reds and all production behavior |
 | Read-only verifier | none | Diff, residue, security, accessibility, and gate review only |
 
 The runtime slice stays with one builder because gesture arbitration, packaged

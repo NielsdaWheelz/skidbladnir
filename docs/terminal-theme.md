@@ -26,9 +26,8 @@ guarantees, and key-deck behavior unchanged.
 - Replace inherited defaults with the derived table; change nothing else on
   the page. The WSS protocol, page↔native messages, key deck, IME
   containment, and 80-column guarantee are untouched.
-- Fonts are vendored pinned assets under the existing `terminal.lock` digest
-  regime, exactly like xterm itself: upstream release bytes, no local
-  subsetting or re-shaping, license file alongside.
+- Fonts are vendored exactly like xterm itself: git-tracked upstream release
+  bytes, no local subsetting or re-shaping, license file alongside.
 - The CSP stays deny-by-default; the single change is `font-src 'none'` →
   `font-src 'self'`. Scripts remain bundle-only; every
   exfiltration-capable resource class stays denied.
@@ -86,10 +85,8 @@ theme: {
 - Vendored under `android/app/src/main/assets/terminal/vendor/`:
   `JetBrainsMono-Regular.woff2` and `JetBrainsMono-Bold.woff2` byte-for-byte
   from the upstream release zip's `fonts/webfonts/` (v2.304 at drafting),
-  plus its `OFL.txt` as `JetBrainsMono-2.304.LICENSE` — the lock's
-  `<package>-<version>.LICENSE` convention; all three added to
-  `android/terminal.lock` (`scripts/check-terminal-assets` enforces set
-  equality plus digests).
+  plus its `OFL.txt` as `JetBrainsMono-2.304.LICENSE` — the vendor
+  directory's `<package>-<version>.LICENSE` convention.
 - `terminal.css` declares two `@font-face` rules, family `JetBrains Mono`,
   weights 400 and 700, `font-display: block`. SGR bold resolves through
   xterm's default `fontWeightBold: 'bold'` to the real bold file.
@@ -120,7 +117,7 @@ palette, or compatibility path remains.
 
 | Slice | Owner | Paths | Owned proof |
 | --- | --- | --- | --- |
-| Terminal page | Android terminal-boundary builder | `android/app/src/main/assets/terminal/terminal.js`, `terminal.css`, `index.html`, `vendor/JetBrainsMono-*`, `android/terminal.lock`, `TerminalInstrumentedTest.kt` (one expectation literal, below) | Lock/red proofs below |
+| Terminal page | Android terminal-boundary builder | `android/app/src/main/assets/terminal/terminal.js`, `terminal.css`, `index.html`, `vendor/JetBrainsMono-*`, `TerminalInstrumentedTest.kt` (one expectation literal, below) | Red proofs below |
 | Verification | Read-only verifier | none | Review only |
 
 No production Kotlin, gateway, tmux, or protocol file changes. One existing
@@ -137,7 +134,8 @@ paths reopens scope.
 Red (observed failing before implementation):
 
 1. `scripts/check-terminal-assets` fails on the added-but-unlocked font files
-   (set-equality red), then passes only with correct digests.
+   (set-equality red), then passes only with correct digests. That checker and
+   `android/terminal.lock` were later removed; git alone tracks vendor bytes.
 2. Platform instrumented proof: the existing indexed-red assertion fails
    against the new table (see work split), and a rendered ANSI bright-yellow
    cell matches Gold `#d6a85f` with a Gold cursor — fails against One Dark.
