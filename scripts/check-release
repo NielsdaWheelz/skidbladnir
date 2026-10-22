@@ -107,7 +107,7 @@ import pathlib
 import sys
 import tarfile
 
-required = {"skidbladnir", "characters.json", "release.json", "providers/shell-init",
+required = {"skidbladnir", "release.json", "providers/shell-init",
             "providers/terminal-context-init", "providers/quota-read", "native-helper/runtime.json",
             "native-helper/source/uv.lock", "native-helper/source/pyproject.toml", "native-helper/requirements.txt", "native-helper/uv"}
 if sys.argv[2] == "darwin-arm64":
@@ -119,7 +119,7 @@ with tarfile.open(sys.argv[1], "r:gz") as archive:
         path = pathlib.PurePosixPath(name)
         if path.is_absolute() or ".." in path.parts or name in seen:
             sys.exit("release archive has unsafe or duplicate members")
-        if path.parts[0] not in {"skidbladnir", "characters.json", "release.json", "providers", "native-helper", "Skid.app"}:
+        if path.parts[0] not in {"skidbladnir", "release.json", "providers", "native-helper", "Skid.app"}:
             sys.exit("release archive has unexpected members")
         seen.add(name)
         if not (member.isfile() or member.isdir() or member.issym()):
@@ -236,13 +236,11 @@ verify_archive() (
     printf '%s does not contain one mode-0755 regular binary\n' "$(basename "$archive")" >&2
     return 1
   }
-  for member in characters.json release.json; do
-    [[ -f "$staging_dir/$member" && ! -L "$staging_dir/$member" &&
-      "$(file_mode "$staging_dir/$member")" == 644 ]] || {
-      printf '%s member %s is not a mode-0644 regular file\n' "$(basename "$archive")" "$member" >&2
-      return 1
-    }
-  done
+  [[ -f "$staging_dir/release.json" && ! -L "$staging_dir/release.json" &&
+    "$(file_mode "$staging_dir/release.json")" == 644 ]] || {
+    printf '%s member release.json is not a mode-0644 regular file\n' "$(basename "$archive")" >&2
+    return 1
+  }
   validate_manifest_file "$staging_dir/release.json" "$tag" "$sha" "$platform" || {
     printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
@@ -252,10 +250,6 @@ verify_archive() (
      .commit == $pins[0].commit and .python == $pins[0].python and .uv == $pins[0].uv' \
     "$staging_dir/native-helper/runtime.json" >/dev/null || {
     printf '%s native runtime pins differ from the exact release source\n' "$(basename "$archive")" >&2
-    return 1
-  }
-  cmp -s "$source_dir/catalog/characters.json" "$staging_dir/characters.json" || {
-    printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
     return 1
   }
   if [[ -n "$reproduce" ]]; then

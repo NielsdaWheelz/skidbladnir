@@ -90,7 +90,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 	if err != nil {
 		return err
 	}
-	manager, err := sessions.New(sessions.Config{Machine: handle, CheckpointPath: filepath.Join(state, "workspace.json"), TmuxPath: tmux, ShellPath: local.Settings.Shell, Workdir: workingDirectories, CataloguePath: filepath.Join(directories.Data, "current", "characters.json"), Profiles: profiles})
+	manager, err := sessions.New(sessions.Config{Machine: handle, CheckpointPath: filepath.Join(state, "workspace.json"), TmuxPath: tmux, ShellPath: local.Settings.Shell, Workdir: workingDirectories, Profiles: profiles})
 	if err != nil {
 		return err
 	}

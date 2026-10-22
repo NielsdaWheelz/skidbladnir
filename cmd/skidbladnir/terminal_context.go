@@ -13,11 +13,7 @@ import (
 func terminalContext(arguments []string) error {
 	switch {
 	case len(arguments) == 1 && arguments[0] == "new":
-		id, err := terminalcontext.NewConnectionID()
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(os.Stdout, id)
+		_, err := fmt.Fprintln(os.Stdout, terminalcontext.NewConnectionID())
 		return err
 	case len(arguments) == 3 && arguments[0] == "register":
 		pid, err := strconv.Atoi(arguments[2])

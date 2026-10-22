@@ -29,16 +29,29 @@ const (
 
 var (
 	serverEpochPattern = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
-	paneIDPattern      = regexp.MustCompile(`^%[0-9]+$`)
-	sessionIDPattern   = regexp.MustCompile(`^\$[0-9]+$`)
-	serverPIDPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
-	startTimePattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
+	positivePattern    = regexp.MustCompile(`^[1-9][0-9]*$`)
 )
 
 type ServerIdentity struct {
-	Epoch     string
-	PID       string
-	StartTime string
+	Epoch     string `json:"epoch"` // "" until skid stamps the server
+	PID       string `json:"pid"`
+	StartTime string `json:"startTime"`
+}
+
+// ParseServerIdentity is the one identity grammar for tmux output, client tokens
+// and checkpoints: epoch "" or v1-<32 lowercase hex>, canonical positive pid and
+// start time. Anything else is WorkspaceProtocolInvalid.
+func ParseServerIdentity(epoch, pid, start string) (ServerIdentity, error) {
+	if epoch != "" && !serverEpochPattern.MatchString(epoch) || !positivePattern.MatchString(pid) || !positivePattern.MatchString(start) {
+		return ServerIdentity{}, WorkspaceProtocolInvalid
+	}
+	return ServerIdentity{Epoch: epoch, PID: pid, StartTime: start}, nil
+}
+
+// ValidID reports whether value is prefix ('$' session, '@' window, '%' pane)
+// followed by one or more ASCII digits.
+func ValidID(value string, prefix byte) bool {
+	return len(value) > 1 && value[0] == prefix && strings.TrimLeft(value[1:], "0123456789") == ""
 }
 
 type Client struct {
@@ -153,13 +166,12 @@ func (client Client) ListSessionIDs(ctx context.Context) ([]string, error) {
 	return strings.Split(output, "\n"), nil
 }
 
+// EnsureServerIdentity stamps proposed on the server expected names when that
+// server has no epoch yet, and returns its stamped identity. expected is a
+// parsed identity and proposed a minted epoch. Errors: WorkspaceSourceChanged
+// (another lifetime, or another epoch), WorkspaceProtocolInvalid, ctx and child
+// errors; never WorkspaceLimit.
 func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerIdentity, proposed string) (ServerIdentity, error) {
-	if !serverEpochPattern.MatchString(proposed) {
-		panic("proposed tmux server epoch is invalid") // justify-defect: the manager generates a canonical epoch.
-	}
-	if !serverPIDPattern.MatchString(expected.PID) || !startTimePattern.MatchString(expected.StartTime) || expected.Epoch != "" && !serverEpochPattern.MatchString(expected.Epoch) {
-		return ServerIdentity{}, WorkspaceProtocolInvalid
-	}
 	branch := commandText("display-message", "-p", "#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
 	if expected.Epoch == "" {
 		branch = commandText("set-option", "-soq", ServerEpochOption, proposed) + " ; " + branch
@@ -176,8 +188,8 @@ func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerId
 	if len(fields) != 3 {
 		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
-	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-	if !identity.valid() {
+	identity, err := ParseServerIdentity(fields[0], fields[1], fields[2])
+	if err != nil || identity.Epoch == "" {
 		return ServerIdentity{}, WorkspaceProtocolInvalid
 	}
 	if identity.PID != expected.PID || identity.StartTime != expected.StartTime || expected.Epoch != "" && identity.Epoch != expected.Epoch {
@@ -229,11 +241,6 @@ func andFormatConditions(conditions []string) string {
 		condition = "#{&&:" + conditions[index] + "," + condition + "}"
 	}
 	return condition
-}
-
-func (identity ServerIdentity) valid() bool {
-	return serverEpochPattern.MatchString(identity.Epoch) &&
-		serverPIDPattern.MatchString(identity.PID) && startTimePattern.MatchString(identity.StartTime)
 }
 
 func (client Client) command(ctx context.Context, stdout *bytes.Buffer, operation string, args ...string) *exec.Cmd {

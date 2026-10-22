@@ -84,10 +84,9 @@ delay an ordinary inventory request; the next poll reports the resulting state.
 path: `~/.local/state/skidbladnir/workspace.json`, outside release generations.
 lock: adjacent `workspace.lock`. private directory `0700`, files `0600`.
 one schema, no migration or compatibility reader. `?` below means omitted when
-absent; json null, unknown fields and duplicate fields are rejected.
-timestamps use the exact canonical utc nanosecond representation: `Z`, at most
-nine fractional digits and no trailing fractional zeros. validate raw spelling
-before converting it to a time value; parser normalization is not admission.
+absent. the reader rejects unknown and duplicate fields; a missing or null field
+reads as its zero value, except that `savedAt` must be present. the writer emits
+canonical utc nanosecond timestamps.
 
 ```text
 checkpoint = {
@@ -114,19 +113,21 @@ ids for comparison in json v2 or checksum-prefixed text layouts, retaining every
 other field; tmux still owns geometry. the current correction is qualified on
 tmux 3.8 json layouts, not a text-to-json checkpoint migration.
 
-admit one complete graph: globally unique keys and session names, unique window
-indices within each session, resolved links/selections, nonempty windows/sessions,
-matching indexed links within native groups, valid character/group/path values
-and bounded native layout strings. window names may repeat. empty
-workspaces have both arrays empty. native names use tmux's literal
-name rules, not skid's narrower create-name grammar. validate utf-8 and bound
-strings; reuse cwd's 4096-byte contract. limit the record/capture to 8 mib,
-256 sessions, 512 unique windows and 1024 panes. exceeding a limit rejects that
-complete capture; never silently omit entries or truncate values.
+the reader and capture admit only what restoration needs to rebuild and verify:
+globally unique native-id keys and session names, unique window indices within
+each session, resolved links/selections, nonempty windows/sessions, matching
+indexed links within native groups, every window linked, a nonempty layout and
+character, and absolute cwds. window names may repeat. empty workspaces have
+both arrays empty. native names use tmux's literal name rules (nonempty, no `:`
+or `.`), not skid's narrower create-name grammar. both also admit each session's
+catalogue character and skid group label and each pane's cwd grammar;
+restoration preflight checks that every cwd exists and is canonical. the record and capture are bounded at 8 mib, with no count or
+string limits; exceeding it rejects that complete capture, never omitting
+entries or truncating values.
 
-discover live session ids, then capture required tmux facts in one synchronous
-`source-file -` stdin queue, with source
-identity and completion markers. reuse inventory's quoted fields, e.g.
+take the session ids from the normalized inventory, then capture required tmux
+facts in one synchronous `source-file -` stdin queue bracketed by the source's
+identity records. reuse inventory's quoted fields, e.g.
 `#{q:session_name}|`, and its byte decoder. evaluate each field once: cwd may
 change between native reads, so a separate length read cannot frame it safely.
 decode escaped bytes before recognizing field and record boundaries; preserve
@@ -135,9 +136,10 @@ quoting overhead. linked windows repeat pane rows: require the same
 window/index/pane identity and retain the first cwd sample for that pane.
 bound output before decoding; validate the full graph and unchanged source
 lifetime before publishing.
-query session-local metadata with `show-options -q` in that same queue; format
-expansion would inherit global metadata. require discovered and captured ids to
-match. stdin avoids tmux's command-argument size bound at the accepted 256 sessions.
+query each id's session-local metadata with inventory's existence-guarded
+`show-options -q` script in that same queue; format expansion would inherit
+global metadata. captured sessions that differ from those ids are a topology
+change. stdin avoids tmux's command-argument size bound.
 reuse existing dwarf/name normalization. do not call enriched inventory to
 capture cwd: its remote projection deliberately suppresses the local path.
 capture no terminal bytes, provider state or user environment. process observation
@@ -165,14 +167,15 @@ pid proves it gone; observation failures do not. no pid-only test.
 1. validate the entire checkpoint and every requested local cwd before creating
    panes. no partial admission or substitute directory. for a live empty target,
    also validate configured executable bash/zsh shell, empty `default-command`,
-   `exit-empty off` and `exit-unattached off`.
+   `exit-empty off` and `exit-unattached off`; this check runs once, before the
+   claim.
 2. durably publish the **same confirmed** checkpoint with `attempted=true` before
    any recovery tmux effect. this can replace an unconfirmed candidate left by a
    failed ordinary save; successful durable claim resolves that uncertainty.
    claim publication uncertainty prohibits proceeding. if absent,
-   start the server without panes. for either new or existing empty destination,
-   initialize/read its canonical server identity and validate the configuration
-   above. startup/configuration failure is broken.
+   start the server without panes, stamp its canonical server identity and
+   validate the configuration above. an existing empty destination is only
+   stamped, when it has no epoch. startup/configuration failure is broken.
 3. guard the first creation in the same synchronous tmux queue with expected
    destination epoch/pid/start, `#{==:#{server_sessions},0}` and the required
    configuration. use `-N if-shell -F`, no shell predicate. format booleans are
@@ -240,8 +243,9 @@ automatic naming; recent native closure can reappear after a crash; deliberate
 native groups entails the transient shell described above and regenerated native
 group names: manual tmux commands using old group names need updating. staging
 adds one ordinary transient shell; failed construction can leave that owned
-session visible with the rest of the partial workspace. bounded
-workspace size and operation time can reject an unusually large workspace.
+session visible with the rest of the partial workspace. the 8 mib record bound
+and the 30-second operation deadline, not count limits, can reject an unusually
+large workspace.
 
 ## api and authored content
 

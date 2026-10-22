@@ -5,26 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
-	"regexp"
 	"strings"
 
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
-
-var (
-	sessionIDPattern     = regexp.MustCompile(`^\$[0-9]+$`)
-	paneIDPattern        = regexp.MustCompile(`^%[0-9]+$`)
-	serverEpochPattern   = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
-	serverPIDPattern     = regexp.MustCompile(`^[1-9][0-9]*$`)
-	serverStartPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
-	identityTokenPattern = regexp.MustCompile(`^v1-[0-9a-f]{32}\.[1-9][0-9]*\.[1-9][0-9]*\.[0-9]+$`)
-)
-
-// errSessionServerObservation is never produced now; recovery.go still matches
-// it (W2.8 removes it).
-var errSessionServerObservation = errors.New("session server observation failed")
 
 func sessionNotFound() *Error {
 	return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
@@ -34,34 +18,32 @@ func sessionIdentityMismatch() *Error {
 	return newSessionError(ErrorSessionIdentityMismatch, "The session changed. Refresh and try again.")
 }
 
-func newServerEpoch() (string, error) {
-	random := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, random); err != nil {
-		return "", fmt.Errorf("mint tmux server epoch: %w", err)
-	}
-	return "v1-" + hex.EncodeToString(random), nil
-}
-
-func validServerIdentity(identity tmuxclient.ServerIdentity) bool {
-	return serverEpochPattern.MatchString(identity.Epoch) &&
-		serverPIDPattern.MatchString(identity.PID) && serverStartPattern.MatchString(identity.StartTime)
+// newServerEpoch mints the epoch skid stamps on a server it adopts.
+func newServerEpoch() string {
+	var random [16]byte
+	rand.Read(random[:]) // never fails since go 1.24
+	return "v1-" + hex.EncodeToString(random[:])
 }
 
 // Admission precedence for a client token: a malformed id is not found (1); a
 // bad or foreign token is a mismatch (2); no server, or the id absent from it,
 // is not found (3); a different server identity is a mismatch (4).
-// parseLifetime applies 1 and 2 without reading tmux; the guarded effect that
-// follows enforces the lifetime itself.
+// parseLifetime is the one admission of a client session id and identity token
+// (epoch.pid.start.<id digits>), under tmux's grammar. It applies 1 and 2
+// without reading tmux; the guarded effect that follows enforces the lifetime.
 func parseLifetime(id, token string) (tmuxclient.ServerIdentity, error) {
-	if !sessionIDPattern.MatchString(id) {
+	if !tmuxclient.ValidID(id, '$') {
 		return tmuxclient.ServerIdentity{}, sessionNotFound()
 	}
-	// The pattern admits exactly four dot-separated fields, each canonical.
 	fields := strings.Split(token, ".")
-	if !identityTokenPattern.MatchString(token) || "$"+fields[len(fields)-1] != id {
+	if len(fields) != 4 || "$"+fields[3] != id {
 		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
-	return tmuxclient.ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}, nil
+	server, err := tmuxclient.ParseServerIdentity(fields[0], fields[1], fields[2])
+	if err != nil || server.Epoch == "" {
+		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
+	}
+	return server, nil
 }
 
 // resolve applies the whole precedence with one read of id and returns its row.

@@ -18,7 +18,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
-	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -26,7 +25,6 @@ import (
 type Manager struct {
 	tmux      tmuxclient.Client
 	workdir   *workdir.Service
-	catalogue catalog.Catalogue
 	settings  atomic.Pointer[runtimeSettings]
 	mutations chan struct{}
 	// admitted is the last lifetime List admitted; read and written only under
@@ -51,10 +49,6 @@ func New(config Config) (*Manager, error) {
 	if config.Machine.String() == "" || !filepath.IsAbs(config.CheckpointPath) || filepath.Clean(config.CheckpointPath) != config.CheckpointPath {
 		return nil, errors.New("workspace checkpoint configuration is invalid")
 	}
-	characters, err := catalog.Load(config.CataloguePath)
-	if err != nil {
-		return nil, err
-	}
 	profiles, err := agentruntime.ValidateProfiles(config.Profiles)
 	if err != nil {
 		return nil, err
@@ -66,7 +60,6 @@ func New(config Config) (*Manager, error) {
 	manager := &Manager{
 		tmux:      tmux,
 		workdir:   config.Workdir,
-		catalogue: characters,
 		mutations: make(chan struct{}, 1),
 		recovery:  workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
 	}
@@ -147,7 +140,7 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 		admit := err == nil && present && observed.SessionCount > 0
 		var server tmuxclient.ServerIdentity
 		if admit {
-			server, err = manager.admitRecoveryServer(ctx, observed.Identity)
+			server, err = manager.tmux.EnsureServerIdentity(ctx, observed.Identity, newServerEpoch())
 		}
 		if err != nil {
 			return Inventory{}, err
@@ -225,7 +218,7 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 // row id came from tmux ingress, so the token needs no validation. A failed
 // sample is recorded by ForegroundFailed; the session remains a terminal.
 func (manager *Manager) enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow) Session {
-	character, _ := manager.catalogue.Character(row.LocalSession.Character)
+	character, _ := catalog.Character(row.LocalSession.Character)
 	panePID := processinfo.PID(row.PanePID)
 	session := Session{
 		TmuxID: row.ID, TmuxName: row.Name, NameMode: effectiveNameMode(row.Name, row.LocalSession.AutoName),
@@ -262,50 +255,6 @@ func (manager *Manager) enrichSession(server tmuxclient.ServerIdentity, row tmux
 	return session
 }
 
-func (manager *Manager) TerminalContext(connection string) (TerminalContext, error) {
-	root, err := terminalcontext.Observe(connection)
-	if err != nil {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	foreground, err := processinfo.ObserveForeground(root.PID)
-	if err != nil || foreground.SessionID != root.PID || foreground.TerminalDevice != root.TerminalDevice {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	if foreground.ExecutableBase() == "tmux" || foreground.ExecutableBase() == "screen" {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	environment, err := processinfo.ObserveForegroundEnvironment(root.PID, foreground)
-	if errors.Is(err, processinfo.ErrForegroundMismatch) {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	if err != nil {
-		environment = nil
-	}
-	cwd, cwdErr := processinfo.ObserveCurrentDirectory(foreground.PID, foreground)
-	if errors.Is(cwdErr, processinfo.ErrForegroundMismatch) {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	if cwdErr != nil {
-		cwd = ""
-	}
-	currentRoot, err := terminalcontext.Observe(connection)
-	if err != nil || !processinfo.SameObservation(currentRoot, root) {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	currentForeground, err := processinfo.ObserveForeground(root.PID)
-	if err != nil || !processinfo.SameObservation(currentForeground, foreground) {
-		return TerminalContext{}, terminalcontext.ErrUnavailable
-	}
-	result := TerminalContext{ObservedAt: time.Now().UTC(), CWD: cwd}
-	if transport := connectionTransport(foreground); transport != "" {
-		result.CWD = ""
-		result.Connection = &Connection{Transport: transport, ID: connectionID(environment)}
-	} else if agent, found := agentruntime.Project(foreground); found {
-		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: observedProfile(manager.Profiles(), agent.Provider, environment)}
-	}
-	return result, nil
-}
-
 // sessionScan is one inventory's rows with their name set and catalogue key
 // use. recovery reads only names.
 type sessionScan struct {
@@ -318,7 +267,7 @@ func (manager *Manager) scanCapture(capture tmuxclient.InventoryCapture) session
 	scan := sessionScan{names: make(map[string]struct{}, len(capture.Rows)), rows: capture.Rows, characterUse: make(map[string]int)}
 	for _, row := range capture.Rows {
 		scan.names[row.Name] = struct{}{}
-		if character, valid := manager.catalogue.Character(row.LocalSession.Character); valid {
+		if character, valid := catalog.Character(row.LocalSession.Character); valid {
 			scan.characterUse[character.Key]++
 		}
 	}
@@ -334,16 +283,15 @@ func (manager *Manager) normalizeCharacters(ctx context.Context, scan sessionSca
 	rows := slices.Clone(scan.rows)
 	pending := make([]int, 0)
 	for i, row := range rows {
-		if _, valid := manager.catalogue.Character(row.LocalSession.Character); !valid {
+		if _, valid := catalog.Character(row.LocalSession.Character); !valid {
 			pending = append(pending, i)
 		}
 	}
 	sort.Slice(pending, func(i, j int) bool { return rows[pending[i]].ID < rows[pending[j]].ID })
-	characters := manager.catalogue.Characters()
 	removed := make(map[string]bool)
 	for _, index := range pending {
 		id := rows[index].ID
-		key := selectCharacter(characters, scan.characterUse, server.Epoch+"\x00"+id).Key
+		key := selectCharacter(scan.characterUse, server.Epoch+"\x00"+id).Key
 		expected := rows[index].Format.Character
 		for attempt := 0; ; attempt++ {
 			applied, err := manager.tmux.AssignCharacterIfUnchanged(ctx, id, expected, key, server)
@@ -368,7 +316,7 @@ func (manager *Manager) normalizeCharacters(ctx context.Context, scan sessionSca
 				return nil, tmuxclient.WorkspaceSourceChanged
 			}
 			current := capture.Rows[0]
-			if character, valid := manager.catalogue.Character(current.LocalSession.Character); valid {
+			if character, valid := catalog.Character(current.LocalSession.Character); valid {
 				rows[index] = current
 				scan.characterUse[character.Key]++
 				break
@@ -382,7 +330,8 @@ func (manager *Manager) normalizeCharacters(ctx context.Context, scan sessionSca
 	return slices.DeleteFunc(rows, func(row tmuxclient.InventoryRow) bool { return removed[row.ID] }), nil
 }
 
-func selectCharacter(characters []catalog.Character, characterUse map[string]int, seed string) catalog.Character {
+func selectCharacter(characterUse map[string]int, seed string) catalog.Entry {
+	characters := catalog.Characters()
 	selected := characters[0]
 	selectedUse := characterUse[selected.Key]
 	selectedScore := sha256.Sum256([]byte(seed + "\x00" + selected.Key))

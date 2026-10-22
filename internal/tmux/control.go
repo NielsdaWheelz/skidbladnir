@@ -36,29 +36,27 @@ type Capture struct {
 	Truncated bool
 }
 
-func (target PaneTarget) valid() bool {
-	return sessionIDPattern.MatchString(target.SessionID) && validPane(target.PaneID) && target.Server.valid()
-}
-
 func (target PaneTarget) condition() string {
-	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+target.PaneID+"}"))
+	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+formatLiteral(target.PaneID)+"}"))
 }
 
 // refusal is the else branch of a guard that extends target.condition(). It
 // prints marker when the target still holds, so only the extension failed, and
 // identityMismatchMarker when the target itself changed.
 func (target PaneTarget) refusal(marker string) string {
-	return "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l " + marker + "' 'display-message -p -l " + identityMismatchMarker + "'"
+	return commandText("if-shell", "-F", "-t", target.SessionID, target.condition(),
+		commandText("display-message", "-p", "-l", marker), commandText("display-message", "-p", "-l", identityMismatchMarker))
 }
 
 // CapturePane is the public plain-text read: the retained tail, or the visible
 // screen of an alternate-screen program, under the exact target guard.
 func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int) (Capture, error) {
-	if !target.valid() || maxBytes < 1 || maxBytes > 32768 {
+	if maxBytes < 1 || maxBytes > 32768 {
 		return Capture{}, ErrInputInvalid
 	}
-	capture := "capture-pane -p -J -t " + target.PaneID + " -S -" + strconv.Itoa(maxBytes)
-	branch := "display-message -p '#{alternate_on}' ; if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
+	pane := commandToken(target.PaneID)
+	branch := "display-message -p -t " + pane + " '#{alternate_on}' ; " + commandText("if-shell", "-F", "-t", target.PaneID, "#{alternate_on}",
+		"capture-pane -p -J -t "+pane, "capture-pane -p -J -t "+pane+" -S -"+strconv.Itoa(maxBytes))
 	tail := captureTail{limit: maxBytes}
 	output := captureOutput{body: &tail}
 	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
@@ -82,13 +80,11 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 // Paste stages a unique buffer before the caller's final foreground check.
 // Both paste and submit are inside one successful lifetime/active-pane branch.
 func (client Client) Paste(ctx context.Context, target PaneTarget, text string, revalidate func() error) error {
-	if !target.valid() || text == "" || len(text) > 32768 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+	if text == "" || len(text) > 32768 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
 		return ErrInputInvalid
 	}
 	var entropy [16]byte
-	if _, err := rand.Read(entropy[:]); err != nil {
-		return ErrUnavailable
-	}
+	rand.Read(entropy[:]) // never fails since go 1.24
 	name := "skid-input-" + hex.EncodeToString(entropy[:])
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
@@ -103,12 +99,13 @@ func (client Client) Paste(ctx context.Context, target PaneTarget, text string, 
 	if err := revalidate(); err != nil {
 		return err
 	}
-	branch := "paste-buffer -p -r -d -b '" + name + "' -t '" + target.PaneID + "' ; send-keys -t '" + target.PaneID + "' Enter"
+	pane := commandToken(target.PaneID)
+	branch := "paste-buffer -p -r -d -b " + commandToken(name) + " -t " + pane + " ; send-keys -t " + pane + " Enter"
 	return client.write(ctx, target, branch)
 }
 
 func (client Client) Keys(ctx context.Context, target PaneTarget, keys []string) error {
-	if !target.valid() || len(keys) < 1 || len(keys) > 16 {
+	if len(keys) < 1 || len(keys) > 16 {
 		return ErrInputInvalid
 	}
 	encoded := make([]string, 0, len(keys))
@@ -140,7 +137,7 @@ func (client Client) Keys(ctx context.Context, target PaneTarget, keys []string)
 			return ErrInputInvalid
 		}
 	}
-	return client.write(ctx, target, "send-keys -t '"+target.PaneID+"' "+strings.Join(encoded, " "))
+	return client.write(ctx, target, "send-keys -t "+commandToken(target.PaneID)+" "+strings.Join(encoded, " "))
 }
 
 func (client Client) write(ctx context.Context, target PaneTarget, branch string) error {
@@ -168,18 +165,6 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 	default:
 		return ErrWriteUnknown
 	}
-}
-
-func validPane(value string) bool {
-	if !strings.HasPrefix(value, "%") || len(value) < 2 {
-		return false
-	}
-	for _, c := range value[1:] {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // captureOutput keeps the small protocol header separate from the bounded body.

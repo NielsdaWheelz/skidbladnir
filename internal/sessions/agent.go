@@ -2,9 +2,11 @@ package sessions
 
 import (
 	"errors"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 )
 
 // paneForeground samples the foreground process of a pane's terminal. An empty
@@ -64,17 +66,44 @@ func connectionTransport(foreground processinfo.Observation) string {
 	return ""
 }
 
-// connectionID is the connection's SKIDBLADNIR_CONNECTION when it is 32
-// lowercase hex digits, else "".
+// connectionID is the connection's SKIDBLADNIR_CONNECTION when it is a valid
+// connection id, else "".
 func connectionID(environment map[string]string) string {
-	id := environment["SKIDBLADNIR_CONNECTION"]
-	if len(id) != 32 {
-		return ""
+	if id := environment["SKIDBLADNIR_CONNECTION"]; terminalcontext.ValidConnectionID(id) {
+		return id
 	}
-	for _, character := range id {
-		if character < '0' || character > '9' && (character < 'a' || character > 'f') {
-			return ""
-		}
+	return ""
+}
+
+// TerminalContext describes the foreground of a registered connection's
+// terminal in one pass. Each read is bracketed by process identity; the reads
+// together may mix moments, which a display-only lookup accepts. A foreground
+// change during a read is unavailable; another failed read leaves its field
+// empty. A remote-connection client reports only its connection, so its cwd is
+// not read.
+func (manager *Manager) TerminalContext(connection string) (TerminalContext, error) {
+	root, err := terminalcontext.Observe(connection)
+	if err != nil {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
 	}
-	return id
+	foreground, err := processinfo.ObserveForeground(root.PID)
+	if err != nil || foreground.SessionID != root.PID || foreground.TerminalDevice != root.TerminalDevice || foreground.ExecutableBase() == "tmux" || foreground.ExecutableBase() == "screen" {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	environment, err := processinfo.ObserveForegroundEnvironment(root.PID, foreground)
+	if errors.Is(err, processinfo.ErrForegroundMismatch) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	if transport := connectionTransport(foreground); transport != "" {
+		return TerminalContext{ObservedAt: time.Now().UTC(), Connection: &Connection{Transport: transport, ID: connectionID(environment)}}, nil
+	}
+	cwd, err := processinfo.ObserveCurrentDirectory(foreground.PID, foreground)
+	if errors.Is(err, processinfo.ErrForegroundMismatch) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	result := TerminalContext{ObservedAt: time.Now().UTC(), CWD: cwd}
+	if agent, found := agentruntime.Project(foreground); found {
+		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: observedProfile(manager.Profiles(), agent.Provider, environment)}
+	}
+	return result, nil
 }

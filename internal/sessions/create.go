@@ -64,10 +64,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if err != nil {
 		return ObservedSession{}, err
 	}
-	epochCandidate, err := newServerEpoch()
-	if err != nil {
-		return ObservedSession{}, err
-	}
+	epochCandidate := newServerEpoch()
 	// Names and character use are advisory samples of whichever server runs:
 	// tmux enforces name uniqueness, and the create queue stamps the epoch, so
 	// no lifetime is held.
@@ -86,7 +83,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	} else if _, occupied := scan.names[name]; occupied {
 		return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
-	character := selectCharacter(manager.catalogue.Characters(), scan.characterUse, epochCandidate)
+	character := selectCharacter(scan.characterUse, epochCandidate)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	launch := ""
 	if input.Kind == LaunchAgent {
@@ -146,15 +143,15 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		return ObservedSession{}, errors.New("tmux create returned an invalid identity transcript")
 	}
 	id := firstLine
-	if !sessionIDPattern.MatchString(id) {
+	if !tmuxclient.ValidID(id, '$') {
 		return ObservedSession{}, errors.New("tmux create returned an invalid session id")
 	}
 	identityFields := strings.Split(identityLine, "|")
 	if len(identityFields) != 4 || identityFields[3] != id {
 		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
 	}
-	server := tmuxclient.ServerIdentity{Epoch: identityFields[0], PID: identityFields[1], StartTime: identityFields[2]}
-	if !validServerIdentity(server) {
+	server, err := tmuxclient.ParseServerIdentity(identityFields[0], identityFields[1], identityFields[2])
+	if err != nil || server.Epoch == "" {
 		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
 	}
 	created, err := manager.tmux.ReadSession(ctx, id)

@@ -123,8 +123,8 @@ classification belongs where evidence exists:
   by its deadline; inspect the context because a killed subprocess loses that
   cause. owner cancellation is separate. preserve positive identity/admission
   evidence and actual filesystem errors even if the deadline also expired.
-- changed: positively detected workspace/server race; limit: named existing
-  byte/count/field bound; invalid: rejected external data/configuration.
+- changed: positively detected workspace/server race; limit: the 8 mib record
+  bound; invalid: rejected external data/configuration.
 - permission: actual `EACCES`/`EPERM`; no_space: `ENOSPC`/`EDQUOT`; busy:
   nonblocking writer-lock contention; io: other actual filesystem/kernel errors,
   including `io.ErrShortWrite` without an errno.
@@ -132,8 +132,9 @@ classification belongs where evidence exists:
   without inventing absence. already_attempted/not_empty use existing refusals.
   `ErrProcessNotPermitted` means unavailable: it also covers an unlinked executable
   and does not preserve an errno.
-- unexpected internal failures and impossible constructed facts remain defects
-  under [errors](rules.md#errors-and-panics), never synthetic retryable observations.
+- a failure no detector names is unavailable on tmux and kernel paths and io on
+  storage paths. each call site builds its failure from that evidence;
+  classification never panics.
 
 preserve narrow private distinctions at their detectors: `topology_changed`,
 `source_changed`, `unsupported`, `protocol_invalid`, `limit`. map topology churn
@@ -145,10 +146,10 @@ admission: deletion can prevent completion. after successful execution, differin
 complete membership is topology_changed; missing completion, duplicates and
 malformed structure are protocol_invalid. remove the manager's cause-erasing wrapper.
 
-in the checkpoint store, retain the failing operation and wrapped error. preserve
-the primary error if cleanup also fails. keep the current temporary-file → sync
-→ close → rename → parent-sync sequence and success boundary. impossible json
-encoding of the admitted fixed schema is a defect; size overflow is limit.
+the checkpoint store returns each failure classified and labelled with its
+failing step. the primary failure wins over cleanup. keep the current
+temporary-file → sync → close → rename → parent-sync sequence and success
+boundary. a json encoding failure is io; size overflow is limit.
 
 ## diagnostics and composition
 
@@ -169,7 +170,7 @@ plus `skidbladnir.recovery.at`, `.state`, optional `.saved_at`, `.failure_at`,
 failure fields exist only for delayed/broken. errno exists only when extracted
 from an actual syscall error. operation is a source-authored constant naming
 the failed boundary, never `err.Error()`, command arguments or observed data.
-operation literals: `mkdir`, `chmod`, `open`, `lock`, `stat`, `read`, `close`,
+operation literals: `mkdir`, `chmod`, `open`, `lock`, `read`, `close`,
 `create`, `write`, `file_sync`, `rename`, `directory_open`, `directory_sync`,
 `directory_close`, `cleanup`, `boot_identity`, `process_observe`, `server_inspect`,
 `server_identity`, `normalize`, `capture`, `validate`, `restore_preflight`,

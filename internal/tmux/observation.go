@@ -69,14 +69,12 @@ type PaneObservation struct {
 }
 
 // ObservePane samples the exact target's visible rows under its lifetime and
-// selected-pane guard. Errors: ErrInputInvalid, ErrTargetChanged,
-// ErrScreenChanged (dimensions or alternate screen changed), ErrUnavailable.
+// selected-pane guard. Errors: ErrTargetChanged, ErrScreenChanged (dimensions
+// or alternate screen changed), ErrUnavailable.
 func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneObservation, error) {
-	if !target.valid() {
-		return PaneObservation{}, ErrInputInvalid
-	}
+	pane := commandToken(target.PaneID)
 	screen, err := client.Output(ctx, "read-pane-screen", "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(),
-		"display-message -p -t '"+target.PaneID+"' '"+paneScreenFormat+"'",
+		"display-message -p -t "+pane+" '"+paneScreenFormat+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		return PaneObservation{}, ErrUnavailable
@@ -115,7 +113,7 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	branch.WriteString("display-message -p -l '" + observedMarker + "'")
 	for _, row := range requested {
 		line := strconv.Itoa(row)
-		branch.WriteString(" ; capture-pane -p -e -t '" + target.PaneID + "' -S " + line + " -E " + line)
+		branch.WriteString(" ; capture-pane -p -e -t " + pane + " -S " + line + " -E " + line)
 	}
 	// The capture runs only while the target and the screen read above are
 	// unchanged; the refusal distinguishes a changed screen from a stale target.

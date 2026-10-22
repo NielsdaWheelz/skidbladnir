@@ -76,7 +76,6 @@ for platform in linux-amd64 darwin-arm64; do
   root="$staging/$platform"
   install -d -m 0755 "$root/providers"
   "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" "$platform" ./cmd/skidbladnir "$root/skidbladnir"
-  install -m 0644 "$source_dir/catalog/characters.json" "$root/characters.json"
   jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
     '{platform:$platform,sourceSha:$sha,version:$version}' >"$root/release.json"
   chmod 0644 "$root/release.json"
@@ -85,7 +84,7 @@ for platform in linux-amd64 darwin-arm64; do
   install -m 0755 "$source_dir/deployment/install/quota-read" "$root/providers/quota-read"
   # uv reads project config from its cwd upward; keep the checkout's ignored files out.
   (cd "$source_dir" && python3 deployment/install/build-native.py "$platform" "$root/native-helper")
-  members=(skidbladnir characters.json release.json providers native-helper)
+  members=(skidbladnir release.json providers native-helper)
   if [[ "$platform" == darwin-arm64 ]]; then
     app="$root/Skid.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

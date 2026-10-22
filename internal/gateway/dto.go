@@ -291,9 +291,6 @@ func mapSessionsResponse(
 	if err != nil {
 		return sessionsResponseDTO{}, errors.New("invalid inventory observation time")
 	}
-	if !inventory.Recovery.Valid() {
-		panic("inventory contains an invalid workspace recovery fact") // justify-defect: sessions.Manager owns the closed recovery union before returning inventory.
-	}
 	recovery := recoveryDTO{State: inventory.Recovery.State}
 	if inventory.Recovery.SavedAt != nil {
 		recovery.SavedAt = inventory.Recovery.SavedAt.UTC().Format(time.RFC3339Nano)

@@ -9,13 +9,14 @@ import (
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
+// The terminal target sentinels are tmux's own; consumers keep these names.
 var (
-	ErrTerminalTargetChanged      = errors.New("terminal target changed")
-	ErrTerminalUnavailable        = errors.New("terminal unavailable")
+	ErrTerminalTargetChanged      = tmuxclient.ErrTargetChanged
+	ErrTerminalUnavailable        = tmuxclient.ErrUnavailable
+	ErrTerminalWriteUnknown       = tmuxclient.ErrWriteUnknown
 	ErrTerminalObservationChanged = errors.New("terminal foreground changed during observation")
 	ErrTerminalProcessFailed      = errors.New("terminal foreground process could not be identified")
 	ErrTerminalCaptureFailed      = errors.New("terminal screen could not be captured")
-	ErrTerminalWriteUnknown       = errors.New("terminal input delivery is unknown")
 	ErrSessionDeleteUnknown       = errors.New("session deletion is unknown")
 )
 
@@ -41,12 +42,13 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if ctx.Err() != nil {
 		return Session{}, ErrTerminalUnavailable
 	}
-	if !paneIDPattern.MatchString(target.PaneID) {
-		return Session{}, ErrTerminalTargetChanged
-	}
 	server, row, err := manager.resolve(ctx, target.TmuxID, target.IdentityToken)
 	if err != nil {
-		return Session{}, terminalError(err)
+		var sessionErr *Error
+		if errors.As(err, &sessionErr) {
+			return Session{}, err
+		}
+		return Session{}, ErrTerminalUnavailable
 	}
 	if row.PaneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
@@ -77,7 +79,7 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 	}
 	capture, err := manager.tmux.CapturePane(ctx, target.paneTarget(), maxBytes)
 	if err != nil {
-		return tmuxclient.Capture{}, terminalError(err)
+		return tmuxclient.Capture{}, err
 	}
 	after, err := manager.ResolveTerminal(ctx, target)
 	if err == nil && (after.ForegroundFailed() || !sameForeground(before, after)) {
@@ -109,14 +111,11 @@ func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxc
 		panic("observed terminal session has no foreground") // justify-defect: callers observe only a recognized agent, whose sample holds its foreground.
 	}
 	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
-	switch {
-	case err == nil:
-	case errors.Is(err, tmuxclient.ErrTargetChanged):
-		return tmuxclient.PaneObservation{}, ErrTerminalTargetChanged
-	case errors.Is(err, tmuxclient.ErrScreenChanged), errors.Is(err, tmuxclient.ErrUnavailable):
+	if errors.Is(err, ErrTerminalTargetChanged) {
+		return tmuxclient.PaneObservation{}, err
+	}
+	if err != nil {
 		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
-	default:
-		panic("observed terminal target is invalid") // justify-defect: List, ResolveTerminal and creation return only canonical targets.
 	}
 	foreground, err := paneForeground(session.panePID)
 	if err != nil {
@@ -138,10 +137,9 @@ func (manager *Manager) SendTerminal(ctx context.Context, target TerminalTarget,
 	if err := requireForeground(session, expected); err != nil {
 		return err
 	}
-	err = manager.tmux.Paste(ctx, target.paneTarget(), text, func() error {
+	return manager.tmux.Paste(ctx, target.paneTarget(), text, func() error {
 		return manager.revalidateForeground(ctx, target, session, expected)
 	})
-	return terminalError(err)
 }
 
 func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget, keys []string, expected *agentruntime.AgentRuntime) error {
@@ -157,7 +155,7 @@ func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget,
 			return err
 		}
 	}
-	return terminalError(manager.tmux.Keys(ctx, target.paneTarget(), keys))
+	return manager.tmux.Keys(ctx, target.paneTarget(), keys)
 }
 
 func (manager *Manager) revalidateForeground(ctx context.Context, target TerminalTarget, before Session, expected *agentruntime.AgentRuntime) error {
@@ -193,26 +191,6 @@ func sameForeground(left, right Session) bool {
 		return left.foreground == nil && right.foreground == nil
 	}
 	return processinfo.SameObservation(*left.foreground, *right.foreground)
-}
-
-func terminalError(err error) error {
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, tmuxclient.ErrTargetChanged):
-		return ErrTerminalTargetChanged
-	case errors.Is(err, tmuxclient.ErrWriteUnknown):
-		return ErrTerminalWriteUnknown
-	case errors.Is(err, tmuxclient.ErrInputInvalid):
-		return err
-	case errors.Is(err, ErrTerminalTargetChanged), errors.Is(err, ErrTerminalUnavailable):
-		return err
-	}
-	var sessionErr *Error
-	if errors.As(err, &sessionErr) {
-		return err
-	}
-	return ErrTerminalUnavailable
 }
 
 func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profile, bool) {

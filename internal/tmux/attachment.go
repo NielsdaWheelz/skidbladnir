@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/creack/pty"
 )
 
@@ -59,14 +58,16 @@ func (client Client) StartAttachment(lifetimeCtx, startupCtx context.Context, sp
 	if err := lifetimeCtx.Err(); err != nil {
 		return nil, err
 	}
-	arguments, err := attachmentCommandArguments(spec)
-	if err != nil {
-		return nil, err
-	}
 	attachment := &Attachment{client: client, spec: spec, processDone: make(chan struct{})}
+	// The client attaches only while the token's lifetime holds and the session
+	// keeps the options an owned client needs; otherwise it prints a refusal marker.
+	options := "#{&&:#{==:#{window-size},latest},#{&&:#{==:#{destroy-unattached},off},#{==:#{detach-on-destroy},on}}}"
+	attach := commandText("if-shell", "-F", "-t", spec.SourceID, options,
+		commandText("attach-session", "-E", "-t", spec.SourceID), commandText("display-message", "-p", "-l", attachmentConfigurationMarker))
 	// Tmux renders through the terminal descriptor inherited as stdin. Ordinary
 	// command stdout carries only the closed startup failure marker, not the screen.
-	command := client.commandWithStderr(lifetimeCtx, &attachment.startupOutput, nil, arguments[0], arguments[1:]...)
+	command := client.commandWithStderr(lifetimeCtx, &attachment.startupOutput, nil, "-u", "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
+		andFormatConditions(sessionLifetimeConditions(spec.SourceID, spec.Server)), attach, commandText("display-message", "-p", "-l", identityMismatchMarker))
 	command.Env = attachmentEnvironment(command.Env)
 	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(spec.Columns), Rows: uint16(spec.Rows)})
 	if err != nil {
@@ -81,30 +82,12 @@ func (client Client) StartAttachment(lifetimeCtx, startupCtx context.Context, sp
 	if err := attachment.awaitAttached(startupCtx); err != nil {
 		ptyErr := attachment.ClosePTY()
 		clientErr := attachment.CloseClient()
-		return nil, attachmentStartFailure(err, errors.Join(ptyErr, clientErr))
+		if cleanupErr := errors.Join(ptyErr, clientErr); cleanupErr != nil {
+			return nil, errors.Join(err, ErrAttachmentCleanupFailed, cleanupErr)
+		}
+		return nil, err
 	}
 	return attachment, nil
-}
-
-func attachmentStartFailure(cause, cleanupErr error) error {
-	if cleanupErr == nil {
-		return cause
-	}
-	return errors.Join(cause, ErrAttachmentCleanupFailed, cleanupErr)
-}
-
-func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
-	if !sessionIDPattern.MatchString(spec.SourceID) || !spec.Server.valid() ||
-		spec.Columns < terminal.MinimumColumns || spec.Columns > terminal.MaximumColumns || spec.Rows < terminal.MinimumRows || spec.Rows > terminal.MaximumRows {
-		return nil, errors.New("tmux attachment identity or geometry is invalid")
-	}
-	options := "#{&&:#{==:#{window-size},latest},#{&&:#{==:#{destroy-unattached},off},#{==:#{detach-on-destroy},on}}}"
-	return []string{
-		"-u", "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
-		andFormatConditions(sessionLifetimeConditions(spec.SourceID, spec.Server)),
-		"if-shell -F -t '" + spec.SourceID + "' '" + options + "' \"attach-session -E -t '" + spec.SourceID + "'\" \"display-message -p -l '" + attachmentConfigurationMarker + "'\"",
-		"display-message -p -l '" + identityMismatchMarker + "'",
-	}, nil
 }
 
 func (attachment *Attachment) Read(contents []byte) (int, error) {
@@ -167,7 +150,7 @@ func parseAttachmentClient(output string, pid int, spec AttachmentSpec) (Attachm
 		}
 		count, err := strconv.Atoi(fields[6])
 		panePID, pidErr := strconv.Atoi(fields[8])
-		if err != nil || count < 1 || !paneIDPattern.MatchString(fields[7]) || pidErr != nil || panePID < 0 {
+		if err != nil || count < 1 || !ValidID(fields[7], '%') || pidErr != nil || panePID < 0 {
 			return AttachmentClient{}, "", false, errors.New("tmux terminal client anchor is invalid")
 		}
 		return AttachmentClient{AttachedClients: count, PaneID: fields[7], PanePID: panePID}, fields[1], true, nil

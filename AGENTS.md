@@ -25,8 +25,8 @@ Unconditional guardrails, regardless of assignment:
 
 - Act only inside the paths your assignment names; never edit another slice's
   paths.
-- Only the root integrator changes `catalog/`, `scripts/check` composition,
-  `docs/architecture.md`, or `docs/roadmap.md`.
+- Only the root integrator changes `internal/catalog/characters.json`,
+  `scripts/check` composition, `docs/architecture.md`, or `docs/roadmap.md`.
 - A verifier writes no test and no production file.
 - A gate with no device or no live boundary is `NOT_RUN`, and `NOT_RUN` is
   never a pass.

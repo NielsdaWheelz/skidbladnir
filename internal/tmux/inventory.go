@@ -173,7 +173,7 @@ func parseRow(input []byte) (InventoryRow, []byte, error) {
 	width, widthErr := strconv.Atoi(fields[13])
 	height, heightErr := strconv.Atoi(fields[14])
 	activity, activityErr := strconv.ParseInt(fields[16], 10, 64)
-	if !sessionIDPattern.MatchString(fields[0]) || fields[1] == "" || !paneIDPattern.MatchString(fields[2]) ||
+	if !ValidID(fields[0], '$') || fields[1] == "" || !ValidID(fields[2], '%') ||
 		pidErr != nil || pid < 0 || attachedErr != nil || attached < 0 || widthErr != nil || width < 0 || heightErr != nil || height < 0 ||
 		fields[15] != "0" && fields[15] != "1" || activityErr != nil || activity < 0 {
 		return InventoryRow{}, nil, WorkspaceProtocolInvalid
@@ -251,6 +251,22 @@ func inheritedScript() string {
 	return strings.Join(commands, " ; ")
 }
 
+// batchOutput keeps the first 8 MiB a batch writes and records overflow.
+type batchOutput struct {
+	bytes    []byte
+	overflow bool
+}
+
+func (output *batchOutput) Write(value []byte) (int, error) {
+	count := len(value)
+	if count > maximumWorkspaceBytes-len(output.bytes) {
+		output.overflow = true
+		value = value[:maximumWorkspaceBytes-len(output.bytes)]
+	}
+	output.bytes = append(output.bytes, value...)
+	return count, nil
+}
+
 // batch runs body in one client between B and E records of the server's
 // identity, and returns B and the bytes between. A client talks to one server
 // process for its whole life, so B == E proves the body ran on that server and
@@ -261,7 +277,7 @@ func (client Client) batch(ctx context.Context, body string) (ServerIdentity, []
 	}
 	identity := inventoryFields(ServerEpochOption, "pid", "start_time")
 	script := commandText("display-message", "-p", "B"+identity) + " ; " + body + " ; " + commandText("display-message", "-p", "E"+identity) + "\n"
-	output := recoveryOutput{}
+	output := batchOutput{}
 	var stderr bytes.Buffer
 	command := client.commandWithStderr(ctx, nil, &stderr, "-N", "source-file", "-")
 	command.Stdin = strings.NewReader(script)
@@ -304,9 +320,9 @@ func parseIdentityRecord(input []byte, kind byte) (ServerIdentity, []byte, error
 	if err != nil {
 		return ServerIdentity{}, nil, err
 	}
-	server := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-	if !serverPIDPattern.MatchString(server.PID) || !startTimePattern.MatchString(server.StartTime) {
-		return ServerIdentity{}, nil, WorkspaceProtocolInvalid
+	server, err := ParseServerIdentity(fields[0], fields[1], fields[2])
+	if err != nil {
+		return ServerIdentity{}, nil, err
 	}
 	return server, rest, nil
 }

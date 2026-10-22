@@ -16,7 +16,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -39,8 +38,6 @@ func (failure WorkspaceError) Error() string { return "tmux workspace " + string
 
 var layoutPanePattern = regexp.MustCompile(`[0-9]+x[0-9]+,[0-9]+,[0-9]+,([0-9]+)([,\]}>]|$)`)
 
-var ErrWorkspaceUnavailable = errors.New("tmux workspace is unavailable")
-
 // ServerObservation is read-only. An externally started server may have no
 // canonical epoch yet; capture and restoration require a canonical identity.
 type ServerObservation struct {
@@ -51,9 +48,8 @@ type ServerObservation struct {
 // Workspace keys belong to this snapshot, never to a later server. NativeGroup
 // identifies membership only: tmux owns the names of reconstructed groups.
 type Workspace struct {
-	Server   ServerIdentity     `json:"-"`
-	Sessions []WorkspaceSession `json:"sessions"`
-	Windows  []WorkspaceWindow  `json:"windows"`
+	Sessions []WorkspaceSession
+	Windows  []WorkspaceWindow
 }
 
 type WorkspaceSession struct {
@@ -87,6 +83,8 @@ type WorkspacePane struct {
 	CWD string `json:"cwd"`
 }
 
+// InspectServer observes the running server, if any. It never returns
+// WorkspaceLimit: recovery's source phase has no limit cause.
 func (client Client) InspectServer(ctx context.Context) (ServerObservation, bool, error) {
 	var stdout, stderr bytes.Buffer
 	command := client.commandWithStderr(ctx, &stdout, &stderr, "-N", "display-message", "-p",
@@ -98,14 +96,18 @@ func (client Client) InspectServer(ctx context.Context) (ServerObservation, bool
 		return ServerObservation{}, false, fmt.Errorf("inspect tmux server: %w", err)
 	}
 	fields := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "|")
-	if len(fields) != 4 || len(fields[0]) > 128 || !serverPIDPattern.MatchString(fields[1]) || !startTimePattern.MatchString(fields[2]) {
+	if len(fields) != 4 {
 		return ServerObservation{}, false, WorkspaceProtocolInvalid
+	}
+	identity, err := ParseServerIdentity(fields[0], fields[1], fields[2])
+	if err != nil {
+		return ServerObservation{}, false, err
 	}
 	count, err := strconv.Atoi(fields[3])
 	if err != nil || count < 0 {
 		return ServerObservation{}, false, WorkspaceProtocolInvalid
 	}
-	return ServerObservation{Identity: ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}, SessionCount: count}, true, nil
+	return ServerObservation{Identity: identity, SessionCount: count}, true, nil
 }
 
 func missingServer(err error, stderr string) bool {
@@ -119,13 +121,12 @@ func (client Client) StartRecoveryServer(ctx context.Context) error {
 	return client.Run(ctx, "start-recovery-server", "start-server")
 }
 
-func (client Client) ValidateRecoveryServer(ctx context.Context, expected ServerIdentity) error {
-	_, err := client.recoveryShell(ctx, expected)
-	return err
-}
-
-func (client Client) recoveryShell(ctx context.Context, expected ServerIdentity) (string, error) {
-	format := inventoryFields("@skid_server_epoch", "pid", "start_time", "server_sessions", "default-shell", "default-command", "exit-empty", "exit-unattached")
+// ValidateRecoveryServer admits expected as an empty restore destination and
+// returns its default shell: no sessions, an empty default-command, exit-empty
+// and exit-unattached off, and an executable bash or zsh default-shell. A
+// missing shell is the stat error, so it matches fs.ErrNotExist.
+func (client Client) ValidateRecoveryServer(ctx context.Context, expected ServerIdentity) (string, error) {
+	format := inventoryFields(ServerEpochOption, "pid", "start_time", "server_sessions", "default-shell", "default-command", "exit-empty", "exit-unattached")
 	output, err := client.Output(ctx, "validate-recovery-server", "-N", "display-message", "-p", format)
 	if err != nil {
 		return "", err
@@ -134,10 +135,10 @@ func (client Client) recoveryShell(ctx context.Context, expected ServerIdentity)
 	if err != nil || len(rest) != 0 {
 		return "", WorkspaceProtocolInvalid
 	}
-	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
 	// Preflight can precede epoch admission on an empty external server.
-	if identity.Epoch != "" && !serverEpochPattern.MatchString(identity.Epoch) || !serverPIDPattern.MatchString(identity.PID) || !startTimePattern.MatchString(identity.StartTime) {
-		return "", WorkspaceProtocolInvalid
+	identity, err := ParseServerIdentity(fields[0], fields[1], fields[2])
+	if err != nil {
+		return "", err
 	}
 	count, countErr := strconv.Atoi(fields[3])
 	if countErr != nil || count < 0 || fields[6] != "0" && fields[6] != "1" || fields[7] != "0" && fields[7] != "1" {
@@ -166,21 +167,15 @@ func (client Client) recoveryShell(ctx context.Context, expected ServerIdentity)
 	return shell, nil
 }
 
-// RestoreWorkspace requires a nonempty recipe admitted by ValidateWorkspace and
-// the manager's metadata/cwd policy. It uses only freshly returned native ids.
-// Any error can leave visible partial work; the manager must never replay it.
-func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity, recipe Workspace) (Workspace, error) {
-	if !server.valid() {
-		panic("invalid recovery destination identity") // justify-defect: the manager initialized and admitted the canonical destination.
-	}
-	shell, err := client.recoveryShell(ctx, server)
-	if err != nil {
-		return Workspace{}, err
-	}
+// RestoreWorkspace builds a nonempty recipe admitted by ValidateWorkspace, with
+// preflighted cwds, into the empty server whose default shell
+// ValidateRecoveryServer returned; the first construction guard pins that
+// identity, emptiness, shell and options. It uses only freshly returned native
+// ids and ends by verifying a fresh capture. Any error can leave visible partial
+// work; the manager must never replay it.
+func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity, shell string, recipe Workspace) error {
 	var entropy [16]byte
-	if _, err := rand.Read(entropy[:]); err != nil {
-		return Workspace{}, err
-	}
+	rand.Read(entropy[:]) // never fails since go 1.24
 	prefix := "skid-recovery-" + hex.EncodeToString(entropy[:])
 	sessionIDs, windowIDs, paneIDs := make(map[string]string), make(map[string]string), make(map[string]string)
 	leaders, representatives := make(map[string]string), make(map[string]string)
@@ -202,7 +197,7 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 			}
 			terminal, err := client.TerminalCommand(window.Panes[0].CWD, "")
 			if err != nil {
-				return Workspace{}, err
+				return err
 			}
 			args := []string{"-d", "-P", "-F", "#{session_id}|#{window_id}|#{window_index}", "-s", name, "-x", strconv.Itoa(window.Width), "-y", strconv.Itoa(window.Height), "-c", formatLiteral(window.Panes[0].CWD)}
 			branch = commandText("new-session", append(args, terminal...)...)
@@ -214,14 +209,14 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 		}
 		output, err := client.recoveryQueue(ctx, condition, branch)
 		if err != nil {
-			return Workspace{}, err
+			return err
 		}
 		fields := strings.Split(output, "|")
-		if len(fields) != 3 || !sessionIDPattern.MatchString(fields[0]) || !workspaceID(fields[1], '@') {
-			return Workspace{}, WorkspaceProtocolInvalid
+		if len(fields) != 3 || !ValidID(fields[0], '$') || !ValidID(fields[1], '@') {
+			return WorkspaceProtocolInvalid
 		}
 		if _, err := strconv.Atoi(fields[2]); err != nil {
-			return Workspace{}, WorkspaceProtocolInvalid
+			return WorkspaceProtocolInvalid
 		}
 		sessionIDs[session.Key], placeholders[fields[1]] = fields[0], true
 		if representatives[session.Key] == "" {
@@ -245,13 +240,13 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 		}
 		output, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("new-session", "-d", "-P", "-F", "#{session_id}", "-s", prefix+"-aux", "-t", leader))
 		if err != nil {
-			return Workspace{}, err
+			return err
 		}
-		if !sessionIDPattern.MatchString(output) {
-			return Workspace{}, WorkspaceProtocolInvalid
+		if !ValidID(output, '$') {
+			return WorkspaceProtocolInvalid
 		}
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("kill-session", "-t", output)); err != nil {
-			return Workspace{}, err
+			return err
 		}
 	}
 	// tmux rejects linking between members of the same native group. One
@@ -259,21 +254,21 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 	first := recipe.Windows[0]
 	terminal, err := client.TerminalCommand(first.Panes[0].CWD, "")
 	if err != nil {
-		return Workspace{}, err
+		return err
 	}
 	name := prefix + "-workspace"
 	args := []string{"-d", "-P", "-F", "#{session_id}|#{window_index}", "-s", name, "-x", strconv.Itoa(first.Width), "-y", strconv.Itoa(first.Height), "-c", formatLiteral(first.Panes[0].CWD)}
 	output, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("new-session", append(args, terminal...)...)+" ; "+commandText("set-option", "-t", "="+name+":", "renumber-windows", "off"))
 	if err != nil {
-		return Workspace{}, err
+		return err
 	}
 	fields := strings.Split(output, "|")
-	if len(fields) != 2 || !sessionIDPattern.MatchString(fields[0]) {
-		return Workspace{}, WorkspaceProtocolInvalid
+	if len(fields) != 2 || !ValidID(fields[0], '$') {
+		return WorkspaceProtocolInvalid
 	}
 	placeholderIndex, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return Workspace{}, WorkspaceProtocolInvalid
+		return WorkspaceProtocolInvalid
 	}
 	stagingID := fields[0]
 	creationIndices := make(map[string]int)
@@ -284,37 +279,37 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 		}
 		terminal, err := client.TerminalCommand(window.Panes[0].CWD, "")
 		if err != nil {
-			return Workspace{}, err
+			return err
 		}
 		args := []string{"-d", "-P", "-F", "#{window_id}|#{pane_id}", "-t", stagingID + ":" + strconv.Itoa(index), "-n", prefix, "-c", formatLiteral(window.Panes[0].CWD)}
 		output, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("new-window", append(args, terminal...)...))
 		if err != nil {
-			return Workspace{}, err
+			return err
 		}
 		fields := strings.Split(output, "|")
-		if len(fields) != 2 || !workspaceID(fields[0], '@') || !paneIDPattern.MatchString(fields[1]) {
-			return Workspace{}, WorkspaceProtocolInvalid
+		if len(fields) != 2 || !ValidID(fields[0], '@') || !ValidID(fields[1], '%') {
+			return WorkspaceProtocolInvalid
 		}
 		windowIDs[window.Key], paneIDs[window.Panes[0].Key] = fields[0], fields[1]
 		creationIndices[window.Key] = index
 		index++
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("resize-window", "-t", fields[0], "-x", strconv.Itoa(window.Width), "-y", strconv.Itoa(window.Height))); err != nil {
-			return Workspace{}, err
+			return err
 		}
 		last := fields[1]
 		for _, pane := range window.Panes[1:] {
 			size, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("display-message", "-p", "-t", last, "#{pane_width}|#{pane_height}"))
 			if err != nil {
-				return Workspace{}, err
+				return err
 			}
 			dimensions := strings.Split(size, "|")
 			if len(dimensions) != 2 {
-				return Workspace{}, WorkspaceProtocolInvalid
+				return WorkspaceProtocolInvalid
 			}
 			width, widthErr := strconv.Atoi(dimensions[0])
 			height, heightErr := strconv.Atoi(dimensions[1])
 			if widthErr != nil || heightErr != nil {
-				return Workspace{}, WorkspaceProtocolInvalid
+				return WorkspaceProtocolInvalid
 			}
 			direction := "-v"
 			if width > height {
@@ -322,15 +317,15 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 			}
 			terminal, err := client.TerminalCommand(pane.CWD, "")
 			if err != nil {
-				return Workspace{}, err
+				return err
 			}
 			args := []string{"-d", "-P", "-F", "#{pane_id}", direction, "-t", last, "-c", formatLiteral(pane.CWD)}
 			output, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("split-window", append(args, terminal...)...)+" ; "+commandText("select-layout", "-t", windowIDs[window.Key], "tiled"))
 			if err != nil {
-				return Workspace{}, err
+				return err
 			}
-			if !paneIDPattern.MatchString(output) {
-				return Workspace{}, WorkspaceProtocolInvalid
+			if !ValidID(output, '%') {
+				return WorkspaceProtocolInvalid
 			}
 			paneIDs[pane.Key], last = output, output
 		}
@@ -345,16 +340,16 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 		for _, link := range session.Links {
 			branch := commandText("link-window", "-k", "-s", stagingID+":"+strconv.Itoa(creationIndices[link.WindowKey]), "-t", owner+":"+strconv.Itoa(link.Index))
 			if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), branch); err != nil {
-				return Workspace{}, err
+				return err
 			}
 		}
 	}
 	if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("kill-session", "-t", stagingID)); err != nil {
-		return Workspace{}, err
+		return err
 	}
 	live, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("list-windows", "-a", "-F", "#{window_id}"))
 	if err != nil {
-		return Workspace{}, err
+		return err
 	}
 	liveWindows := strings.Fields(live)
 	for placeholder := range placeholders {
@@ -363,7 +358,7 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 			continue
 		}
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("kill-window", "-t", placeholder)); err != nil {
-			return Workspace{}, err
+			return err
 		}
 	}
 	for _, session := range recipe.Sessions {
@@ -376,7 +371,7 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 			branch += " ; " + commandText("set-option", "-t", id, GroupOption, base64.RawURLEncoding.EncodeToString([]byte(session.Group)))
 		}
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), branch); err != nil {
-			return Workspace{}, err
+			return err
 		}
 	}
 	for _, window := range recipe.Windows {
@@ -391,28 +386,23 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 		}
 		branch += " ; " + commandText("rename-window", "-t", id, formatLiteral(window.Name))
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), branch); err != nil {
-			return Workspace{}, err
+			return err
 		}
 	}
 	for _, session := range recipe.Sessions {
 		if _, err := client.recoveryQueue(ctx, serverLifetimeConditions(server), commandText("rename-session", "-t", sessionIDs[session.Key], formatLiteral(session.Name))); err != nil {
-			return Workspace{}, err
+			return err
 		}
 	}
-	actual, present, err := client.CaptureWorkspace(ctx)
+	freshIDs := make([]string, len(recipe.Sessions))
+	for index, session := range recipe.Sessions {
+		freshIDs[index] = sessionIDs[session.Key]
+	}
+	actual, err := client.CaptureWorkspace(ctx, server, freshIDs)
 	if err != nil {
-		return Workspace{}, err
+		return err
 	}
-	if !present {
-		return Workspace{}, ErrWorkspaceUnavailable
-	}
-	if actual.Server != server {
-		return Workspace{}, WorkspaceSourceChanged
-	}
-	if err := verifyRestoredWorkspace(recipe, actual, sessionIDs, windowIDs, paneIDs); err != nil {
-		return Workspace{}, err
-	}
-	return actual, nil
+	return verifyRestoredWorkspace(recipe, actual, sessionIDs, windowIDs, paneIDs)
 }
 
 func (client Client) recoveryQueue(ctx context.Context, conditions []string, branch string) (string, error) {
@@ -578,12 +568,12 @@ func normalizedLayoutCell(encoded json.RawMessage, paneIDs map[string]string) (j
 	switch kind {
 	case "p":
 		var id string
-		if json.Unmarshal(cell["I"], &id) != nil || !workspaceID(id, '%') {
+		if json.Unmarshal(cell["I"], &id) != nil || !ValidID(id, '%') {
 			return nil, WorkspaceProtocolInvalid
 		}
 		if paneIDs != nil {
 			mapped, exists := paneIDs[id]
-			if !exists || !workspaceID(mapped, '%') {
+			if !exists || !ValidID(mapped, '%') {
 				return nil, WorkspaceProtocolInvalid
 			}
 			cell["I"] = json.RawMessage(`"` + mapped + `"`)
@@ -609,162 +599,51 @@ func normalizedLayoutCell(encoded json.RawMessage, paneIDs map[string]string) (j
 	return json.Marshal(cell)
 }
 
-// CaptureWorkspace runs all graph reads in one synchronous native command
-// queue. Quoted fields evaluate each native value once, including changing cwd.
-func (client Client) CaptureWorkspace(ctx context.Context) (Workspace, bool, error) {
-	ids, err := client.ListSessionIDs(ctx)
-	if err != nil {
-		return Workspace{}, false, err
-	}
-	if len(ids) > 256 {
-		return Workspace{}, false, WorkspaceLimit
-	}
-	identity := inventoryFields("@skid_server_epoch", "pid", "start_time")
+// CaptureWorkspace reads server's graph and the local metadata of ids in one
+// client. Quoted fields evaluate each native value once, including changing
+// cwd. Any other server, or none, is WorkspaceSourceChanged; sessions other
+// than exactly ids are WorkspaceTopologyChanged.
+func (client Client) CaptureWorkspace(ctx context.Context, server ServerIdentity, ids []string) (Workspace, error) {
 	graph := commandText("list-sessions", "-F", "S"+inventoryFields("session_id", "session_name", "session_group", "window_index")) + " ; " +
 		commandText("list-windows", "-a", "-F", "W"+inventoryFields("session_id", "window_index", "window_id", "window_name", "window_width", "window_height", "window_layout", "pane_id", "window_zoomed_flag")) + " ; " +
 		commandText("list-panes", "-a", "-F", "P"+inventoryFields("window_id", "pane_id", "pane_index", "pane_current_path"))
-	script := commandText("display-message", "-p", "B"+identity) + " ; " + commandText("if-shell", "-F", "#{server_sessions}", graph, "")
+	body := commandText("if-shell", "-F", "#{server_sessions}", graph, "")
 	for _, id := range ids {
-		if len(id) > 32 {
-			return Workspace{}, false, WorkspaceLimit
-		}
-		if !workspaceID(id, '$') {
-			return Workspace{}, false, WorkspaceProtocolInvalid
-		}
-		// show-options without -A owns local metadata. Its escaped output stays
-		// on one line; only canonical catalogue/base64 tokens are admitted.
-		script += " ; " + commandText("display-message", "-p", "-l", "M"+id+"|") + " ; " +
-			commandText("show-options", "-q", "-t", id, "@skid_character") + " ; " +
-			commandText("show-options", "-q", "-t", id, GroupOption) + " ; " +
-			commandText("display-message", "-p", "-l", "N")
+		body += " ; " + sessionScript(id, "")
 	}
-	script += " ; " + commandText("display-message", "-p", "E"+identity) + "\n"
-	output := recoveryOutput{}
-	var stderr bytes.Buffer
-	command := client.commandWithStderr(ctx, nil, &stderr, "-N", "source-file", "-")
-	command.Stdin = strings.NewReader(script)
-	command.Stdout = &output
-	if err := command.Run(); err != nil {
-		if missingServer(err, stderr.String()) {
-			return Workspace{}, false, nil
-		}
-		return Workspace{}, false, fmt.Errorf("capture tmux workspace: %w", err)
+	observed, transcript, err := client.batch(ctx, body)
+	if err != nil {
+		return Workspace{}, err
 	}
-	if output.overflow {
-		return Workspace{}, false, WorkspaceLimit
+	if observed != server {
+		return Workspace{}, WorkspaceSourceChanged
 	}
-	workspace, err := parseWorkspace(output.bytes)
-	return workspace, err == nil, err
+	return parseWorkspace(transcript, ids)
 }
 
-type recoveryOutput struct {
-	bytes    []byte
-	overflow bool
-}
-
-func (output *recoveryOutput) Write(value []byte) (int, error) {
-	count := len(value)
-	if count > maximumWorkspaceBytes-len(output.bytes) {
-		output.overflow = true
-		value = value[:maximumWorkspaceBytes-len(output.bytes)]
-	}
-	output.bytes = append(output.bytes, value...)
-	return count, nil
-}
-
-func parseWorkspace(input []byte) (Workspace, error) {
+// parseWorkspace reads CaptureWorkspace's S, W and P records, then one
+// sessionScript record per id. Membership is compared only once the whole
+// transcript has parsed.
+func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 	workspace := Workspace{Sessions: []WorkspaceSession{}, Windows: []WorkspaceWindow{}}
 	sessions := make(map[string]int)
 	windows := make(map[string]int)
 	paneIndices := make(map[string]map[int]string)
-	metadata := make(map[string]bool)
-	started, ended := false, false
-	for len(input) > 0 {
+	for len(input) > 0 && (input[0] == 'S' || input[0] == 'W' || input[0] == 'P') {
 		kind := input[0]
-		if kind == 'M' {
-			fields, rest, err := parseInventoryFields(input[1:], 1)
-			if err != nil || !started || ended || !workspaceID(fields[0], '$') {
-				return Workspace{}, WorkspaceProtocolInvalid
-			}
-			session, exists := sessions[fields[0]]
-			if metadata[fields[0]] {
-				return Workspace{}, WorkspaceProtocolInvalid
-			}
-			metadata[fields[0]] = true
-			input = rest
-			seen := make(map[string]bool)
-			for {
-				line, rest, complete := bytes.Cut(input, []byte{'\n'})
-				if !complete {
-					return Workspace{}, WorkspaceProtocolInvalid
-				}
-				input = rest
-				if string(line) == "N" {
-					break
-				}
-				name, value, found := strings.Cut(string(line), " ")
-				if !found || seen[name] {
-					return Workspace{}, WorkspaceProtocolInvalid
-				}
-				seen[name] = true
-				switch name {
-				case "@skid_character":
-					if exists {
-						workspace.Sessions[session].Character = value
-					}
-				case GroupOption:
-					if exists {
-						workspace.Sessions[session].Group = group.DecodeMetadata(value).String()
-					}
-				default:
-					return Workspace{}, WorkspaceProtocolInvalid
-				}
-			}
-			continue
-		}
-		count := 0
-		switch kind {
-		case 'B', 'E':
-			count = 3
-		case 'S':
-			count = 4
-		case 'W':
+		count := 4
+		if kind == 'W' {
 			count = 9
-		case 'P':
-			count = 4
-		default:
-			return Workspace{}, WorkspaceProtocolInvalid
 		}
 		fields, rest, err := parseInventoryFields(input[1:], count)
-		if err != nil || ended {
-			return Workspace{}, WorkspaceProtocolInvalid
+		if err != nil {
+			return Workspace{}, err
 		}
 		input = rest
-		if kind == 'B' || kind == 'E' {
-			server := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-			if !server.valid() || kind == 'B' && started || kind == 'E' && !started {
-				return Workspace{}, WorkspaceProtocolInvalid
-			}
-			if kind == 'E' && server != workspace.Server {
-				return Workspace{}, WorkspaceSourceChanged
-			}
-			if kind == 'B' {
-				workspace.Server, started = server, true
-			} else {
-				ended = true
-			}
-			continue
-		}
-		if !started {
-			return Workspace{}, WorkspaceProtocolInvalid
-		}
 		switch kind {
 		case 'S':
 			if _, exists := sessions[fields[0]]; exists {
 				return Workspace{}, WorkspaceProtocolInvalid
-			}
-			if len(sessions) == 256 {
-				return Workspace{}, WorkspaceLimit
 			}
 			active, err := strconv.Atoi(fields[3])
 			if err != nil {
@@ -790,9 +669,6 @@ func parseWorkspace(input []byte) (Workspace, error) {
 					return Workspace{}, WorkspaceProtocolInvalid
 				}
 			} else {
-				if len(windows) == 512 {
-					return Workspace{}, WorkspaceLimit
-				}
 				windows[window.Key] = len(workspace.Windows)
 				workspace.Windows = append(workspace.Windows, window)
 			}
@@ -814,23 +690,30 @@ func parseWorkspace(input []byte) (Workspace, error) {
 				// the process may change directory between native reads.
 				continue
 			}
-			pane := WorkspacePane{Key: fields[1], CWD: fields[3]}
 			paneIndices[fields[0]][index] = fields[1]
-			workspace.Windows[window].Panes = append(workspace.Windows[window].Panes, pane)
+			workspace.Windows[window].Panes = append(workspace.Windows[window].Panes, WorkspacePane{Key: fields[1], CWD: fields[3]})
 		}
 	}
-	if !ended {
+	changed := len(sessions) != len(ids)
+	for _, id := range ids {
+		metadata, found, rest, err := parseMetadata(input, id)
+		if err != nil {
+			return Workspace{}, err
+		}
+		input = rest
+		session, exists := sessions[id]
+		if !found || !exists {
+			changed = true
+			continue
+		}
+		workspace.Sessions[session].Character = metadata.Character
+		workspace.Sessions[session].Group = group.DecodeMetadata(metadata.Group).String()
+	}
+	if len(input) != 0 {
 		return Workspace{}, WorkspaceProtocolInvalid
 	}
-	// Discovery and the synchronous graph queue are separate observations. Only
-	// a complete, well-formed transcript establishes their membership race.
-	if len(metadata) != len(sessions) {
+	if changed {
 		return Workspace{}, WorkspaceTopologyChanged
-	}
-	for id := range metadata {
-		if _, exists := sessions[id]; !exists {
-			return Workspace{}, WorkspaceTopologyChanged
-		}
 	}
 	for i := range workspace.Windows {
 		indices := make(map[string]int)
@@ -845,39 +728,30 @@ func parseWorkspace(input []byte) (Workspace, error) {
 	return workspace, nil
 }
 
-// ValidateWorkspace admits the complete native graph. Metadata policy and cwd
-// filesystem admission belong to the manager, not this tmux boundary.
+// ValidateWorkspace admits what RestoreWorkspace needs to rebuild and verify:
+// native ids as keys, unique across windows, panes and sessions, and unique
+// session names; windows of positive size with a layout, holding their active
+// pane; absolute pane cwds; named sessions with a character, whose links
+// resolve to windows at unique nonnegative indices, one of them active; equal
+// links within a native group; and every window linked. Catalogue keys and
+// directory admission are the manager's policy.
 func ValidateWorkspace(workspace Workspace) error {
-	if len(workspace.Sessions) > 256 || len(workspace.Windows) > 512 {
-		return WorkspaceLimit
-	}
-	if (len(workspace.Sessions) == 0) != (len(workspace.Windows) == 0) {
-		return WorkspaceProtocolInvalid
-	}
 	keys, names := make(map[string]bool), make(map[string]bool)
-	windows, linked := make(map[string]WorkspaceWindow), make(map[string]bool)
-	panes := 0
+	windows, linked := make(map[string]bool), make(map[string]bool)
 	for _, window := range workspace.Windows {
-		if len(window.Key) > 32 || len(window.Name) > 4096 || len(window.Layout) > 65536 || window.Width > 65535 || window.Height > 65535 {
-			return WorkspaceLimit
-		}
-		if !workspaceID(window.Key, '@') || keys[window.Key] || window.Width < 1 || window.Height < 1 || len(window.Panes) == 0 {
+		if !ValidID(window.Key, '@') || keys[window.Key] || window.Width < 1 || window.Height < 1 {
 			return WorkspaceProtocolInvalid
 		}
-		if !workspaceText(window.Name, false) || !workspaceText(window.Layout, true) {
+		if window.Layout == "" {
 			return WorkspaceUnsupported
 		}
-		keys[window.Key], windows[window.Key] = true, window
+		keys[window.Key], windows[window.Key] = true, true
 		active := false
 		for _, pane := range window.Panes {
-			panes++
-			if panes > 1024 || len(pane.Key) > 32 || len(pane.CWD) > 4096 {
-				return WorkspaceLimit
-			}
-			if !workspaceID(pane.Key, '%') || keys[pane.Key] {
+			if !ValidID(pane.Key, '%') || keys[pane.Key] {
 				return WorkspaceProtocolInvalid
 			}
-			if !workspaceText(pane.CWD, true) || !filepath.IsAbs(pane.CWD) {
+			if !filepath.IsAbs(pane.CWD) {
 				return WorkspaceUnsupported
 			}
 			keys[pane.Key] = true
@@ -889,26 +763,19 @@ func ValidateWorkspace(workspace Workspace) error {
 	}
 	groups := make(map[string][]WorkspaceLink)
 	for _, session := range workspace.Sessions {
-		if len(session.Key) > 32 || len(session.Name) > 4096 || len(session.Character) > 4096 || len(session.Group) > 4096 || len(session.NativeGroup) > 4096 {
-			return WorkspaceLimit
-		}
-		if !workspaceID(session.Key, '$') || keys[session.Key] || names[session.Name] || len(session.Links) == 0 {
+		if !ValidID(session.Key, '$') || keys[session.Key] || names[session.Name] {
 			return WorkspaceProtocolInvalid
 		}
-		if !workspaceText(session.Name, true) || strings.ContainsAny(session.Name, ":.") || !workspaceText(session.Character, true) || !workspaceText(session.Group, false) || !workspaceText(session.NativeGroup, false) {
+		// tmux refuses an empty name and rewrites ':' and '.', so verification
+		// could never match them.
+		if session.Name == "" || strings.ContainsAny(session.Name, ":.") || session.Character == "" {
 			return WorkspaceUnsupported
 		}
 		keys[session.Key], names[session.Name] = true, true
 		indices := make(map[int]bool)
 		active := false
 		for _, link := range session.Links {
-			if link.Index > 2147483647 {
-				return WorkspaceLimit
-			}
-			if link.Index < 0 || indices[link.Index] {
-				return WorkspaceProtocolInvalid
-			}
-			if _, exists := windows[link.WindowKey]; !exists {
+			if link.Index < 0 || indices[link.Index] || !windows[link.WindowKey] {
 				return WorkspaceProtocolInvalid
 			}
 			indices[link.Index], linked[link.WindowKey] = true, true
@@ -930,20 +797,4 @@ func ValidateWorkspace(workspace Workspace) error {
 		return WorkspaceProtocolInvalid
 	}
 	return nil
-}
-
-func workspaceText(value string, required bool) bool {
-	return (!required || value != "") && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
-}
-
-func workspaceID(value string, prefix byte) bool {
-	if len(value) < 2 || len(value) > 32 || value[0] != prefix {
-		return false
-	}
-	for _, r := range value[1:] {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
