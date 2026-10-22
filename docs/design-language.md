@@ -275,10 +275,10 @@ Two families, split by scale, never blended:
   as breaks so ornament weaves around content instead of colliding with it.
   Geometric interlace only; no beast heads (§2 ruling).
 
-Both families are generated at build time by a deterministic script emitting
-checked-in path constants ([ornament-pipeline.md](ornament-pipeline.md) owns
-the pipeline; an SVG → [Valkyrie](https://github.com/ComposeGears/Valkyrie)
-route is an acceptable alternative), and drawn by stroking the
+Both families were computed once by a deterministic script, since deleted, and
+ship as frozen checked-in path constants ([ornament-pipeline.md](ornament-pipeline.md)
+records the pipeline; an SVG → [Valkyrie](https://github.com/ComposeGears/Valkyrie)
+route is an acceptable alternative), drawn by stroking the
 checked-in segments from cached geometry (a `ShaderBrush` image tile is the
 fallback if profiling ever demands it).
 Knot topology is never computed on-device at runtime. License notes for

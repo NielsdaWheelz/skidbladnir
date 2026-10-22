@@ -5,12 +5,12 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 case "$(uname -s)" in
   Darwin)
-    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    android_sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
     digest_command=(shasum -a 256)
     native_archive='skidbladnir-darwin-arm64.tar.gz'
     ;;
   Linux)
-    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    android_sdk="${ANDROID_HOME:-$HOME/Android/Sdk}"
     digest_command=(sha256sum)
     native_archive='skidbladnir-linux-amd64.tar.gz'
     ;;
@@ -398,8 +398,7 @@ verify_archive "$release_dir/skidbladnir-linux-amd64.tar.gz" "$tag" "$sha" \
   'linux-amd64' linux amd64
 verify_archive "$release_dir/skidbladnir-darwin-arm64.tar.gz" "$tag" "$sha" \
   'darwin-arm64' darwin arm64
-"$repo_dir/scripts/check-android-signing" --public-apk \
-  "$release_dir/skidbladnir-android.apk"
+ANDROID_HOME="$android_sdk" "$repo_dir/scripts/check-android-signing" "$release_dir/skidbladnir-android.apk"
 
 apkanalyzer="$(find_apkanalyzer | tail -n 1)"
 [[ -x "$apkanalyzer" ]] || {

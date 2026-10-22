@@ -70,8 +70,8 @@ else is consumed unchanged.
    come from one wager, *Skáldskaparmál* 35) — Skíðblaðnir loses that wager,
    Mjölnir marks the wielder not the smith, and the silhouette dies at 24dp
    monoline. §15 records the reconsideration so it stays decided once.
-2. **The mark is not generated.** `scripts/gen-ornament` exists for computed
-   topology (weave parity, baked over/under gaps). The unstruck seal is an
+2. **The mark is not generated.** The ornament generator (deleted 2026-10-21)
+   existed for computed topology (weave parity, baked over/under gaps). The unstruck seal is an
    octagon plus two straight lines; generating it would add a drift gate with
    nothing to guard. It is drawn in Compose from frozen fractions.
 3. **The crossbar is centred**, at 50% of the stave. It reads as `+`.

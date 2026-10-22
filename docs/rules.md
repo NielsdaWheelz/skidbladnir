@@ -184,9 +184,12 @@ platform, product, second-phone, full). no behavioral test command or gate remai
 commands:
 
 - `scripts/check {static|verify} [all|host|android|none]`: static runs formatting,
-  syntax, shell lint, catalogue and generated-asset checks, plus go vet and module
-  verification for host and android lint for android (default `all`). verify adds
-  the scoped go and android debug builds. `scripts/build` runs both builds alone.
+  whitespace, shell lint and python syntax, plus go vet and module verification for
+  host and terminal-page syntax and android lint for android (default `all`). verify
+  adds the scoped go build and android debug assembly.
+- ornament geometry and the launcher icon are frozen source with no drift gate. the
+  catalogue has no pre-release check: the gateway loader rejects invalid or duplicate
+  keys and names at startup; [dvergatal](dvergatal.md) owns admission rules.
 - terminal vendor files have no retained check: git tracks their bytes, and
   `scripts/build-terminal-xterm` rebuilds the patched bundle on demand; an empty
   `git diff` afterwards proves it reproducible.

@@ -293,9 +293,9 @@ internal fun octagonVertices(size: Size): List<Offset> {
 // note): quantize the drawn width down to a whole unit count, center the
 // result, then repeat `FretCell`'s frozen unit-box segments across it. The
 // interlace band this once shared a path with died with the pairing screen,
-// so the fret is the app's only repeating band. Ornament.kt bakes all
-// topology and over/under gaps at generation time — this is the whole
-// runtime drawing step, no weave logic here.
+// so the fret is the app's only repeating band. Ornament.kt's frozen constants
+// bake all topology and over/under gaps — this is the whole runtime drawing
+// step, no weave logic here.
 internal fun DrawScope.drawFretBand(color: Color) {
     val unitWidth = size.height
     val units = (size.width / unitWidth).toInt().coerceAtLeast(1)
@@ -318,9 +318,10 @@ internal fun DrawScope.drawFretBand(color: Color) {
 // The stroke that draws the Hlíðskjálf mark, as a fraction of the mark's own
 // size. A fixed dp stroke is the defect it replaces: 2dp is 4% of a 48dp mark
 // but 11% of an 18dp one, so as the mark shrinks the stroke swallows the
-// crossing gaps `scripts/gen-ornament` baked in and the weave reads as a solid
-// clot. Held against `_VALKNUT_GAP`, this keeps break and strand in the same
-// proportion at every rendered size (design-language.md §8).
+// crossing gaps baked into `Valknut` and the weave reads as a solid clot. Held
+// against that gap (0.36 of each crossed edge, hlidskjalf-mark.md), this keeps
+// break and strand in the same proportion at every rendered size
+// (design-language.md §8).
 internal const val ValknutStrokeRatio = 0.055f
 
 // The Hlíðskjálf mark (design-language.md §8): a single, non-repeating draw

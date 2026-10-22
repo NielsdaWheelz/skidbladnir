@@ -8,7 +8,8 @@ records the implemented renderer’s evidence.
 trait derivation and deterministic geometry remain owned here.
 
 2026-09-17: the copied python seal formula and static collision check are retired.
-`scripts/check-catalogue` validates catalogue data and source inventory only.
+2026-10-21: `scripts/check-catalogue` is retired too; the
+[curation record](dvergatal.md) owns catalogue admission.
 rendering requirements remain; the proof plan below is historical under the
 [test retirement](rules.md#testing).
 

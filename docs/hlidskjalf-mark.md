@@ -7,6 +7,10 @@ requires MacBook-owned private staging input, and two `assumeTrue` skips that
 need provisioned machines. The hands-on on-panel glance stays `NOT_RUN`: no
 automated proof can judge whether the 18 dp weave reads comfortably to an eye.
 
+2026-10-21: the generator is deleted and `Valknut` is frozen source baked at
+`gap = 0.36` ([ornament-pipeline.md](ornament-pipeline.md)); the generator
+sections below are historical.
+
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including the product-language line that names Hlíðskjálf the grid motif
 behind the literal label `Dwarves`; [`design-language.md`](design-language.md)
@@ -85,8 +89,8 @@ visible, which it was not at any size the app previously drew it.
 
 `_VALKNUT_GAP = 0.36` becomes a named module constant carrying the derivation
 above; `_valknut(gap: float = _VALKNUT_GAP)`. Nothing else in the pipeline
-changes, and `scripts/gen-ornament --check` gates the regenerated `Ornament.kt` for
-drift. the generator remains deterministic.
+changed, and `scripts/gen-ornament --check` gated the regenerated `Ornament.kt`
+for drift until both were deleted.
 
 ### Drawing (`Theme.kt`)
 

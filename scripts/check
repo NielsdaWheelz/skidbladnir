@@ -8,8 +8,15 @@ if [[ "$#" -gt 0 ]]; then
 fi
 
 case "$(uname -s)" in
-  Darwin) digest_command=(shasum -a 256) ;;
-  Linux) digest_command=(sha256sum) ;;
+  Darwin)
+    digest_command=(shasum -a 256)
+    android_sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+    export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
+    ;;
+  Linux)
+    digest_command=(sha256sum)
+    android_sdk="${ANDROID_HOME:-$HOME/Android/Sdk}"
+    ;;
   *)
     printf 'engineering checks require linux or darwin\n' >&2
     exit 2
@@ -42,32 +49,22 @@ case "$gate" in
     run diff-check git diff --check
     # shellcheck disable=SC2016 # The inner shell owns this variable.
     run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    shell_scripts=(
-      scripts/build scripts/build-host-archive scripts/build-host-binary
-      scripts/build-mac-app scripts/build-mac-icon scripts/build-terminal-xterm
-      scripts/check scripts/check-android-signing scripts/check-go-toolchain
-      scripts/check-release scripts/check-release-source scripts/check-release-repository
-      scripts/install-android scripts/release scripts/render-release-notes
-      scripts/install scripts/sign-release deployment/install/quota-read deployment/providers/shell-init
-      deployment/providers/terminal-context-init
-    )
-    for script in "${shell_scripts[@]}"; do
-      run bash-syntax bash -n "$script"
+    shell_scripts=(deployment/install/quota-read deployment/providers/shell-init deployment/providers/terminal-context-init)
+    for script in scripts/*; do
+      [[ -x "$script" ]] || { printf '%s is not executable\n' "$script" >&2; exit 1; }
+      if [[ "$(head -n 1 "$script")" == '#!/usr/bin/env bash' ]]; then
+        shell_scripts+=("$script")
+      fi
     done
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' "${shell_scripts[@]}"
-    for script in scripts/*; do
-      [[ -x "$script" ]] || { printf '%s is not executable\n' "$script" >&2; exit 1; }
-    done
     run shellcheck shellcheck "${shell_scripts[@]}"
     run python-syntax python3 -c \
       'import pathlib, sys
 for name in sys.argv[1:]:
     compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
-      scripts/check-catalogue scripts/gen-ornament deployment/install/build-native.py
-    run catalogue ./scripts/check-catalogue
-    run ornament ./scripts/gen-ornament --check
+      deployment/install/build-native.py
     if [[ "$scope" == all || "$scope" == host ]]; then
       run go-mod-verify go mod verify
       run go-vet go vet ./...
@@ -76,7 +73,16 @@ for name in sys.argv[1:]:
       fi
     fi
     if [[ "$scope" == all || "$scope" == android ]]; then
-      run "android-$gate" ./scripts/build "android-$gate"
+      run terminal-js node --check android/app/src/main/assets/terminal/terminal.js
+      [[ -d "$android_sdk" ]] || not_run "android-$gate" "Android SDK is unavailable at $android_sdk"
+      [[ -z "${JAVA_HOME:-}" || -x "$JAVA_HOME/bin/java" ]] || not_run "android-$gate" "Java is unavailable at $JAVA_HOME"
+      if [[ "$gate" == verify ]]; then
+        gradle_tasks=(:app:lintDebug :app:assembleDebug)
+      else
+        gradle_tasks=(:app:compileDebugKotlin :app:lintDebug)
+      fi
+      cd android
+      run "android-$gate" env ANDROID_HOME="$android_sdk" ./gradlew "${gradle_tasks[@]}" --no-daemon
     fi
     if [[ "$gate" == verify ]]; then
       printf 'engineering checks passed (build scope: %s); behavioral tests are absent\n' "$scope"
