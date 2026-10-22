@@ -1,7 +1,0 @@
-#!/bin/sh
-set -eu
-# all imported code and the managed interpreter are frozen in this signed release.
-root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
-python=$(find "$root/native-helper/python" -path '*/bin/python3.12' -type f -print)
-[ -n "$python" ] || { printf 'bundled quota interpreter is unavailable\n' >&2; exit 1; }
-exec "$python" -I -B -c 'import sys; sys.path.insert(0,sys.argv.pop(1)); from provider_runtime.agent_runtime.quota_cli import main; main()' "$root/native-helper/site-packages" "$@"

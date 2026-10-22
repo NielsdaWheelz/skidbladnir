@@ -103,7 +103,7 @@ exact lifetimes and panes for operations.
 - **providers own execution and history.** skid observes foreground process
   provider and account identity, bounded rendered reads and explicit terminal
   controls. no provider history or conversation identity enters a skid store.
-  a short-lived read-only quota helper observes existing account daemons; it
+  a read-only quota client observes existing account daemons; it
   owns no provider lifetime and dispatches no conversation operations.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
   capability over one local tmux server. android composes enrolled gateways; an
@@ -155,8 +155,8 @@ only its private inherited launch markers are removed.
 
 provider/account detection remains separate from launch labels. readable live
 process/account evidence must match one configured provider/home; missing or
-ambiguous evidence is unknown. quota uses a pinned read-only helper and existing
-daemons, then attributable terminal evidence when native evidence is unavailable
+ambiguous evidence is unknown. quota reads existing daemons directly, then
+attributable terminal evidence when native evidence is unavailable
 or stale. no fresh source means unknown. the same logical profile denotes one
 account across machines.
 
@@ -674,7 +674,7 @@ history item is `current`.
   mutates only the local default tmux server.
   Gateway restart never kills tmux or changes the stock agent runtime. Every
   gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, `TMUX_TMPDIR`,
-  `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux/helper child environments also drop
+  `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux child environments also drop
   `HERDR_*`; pane exec boundaries repeat that removal because existing tmux
   servers have their own inherited environment.
 - `sessions.Manager` owns one private `~/.local/state/skidbladnir/workspace.json`
@@ -704,10 +704,9 @@ history item is `current`.
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
   `ps` output or a Linux fallback.
-  `internal/agentcontrol` depends on sessions and the configured quota helper;
-  sessions never imports agentcontrol. the gateway composes both. short-lived
-  quota helpers read existing codex account daemons using the selected profile
-  environment; neither helper nor client owns the provider runtime.
+  `internal/agentcontrol` and `internal/quota` depend on sessions; sessions
+  imports neither. the gateway composes them. `internal/quota` reads existing
+  codex account daemons over each profile's control socket and owns no provider runtime.
 - `internal/install` owns the signed bootstrap, immutable releases, dependencies,
   services and marker-delimited shell blocks at fixed skid-owned paths.
   install/update stage and validate before switching `current`, restart skid

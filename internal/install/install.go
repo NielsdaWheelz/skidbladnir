@@ -238,11 +238,6 @@ func validate(ctx context.Context, payload string) (releaseManifest, error) {
 	if err != nil || string(output) != manifest.Version+" "+manifest.SourceSHA+"\n" {
 		return manifest, errors.New("release executable identity check failed")
 	}
-	helperOutput, helperErr := exec.CommandContext(ctx, filepath.Join(payload, "providers", "quota-read")).Output()
-	var rejected *exec.ExitError
-	if !errors.As(helperErr, &rejected) || rejected.ExitCode() != 1 || string(helperOutput) != `{"ok":false,"error":{"code":"rejected"}}`+"\n" {
-		return manifest, errors.New("bundled quota helper cannot start; installed release unchanged")
-	}
 	if runtime.GOOS == "darwin" {
 		if err = exec.CommandContext(ctx, "codesign", "--verify", "--strict", filepath.Join(payload, "Skid.app")).Run(); err != nil {
 			return manifest, errors.New("mac notification app signature invalid")

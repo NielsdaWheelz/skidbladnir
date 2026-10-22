@@ -9,12 +9,11 @@ import (
 var ErrInvalidInput = errors.New("invalid terminal input")
 
 type Service struct {
-	sessions      *sessions.Manager
-	quotaReadPath string
+	sessions *sessions.Manager
 }
 
-func New(manager *sessions.Manager, quotaReadPath string) *Service {
-	return &Service{sessions: manager, quotaReadPath: quotaReadPath}
+func New(manager *sessions.Manager) *Service {
+	return &Service{sessions: manager}
 }
 
 type ReadResult struct {

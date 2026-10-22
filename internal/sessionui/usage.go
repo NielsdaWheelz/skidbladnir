@@ -9,9 +9,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -175,10 +175,10 @@ func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usa
 	text.sevenDay = usageWindowText(report.SevenDay, profile.observedAt, elapsed)
 	return text
 }
-func usageWindowAvailable(window *agentcontrol.UsageWindow, observedAt time.Time, elapsed time.Duration) bool {
+func usageWindowAvailable(window *quota.Window, observedAt time.Time, elapsed time.Duration) bool {
 	return window != nil && (window.ResetsAt == nil || window.ResetsAt.Sub(observedAt) > elapsed)
 }
-func usageWindowText(window *agentcontrol.UsageWindow, observedAt time.Time, elapsed time.Duration) *windowText {
+func usageWindowText(window *quota.Window, observedAt time.Time, elapsed time.Duration) *windowText {
 	if window == nil {
 		return nil
 	}

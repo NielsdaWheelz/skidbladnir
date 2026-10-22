@@ -147,7 +147,7 @@ and trust each other's outputs:
   codec. renderers and quoters escape; they do not validate.
 - go and kotlin own application logic; another language appears only where its
   runtime owns the work (the terminal page's javascript, macos objective-c, python
-  tooling and the bundled quota helper). shell orchestrates processes. a lint
+  tooling). shell orchestrates processes. a lint
   suppression sits on its exact line with a reason. generated files are committed
   with one owning command, and `scripts/check` fails when they are stale.
 
@@ -178,7 +178,7 @@ platform, product, second-phone, full). no behavioral test command or gate remai
 commands:
 
 - `scripts/check {static|verify} [all|host|android|none]`: static runs formatting,
-  whitespace, shell lint and python syntax, plus go vet and module verification for
+  whitespace and shell lint, plus go vet and module verification for
   host and terminal-page syntax and android lint for android (default `all`). verify
   adds the scoped go build and android debug assembly.
 - ornament geometry and the launcher icon are frozen source with no drift gate. the

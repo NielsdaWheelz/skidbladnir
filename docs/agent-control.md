@@ -23,7 +23,7 @@ functions and environment. skid injects no provider policy or daemon lifecycle.
 ```text
 client -> target-machine gateway -> sessions/tmux/kernel
                                 -> terminal screen classifier
-quota client -> gateway -> quota-read helper -> existing codex account daemon
+quota client -> gateway -> internal/quota -> existing codex account daemon
 ```
 
 read returns bounded rendered terminal text, identifying available scrollback
@@ -53,8 +53,8 @@ retain source/freshness/estimate disclosure; never sum accounts or splice window
 
 ## boundaries
 
-the quota helper consumes one closed bounded request and has no conversation
-dispatch. it uses existing already-running codex sockets without starting,
+the quota client sends only initialize, initialized and account/rateLimits/read
+and has no conversation dispatch. it uses existing already-running codex sockets without starting,
 restarting or updating providers. no prompt, output or credential enters logs.
 provider-runtime's independently published cognitive/archive APIs remain outside
 skid. [testing policy](rules.md#testing) owns disposable acceptance tests; matching

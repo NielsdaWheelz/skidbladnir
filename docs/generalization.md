@@ -497,11 +497,11 @@ terminal operation and supported terminal observations remain usable. this avoid
 daemon lifecycle ownership but leaves native availability dependent on external
 setup. daemon presence still does not supply a terminal's conversation identity.
 
-retaining native integration preserves its helper/runtime and provider-protocol
-maintenance costs. supporting both quota sources adds selection/freshness and
-failure-path work. this can simplify setup for users without simplifying the
+retaining native integration preserves its provider-protocol maintenance cost,
+now owned by skid's go quota client. supporting both quota sources adds
+selection/freshness and failure-path work. this can simplify setup for users without simplifying the
 implementation. native unavailability should be bounded and visible in diagnostics,
-not turn ordinary terminal access into a wait for a broken helper.
+not turn ordinary terminal access into a wait for a broken daemon.
 
 ### statuslines and account attribution
 
