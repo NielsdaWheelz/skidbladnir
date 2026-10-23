@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 )
 
 // current is where the session's work runs: this host, a resolved remote host,
@@ -36,7 +37,7 @@ func (m *model) rowFooter(row fleetclient.Row) string {
 func (m *model) details(row *fleetclient.Row) [][2]string {
 	value := row.Session
 	current := m.current(row)
-	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetclient.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine}, {"terminal handle", value.TerminalHandle}}
+	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetview.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine}, {"terminal handle", value.TerminalHandle}}
 	switch current.Kind {
 	case "remote":
 		facts = append(facts, [2]string{"running on", current.Label})

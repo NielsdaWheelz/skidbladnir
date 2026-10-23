@@ -8,10 +8,11 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -251,7 +252,7 @@ func (m *model) noticeLines(width int) []string {
 			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
 			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
 		}
-		text, failure := fleetclient.RecoveryNotice(peer)
+		text, failure := fleetview.RecoveryNotice(peer)
 		if text != "" {
 			style := muted
 			if failure {
@@ -424,12 +425,12 @@ func (m *model) bodyLines(height int) []string {
 		}
 		lines := []string{bold.Styled(title), ""}
 		if editor.failure != nil {
-			lines = append(lines, wrapped(fleetclient.ErrorMessage(*editor.failure, editor.request), width)...)
+			lines = append(lines, wrapped(fleetview.ErrorMessage(*editor.failure, editor.request), width)...)
 			lines = append(lines, "")
 		}
 		current := m.rowForReference(editor.request.Ref)
 		if current != nil {
-			value := fleetclient.GroupHeading(current.Session.Group)
+			value := fleetview.GroupHeading(current.Session.Group)
 			if m.page == "name-edit" {
 				value = current.Session.Name + " (" + current.Session.NameMode + ")"
 			}
@@ -467,7 +468,7 @@ func (m *model) bodyLines(height int) []string {
 				status = "unchanged; save disabled"
 			}
 		case !fleetclient.ValidSessionName(editor.draft):
-			status = fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
+			status = fleetview.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
 		case current.Session.NameMode == "manual" && current.Session.Name == editor.draft:
 			status = "unchanged; save disabled"
 		}
@@ -698,8 +699,8 @@ func (m *model) opensGroup(index int) bool {
 
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a good read of the hub's notification state.
-func (m *model) statusView(row fleetclient.Row) fleetclient.StatusView {
-	view := fleetclient.ProjectStatus(row.Session, row.Available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.Session))
+func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
+	view := fleetview.ProjectStatus(row.Session, row.Available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.Session))
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail
@@ -731,13 +732,13 @@ func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
 	}
 	view := m.statusView(row)
 	switch view.Tone {
-	case sessions.ToneMuted:
+	case api.ToneMuted:
 		return view.Label, muted
-	case sessions.ToneWorking:
+	case api.ToneWorking:
 		return view.Label, frost
-	case sessions.ToneAttention:
+	case api.ToneAttention:
 		return view.Label, ember
-	case sessions.ToneReady:
+	case api.ToneReady:
 		return view.Label, moss
 	}
 	panic("invalid status tone") // justify-defect: StatusTone is a closed set.

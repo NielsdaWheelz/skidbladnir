@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 )
 
 type ProfileUsage struct {
 	Profile
-	ReadState string        `json:"readState"`
-	Report    *quota.Report `json:"report,omitempty"`
+	ReadState string           `json:"readState"`
+	Report    *api.QuotaReport `json:"report,omitempty"`
 }
 
 type ProfileUsagePeer struct {

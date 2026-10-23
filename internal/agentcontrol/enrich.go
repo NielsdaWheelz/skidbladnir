@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
@@ -116,7 +117,7 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 			if err != nil {
 				// Enrichment has no target to reject: a lifetime or pane change
 				// during capture is a failed capture.
-				read = detection{status: sessions.UnknownStatus(sessions.ReasonCaptureFailed)}
+				read = detection{status: api.UnknownStatus(api.ReasonCaptureFailed)}
 			}
 			reads[index], elapsed[index] = read, time.Since(startedAt)
 		})
@@ -146,7 +147,7 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 	var failures []ObservationFailure
 	for index, read := range reads {
 		observed[index].TerminalStatus, observed[index].TerminalUsage, observed[index].TerminalFooter = read.status, read.usage, read.footer
-		if read.status.Source == sessions.SourceUnavailable {
+		if read.status.Source == api.SourceUnavailable {
 			failures = append(failures, ObservationFailure{TmuxID: observed[index].TmuxID, Reason: read.status.Reason, Elapsed: elapsed[index]})
 		}
 	}
@@ -162,7 +163,7 @@ func (service *Service) EnrichCreated(parent context.Context, created sessions.S
 	defer cancel()
 	read, err := service.sample(ctx, created)
 	if err != nil {
-		read = detection{status: sessions.UnknownStatus(sessions.ReasonCaptureFailed)}
+		read = detection{status: api.UnknownStatus(api.ReasonCaptureFailed)}
 	}
 	created.TerminalStatus, created.TerminalUsage, created.TerminalFooter = read.status, read.usage, read.footer
 	return created

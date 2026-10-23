@@ -12,7 +12,7 @@ needs an apk.
 
 evidence: `NotificationOwner.kt` `presentsReady`; `ProductModel.kt`
 `sessionStatusContent` (`status.queue == SessionQueueCategory.Ready &&
-notification.ready`); `internal/sessions/status.go` `PresentStatus` (the idle
+notification.ready`); `internal/api/status.go` `PresentStatus` (the idle
 row alone sets `QueueReady`).
 
 resolved when: `presentsReady` keeps only the hub facts (ready generation,

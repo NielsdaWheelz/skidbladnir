@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -61,15 +62,8 @@ type OpenTerminalInput struct {
 	Rows          int
 }
 
-type NameMode string
-
-const (
-	NameAutomatic NameMode = "automatic"
-	NameManual    NameMode = "manual"
-)
-
 type Naming struct {
-	Mode NameMode
+	Mode api.NameMode
 	Name string
 }
 type RenameInput struct {
@@ -87,13 +81,13 @@ type Session struct {
 	TmuxID           string
 	ActivePaneID     string
 	TmuxName         string
-	NameMode         NameMode
+	NameMode         api.NameMode
 	IdentityToken    string
 	LaunchProfile    agentruntime.ProfileKey
 	Agent            *agentruntime.Agent
-	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol observes the session
-	TerminalUsage    *TerminalUsage
-	TerminalFooter   *TerminalFooter
+	TerminalStatus   api.TerminalStatus // zero (invalid) until agentcontrol observes the session
+	TerminalUsage    *api.TerminalUsage
+	TerminalFooter   *api.TerminalFooter
 	Connection       *Connection
 	Objective        string
 	Group            group.Label
@@ -148,7 +142,7 @@ type Inventory struct {
 	ObservedAt time.Time
 	Sessions   []Session
 	Profiles   []agentruntime.Profile // the one settings snapshot every LaunchProfile and Agent.Profile names
-	Recovery   Recovery
+	Recovery   api.Recovery
 	Server     tmuxclient.ServerIdentity // the one admitted lifetime of every row; zero with no rows
 }
 

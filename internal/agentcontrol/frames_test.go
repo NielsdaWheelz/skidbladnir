@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
@@ -38,7 +38,7 @@ func TestFrames(t *testing.T) {
 			Expect    struct {
 				Activity, Interaction, Notice, Composer, Reason string
 				Rules                                           []string
-				Usage                                           *sessions.TerminalUsage
+				Usage                                           *api.TerminalUsage
 				Footer                                          json.RawMessage
 			} `json:"expect"`
 		}

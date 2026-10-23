@@ -26,7 +26,7 @@ const (
 )
 
 type Failure struct {
-	terminalInputMessage string
+	TerminalInputMessage string `json:"-"`
 	Code                 string `json:"code"`
 	Dispatch             string `json:"dispatch"`
 	Target               Ref    `json:"target,omitzero"`
@@ -473,7 +473,7 @@ func decodeFailure(operation string, encoded []byte, dispatch, machine string) *
 	}
 	failure := &Failure{Code: envelope.Code, Dispatch: dispatch}
 	if envelope.Code == "TerminalInputBlocked" {
-		failure.terminalInputMessage = envelope.Message
+		failure.TerminalInputMessage = envelope.Message
 	}
 	if target := envelope.Target; target != nil && (operation == "start" || operation == "shell") {
 		ref := Reference{Machine: machine, TmuxID: target.TmuxID, IdentityToken: target.IdentityToken, PaneID: target.PaneID}

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 // start owns one bounded create/readiness/input composition. It never retries a write.
@@ -108,18 +107,18 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 			return finish()
 		}
 		status := inspected.Value.(api.Inspect).TerminalStatus
-		if status.Source == sessions.SourceUnavailable {
+		if status.Source == api.SourceUnavailable {
 			value.Failure = &Failure{Code: "TerminalUnavailable", Dispatch: "not_sent"}
 			return finish()
 		}
-		if status.Notice != sessions.NoticeNone || status.Interaction != sessions.InteractionNone && status.Interaction != sessions.InteractionUnknown {
-			value.Failure = &Failure{Code: "TerminalInputBlocked", Dispatch: "not_sent", terminalInputMessage: "the requested agent is not ready for its initial prompt. inspect the terminal before sending."}
+		if status.Notice != api.NoticeNone || status.Interaction != api.InteractionNone && status.Interaction != api.InteractionUnknown {
+			value.Failure = &Failure{Code: "TerminalInputBlocked", Dispatch: "not_sent", TerminalInputMessage: api.InputBlockedNotReady}
 			if status.Interaction.Request() {
-				value.Failure.terminalInputMessage = "respond to the dialog in the terminal."
+				value.Failure.TerminalInputMessage = api.InputBlockedDialog
 			}
 			return finish()
 		}
-		if status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone {
+		if status.Activity == api.ActivityIdle && status.Interaction == api.InteractionNone {
 			sent := client.call(ctx, selected, "terminal_send", ref.TmuxID, input)
 			if !sent.OK {
 				value.Failure = sent.Error

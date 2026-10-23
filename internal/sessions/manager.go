@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
@@ -53,7 +54,7 @@ func New(config Config) (*Manager, error) {
 		tmux:      tmux,
 		workdir:   config.Workdir,
 		mutations: make(chan struct{}, 1),
-		recovery:  workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
+		recovery:  workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: api.Recovery{State: api.RecoveryTracking}},
 	}
 	manager.settings.Store(&runtimeSettings{profiles: config.Profiles, byKey: profilesByKey, shellPath: config.ShellPath, revision: 1})
 	return manager, nil

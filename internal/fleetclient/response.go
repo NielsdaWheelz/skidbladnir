@@ -7,7 +7,6 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -31,22 +30,22 @@ type ExecutionContext struct {
 	Agent   *ExecutionAgent `json:"agent,omitempty"`
 }
 type Session struct {
-	TerminalStatus  sessions.TerminalStatus  `json:"terminalStatus"`
-	TerminalUsage   *sessions.TerminalUsage  `json:"terminalUsage,omitempty"`
-	TerminalFooter  *sessions.TerminalFooter `json:"terminalFooter,omitempty"`
-	ActivePaneID    string                   `json:"activePaneId"`
-	Name            string                   `json:"name"`
-	NameMode        string                   `json:"nameMode"`
-	TerminalHandle  string                   `json:"terminalHandle"`
-	Ref             Ref                      `json:"ref"`
-	CWD             string                   `json:"cwd,omitempty"`
-	ActiveCommand   string                   `json:"activeCommand,omitempty"`
-	LaunchProfile   string                   `json:"launchProfile,omitempty"`
-	AttachedClients int                      `json:"attachedClients"`
-	Agent           *Agent                   `json:"agent,omitempty"`
-	Connection      *api.Connection          `json:"connection,omitempty"`
-	Execution       *ExecutionContext        `json:"execution,omitempty"`
-	Group           group.Label              `json:"-"`
+	TerminalStatus  api.TerminalStatus  `json:"terminalStatus"`
+	TerminalUsage   *api.TerminalUsage  `json:"terminalUsage,omitempty"`
+	TerminalFooter  *api.TerminalFooter `json:"terminalFooter,omitempty"`
+	ActivePaneID    string              `json:"activePaneId"`
+	Name            string              `json:"name"`
+	NameMode        string              `json:"nameMode"`
+	TerminalHandle  string              `json:"terminalHandle"`
+	Ref             Ref                 `json:"ref"`
+	CWD             string              `json:"cwd,omitempty"`
+	ActiveCommand   string              `json:"activeCommand,omitempty"`
+	LaunchProfile   string              `json:"launchProfile,omitempty"`
+	AttachedClients int                 `json:"attachedClients"`
+	Agent           *Agent              `json:"agent,omitempty"`
+	Connection      *api.Connection     `json:"connection,omitempty"`
+	Execution       *ExecutionContext   `json:"execution,omitempty"`
+	Group           group.Label         `json:"-"`
 }
 
 func (s Session) MarshalJSON() ([]byte, error) {
@@ -65,15 +64,15 @@ type Profile struct {
 }
 
 type Peer struct {
-	Label      string             `json:"label"`
-	Machine    string             `json:"machine"`
-	OK         bool               `json:"ok"`
-	ObservedAt string             `json:"observedAt,omitempty"`
-	ReceivedAt time.Time          `json:"-"`
-	Profiles   []Profile          `json:"profiles,omitempty"`
-	Sessions   []Session          `json:"sessions,omitempty"`
-	Recovery   *sessions.Recovery `json:"recovery,omitempty"`
-	Error      *Failure           `json:"error,omitempty"`
+	Label      string        `json:"label"`
+	Machine    string        `json:"machine"`
+	OK         bool          `json:"ok"`
+	ObservedAt string        `json:"observedAt,omitempty"`
+	ReceivedAt time.Time     `json:"-"`
+	Profiles   []Profile     `json:"profiles,omitempty"`
+	Sessions   []Session     `json:"sessions,omitempty"`
+	Recovery   *api.Recovery `json:"recovery,omitempty"`
+	Error      *Failure      `json:"error,omitempty"`
 }
 
 // MarshalJSON preserves required empty arrays for a successfully observed peer.
@@ -87,13 +86,13 @@ func (p Peer) MarshalJSON() ([]byte, error) {
 		}{p.Label, p.Machine, false, p.Error})
 	}
 	return json.Marshal(struct {
-		Label      string             `json:"label"`
-		Machine    string             `json:"machine"`
-		OK         bool               `json:"ok"`
-		ObservedAt string             `json:"observedAt"`
-		Profiles   []Profile          `json:"profiles"`
-		Sessions   []Session          `json:"sessions"`
-		Recovery   *sessions.Recovery `json:"recovery"`
+		Label      string        `json:"label"`
+		Machine    string        `json:"machine"`
+		OK         bool          `json:"ok"`
+		ObservedAt string        `json:"observedAt"`
+		Profiles   []Profile     `json:"profiles"`
+		Sessions   []Session     `json:"sessions"`
+		Recovery   *api.Recovery `json:"recovery"`
 	}{p.Label, p.Machine, true, p.ObservedAt, p.Profiles, p.Sessions, p.Recovery})
 }
 
@@ -130,9 +129,9 @@ type GroupResult struct {
 }
 
 type WaitResult struct {
-	Outcome        string                   `json:"outcome"`
-	Target         Ref                      `json:"target"`
-	TerminalStatus *sessions.TerminalStatus `json:"terminalStatus,omitempty"`
+	Outcome        string              `json:"outcome"`
+	Target         Ref                 `json:"target"`
+	TerminalStatus *api.TerminalStatus `json:"terminalStatus,omitempty"`
 }
 
 // clientProfile admits a profile whose provider the client knows.
@@ -144,11 +143,11 @@ func clientProfile(wire api.Profile) (Profile, bool) {
 // clientSession projects one gateway session. It keeps only what the client depends on: ids that
 // form a reference, the enums it branches on, the group label, and the agent provider, which the
 // hub republishes in notification foregrounds to the phone's closed enum (NotificationState.kt).
-// The host's status copy is the phone's; go clients render sessions.PresentStatus.
+// The host's status copy is the phone's; go clients render api.PresentStatus.
 func clientSession(wire api.Session, machine string) (Session, bool) {
 	ref := Reference{Machine: machine, TmuxID: wire.TmuxID, IdentityToken: wire.IdentityToken, PaneID: wire.ActivePaneID}
 	label, err := group.Parse(wire.Group)
-	if !ref.valid() || err != nil || !wire.TerminalStatus.Known() || wire.NameMode != sessions.NameAutomatic && wire.NameMode != sessions.NameManual {
+	if !ref.valid() || err != nil || !wire.TerminalStatus.Known() || wire.NameMode != api.NameAutomatic && wire.NameMode != api.NameManual {
 		return Session{}, false
 	}
 	row := Session{TerminalStatus: wire.TerminalStatus, TerminalUsage: wire.TerminalUsage, TerminalFooter: wire.TerminalFooter, ActivePaneID: wire.ActivePaneID, Name: wire.TmuxName, NameMode: string(wire.NameMode), TerminalHandle: ref.Handle(), Ref: Ref{ref}, CWD: wire.CWD, ActiveCommand: wire.ActiveCommand, LaunchProfile: wire.LaunchProfile, AttachedClients: wire.AttachedClients, Connection: wire.Connection, Group: label}

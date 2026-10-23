@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
@@ -35,7 +36,7 @@ func (m *model) rebuild() {
 		for _, peer := range m.peers {
 			for _, session := range peer.Sessions {
 				row := peer.Row(session)
-				if m.statusView(row).Queue != fleetclient.QueueExcluded {
+				if m.statusView(row).Queue != fleetview.QueueExcluded {
 					m.rows = append(m.rows, row)
 				}
 			}

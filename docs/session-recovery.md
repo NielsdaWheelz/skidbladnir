@@ -53,7 +53,7 @@ reconstruction recipe; it never supplies inventory or agent status.
 
 | owner | responsibility |
 | --- | --- |
-| `sessions` (`recovery.go`, `recovery_store.go`) | checkpoint policy, loss decision, restore decision, the file, the state and its notice copy (`sessions.Recovery.Notice`), failure classification |
+| `sessions` (`recovery.go`, `recovery_store.go`) | checkpoint policy, loss decision, restore decision, the file, the state, failure classification; `internal/api` declares the fact and its notice copy (`api.Recovery.Notice`) |
 | `tmux` (`recovery.go`) | presence distinct from empty, coherent graph capture, guarded reconstruction, layout comparison |
 | gateway | starts recovery after the listener, owns its cancellation, logs its transitions |
 | `process` | boot identity and kernel start identity that prove whether the saved server process lives |
@@ -305,7 +305,7 @@ error text.
 
 ## notice
 
-the host renders `summary` and `action` (`sessions.Recovery.Notice`); clients add
+the host renders `summary` and `action` (`api.Recovery.Notice`); clients add
 the host, the last save in the device's own zone and the tone, and never infer
 retryability:
 

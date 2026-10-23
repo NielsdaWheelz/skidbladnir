@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 )
 
 // claudeFamily reads the request and menu families (2.6), which
@@ -24,12 +24,12 @@ func claudeFamily(screen *claudeScreen, last int) (reading, bool) {
 			return reading{}, false
 		}
 	}
-	for _, family := range [...]func(*claudeScreen, int) (string, sessions.Interaction, bool){
+	for _, family := range [...]func(*claudeScreen, int) (string, api.Interaction, bool){
 		claudeViewer, claudeMenu, claudePermission, claudeQuestion, claudeElicitation, claudePlan, claudeSetup,
 	} {
 		if id, interaction, ok := family(screen, hint); ok {
 			return reading{
-				activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked,
+				activity: api.ActivityUnknown, interaction: interaction, composer: composerBlocked,
 				rules: []string{id, "claude.composer.blocked"},
 			}, true
 		}
@@ -45,17 +45,17 @@ var (
 
 // claudeViewer reads the viewer footers: the transcript viewer, with a dialog
 // waiting behind it or not, and the agents view.
-func claudeViewer(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudeViewer(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	text, top, ok := screen.block(2, hint)
 	switch {
 	case !ok:
 	case strings.HasPrefix(text, "dialog waiting · Showing detailed transcript · "):
-		return "claude.input.dialog_waiting", sessions.InteractionInput, true
+		return "claude.input.dialog_waiting", api.InteractionInput, true
 	case strings.HasPrefix(text, "Showing detailed transcript · "):
-		return "claude.menu.transcript", sessions.InteractionMenu, true
+		return "claude.menu.transcript", api.InteractionMenu, true
 	case claudeAgentsViewHint.MatchString(text):
 		if _, found := screen.find(top-1, func(line claudeLine) bool { return claudeAgentsViewCounts.MatchString(line.plain) }); found {
-			return "claude.menu.agents_view", sessions.InteractionMenu, true
+			return "claude.menu.agents_view", api.InteractionMenu, true
 		}
 	}
 	return "", "", false
@@ -65,30 +65,30 @@ func claudeViewer(screen *claudeScreen, hint int) (string, sessions.Interaction,
 var claudeSettingsTabs = regexp.MustCompile(`^   Settings +Status +Config +Usage`)
 
 // claudeMenu reads the model, settings, theme, resume and side-question menus.
-func claudeMenu(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudeMenu(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	if text, _, ok := screen.block(3, hint); ok {
 		switch {
 		case strings.HasPrefix(text, "Enter to set as default · "):
 			if _, found := screen.find(hint-1, screen.edge); found {
-				return "claude.menu.model", sessions.InteractionMenu, true
+				return "claude.menu.model", api.InteractionMenu, true
 			}
 		case strings.HasPrefix(text, "Type to filter · ") || strings.HasPrefix(text, "Enter/Space to change · "):
 			if _, found := screen.find(hint-1, func(line claudeLine) bool { return claudeSettingsTabs.MatchString(line.plain) }); found {
-				return "claude.menu.settings", sessions.InteractionMenu, true
+				return "claude.menu.settings", api.InteractionMenu, true
 			}
 		case text == "Enter to select · Esc to cancel":
 			if _, found := screen.find(hint-1, func(line claudeLine) bool { return strings.HasPrefix(line.plain, "    Syntax theme: ") }); found {
-				return "claude.menu.theme", sessions.InteractionMenu, true
+				return "claude.menu.theme", api.InteractionMenu, true
 			}
 		}
 	}
 	if text, _, ok := screen.block(5, hint); ok && strings.Contains(text, "to show all projects") && strings.HasSuffix(text, "Esc to cancel") {
-		return "claude.menu.resume", sessions.InteractionMenu, true
+		return "claude.menu.resume", api.InteractionMenu, true
 	}
 	if text, top, ok := screen.block(4, hint); ok && strings.HasSuffix(text, "Esc to close") {
 		_, question := screen.find(top-1, func(line claudeLine) bool { return strings.HasPrefix(line.plain, "    /btw ") })
 		if _, found := screen.find(top-1, screen.edge); found && question {
-			return "claude.menu.btw", sessions.InteractionMenu, true
+			return "claude.menu.btw", api.InteractionMenu, true
 		}
 	}
 	return "", "", false
@@ -102,7 +102,7 @@ var (
 
 // claudePermission reads the tool permission dialog (options and hint at
 // column 1) and the dynamic workflow permission (column 2, titled at column 1).
-func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudePermission(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	if text, top, ok := screen.block(1, hint); ok && claudePermissionHint.MatchString(text) {
 		options, optionsTop, ok := screen.options(1, top-1)
 		if ok && strings.HasPrefix(options[0].label, "Yes") {
@@ -110,7 +110,7 @@ func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interact
 				for r := end; r >= questionTop; r-- {
 					if strings.HasPrefix(screen.lines[r].plain[screen.lines[r].col:], "Do you want to ") {
 						if strings.HasSuffix(screen.joined(r, end), "?") {
-							return "claude.permission.dialog", sessions.InteractionPermission, true
+							return "claude.permission.dialog", api.InteractionPermission, true
 						}
 						break
 					}
@@ -122,7 +122,7 @@ func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interact
 		options, optionsTop, ok := screen.options(2, top-1)
 		if ok && options[0].label == "Yes, run it" && options[len(options)-1].label == "No" {
 			if screen.titled(optionsTop, " Run a dynamic workflow?") {
-				return "claude.permission.workflow", sessions.InteractionPermission, true
+				return "claude.permission.workflow", api.InteractionPermission, true
 			}
 		}
 	}
@@ -131,7 +131,7 @@ func claudePermission(screen *claudeScreen, hint int) (string, sessions.Interact
 
 // claudeQuestion reads the question form, the question with option previews,
 // and the submit review.
-func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudeQuestion(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	if text, top, ok := screen.block(0, hint); ok && strings.HasPrefix(text, "Enter to select · ") && screen.blankAt(top-1) {
 		chat, chatOK := screen.line(top - 2)
 		rule, ruleOK := screen.line(top - 3)
@@ -140,7 +140,7 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interactio
 			case strings.Contains(text, " · n to add notes · ") && strings.HasSuffix(text, "Esc to cancel") &&
 				(chat.plain == "❯ Chat about this" || chat.plain == "  Chat about this"):
 				if claudePreview(screen, top-3, strings.HasPrefix(chat.plain, "❯")) {
-					return "claude.question.preview", sessions.InteractionQuestion, true
+					return "claude.question.preview", api.InteractionQuestion, true
 				}
 			case strings.Contains(text, " to navigate") && strings.HasSuffix(text, "to cancel") && !strings.Contains(text, "n to add notes"):
 				number, label, pointer, start := claudeOptionStart(chat.plain, 0)
@@ -150,7 +150,7 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interactio
 						pointer = pointer || option.selected
 					}
 					if pointer {
-						return "claude.question.form", sessions.InteractionQuestion, true
+						return "claude.question.form", api.InteractionQuestion, true
 					}
 				}
 			}
@@ -160,7 +160,7 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, sessions.Interactio
 	if ok && len(options) == 2 && options[0].label == "Submit answers" && options[1].label == "Cancel" {
 		if screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Ready to submit your answers?") }) &&
 			screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Review your answers") }) {
-			return "claude.question.review", sessions.InteractionQuestion, true
+			return "claude.question.review", api.InteractionQuestion, true
 		}
 	}
 	return "", "", false
@@ -218,7 +218,7 @@ var claudeElicitationTitle = regexp.MustCompile(`^MCP server “.*?” (.*)$`)
 // cutting the server name and then the title's ending to a prefix and `…`. A
 // task's elicitation appends ` (task <id>)` to the ending, which fullscreen
 // draws only when it fits uncut, so a space and more text may follow it.
-func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudeElicitation(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	if text, _, ok := screen.block(2, hint); ok && strings.HasPrefix(text, "Esc to cancel · ") {
 		title := func(text string) bool {
 			match := claudeElicitationTitle.FindStringSubmatch(text)
@@ -231,7 +231,7 @@ func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interac
 			})
 		}
 		if screen.textBlock(2, hint, title) {
-			return "claude.input.elicitation", sessions.InteractionInput, true
+			return "claude.input.elicitation", api.InteractionInput, true
 		}
 	}
 	return "", "", false
@@ -241,7 +241,7 @@ func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interac
 var claudePlanEditHint = regexp.MustCompile(`^\S+ to edit in `)
 
 // claudePlan reads plan approval and the exit- and enter-plan decisions.
-func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudePlan(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	end := hint
 	if text, top, ok := screen.block(3, hint); ok && claudePlanEditHint.MatchString(text) {
 		end = top - 1
@@ -252,18 +252,18 @@ func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, b
 			change = change || strings.HasPrefix(option.label, "Tell Claude what to change")
 		}
 		if text, _, _, ok := screen.above(3, optionsTop); ok && change && strings.HasPrefix(text, "Claude has written up a plan and is ready to execute.") {
-			return "claude.confirmation.plan", sessions.InteractionConfirmation, true
+			return "claude.confirmation.plan", api.InteractionConfirmation, true
 		}
 	}
 	if options, optionsTop, ok := screen.options(4, hint); ok && strings.HasPrefix(options[0].label, "Yes, and switch to ") && options[len(options)-1].label == "No" {
 		if text, _, _, ok := screen.above(4, optionsTop); ok && text == "Claude wants to exit plan mode" {
-			return "claude.confirmation.exit_plan", sessions.InteractionConfirmation, true
+			return "claude.confirmation.exit_plan", api.InteractionConfirmation, true
 		}
 	}
 	// Entering plan mode draws no hint; its confirm label names the mode.
 	if options, optionsTop, ok := screen.unnumbered(2, hint); ok && strings.HasSuffix(options, "No, start implementing now") {
 		if screen.titled(optionsTop, " Enter plan mode?") {
-			return "claude.confirmation.enter_plan", sessions.InteractionConfirmation, true
+			return "claude.confirmation.enter_plan", api.InteractionConfirmation, true
 		}
 	}
 	return "", "", false
@@ -279,7 +279,7 @@ var (
 // claudeSetup reads the dialogs before and around the first prompt. Trust is
 // drawn at column 1; claude's shared dialog draws its options and hint at
 // column 2 under a full rule, and its variants differ by their anchors.
-func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, bool) {
+func claudeSetup(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	const confirm = "Enter to confirm · Esc to cancel"
 	hint1, top1, ok1 := screen.block(1, hint)
 	hint2, top2, ok2 := screen.block(2, hint)
@@ -288,7 +288,7 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 		workspace := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Accessing workspace:") })
 		if ok && workspace && claudeWords(options, "No, exit") && claudeWords(options, "Yes, I trust this folder") {
 			if _, found := screen.find(optionsTop-1, screen.ruleRow); found {
-				return "claude.setup.trust", sessions.InteractionSetup, true
+				return "claude.setup.trust", api.InteractionSetup, true
 			}
 		}
 	}
@@ -319,13 +319,13 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 		}
 		if id != "" {
 			if _, found := screen.find(optionsTop-1, screen.ruleRow); found {
-				return id, sessions.InteractionSetup, true
+				return id, api.InteractionSetup, true
 			}
 		}
 	}
 	if ok1 && claudeServerHint.MatchString(hint1) && claudeServerApproval(screen, top1) {
 		if _, ruled := screen.find(top1-1, screen.ruleRow); ruled && screen.textBlock(2, hint, claudeServersTitle.MatchString) {
-			return "claude.setup.mcp_servers", sessions.InteractionSetup, true
+			return "claude.setup.mcp_servers", api.InteractionSetup, true
 		}
 	}
 	if ok2 && strings.HasPrefix(hint2, "Syntax theme: ") {
@@ -357,18 +357,18 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 			oneForm := fromOne || !slices.ContainsFunc(choices, func(line claudeLine) bool { return numberedRow(line) || line.col >= 6 })
 			started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
 			if started && oneForm && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
-				return "claude.setup.theme", sessions.InteractionSetup, true
+				return "claude.setup.theme", api.InteractionSetup, true
 			}
 		}
 	}
 	if options, _, ok := screen.options(1, hint); ok && strings.HasPrefix(options[0].label, "Claude account with subscription") {
 		if screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Select login method:") }) {
-			return "claude.setup.login", sessions.InteractionSetup, true
+			return "claude.setup.login", api.InteractionSetup, true
 		}
 	}
 	if ok1 && hint1 == "Press Enter to continue…" {
 		if screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Security notes:") }) {
-			return "claude.setup.security", sessions.InteractionSetup, true
+			return "claude.setup.security", api.InteractionSetup, true
 		}
 	}
 	return "", "", false

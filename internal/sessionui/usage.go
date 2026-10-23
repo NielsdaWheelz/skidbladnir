@@ -8,10 +8,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -166,10 +165,10 @@ func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usa
 	text.sevenDay = usageWindowText(report.SevenDay, profile.observedAt, elapsed)
 	return text
 }
-func usageWindowAvailable(window *quota.Window, observedAt time.Time, elapsed time.Duration) bool {
+func usageWindowAvailable(window *api.QuotaWindow, observedAt time.Time, elapsed time.Duration) bool {
 	return window != nil && (window.ResetsAt == nil || window.ResetsAt.Sub(observedAt) > elapsed)
 }
-func usageWindowText(window *quota.Window, observedAt time.Time, elapsed time.Duration) *windowText {
+func usageWindowText(window *api.QuotaWindow, observedAt time.Time, elapsed time.Duration) *windowText {
 	if window == nil {
 		return nil
 	}
@@ -322,13 +321,13 @@ func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageR
 		for index := range peer.Sessions {
 			session := &peer.Sessions[index]
 			if session.Agent == nil {
-				unavailable = unavailable || session.TerminalStatus.Source == sessions.SourceUnavailable
+				unavailable = unavailable || session.TerminalStatus.Source == api.SourceUnavailable
 				continue
 			}
 			if session.Agent.Provider != profile.Provider || session.Agent.Profile != profile.Key || session.Connection != nil {
 				continue
 			}
-			unavailable = unavailable || session.TerminalStatus.Source == sessions.SourceUnavailable
+			unavailable = unavailable || session.TerminalStatus.Source == api.SourceUnavailable
 			usage := session.TerminalUsage
 			if usage == nil {
 				continue

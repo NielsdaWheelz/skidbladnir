@@ -12,6 +12,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -246,7 +247,16 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.invalidatePendingPeer()
 		m.inform("metadata saved; checking inventory")
 	case "close":
-		text := fleetclient.CloseText(result.Value.(api.CloseResult))
+		receipt := result.Value.(api.CloseResult)
+		var text string
+		switch {
+		case receipt.Terminal != "closed":
+			text = "interruption: " + receipt.Interrupt + "; terminal: " + receipt.Terminal + ". work shared elsewhere or running remotely may continue."
+		case receipt.Interrupt != "written":
+			text = "terminal closed; interruption unconfirmed."
+		default:
+			text = "interrupt key sent; terminal closed. work shared elsewhere or running remotely may continue."
+		}
 		if result.ExitCode("close") != 0 {
 			m.fail(text)
 		} else {
@@ -254,7 +264,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		}
 	default:
 		receipt := result.Value.(api.WriteResult)
-		text := fleetclient.WriteText(operation, receipt)
+		text := fleetview.WriteText(operation, receipt)
 		if receipt.Outcome == "unknown" {
 			m.fail(text)
 		} else {
@@ -265,7 +275,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 }
 
 func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) tea.Cmd {
-	text := fleetclient.ErrorMessage(*failure, m.pending)
+	text := fleetview.ErrorMessage(*failure, m.pending)
 	if operation == "start" {
 		text = m.pending.Machine + ": " + text
 		m.invalidateAccess(m.pending.Machine, failure)
@@ -332,7 +342,7 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 		case failure != nil && failure.Code == "DirectorySearchTooLarge":
 			problem = "too many results; narrow your search"
 		case accessRejected(failure):
-			problem = fleetclient.ErrorMessage(*failure, fleetclient.Request{})
+			problem = fleetview.ErrorMessage(*failure, fleetclient.Request{})
 		}
 		m.searchProblem = problem
 		m.invalidateAccess(message.machine, failure)

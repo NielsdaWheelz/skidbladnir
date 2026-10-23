@@ -5,6 +5,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -158,7 +159,7 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 			lines = append(lines, "")
 		}
 		if placement.heading {
-			heading := ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.Session.Group)), layout.width-1, "…") + ":"
+			heading := ansi.Truncate(attention.SingleLine(fleetview.GroupHeading(row.Session.Group)), layout.width-1, "…") + ":"
 			lines = append(lines, faint.Styled(heading))
 		}
 		gutter, nameStyle := "  ", plain

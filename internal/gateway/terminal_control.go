@@ -85,13 +85,13 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	case "inspect":
 		// TerminalInspect resolves the target itself, so a failure's duration includes resolution.
 		startedAt := time.Now()
-		var status sessions.TerminalStatus
+		var status api.TerminalStatus
 		var diagnostics api.Diagnostics
 		status, diagnostics, err = gateway.agents.TerminalInspect(ctx, target)
 		if err != nil {
 			break
 		}
-		if status.Source == sessions.SourceUnavailable {
+		if status.Source == api.SourceUnavailable {
 			gateway.logObservationFailure(id, status.Reason, time.Since(startedAt))
 		}
 		inspected := api.Inspect{TerminalStatus: status}
@@ -185,11 +185,11 @@ func terminalFailure(err error) apiError {
 		failure = errorTerminalInputBlocked
 		switch blocked.Reason {
 		case "draft":
-			failure.Message = "terminal contains a draft. open it before sending."
+			failure.Message = api.InputBlockedDraft
 		case "dialog":
-			failure.Message = "respond to the dialog in the terminal."
+			failure.Message = api.InputBlockedDialog
 		case "initial_not_ready":
-			failure.Message = "the requested agent is not ready for its initial prompt. inspect the terminal before sending."
+			failure.Message = api.InputBlockedNotReady
 		}
 	case errors.Is(err, sessions.ErrTerminalUnavailable), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		failure = errorTerminalUnavailable

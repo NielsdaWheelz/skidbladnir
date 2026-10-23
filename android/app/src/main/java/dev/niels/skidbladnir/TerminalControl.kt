@@ -18,7 +18,7 @@ import kotlinx.serialization.Serializable
     @SerialName("terminal") Terminal, @SerialName("unavailable") Unavailable,
 }
 
-/** One screen observation, as the host sent it; sessions.TerminalStatus owns the legal combinations. */
+/** One screen observation, as the host sent it; api.TerminalStatus owns the legal combinations. */
 @Serializable internal data class TerminalStatus(
     val activity: TerminalActivity,
     val interaction: TerminalInteraction,

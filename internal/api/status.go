@@ -1,4 +1,10 @@
-package sessions
+package api
+
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // TerminalStatus is one screen observation of a terminal's current foreground.
 // Activity, interaction and notice are independent facts; none claims task
@@ -201,6 +207,33 @@ func UnknownStatus(reason StatusReason) TerminalStatus {
 		panic("unknown terminal status requires an unclassifying reason") // justify-defect: callers pass a constant reason.
 	}
 	return status
+}
+
+// TerminalUsage is literal displayed provider usage, not a native account report.
+type TerminalUsage struct {
+	FiveHourUsedPercent *int `json:"fiveHourUsedPercent,omitempty"`
+	SevenDayUsedPercent *int `json:"sevenDayUsedPercent,omitempty"`
+}
+
+func (usage TerminalUsage) Valid() bool {
+	if usage.FiveHourUsedPercent == nil && usage.SevenDayUsedPercent == nil {
+		return false
+	}
+	for _, percent := range []*int{usage.FiveHourUsedPercent, usage.SevenDayUsedPercent} {
+		if percent != nil && (*percent < 0 || *percent > 100) {
+			return false
+		}
+	}
+	return true
+}
+
+// TerminalFooter is literal displayed provider text, not an execution setting.
+type TerminalFooter string
+
+func (footer TerminalFooter) Valid() bool {
+	text := string(footer)
+	return len(text) > 0 && len(text) <= 1024 && utf8.ValidString(text) && strings.TrimSpace(text) == text &&
+		!strings.ContainsFunc(text, func(r rune) bool { return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) })
 }
 
 // StatusTone is a status label's colour role; renderers own the palette and

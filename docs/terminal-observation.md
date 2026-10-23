@@ -90,7 +90,8 @@ affect a required inference, not unrelated transcript. recognized means both
 activity and interaction were classified, partial one, layout_unknown neither. no
 failed stage is ever converted to successful ambiguity.
 
-`sessions` owns these types and invariants; the gateway serializes them, the go
+`internal/api` declares these types and their invariants; agentcontrol upholds
+them, the gateway serializes them, the go
 client checks only that each value is known (`TerminalStatus.Known`), and kotlin
 decodes the closed enums it reads. inventory freshness is the only status clock:
 no confidence percentage, status expiry, transition timestamp or inference
@@ -103,7 +104,7 @@ inventory / terminal inspect / guarded send
   -> sessions: exact target + focused foreground validation
   -> tmux: bounded current-screen regions
   -> agentcontrol: pure provider classifier + composer interpretation
-  -> gateway -> fleetclient / android: projection, attention, views
+  -> gateway -> fleetclient + fleetview / android: projection, attention, views
 ```
 
 the observation is private, beside the public terminal read, whose plain-text
@@ -244,7 +245,7 @@ printed `none`. a classifier defect is never disguised as unavailable.
 
 ## 6. content, attention and filtering
 
-one go projection, `sessions.PresentStatus`, renders label, tone, queue, detail and
+one go projection, `api.PresentStatus`, renders label, tone, queue, detail and
 evidence as if fresh and not ready. the gateway sends it as each row's `status`;
 the desktop and cli call it on the rows they hold; android reads `status`. clients
 add only staleness, the hub's ready and notification health. labels, tone and

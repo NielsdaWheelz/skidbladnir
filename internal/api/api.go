@@ -1,17 +1,13 @@
-// Package api declares the gateway's json documents: the one shape the gateway encodes and go
-// clients decode. A struct's field order is its key order on the wire; instants are UTC.
-// Producers own the values' invariants; consumers decode tolerantly and check only what they
-// branch on (docs/rules.md). pressure.Snapshot and workdir's Listing and SearchResult are
-// declared by their producers; the terminal status, usage, footer, name mode and recovery
-// vocabulary is still declared in sessions.
+// Package api declares the gateway's json documents and the vocabulary they carry:
+// terminal status, displayed usage and footer, name mode, recovery and account quota, with
+// the host's copy of status and recovery. It is the one shape the gateway encodes and go
+// clients decode, and it imports no internal package. A struct's field order is its key
+// order on the wire; instants are UTC. Producers own the values' invariants; consumers
+// decode tolerantly and check only what they branch on (docs/rules.md). pressure.Snapshot
+// and workdir's Listing and SearchResult are declared by their producers.
 package api
 
-import (
-	"time"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-)
+import "time"
 
 // Machine names the answering gateway; a client compares Handle with the machine it addressed.
 type Machine struct {
@@ -22,18 +18,18 @@ type Machine struct {
 // Inventory answers GET /v1/sessions. Profiles and Sessions are never null; Sessions are
 // ordered by numeric tmux id.
 type Inventory struct {
-	Machine    Machine   `json:"machine"`
-	ObservedAt time.Time `json:"observedAt"`
-	Recovery   Recovery  `json:"recovery"`
-	Profiles   []Profile `json:"profiles"`
-	Sessions   []Session `json:"sessions"`
+	Machine    Machine           `json:"machine"`
+	ObservedAt time.Time         `json:"observedAt"`
+	Recovery   InventoryRecovery `json:"recovery"`
+	Profiles   []Profile         `json:"profiles"`
+	Sessions   []Session         `json:"sessions"`
 }
 
-// Recovery is the host's recovery fact with its wording of it, sessions.Recovery.Notice, for the
-// phone; go clients word the fact themselves.
-type Recovery struct {
-	sessions.Recovery
-	HostNotice *sessions.RecoveryNotice `json:"notice,omitempty"`
+// InventoryRecovery is the host's recovery fact with its wording of it, Recovery.Notice, for
+// the phone; go clients word the fact themselves.
+type InventoryRecovery struct {
+	Recovery
+	HostNotice *RecoveryNotice `json:"notice,omitempty"`
 }
 
 type Profile struct {
@@ -44,28 +40,35 @@ type Profile struct {
 }
 
 type Session struct {
-	TerminalStatus  sessions.TerminalStatus  `json:"terminalStatus"`
-	TerminalUsage   *sessions.TerminalUsage  `json:"terminalUsage,omitempty"`
-	TerminalFooter  *sessions.TerminalFooter `json:"terminalFooter,omitempty"`
-	TmuxID          string                   `json:"tmuxId"`
-	ActivePaneID    string                   `json:"activePaneId"`
-	TmuxName        string                   `json:"tmuxName"`
-	NameMode        sessions.NameMode        `json:"nameMode"`
-	IdentityToken   string                   `json:"identityToken"`
-	Character       Character                `json:"character"`
-	LaunchProfile   string                   `json:"launchProfile,omitempty"`
-	Agent           *Agent                   `json:"agent,omitempty"`
-	Connection      *Connection              `json:"connection,omitempty"`
-	Objective       string                   `json:"objective,omitempty"`
-	Group           string                   `json:"group,omitempty"`
-	CWD             string                   `json:"cwd,omitempty"`
-	ActiveCommand   string                   `json:"activeCommand,omitempty"`
-	AttachedClients int                      `json:"attachedClients"`
+	TerminalStatus  TerminalStatus  `json:"terminalStatus"`
+	TerminalUsage   *TerminalUsage  `json:"terminalUsage,omitempty"`
+	TerminalFooter  *TerminalFooter `json:"terminalFooter,omitempty"`
+	TmuxID          string          `json:"tmuxId"`
+	ActivePaneID    string          `json:"activePaneId"`
+	TmuxName        string          `json:"tmuxName"`
+	NameMode        NameMode        `json:"nameMode"`
+	IdentityToken   string          `json:"identityToken"`
+	Character       Character       `json:"character"`
+	LaunchProfile   string          `json:"launchProfile,omitempty"`
+	Agent           *Agent          `json:"agent,omitempty"`
+	Connection      *Connection     `json:"connection,omitempty"`
+	Objective       string          `json:"objective,omitempty"`
+	Group           string          `json:"group,omitempty"`
+	CWD             string          `json:"cwd,omitempty"`
+	ActiveCommand   string          `json:"activeCommand,omitempty"`
+	AttachedClients int             `json:"attachedClients"`
 
-	// Status is the host's copy of TerminalStatus, sessions.PresentStatus, for the phone; go
-	// clients render it themselves.
-	Status sessions.StatusPresentation `json:"status"`
+	// Status is the host's copy of TerminalStatus, PresentStatus, for the phone; go clients
+	// render it themselves.
+	Status StatusPresentation `json:"status"`
 }
+
+type NameMode string
+
+const (
+	NameAutomatic NameMode = "automatic"
+	NameManual    NameMode = "manual"
+)
 
 type Character struct {
 	Key         string `json:"key"`
@@ -94,8 +97,8 @@ type ObservedSession struct {
 
 // Inspect answers terminal/inspect. Diagnostics are present only when explained.
 type Inspect struct {
-	TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
-	Diagnostics    *Diagnostics            `json:"diagnostics,omitempty"`
+	TerminalStatus TerminalStatus `json:"terminalStatus"`
+	Diagnostics    *Diagnostics   `json:"diagnostics,omitempty"`
 }
 
 // Diagnostics name the grammar rules that decided one inspect sample, in decision order; Rules is
@@ -143,8 +146,20 @@ type ProfileUsageReport struct {
 
 type ProfileUsage struct {
 	Profile
-	ReadState string        `json:"readState"`
-	Report    *quota.Report `json:"report,omitempty"`
+	ReadState string       `json:"readState"`
+	Report    *QuotaReport `json:"report,omitempty"`
+}
+
+// QuotaWindow and QuotaReport are one codex profile's account quota as internal/quota reads it.
+type QuotaWindow struct {
+	UsedPercent float64    `json:"usedPercent"`
+	ResetsAt    *time.Time `json:"resetsAt,omitempty"`
+}
+
+type QuotaReport struct {
+	ReportedAt time.Time    `json:"reportedAt"`
+	FiveHour   *QuotaWindow `json:"fiveHour,omitempty"`
+	SevenDay   *QuotaWindow `json:"sevenDay,omitempty"`
 }
 
 // Error is every gateway error envelope. Dispatch not_sent: no effect happened; unknown: an
@@ -156,6 +171,14 @@ type Error struct {
 	Code     string  `json:"code"`
 	Message  string  `json:"message"`
 }
+
+// TerminalInputBlocked messages name why a guarded send was refused. The gateway
+// sends them; skid start's readiness check refuses locally with the same words.
+const (
+	InputBlockedDraft    = "terminal contains a draft. open it before sending."
+	InputBlockedDialog   = "respond to the dialog in the terminal."
+	InputBlockedNotReady = "the requested agent is not ready for its initial prompt. inspect the terminal before sending."
+)
 
 type Target struct {
 	TmuxID        string `json:"tmuxId"`
