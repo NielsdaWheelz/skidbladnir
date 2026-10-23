@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The launcher identity is Skíðblaðnir under sail (docs/launcher-mark.md).
+<!-- The launcher identity is Skíðblaðnir under sail (docs/design-language.md §8).
      monochrome is its own drawable: the launcher paints that layer in one
      flat tint, so the foreground's colour-carried structure cannot survive
      there and the geometry is cut differently. -->

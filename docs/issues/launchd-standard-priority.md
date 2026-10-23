@@ -1,32 +1,30 @@
-# serve's launchd job clamps every agent to priority 20
+# serve's launchd priority on the macbook
 
-problem: the `dev.niels.skidbladnir` plist declares no `ProcessType`, so
-launchd runs serve as a standard job (`launchctl print`: `spawn type = daemon
-(3)`). serve starts the tmux server, and the tmux server starts every pane
-shell, agent and tool call. all of them inherit priority 20, while ordinary
-login shells run at 31.
+problem: a launchd job without `ProcessType` runs serve at priority 20, and the
+tmux server and every pane shell and agent inherit it, while login shells run at
+31. under cpu contention the terminal relay, tmux and every agent lose scheduling
+to default-priority work. linux is unaffected.
 
-impact: when cpu is scarce, skid's terminal relay, tmux and every agent lose
-scheduling to default-priority work, such as virtual machines, builds and apps.
-the agents the operator types into feel slow first. linux is unaffected.
+status: since v0.20.1 the plist declares `ProcessType` `Interactive`
+(`internal/install/services.go:53-54`), and the installer fails when serve runs
+below 31 or no new serve appears within 5 s of bootstrap (`:155-174`). dev-server
+pins v0.20.1 (dev-server `ad079ef`). only a release's own installer writes its
+plist: an older binary's `skid install` or `skid update` writes the old plist and
+skips the check. a running tmux server keeps its priority until it restarts.
 
-evidence: 2026-10-21, macbook:
-- `ps -o ni,pri`: serve (pid 20187), the tmux server (pid 1328) and every
-  claude/codex tui and agent shell report 0/20. ghostty login shells report 0/31.
-- throwaway launchd agents with an absent `ProcessType`, with `Standard`, and
-  with `Interactive` gave their children priority 20, 20 and 31.
-- under contention, a priority-20 busy thread got 74% of one core over 3 s.
+maintenance window (dev-server macbook-capacity d6), once:
 
-status: the source change and install check shipped in `v0.20.1` (#131), which
-dev-server #192 pins; the macbook still runs `v0.20.0`. install
-also fails when no new serve appears within 5 s of bootstrap; a passing check
-prints serve's pid and priority. only the new release's own installer applies
-them (`scripts/install`, as dev-server's apply runs it). `skid install` or
-`skid update` from an older release's binary runs that release's installer,
-which writes the old plist and skips the check.
+1. install a release of v0.20.1 or later on the macbook through dev-server's pinned
+   path, `./workstation gateway apply skidbladnir`, which runs the reviewed
+   bootstrap; launchd boots serve out and in again, and `AbandonProcessGroup`
+   keeps tmux and the agents running.
+2. verify that serve runs at priority 31.
+3. stop agent work, then run `tmux kill-server`. serve's recovery rebuilds the
+   workspace as fresh shells in a new server it starts itself
+   ([workspace recovery](../session-recovery.md)); conversations resume by hand.
+4. verify that the new tmux server and a pane shell run at priority 31.
 
-resolved when the plist change in
-[the exec budget spec](../tmux-exec-budget.md#priority-macbook-capacity-d7) is
-released and installed, the installer's priority check passes, and after the
-maintenance window's tmux restart, serve, the new tmux server and a new pane
-shell all report priority 31.
+resolved when: the macbook runs a release of v0.20.1 or later installed by its
+own installer (dev-server apply or `bash install TAG`), the priority check passes,
+and after the maintenance window's tmux restart, serve, the new tmux server and a
+new pane shell all report priority 31.

@@ -29,7 +29,7 @@ const usage = `usage: skid [--config STATE_DIRECTORY] COMMAND [options]
 
 skid                                      open the session browser
 skid install|update|uninstall              own the local installation
-skid connect                              print a signed five-minute invitation
+skid connect                              print a five-minute invitation
 skid join [--name NAME]                    read an invitation from stdin
 skid remove DEVICE_ID                     revoke an enrolled device
 skid apply                                apply the hub config file

@@ -1,22 +1,17 @@
-# behavioral coverage after test retirement
+# no retained behavioral suite
 
-problem: the 2026-09-17 user-directed reset removes the behavioral suites and
-test harnesses. the subsequent cleanup deliberately removes its temporary
-integration/live tests before each commit.
+problem: behavioral suites and harnesses were retired on 2026-09-17 at the
+owner's direction; a change proves itself with temporary tests deleted before
+commit ([testing](../rules.md#testing)). the one retained test is the
+classifier's frame replay, `internal/agentcontrol/frames_test.go`, run on demand.
 
-impact: engineering checks can catch invalid source, broken builds, asset drift,
-and release-integrity failures. they cannot establish correct session targeting,
-input delivery, pairing, terminal interaction, or client behavior. existing
-acceptance gaps and historical failures remain.
+impact: `scripts/check verify` runs whitespace, gofmt, shellcheck, go vet, module
+verification, go build, `node --check` on the terminal page and android lint and
+assemble (`scripts/check:48-83`). it catches invalid source, broken builds and
+release-integrity failures, not session targeting, input delivery, pairing,
+terminal interaction or client behaviour.
 
-evidence: go test files, android unit/instrumentation source sets, shell
-self-tests, owned xterm assertions, and `scripts/test` are removed.
-`scripts/check verify` runs only static checks and builds. the vendored xterm is
-the stock npm bundle; no xterm build, test runner or repository-owned assertions
-remain.
-
-resolved when: the owner chooses and retains a small executable suite for the
-important behavioral guarantees, with measured runtime and demonstrated failure
-sensitivity. no replacement suite is scheduled under the current temporary-test
-workflow. external boundaries still require their current-turn approvals;
-missing execution is never a pass.
+resolved when: the owner chooses and keeps a small executable suite for the
+important behavioural guarantees, with measured runtime and demonstrated failure
+sensitivity, or accepts the gap, which then lives in rules.md alone. missing
+execution is never a pass.

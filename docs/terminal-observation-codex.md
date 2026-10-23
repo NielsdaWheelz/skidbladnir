@@ -1,21 +1,14 @@
 # codex screen grammar
 
-status: implemented in `internal/agentcontrol/codex.go`, whose comments cite the
-sections below. qualified live for codex-cli 0.159.2 on darwin and on linux as
-§1 records; the [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
-holds the evidence and its limits, and [the spec](terminal-observation.md) owns
-the status contract this grammar feeds.
+implemented in `internal/agentcontrol/codex.go`, whose comments cite the
+sections below. [the spec](terminal-observation.md) owns the status contract this
+grammar feeds. qualified live for the codex-cli 0.159.2 tui on darwin (tmux 3.7c)
+and on linux (devbox tmux 3.4, arch tmux 3.7c), embedded and against 0.159.2 and
+0.159.3 app-server daemons, as §1 records.
 
 upstream source: `openai/codex@ff6aec96948b70d94983af2641a6b67c94faeff5`, whose
 workspace `Cargo.toml` says `0.159.2`. paths below are under `codex-rs/tui/src/`
 unless they name another crate. line numbers refer to that commit.
-
-installed versions qualified:
-
-| platform | tmux | codex |
-| --- | --- | --- |
-| darwin 25.4.0 arm64 | 3.7c | TUI 0.159.2 (native darwin-arm64 binary), embedded or against a 0.159.2 app-server daemon; the question auto-resolve and idle rows also against a copy of the installed 0.159.3 daemon |
-| linux: devbox (ubuntu, kernel 6.8, x86_64), arch (kernel 7.2.6, x86_64) | 3.4 (devbox), 3.7c (arch) | TUI 0.159.2 (native musl binary) against the installed 0.159.3 daemon, the production pairing |
 
 notation:
 
@@ -46,7 +39,7 @@ notation:
 classes:
 
 - RP, required-positive: spec §4 names the family, or codex renders it as a
-  permission or question (spec §8).
+  permission or question (spec §7).
 - AC, ambiguity control: the family must produce exactly the stated values, or
   no evidence, and never a claim stronger than they are. most state unknown or
   none; two mcp rows state the form's input in place of the approval's
@@ -63,7 +56,7 @@ also by a real byte cap): that proves capture and parser mechanics, never
 provider behaviour, and it applies only to rows about dropped evidence.
 `source-only` means upstream source and authored rows only. an RP or AC row is
 `NOT_RUN` on every platform it does not name, and each such `NOT_RUN` is a
-blocker under spec §8
+blocker under spec §7
 ([unrun acceptance](issues/unrun-acceptance.md)). a PU `NOT_RUN` is
 informative. cue-less timing windows are not families; §6 holds them.
 
@@ -556,9 +549,9 @@ count alone fills a one-row footer (the count, when added, comes before it).
     the timer (`:1183`, `:1457`). resolution submits empty answers
     (`submit_empty_auto_resolution`, `:892-909`) and the model continues the turn
     on them, so an unvisited question disappears and the pane reads the
-    continuation. [terminal attention](reply-notifications.md#behavior) owns
-    whether the sampled transition raises ready; its implemented 2026-10-01 revision
-    treats question → idle as available again without claiming an answer.
+    continuation. the hub decides whether the sampled transition raises ready
+    ([notifications](architecture.md#12-notifications)); question → idle reads as
+    available again without claiming an answer.
   - observed with the switch on, on darwin with the 0.159.2 TUI embedded and
     against daemons 0.159.2 and 0.159.3: each tool output arrived 120.0 s after
     its question, and the scripted endpoint ended each continuation at once, so
@@ -919,10 +912,10 @@ composer reaches only guarded send
 
 ## 6. accepted costs
 
-accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
+accepted costs ([spec §8](terminal-observation.md#8-accepted-costs)),
 each reading as it states. c4 and c11–c14 claim falsely, c15–c17 can read a
 request of another subtype, and c2 admits guarded send into a sub-agent, each
-under the conditions it names; spec §9 lists those. the costs:
+under the conditions it names; spec §8 lists those. the costs:
 
 - **c1** idle needs no status row, the main placeholder on a clean band, no external
   editor and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
@@ -958,10 +951,9 @@ under the conditions it names; spec §9 lists those. the costs:
   after `!cmd` can return early. right after a guarded send the visible draft reads
   unknown until Enter is processed, so it cannot return early there.
 - **c5** notices come from the `■` cell that ends the transcript (2.9), so trivial UI
-  validation errors also read `error shown` until the next turn. a notice no longer
-  clears ready or refuses guarded send (spec §5, §6), so an interrupted or failed
+  validation errors also read `error shown` until the next turn. a notice neither
+  clears ready nor refuses guarded send (spec §5, §6), so an interrupted or failed
   turn still raises ready and a retry can be sent.
-- **c6** retired: skid no longer overrides the managed launch's status line.
 - **c7** tall panes: above 256 rows, rows `192..h−65` are not captured, so idle reads
   unknown, `evidence_clipped`, until the transcript tail passes row `h−64`, and a
   pre-session screen near the top reads unknown/unknown, `evidence_clipped`.
@@ -1036,7 +1028,7 @@ under the conditions it names; spec §9 lists those. the costs:
 ## 7. requalification
 
 run this after a codex upgrade, before claiming the new version, with the
-current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
+current-turn approval [spec §7](terminal-observation.md#7-requalification)
 requires for isolated tmux and live runs. the authored frames are retained as
 fixtures ([testing](rules.md#testing)): `internal/agentcontrol/testdata/frames/`
 holds `codex.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
@@ -1057,6 +1049,11 @@ every record is content-free.
    for N turns, then `update_goal {status: complete}`), and rate-limit headers for
    the usage notice and the rate-limit picker. a closed local port produces the
    retry row; a dummy stdio mcp server produces approvals, forms and `Starting`.
+   two embedded `--no-daemon` clients initializing one fresh `CODEX_HOME` at once
+   can exit 1 (stock 0.162.1 on linux; its database initialization fails), so
+   start the first to readiness before the second. the fix belongs upstream;
+   skid adds no retry or workaround, and concurrent cold-home startup stays
+   unqualified until a native fix passes it on an isolated socket.
 3. qualify the production pairing: the managed argv against a daemon running the
    installed app-server package, not only embedded. a fresh `CODEX_HOME` installs
    the cli itself as its daemon package, so copy the installed package in. keep
@@ -1083,38 +1080,39 @@ every record is content-free.
 7. update §1's qualified column and versions; [unrun acceptance](issues/unrun-acceptance.md)
    tracks every required row that column leaves unqualified.
 
-## 8. displayed footer extension
+## 8. displayed statusline items
 
-2026-10-15: preceding whole-line implementation at `6974851` has
-[scoped qualification](terminal-model-effort.md#qualification). the subsequent
-owner-authorized refinement extracts a bounded model/effort phrase. this display-only extension
-feeds [terminal model and effort](terminal-model-effort.md), without changing
-the status/composer grammar or its existing qualification.
+`codexReadStatusline` reads the ` · `-separated items of the first row of `F`,
+the footer the composer's anchoring already established (2.1), and nothing else:
+the `side`, `editor` and `disconnected` surfaces, other screen branches,
+transcript rows and joined fragments never supply them. both facts are displayed
+text, not account reports or execution settings; an unrelated item that imitates
+either grammar is accepted by the owner. each keeps its own admission, so refusing
+one never costs the other, and neither changes activity, interaction, notice,
+composer, rules or clipping. drafts can hide the main/side placeholder
+distinction; the visible items are still display evidence, without main-thread
+attribution.
 
-in `codexComposer`, use only the first footer row established by its existing
-composer anchoring. exclude surfaces identified by its `side`, `editor` or `disconnected`
-predicates. drafts can hide the main/side placeholder distinction; the visible
-phrase is still display evidence, with no main-thread attribution.
-require a parsed physical row. extract exactly one complete
-item matching the [bounded model/effort grammar](terminal-model-effort.md#observation-composition).
-preserve that phrase's spelling and supported tier suffix; discard unrelated
-items. unsupported, duplicate, clipped or contract-invalid candidates omit.
-no row joining, transcript search or status-rule change. other screen branches
-omit. a single physical footer row is eligible even without a run-state word:
-the bounded phrase establishes this display evidence independently of `statusLine`,
-which retains its existing meaning for activity classification. shortcut-only
-rows contain no supported phrase and omit.
-
-tmux capture drops whole rows, not row fragments. a candidate touching the
-physical right edge is not established complete. a complete candidate before a
-later truncated directory remains usable; never salvage a clipped model phrase.
+- **footer phrase** (`terminalFooter`): exactly one complete item matching
+  `^(gpt-…|codex-auto-review|Codex Auto Review) <effort>( Fast)?$`, where the model
+  is a case-insensitive `gpt-` identifier of ascii alphanumeric components joined
+  by `-` or `.`, and effort is one of `default minimal low medium high xhigh max
+  ultra persistent`. the observed spelling and case are kept. a second match, an
+  invalid value, or a match as the last item when the row reaches the right edge
+  omits it; a following ` · ` separator proves an item complete, and byte length
+  conservatively bounds columns, so preceding unicode can cost a phrase that would
+  fit. a complete phrase before a later truncated item survives; a clipped phrase is
+  never salvaged. custom aliases, effort or tier labels and separate model and
+  effort items are unsupported.
+- **usage** (`terminalUsage`): the items `5h N% left` and `weekly N% left`, `N`
+  canonical 0–100, reporting used = 100 − `N` for the five-hour and seven-day
+  windows. the whole read is refused when the row reaches the right edge, contains
+  `…`, or holds a malformed `5h …` or `weekly …` item or a duplicate window. upstream
+  renders remaining quota; monthly, context and arbitrary primary or secondary
+  windows supply neither account window.
 
 the pinned [status formatter](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/chatwidget/status_surfaces.rs)
-joins model, reasoning and optional service tier without field labels.
+joins model, reasoning and optional service tier without field labels, and
 [status-line composition](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/bottom_pane/status_line_style.rs)
-permits arbitrary item order; model-like text cannot prove item identity. the
-owner accepts this narrow display inference, including the possibility that an
-unrelated item imitates the supported grammar. arbitrary aliases and custom
-effort/tier labels remain unsupported. no provider configuration change or new
-observation source is involved. retained authored frames and scoped installed-provider
-checks qualify the parser separately from existing status behavior.
+permits any item order, so model-like text cannot prove item identity. the
+retained frames qualify these readers separately from status behaviour.

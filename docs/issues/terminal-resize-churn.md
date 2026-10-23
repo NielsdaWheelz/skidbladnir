@@ -17,13 +17,13 @@ evidence (source-derived, not measured):
   animation frame.
 - `terminal.js` refits on every `ResizeObserver` callback, coalesced per
   animation frame, and publishes `Resize` whenever the integer grid changes; it
-  has no settle step.
+  has no settle step (`terminal.js`: `refit` and its `ResizeObserver`).
 - `SkidbladnirController.resizeTerminal` forwards each published grid
-  unchanged; nothing coalesces natively. the former `imePadding` layout behaved
-  the same, so this predates the terminal rail.
-- tmux updates the window's latest client before recalculating sizes
-  ([readable sizing](../terminal-readable-sizing.md) records this from tmux
-  source), so every frame in the burst claims the window for the phone.
+  unchanged; nothing coalesces natively.
+- tmux makes the resizing client the window's latest before it recalculates
+  sizes (tmux source), and skid's attachment requires `window-size latest`
+  (`internal/tmux/attachment.go`), so every frame in the burst claims the window
+  for the phone.
 - prior art (read from source by a research pass, not run here): vs code's
   `terminalResizeDebouncer.ts` resizes rows at once and debounces columns;
   connectbot's compose console sizes from the ime animation target and

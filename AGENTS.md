@@ -3,8 +3,8 @@
 Before changing this repository, read [the architecture](docs/architecture.md),
 [the roadmap](docs/roadmap.md), and [the codebase rules](docs/rules.md). tmux owns
 terminal sessions and pane processes; providers own execution and history.
-the phone and desktop are tmux clients. read [agent control](docs/agent-control.md)
-for terminal observation and explicit controls; [terminal-only control](docs/terminal-only-control.md)
+the phone and desktop are tmux clients. read [agent control](docs/architecture.md#7-observation-and-agent-control)
+for terminal observation and explicit controls; [the scope](docs/architecture.md#1-scope)
 owns the current capability boundary. native account quota is read-only and
 uses attributable terminal evidence when native evidence is unavailable or stale.
 do not reintroduce
@@ -12,9 +12,7 @@ retired machinery: generalized hook runtimes, provenance, sqlite lifecycle facts
 contract codegen or proof ledgers.
 
 provider conversation hooks and native conversation controls are removed.
-a codex completion notifier may emit BEL
-as terminal-local presentation; it stores no state and has no privileged product
-meaning. architecture §8 governs further upgrades: a new capability requires an
+architecture §1 governs further upgrades: a new capability requires an
 explicit scope and acceptance-criterion change.
 
 behavioral tests are retired. [testing](docs/rules.md#testing) owns verification and

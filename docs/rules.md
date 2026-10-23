@@ -1,10 +1,9 @@
 # rules
 
 these rules bind implementation. product behavior, scope and acceptance belong to the
-[architecture](architecture.md), the [roadmap](roadmap.md) and the specs they accept;
-rules authorize no new runtime machinery. this document owns decode strictness,
-defensive checks, draft canonicalization and `justify-*` tokens; a spec or code that
-conflicts with it on those is superseded and is corrected when its code next changes.
+[architecture](architecture.md) and the specs it links; rules authorize no new runtime
+machinery. this document owns decode strictness, defensive checks and draft
+canonicalization; code that conflicts with it is corrected when it next changes.
 skid has one owner, three hosts and one phone, with live repair: build the simplest
 complete design for that, and state every trade-off a change makes.
 
@@ -101,8 +100,8 @@ and trust each other's outputs:
 
 - clients dispatch each session mutation or terminal input once. after possible
   dispatch, a timeout or lost response is `unknown`, never a retry; preserve
-  `not_sent`, `unknown` and partial results as
-  [agent control](agent-control.md#operations-and-composition) specifies.
+  `not_sent`, `unknown` and partial results as the
+  [architecture](architecture.md#gateway-wire-invariants) specifies.
   reconnecting never authorizes resending bytes or repeating a mutation.
 - retry only observations that cannot duplicate an effect, in one bounded owner that
   states its delay, limit and stop. never stack retry loops across layers.
@@ -164,17 +163,15 @@ and trust each other's outputs:
 
 ## testing
 
-behavioral tests and harnesses were retired on 2026-09-17, superseding the former
-test tiers, red/green workflow and gates (unit, integration, provider-live, live,
-platform, product, second-phone, full). no behavioral test command or gate remains;
-[the gap](issues/test-system-reset.md) is recorded and temporary tests do not close it.
+there is no behavioral test command, suite or gate; [the gap](issues/test-system-reset.md)
+is recorded, and temporary tests do not close it.
 
 - a change proves itself with temporary tests at the affected integration or live
   boundary, run against the original and changed code; a bug fix shows its failure
   first. review the test's sensitivity, then delete it before committing. rebuild no
   harness and add no production seam. tests assert observable outcomes through the
   public surface, never structure, styling or wiring.
-- one exception, at the owner's request (2026-10-01): the detector's authored provider
+- one exception, at the owner's request: the detector's authored provider
   frames stay as fixtures in `internal/agentcontrol/testdata/frames/` (dummy content
   captured through real tmux by its `capture.py`), with one pure replay,
   `internal/agentcontrol/frames_test.go`, run on demand by `go test
@@ -194,26 +191,31 @@ commands:
   adds the scoped go build and android debug assembly.
 - ornament geometry and the launcher icon are frozen source with no drift gate. the
   catalogue has no pre-release check: the gateway loader rejects invalid or duplicate
-  keys and names at startup; [dvergatal](dvergatal.md) owns admission rules.
+  keys at startup; the [design language](design-language.md#18-dvergatal-curation)
+  owns admission rules.
 - terminal vendor files are verbatim upstream npm and release bytes with no build
-  step and no retained check; git tracks them, and
-  [touch scroll](terminal-touch-scroll.md) records their sources, integrity and
+  step and no retained check; git tracks them, and the
+  [architecture](architecture.md#page-and-files) records their sources, integrity and
   re-verify recipe.
-- `scripts/release TAG` builds and signs every artifact from a fresh clone of exact
-  canonical main, runs `scripts/check-release` on the result, then drafts a release;
-  publication is separate. `scripts/check-release [--reproduce] [--source DIR]
-  RELEASE_DIRECTORY TAG SOURCE_SHA` verifies artifacts against the public certificate
-  and clean exact source; only `--reproduce`, run from that checkout, compares bytes,
-  rebuilding with its own `scripts/build-host-binary` and `scripts/build-mac-icon`.
-  `scripts/check published-release TAG SOURCE_SHA` reads a published release's
-  source, assets, pin and hosted verify run.
+- `scripts/release TAG`, `scripts/check-release [--reproduce] [--source DIR]
+  RELEASE_DIRECTORY TAG SOURCE_SHA` and `scripts/check published-release TAG
+  SOURCE_SHA` build, verify and re-verify releases ([release](architecture.md#release)).
+  only `--reproduce`, run from the release's source checkout, compares bytes.
 - hosted ci runs `verify` on every pull request and main push, scoped by the changed
   paths in `.github/workflows/verify.yml`. a scoped pass proves only the checks it ran.
 
 ## docs
 
-- docs state the current contract and are edited in place. dated evidence,
-  qualification logs and superseded plans belong in pull requests and git history.
-  update the docs that describe code you change in the same change.
+- [architecture](architecture.md) is the one contract: concepts, invariants,
+  interfaces, owners, error semantics, topology and trust. specs exist only where an
+  invariant is not evident from the code: the observation grammars, workspace
+  recovery, the tmux exec budget and the design language. the
+  [codebase map](codebase-map.md) locates code; the [roadmap](roadmap.md) holds what
+  is next and what is deferred.
+- docs state the current contract and are edited in place, in the change that
+  alters the behavior. no history, amendment chains, dated slices or per-feature
+  delta docs: dated evidence, qualification logs and superseded plans belong in pull
+  requests and git history. a fact belongs in a doc only when the code does not show
+  it plainly.
 - record each unresolved issue in `docs/issues/<short-name>.md`: problem, impact,
   evidence and what proves it resolved. delete it once resolved.

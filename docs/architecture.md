@@ -1,1241 +1,2484 @@
-# skíðblaðnir: product and architecture
+# skíðblaðnir architecture
 
-tmux owns terminal sessions and pane processes. providers own execution and history.
-each gateway controls one host; clients compose gateways directly. there is no
-application database or execution coordinator. the hub (the machine that created
-the fleet or last ran `skid recover`) owns fleet configuration, membership and a
-notification-only observer. terminals remain direct host capabilities; the hub is never an
-execution proxy. [standalone generalization](generalization-plan.md) owns the
-configuration, fleet, installer and optional direct-fcm contracts;
-[isolated qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/generalization-qualification.md) records source proof;
-[v0.20.0 qualification](v0.20.0-installed-qualification.md) records the installed
-fleet rollout and its remaining live boundaries.
+skíðblaðnir (`skid`) lets one owner work in the tmux sessions of their computers
+from any of those computers or from an android phone. tmux owns sessions and pane
+processes; providers (codex, claude) own execution, accounts and history. each
+computer's gateway controls only its own tmux, and clients call every gateway
+directly. the hub, the computer that created the fleet or last ran `skid
+recover`, owns membership, accepted configuration and attention; it never carries
+terminal traffic.
 
-[terminal observation](terminal-observation.md) owns status facts, the observed
-screen regions and their limits, classification, guarded-send admission and the
-terminal wait states; [terminal control](terminal-agent-control.md) owns terminal
-targets, capture mechanics, rendered reads, exact terminal effects and wait's
-polling loop. [terminal attention](reply-notifications.md) owns the existing
-transition predicates. [native notifications](native-notifications.md) supersedes
-its device-local reducer and visit clauses: the hub owns readiness and the owner's
-acknowledgement; devices own native presentation. [terminal-only control](terminal-only-control.md)
-owns the terminal capability boundary and read-only account quota. stop retains
-the terminal; close reports interruption and terminal closure separately.
-[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-only-control-qualification.md) records its source
-evidence; [live cells](issues/terminal-only-live-qualification.md) remain open. preceding
-[native qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-agent-qualification.md) remains historical.
-[terminal qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md) records the
-terminal cutover separately from current-main release composition, and then the
-terminal observation cutover.
+calibration: one owner, three computers and one phone; a single-user prototype
+under live repair. the simplest complete design for that wins. exact targets and
+at-most-once effects are not negotiable; availability and polish are.
 
-2026-09-29: skid v0.10.6 runs on macbook, devbox, arch and android. herdr and
-herdr-mobile are retired. [the deployment handoff](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/dev-server-handoff.md) owns
-installation, existing provider accounts, scoped shell setup and helper pins.
-jarvis consumes the current skid cli for workers; its shared codex cognition
-remains separate and may stay down. provider accounts/history, skid pairings
-and ordinary tmux workers are preserved. no legacy transport, reader, hook,
-gate, coexistence guard or private cognition process is retained.
+this document is the contract: concepts, invariants, interfaces, owners, error
+semantics, topology and trust. most mechanisms below follow from five constraints:
 
-this document owns shared mechanisms, invariants, and scope. the accepted
-[agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
-[groups](groups.md), [terminal creation](shells.md), and
-[desktop browser](desktop-browser.md) specifications own their detailed contracts.
-[browser simplification](desktop-browser-simplification.md) owns the fleet-wide
-desktop cutover, footer and ordinary creation shortcuts.
-[single-line desktop rows](desktop-single-line-rows.md) owns row layout and
-priority-based omission, deployed in v0.17.3; owner readability review is pending.
-[session name presentation](session-name-presentation.md) owns the implemented
-end-ellipsis and complete-confirmation correction and its isolated qualification.
-[desktop session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) owns the preceding compact layout
-and readability revision; its source and isolated runtime are qualified.
-[terminal model and effort](terminal-model-effort.md) owns its optional displayed
-footer evidence. [preceding installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
-records the v0.17.2 fleet cutover and owner acceptance of its bounded codex phrase
-and compact current-location display.
-[terminal usage](terminal-usage.md) owns quota acquisition and source selection;
-[desktop usage](desktop-usage.md) owns remaining presentation and its isolated
-qualification; [native usage](profile-usage.md) owns codex account reads.
-[native notifications](native-notifications.md) owns needs-input alerts,
-background observation and hub acknowledgement. source is implemented;
-[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md) records verified boundaries;
-[remaining device acceptance](issues/unrun-acceptance.md) stays open.
-[jarvis orchestration](jarvis-orchestration.md) owns profile selection,
-optional initial input, compound start evidence and compact agent controls.
-[workspace recovery](session-recovery.md) owns automatic reconstruction of lost
-tmux workspaces as fresh shells, its private recipe and passive recovery facts.
-[checkpoint reliability](workspace-checkpoint-reliability.md) owns delayed saving,
-confirmed-recipe retention and typed diagnostics. source is implemented and
-isolated-runtime qualified; actual reboot qualification remains deferred.
-[terminal continuity](terminal-continuity.md) owns persistent shell startup,
-current local/remote execution context, directory search, and the new desktop
-creation shortcut; it supersedes the earlier launch and chooser details there.
-[directory and group entry](directory-group-entry.md) owns the shared field
-interaction, visible-draft admission and inline mobile directory search.
-[compact dashboard chrome](dashboard-compact-chrome.md) owns the header,
-view-tab presentation and notification-action placement, with qualification
-recorded there.
-[compact dashboard roster](dashboard-compact-roster.md) owns the accepted card
-layout, group-heading policy and vertical spacing; source is implemented and
-[qualification](dashboard-compact-roster.md#verification) records its evidence.
-readable facts may grow cards; recognition uses crest plus names.
-[design language](design-language.md) owns visual values; [codebase rules](rules.md)
-own implementation conventions and trust boundaries. a platform fact that
-contradicts a premise reopens the responsible contract.
+1. tmux is the store and the process supervisor. skid keeps no session database,
+   its private files (fleet, handle, observer, workspace recipe, terminal
+   contexts, the phone's text size and saved-state capsule) never stand in for
+   inventory, and a restart re-lists tmux ([§6](#6-host-sessions-and-tmux)).
+2. every effect is guarded in tmux on an exact lifetime and attempted at most
+   once. lost completion is `unknown`, never replayed, rolled back or
+   compensated, by the host or any client ([host](#host-invariants),
+   [desktop](#desktop-invariants), [phone](#phone-invariants)).
+3. execution is host-local. no gateway acts for another, no computer relays
+   terminal bytes, and one machine's failure fences only its own rows and
+   actions; the hub is a dependency of edits, enrolment and attention only
+   ([§3](#3-topology-and-trust)).
+4. status, attention, usage and remote context are sampled inference: evidence
+   for a human, never authority for an effect, which re-reads what it needs
+   ([§7](#7-observation-and-agent-control)).
+5. one owner, one trust domain: the tailnet plus one bearer per device
+   ([trust](#trust-invariants)).
 
-[the roadmap](roadmap.md) indexes delivery and open acceptance.
-[the codebase map](codebase-map.md) locates implementation owners.
-[testing policy](rules.md#testing) supersedes retired test recipes in older
-feature plans; those recipes do not recreate removed gates.
+specs keep what the code cannot show: [terminal observation](terminal-observation.md)
+with its [codex](terminal-observation-codex.md) and
+[claude](terminal-observation-claude.md) grammars, [workspace recovery](session-recovery.md),
+the [tmux exec budget](tmux-exec-budget.md) and the
+[design language](design-language.md). [rules](rules.md) bind implementation, the
+[codebase map](codebase-map.md) locates code, [issues](issues) hold open problems
+one per file, and the [roadmap](roadmap.md) holds what is next.
 
-[automatic session names and public handles](automatic-session-names.md) owns
-one canonical tmux name, automatic/manual ownership, typed live selectors and
-their acceptance. names describe sessions; captured terminal references retain
-exact lifetimes and panes for operations.
+## 1. scope
 
-## 1. Philosophy
+from a desktop browser, the cli or the phone the owner can: see every tmux session
+of every enrolled computer in one collection, with its machine, its foreground
+provider and account when recognized, and its inferred status; create a terminal,
+or a configured profile's agent, on an explicit machine and directory, or a
+terminal beside an existing session; attach the same tmux client view the laptop
+sees; type, paste and dictate through gboard; select and copy terminal text on the
+phone; detach without stopping anything; interrupt or close an exact, confirmed
+session; read, write and wait on terminals from the cli, which is how jarvis drives
+workers; and be notified when an agent needs input or is ready again.
 
-- **tmux is the database and the process supervisor.** live sessions, pane
-  facts and user options belong to tmux. a gateway restart re-lists a surviving
-  server. one private workspace recipe can reconstruct a confirmed lost server
-  as fresh shells; it never supplies inventory, execution or history. separate
-  transient metadata is a kernel-validated ssh/mosh connection registration. it records
-  association, never session lifetime, status, or history.
-- **providers own execution and history.** skid observes foreground process
-  provider and account identity, bounded rendered reads and explicit terminal
-  controls. no provider history or conversation identity enters a skid store.
-  a read-only quota client observes existing account daemons; it
-  owns no provider lifetime and dispatches no conversation operations.
-- **Android and each laptop are tmux clients.** Every gateway is an independent
-  capability over one local tmux server. android composes enrolled gateways; an
-  attachment still means one process, one screen, and one draft shared with
-  that machine's laptop.
+### guarantees
 
-from the android phone, the user can see every tmux session on enrolled
-computers in one collection, with machine identity,
-optional foreground-provider/account identity and inferred terminal status;
-create on an explicit machine and directory using terminal or that host's
-allowlisted agent profiles; create an independent terminal from a session's
-current host/cwd/group; attach the same stock TUI that host's laptop sees; type, paste, and
-dictate through Gboard; select rendered terminal text and explicitly copy it to
-that phone's Android clipboard; detach without stopping anything; stop current
-work or close an exact machine-bound confirmed session. phone stop/close and desktop
-read/text/key controls follow [agent control](agent-control.md). one unavailable
-machine does not block or authorize action against another.
+- skid never closes a tmux session other than the exact confirmed target.
+- detach and close are visibly different actions; the browser and the phone
+  confirm every close.
+- creation validates its directory and launches only the configured shell or a
+  configured profile command.
+- provider credentials stay on their host. they never enter clients, push
+  messages or skid state.
+- a gateway or client restart re-lists tmux; it never replays input or guesses.
 
-## 2. Fixed contract
+### non-goals
 
-| Concern | Decision |
-| --- | --- |
-| product | skíðblaðnir; ascii namespace `skidbladnir`; one trusted user, one or more installed hosts, multiple independently enrolled phones |
-| phone | android 13+; compile/target api36; google play services for qr/fcm; dedicated older-device verification waived |
-| hosts | macos26+ arm64 launch agents; ubuntu24.04+ and arch amd64 systemd user service; one standalone install per host |
-| topology | direct host clients; hub-served membership/configuration, no relays; the fixed hub owns notification observation; no execution proxy |
-| network | local loopback works offline; remote endpoints require tailscale serve https8443; optional hub→fcm uses outbound https; no skid public ingress |
-| Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
-| auth | independent256-bit bearer per device; hosts store sha256 verifiers; one-use five-minute invitation token, no signed routing; exact machine header remains required |
-| profiles | ordered user yaml commands, initially empty; optional provider/home observation metadata; no per-machine overrides; terminal remains a separate launch choice |
-| agent control | foreground provider/account observation and terminal controls under [agent control](agent-control.md); read-only account quota; no conversation hooks, targeting or execution supervisor |
-| state | tmux owns live terminals; providers own history/execution; fleet owns one machine file per host plus the write-once machine handle; hub retains content-free attention, acknowledgement and receiver state |
-| groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive fleet-wide needs-input/all/group views; no group registry or lifecycle |
-| session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
-| terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
-| Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
-| Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with stock xterm.js terminal |
-| Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
-| cutover | matching signed host/phone releases in lockstep with a fresh fleet per [release cutover](issues/release-cutover.md); no converters, old reader, auth path, ntfy or mixed-version mode |
-| Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
+provider conversation search, history, inboxes, targeting or hooks; chat ui;
+copied provider history; transcript-derived semantic state; task-completion
+claims; durable command receipts and replay; scheduling, autonomous orchestration
+or a task protocol; execution proxying; cross-machine move, broadcast, failover or
+wake; automatic hub election; durable inventory; quota enforcement; git or project
+discovery; arbitrary host setup or tailnet policy automation; terminal embedding
+in another app; containment between agents of one user; multi-user anything.
 
-profiles are named opaque shell commands in the hub's yaml. hosts resolve their
-own bash/zsh and optional observation homes. one startup envelope passes command
-text as data; the initialized shell evaluates it exactly once in the requested
-cwd. ordinary failure returns to that shell; explicit `exec`/`exit` retain their
-normal meaning. aliases, functions, environment and provider settings remain the
-user's. skid adds no provider flags, account variables, plugin or daemon startup.
-only its private inherited launch markers are removed.
+a new capability needs an explicit scope and acceptance decision by the owner.
+removing code authorizes nothing.
 
-provider/account detection remains separate from launch labels. readable live
-process/account evidence must match one configured provider/home; missing or
-ambiguous evidence is unknown. quota reads existing daemons directly, then
-attributable terminal evidence when native evidence is unavailable
-or stale. no fresh source means unknown. the same logical profile denotes one
-account across machines.
+### product language
 
-### Product language
+skíðblaðnir is the app. a visible session persona is a **dwarf** in product and
+navigation copy (`Dwarves`, `Create dwarf`, `New dwarf`, `Back to Dwarves`);
+**agent** means the foreground provider program. lifecycle, recovery, error and
+destructive copy is literal and names the tmux session and machine. hlíðskjálf is
+the grid's motif, the forge the creation sheet, and the dvergatal the append-only
+catalogue of named dwarves (`internal/catalog/characters.json`, at least 100
+entries; [curation](design-language.md#18-dvergatal-curation)). every session
+carries one catalogue key; the key seeds its seal and never its tmux name.
 
-Skíðblaðnir (app), Hlíðskjálf (grid motif; literal label `Dwarves`), The Forge
-(new-session sheet; literal `New dwarf`), and Dvergatal (the append-only dwarf
-catalogue at `internal/catalog/characters.json`, ≥100 entries, original deterministic
-procedural icon portraits) are retained. Every visible ordinary session owns a
-valid Dvergatal key in `@skid_character`, whether created from the laptop or
-the gateway. Inventory repairs a missing or invalid key before returning a
-card; valid keys survive tmux rename and process replacement for the tmux
-session lifetime. The key independently seeds the card landmark and never
-defines the operator-owned tmux name. Generated names use the smallest free
-`skidbladnir-<profile>-<N>`; Dvergatal does not cap the number of sessions. A
-visible session persona is a dwarf in product and navigation language;
-`agent` is reserved for the foreground provider program, while
-lifecycle, recovery, error, and destructive-action language stays literal and
-names the tmux session when relevant. v0 owns no raster portrait pack or
-portrait manifest.
+## 2. concepts
 
-### Guarantees (cheap, disaster-preventing)
-
-- never close a tmux session other than the exact confirmed target.
-- detach and close are visibly different actions; close always confirms.
-- Validate cwd; launch only the configured terminal shell or the target host's
-  declared closed agent profile set.
-- Codex credentials stay on their host; the phone holds its own encrypted fleet bearer; each gateway admits it through
-  hub membership. provider credentials never enter clients or push messages.
-- App or gateway restart re-lists tmux; it never replays input or guesses.
-
-### Non-goals
-
-provider conversation search/inbox, cross-device unread sync, arbitrary
-transcript-derived semantic state, chat ui, copied provider history, a
-generalized hook runtime or trust-store editor, git/project-root
-resolution, router-owned provider payload interception, SQLite lifecycle facts,
-durable command receipts and replay,
-adoption, pin-parity launch refusal, upgrade rehearsals, proof-ledger
-acceptance matrices, project enrollment, quota enforcement,
-scheduling, autonomous orchestration services, and multi-user anything. See §8 for what would
-ever bring the retired machinery back.
-
-automatic authority election, execution proxying, cross-machine move/broadcast/
-scheduling/failover/wake, durable inventory, arbitrary host setup and tailscale
-policy automation remain excluded. membership changes use `join`/`remove`; new
-hosts appear automatically from the hub's membership. disconnected access has no
-cache expiry; revocation reaches a host when it next fetches from the hub. moving or
-losing the hub means `skid recover` on the new hub plus fresh enrollment.
-
-## 3. Platform evidence carried forward
-
-Recorded on Linux tmux 3.4, Darwin tmux 3.7b, Codex CLI 0.149.1, and a
-physical SM-S906W. Those versions identify the evidence run; the behavioral
-findings below remain binding, but the tool versions do not. Hosts install the
-latest stable release exposed by their managed package channel:
-
-- stock terminal programs are shareable by concurrent tmux clients. direct
-  attachment shares current window and active pane. navigation through either
-  client is visible to the other; the gateway targets a session, never moves
-  a different client's selection as a handoff operation.
-- tmux session groups share windows/processes. deleting one member can
-  leave those processes alive through another. skid creates no tmux session groups; detach
-  closes only its owned client and never issues a session deletion.
-- Stock TUI input: raw Ctrl-J (`0x0a`) is newline-without-submit; raw CR
-  (`0x0d`) submits; these bytes survive the tmux 3.4 client path.
-- S22+ WebView/xterm.js/Gboard: ANSI, Unicode, IME composition, editable
-  dictation, clipboard, automatic DA/DSR/CPR replies, resize, rotation. Field
-  acceptance additionally requires rendered color, a stable zero-horizontal-
-  scroll viewport, chosen readable text size, and fully visible fitted cells.
-- SIGKILL of a TUI emits nothing; only tmux/process facts are reliable
-  liveness evidence. (This is why v0 trusts tmux, not agent self-reporting,
-  for aliveness.)
-- The server epoch is unshadowable at the pin: `set-option -s` stores a user
-  option in `global_options`, and format lookup checks that table before
-  pane/window/session options ([tmux 3.4 `options.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/options.c),
-  [tmux 3.4 `format.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/format.c)).
-  A lifetime identity also carries the built-in server `pid` and `start_time`,
-  so restoring an old user-option value into a new server is insufficient.
-- The exact-kill gate is one synchronous client queue: `if-shell -F` inserts
-  the chosen branch immediately after itself and `cmdq_next` drains that queue
-  before returning to other event work ([tmux 3.4 `cmd-if-shell.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/cmd-if-shell.c),
-  [tmux 3.4 `cmd-queue.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/cmd-queue.c)).
-
-The retired thread/identity findings (rollout basenames, fork identity, durable
-hook ordering) remain true and recorded in git history; v0 does not consume
-them.
-
-## 4. Product behavior
-
-### Dashboard
-
-independent `GET /v1/sessions` inventories drive one fleet-wide card collection.
-one selected view is `needs input`, `all`, a named group or unassigned. needs
-input collects fresh local agents with qualified ready first, then explicit
-requests and current error/interruption notices. all/groups retain stable group
-and session order, including ordinary terminals and explicitly stale rows.
-[session views](session-views.md) owns membership, ordering, navigation and
-schema-4 restoration; [groups](groups.md) owns exact label identity/membership.
-failed-machine, notification-store and fresh workspace-recovery notices remain
-outside every view. recovery adds no controls or saved client state.
-
-- One card anchors to the session's current window and that window's active
-  pane. cwd, command and foreground process come
-  from that anchor. a foreground ssh/mosh transport replaces local execution
-  facts with a client-resolved remote context, or an explicit unknown context.
-  the source still owns attachment and every control.
-  attached clients are the selected session's `session_attached` count.
-
-- **Card facts:** machine label, exact local tmux id, tmux name, an opaque
-  server-lifetime identity token, required dwarf icon portrait, launch profile
-  (`@skid_profile` when present), optional exact foreground agent provider/PID,
-  pane id/start identity, observed account profile and terminal status; objective (optional; URL-safe base64 in
-  `@skid_objective_b64`, decoded by the gateway), optional group label
-  (`@skid_space_b64`), pane cwd and active command when tmux exposes them,
-  attached-client count. `agent` is optional; when present its provider, pid,
-  pane/start identity are required. ordinary `terminalStatus` is inferred;
-  optional `terminalUsage` carries recognized local provider display percentages
-  under [terminal usage](terminal-usage.md), from the same guarded capture;
-  no conversation metadata or flat activity remains.
-  Missing or invalid character metadata is assigned from Dvergatal and
-  persisted during inventory; other invalid or unknown `@skid_*` metadata is
-  absent, never guessed.
-- **Card presentation:** [compact roster](dashboard-compact-roster.md) owns the
-  accepted replacement structure; [session card](session-card.md) retains
-  actions. the operator-owned tmux name is the primary work
-  identity. The dwarf display name remains a smaller Big Shoulders signature.
-  the status line's leading facet is redundant decoration; the line's literal
-  label remains the semantic and accessible source. the exclusive status/attention
-  label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
-  copy and tone; only `ready` is green.
-  readiness is inferred, never proof of unseen text or completion.
-  [native notifications](native-notifications.md) owns dismissal, visit
-  boundaries and the hub's durable memory across uncertain observations. the hub
-  remembers non-idle until idle, and a visit's first output acknowledges ready
-  while preserving armed work. no human reply viewer or read receipt. every card shows
-  machine context. the accepted roster puts the dwarf beside status when space
-  permits and profile/host/path in a full-width wrapping footer. the flat
-  needs-input queue adds one quiet group-context line; only `all` retains group
-  headings. machine identity remains present in accessibility and every routed
-  or destructive action. the footer uses the configured runtime profile label for
-  a proven runtime profile, `<provider> · profile unknown` for an agent without
-  one, and no profile for a pane without an agent, whose status already reads
-  `terminal`. It never substitutes launch
-  profile for missing runtime profile. The card abbreviates cwd; the terminal
-  session sheet shows it whole. a tap opens the terminal;
-  change group, send interrupt and both confirmed closures sit behind the
-  card's overflow.
-- Character normalization runs under the gateway's one mutation lock. Valid assignments are retained. Missing or
-  invalid assignments use least-live-use selection with a stable
-  server-epoch/session-id tie-break and one identity-guarded conditional tmux
-  write. A concurrent valid writer is accepted after reread; a changed or
-  vanished session is never overwritten, and non-convergence fails the
-  inventory instead of fabricating a card.
-- **terminal status is inferred, never authority.** it is independent activity,
-  interaction and notice facts with a source and a closed reason
+- **machine**: one skid installation, named by its handle, `mh-` plus 32 lowercase
+  hex, written once in `machine-handle`. label, origin, bearer and platform are
+  attributes, not identity.
+- **device**: one enrolment of a computer or a phone, `d-` plus 32 hex, with its
+  own bearer. a computer is both a machine and a device.
+- **fleet** and **hub**: the enrolled devices and the one computer that holds
+  their membership and accepted settings ([fleet](#4-fleet)).
+- **server lifetime**: `{epoch, pid, startTime}` of one tmux server. the epoch is
+  `v1-` plus 32 lowercase hex in server option `@skid_server_epoch`, set only if
+  absent; pid and start time are tmux builtins, so an old option restored into a
+  new server never forges a lifetime.
+- **session lifetime**: a server lifetime plus a session id `$N`, held by clients
+  as the opaque `identityToken` `epoch.pid.start.N`. names, panes and processes
+  take no part.
+- **terminal target**: a session lifetime plus the active pane `%N` the caller
+  saw; a different active pane is a different target. a **reference**
+  `{machine, tmuxId, identityToken, paneId}` carries one across clients; a
+  **handle** `t-…` names a session lifetime for humans
+  ([cli](#cli)).
+- **foreground**: the pane terminal's foreground process-group leader, one kernel
+  sample. exec keeps pid and start identity, so only an equal before/after
+  bracket proves a foreground unchanged.
+- **agent**: a foreground recognized as codex or claude. **profile**: a named shell
+  command from the hub's yaml, optionally with a provider and account home. a
+  session's **launch profile** (`@skid_profile`) records what created it; an
+  agent's **observed profile** is the configured home its environment names.
+  neither stands in for the other.
+- **connection**: a pane whose foreground is `ssh` or `mosh-client`. the source
+  session owns the card and every control; the far end is display context
+  ([remote context](#remote-context)).
+- **inventory**: one sample of every session of one admitted server lifetime, with
+  each agent's terminal status. a sample, not an atomic snapshot.
+- **terminal status**: independent activity, interaction and notice facts with a
+  source and a closed reason, inferred from the current screen
   ([observation §2](terminal-observation.md#2-capability-and-wire-contract)).
-  only a freshly recognized local provider is classified, from bounded
-  current-screen regions; successful ambiguity is unknown with source terminal;
-  a failed stage is unavailable. terminal status neither proves task completion
-  nor supplies execution authority. it is distinct from inventory freshness and
-  liveness; each effect revalidates its exact target.
-- a vanished session reconciles out. failed required tmux
-  snapshot collection fails that machine's request; optional agent-observation
-  failure omits identity or reports unavailable status, never fabricated facts.
-- laptop-created sessions use the same current-pane observation
-  path. their character is normalized as above; raw launches and unproven
-  profiles are successful
-  omission, never guessed.
-- Codex home labels are sampled from the foreground process's native
-  environment and matched to the destination host's configured account homes.
-  launch profile is historical and cannot determine the current account.
-- status carries no transition time or age. only top-level inventory freshness
-  carries a clock; android does not locally decay the sampled status.
-- all/group grid order: named groups in ascii-folded/exact utf-8 label order,
-  then unassigned; under the accepted roster only `all` renders headings.
-  sessions within each group sort by case-folded/exact machine label,
-  machine handle and numeric tmux id. needs input is flat, by ready/action tier
-  then that same session order. the host envelope promises no display order.
-- the human queue never supplies control admission. cli `wait --state needs-input`
-  remains explicit-response-request only. quiet idle includes acknowledged ready
-  and first-observed idle; available again does not prove successful completion.
+- **dwarf**: a session's catalogue key in `@skid_character`
+  ([dwarves](#dwarves)). **group**: an optional label in `@skid_space_b64`
+  ([groups](#groups)). **view**: one of needs input, all, a named group or
+  unassigned ([views](#views-and-the-needs-input-queue)).
+- **attention**: the hub's record per session lifetime of ready and action causes
+  and of the owner's acknowledgement ([notifications](#12-notifications)).
+- **workspace recipe**: the private checkpoint from which recovery rebuilds a lost
+  server as fresh shells ([recovery](#8-workspace-recovery)).
 
-the dashboard is one retained android entry. detach/back preserve selected view
-and semantic session/heading anchor; removal clamps the former rendered index.
-view changes cancel pending restoration; active selection is a no-op. terminal
-access loss resets viewport to top and shows the affected machine notice while
-retaining view. confirmed creation reveals its returned group when needed;
-edits and uncertain creation retain view. the schema-4 task capsule contains
-only the comparison-only view key, typed anchor, former index and pixel offset.
-unresolved named groups persist and require an explicit group choice before
-creation. older task capsules reset once; no compatibility reader or per-view
-history exists. inventory, raw labels and terminal targets are never persisted.
+## 3. topology and trust
 
-phone inventories and attention outcomes are admitted together. preceding
-admitted rows remain usable while the next attention update completes; initial
-restoration waits for every fleet machine's admitted or modeled non-live outcome.
-failed attention remains unavailable for its still-admitted machine sample;
-unrelated store success cannot restore that sample's ready. successfully matched
-machines remain eligible once the global operation failure clears, and the fleet
-disclosure remains visible for any current failure. fresh requests/notices survive
-storage failure. machine updates derive notification presentation from the same
-facts/outcome; pressure publication never exposes an interim collection.
+a fleet is one owner's computers and phones. each computer runs one `skid serve`:
+the gateway for its own default tmux server, its fleet member and, on the hub
+only, the notification observer. the mac also runs a separate notification app.
+desktop clients and the phone call every gateway directly.
 
-pressure stays machine-local under [machine pressure](machine-pressure-rail.md).
-the dashboard overflow's `machines` item, under
-[compact chrome](dashboard-compact-chrome.md), opens one transient modal
-disclosure containing
-every accepted machine's existing rail/access state and reconnect. rail selection
-shows its existing pressure details in that same modal; back returns to machines,
-and dismissal closes from either page. reconnect closes the sheet first.
-exceptional machine notices remain visible on the dashboard. disclosure performs
-no request and never filters cards or prefills creation. each machine retains
-independent five-second inventory/pressure polling. stale/unreachable/access-lost
-inventory disables that host's actions; pressure failure never does.
+```text
+                   phone: compose + xterm.js
+               /             |              \
+      https/wss :8443        |        https/wss :8443
+             /               |                \
+   devbox serve        macbook serve         arch serve
+   systemd, linux      launchd, darwin       systemd, linux
+         |                   |                     |
+     local tmux          local tmux            local tmux
+```
 
-standard pull over the collection is the sole manual inventory verification
-shortcut. it captures every live fleet poller and retains the post-request read
-completion fence. pressure is independent. the view strip, notices and forge stay
-outside its gesture owner. the collection retains its `12dp` top gutter and
-active-only `2dp` gold progress line, with existing determinate/indeterminate
-semantics and no resting layout space. no tap/retry/accessibility duplicate or
-mutation replay exists. recovery names pull, reconnect or external identity reset
-according to the exact target's modeled access, never a hidden machine filter.
+| owner | owns | never |
+| --- | --- | --- |
+| a computer's gateway | its tmux server, processes, observation, terminal controls | another host's tmux; execution on another's behalf |
+| desktop clients, phone | composing enrolled gateways; their own presentation | durable copies of inventory or attention |
+| hub | fleet state, settings acceptance, invitations, attention and acknowledgement, android push | carrying terminal traffic; election; failover |
+| providers, the user | provider installs, accounts, settings, history, daemons; tailscale login and tailnet policy | |
 
-polls coalesce per machine/resource and may overlap across machines; mutations
-and terminal input are never retried. the host captures `observedAt` after its
-required tmux snapshot is validated, then enriches optional process observations
-outside the session lock. that clock is sampled evidence, not an atomic provider
-snapshot; host clocks are never compared. phone pressure state and colour come
-from host-evaluated signals, never locally inferred thresholds.
+### trust invariants
 
-`GET /v1/sessions` requires one closed `recovery` fact: tracking, recovered,
-delayed or broken. delayed/broken require a canonical failure instant and closed
-phase/cause pair; savedAt is the last confirmed recipe's capture time.
-[checkpoint reliability](workspace-checkpoint-reliability.md#failure-boundary-and-strict-api)
-owns its exact schema and passive copy. failed recovery preserves ordinary live inventory;
-clients never use the saved recipe as inventory or revive old terminal authority.
+1. execution is host-local. a gateway observes and mutates only its own default
+   tmux server. there is no proxy, coordinator or cross-host transaction, and one
+   unavailable machine neither blocks nor authorizes action on another: one host
+   out is the federation's normal state. skid manages tmux only where it is
+   installed and enrolled; ssh or mosh from a skid terminal is ordinary use of the
+   source terminal, never inventory of the destination.
+2. local use needs nothing remote. the gateway listens on `127.0.0.1:7341`; a
+   computer's own cli reaches it with no tailnet login, internet, provider, phone
+   or firebase. clients synthesize the loopback route only for their own machine
+   (`fleet.Local.Target`); loopback is never advertised.
+3. remote access is the tailnet. `skid connect` points tailscale serve `https:8443`
+   at the loopback listener. a remote origin is exactly
+   `https://<lowercase dns name>.ts.net:8443`, with no path, query, user or
+   fragment. there is no public ingress, funnel, cookie, cors, proxy or redirect.
+   other https endpoints are a non-goal: they would need certificate trust and
+   renewal, ingress ownership, address changes and installer support.
+4. every device has its own random 256-bit bearer; hosts keep only its sha256
+   verifier and compare in constant time (`internal/auth`). each computer also has
+   an installed local bearer that authenticates its own cli as that computer. a
+   source address grants nothing: tailscale serve also arrives over loopback.
+5. `Skidbladnir-Machine` must equal the addressed gateway's machine handle. it
+   binds a pairing to an installation and never authenticates. a mismatch is 409
+   `MachineIdentityMismatch`, discloses no handle, and reaches no tmux, body or
+   upgrade. session rows carry no machine: a client labels rows with the gateway
+   it addressed, so no gateway speaks for another.
+6. one trusted user. agents run as their host user; skid claims no containment
+   against a same-user process. client state is private to the login user:
+   `fleet.json` and `machine-handle` are read only as `0600` regular files, so
+   another unix user, such as jarvis's system service, has no supported access
+   ([jarvis's record](https://github.com/NielsdaWheelz/jarvis/blob/f397031fe089b90c601dcadbbc0d5ab0fc98d3a2/docs/issues/skid-installed-state-access.md)).
+7. logs are content-free ([operations](#logs)).
 
-### agent observation
+accepted limits: tailnet tls plus bearer is the whole defence. nothing signs fleet
+state, so a removed phone sees only auth failures, and same-fleet phone repair
+sends its saved bearer to the scanned invitation's `*.ts.net:8443` origin.
+revocation is eventual ([fleet](#4-fleet), invariant 6).
 
-[terminal observation](terminal-observation.md) owns status;
-[terminal control](terminal-agent-control.md) owns bounded reads/controls.
-`agentcontrol` enriches the collected tmux inventory outside the session lock,
-using one focused observation per changed session (an unchanged screen reuses its
-last detection, [exec budget a3](tmux-exec-budget.md#a3-activity-gated-reuse)):
-sessions captures bounded screen regions of the exact target and revalidates the
-foreground it sampled
-([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
-then a pure provider classifier interprets them. inventory makes no provider
-history/status calls. enrichment shares one two-second deadline and reuses the
-foreground five-second inventory schedule. pressure has its own coalesced polling
-lane.
+## 4. fleet
 
-`skid-notify` may emit BEL to its inherited exact pane as terminal-local
-presentation. it stores no state, calls no gateway and has no privileged
-product meaning.
+`fleet.json` is the one machine file: this installation's handle, name and local
+bearer, its membership `{deviceId, bearer, state}`, its applied settings and, on
+the hub only, `authority {invites, reports}`, whose presence is the hub role.
+`state` is the one wire-and-cache type:
+`{fleetId, hub, stateRevision, configRevision, machines, members, settings}`, with
+machines hub first, then in join order. phones get the public view: machines and
+`androidPush`, no members or settings.
 
-### profile usage
+| path | owner | note |
+| --- | --- | --- |
+| config `machine-handle` | fleet | written once; the only identity root |
+| config `config.yaml` | the user | read on the hub only |
+| config `android-push-credentials.json` | the user | hub only, optional |
+| state `fleet.json` | fleet, serve only | the hub's is the fleet; a member's is a replaceable copy |
+| state `authority.lock` | fleet | flock for serve's lifetime |
+| state `notification-observer-v2.json` | hub notifier | attention, acknowledgements, receivers |
+| state `workspace.json`, `workspace.lock` | sessions | [workspace recovery](session-recovery.md) |
+| state `serve.log`, `serve.log.1` | logging | mac only |
+| state `install.lock` | installer | |
 
-[terminal usage](terminal-usage.md) owns consolidated read-only desktop quota
-observations. existing inventory captures carry optional literal provider used
-percentages; the independent [native route](profile-usage.md) reads codex only.
-both existing lanes read all paired hosts independently of table filters. the
-desktop selects one whole eligible observation per profile by client-local
-receipt, under the owner's same-account-across-hosts guarantee. [desktop usage](desktop-usage.md)
-shows compact remaining values, explicit unknown/stale states and
-day-based countdowns. usage never supplies admission/readiness.
-there is no quota file, publisher, extra capture, hook extension or new poller.
+config is `${XDG_CONFIG_HOME:-~/.config}/skidbladnir`, state
+`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`. private files are `0600` in `0700`
+directories, written through `internal/privatefile`. back up the handle and the
+hub's `fleet.json` and observer file; a member's `fleet.json` is rebuilt by
+joining again.
 
-### Start (The Forge)
+### fleet invariants
 
-The Forge first requires a machine and then offers terminal and that machine's
-declared agent profiles. Terminal remains available with zero profiles.
-phone standalone creation requires an explicit machine; source creation retains
-its exact source host. desktop quick creation opens a machine-only chooser at
-the configured default; enter creates a home terminal on the chosen available
-host. initial full options also use the configured default. [quick terminal](desktop-quick-terminal.md)
-owns the chooser and admission contract.
-directory and group use the same native field mechanics within each client:
-typing supplies choices, acceptance fills the visible draft, and a separate
-create/save action submits it. directory search waits 150 ms; group filtering
-uses retained inventory immediately. exact empty cwd means home; nonempty
-queries must resolve to a literal before creation. mobile offers home and fresh
-local active cwd choices for empty input, plus secondary one-level Home browsing.
-Folder entry and explicit `Use` remain distinct. Listing is bounded, read-only, on demand, and
-non-persistent. It never invokes tmux, a shell, an agent, a crawler, a watcher,
-or another gateway. [`working-directory-chooser.md`](working-directory-chooser.md)
-owns secondary browse state, content, symlinks and bounds;
-[directory and group entry](directory-group-entry.md) owns primary interaction
-and qualification.
+1. one writer. `skid serve` holds `authority.lock` and alone writes `fleet.json`;
+   a mutation edits a draft and becomes visible only after one durable atomic
+   replace.
+2. crash-only identity. machine identity and hub role are constants of one serve
+   process. a committed join or recover, and any failed `fleet.json` write, end
+   serve with a nonzero exit, because a failed replace may have landed and only a
+   restart can tell. launchd `KeepAlive` and systemd `Restart=on-failure` restart
+   it; `KillMode=process` and `AbandonProcessGroup` keep tmux and its agents.
+3. the handle is written once. a `fleet.json` naming another handle refuses to
+   start. deleting the handle re-keys the host and breaks workspace recovery.
+4. the hub is fixed. members fetch only from it, plain json over tailnet tls with
+   their own bearer: `GET /v1/fleet`, adopt, `PUT /v1/fleet/self`, then wait on
+   `GET /v1/fleet/events`. failures back off from 1 s to 30 s; a local request
+   that reaches the hub resets the backoff. there are no signatures, relays,
+   epochs, transfer or election.
+5. cached membership never expires. a member keeps admitting the fleet's devices
+   and serving terminals while the hub is down; edits, enrolment, removal and
+   notifications wait for the hub.
+6. revocation is 401: at once on the hub, and on every other host at its next
+   fetch, which also closes the device's live terminal and notification
+   connections. accepted effects are not undone. the removed device learns
+   nothing else: a phone keeps its store; a computer whose hub fetch gets 401
+   drops its cached members, admits only its own local bearer, keeps serving its
+   terminals, and `skid status` says it was removed.
+7. invitations. the hub mints a five-minute single-use token, keeps only its
+   verifier, holds at most 32 live and refuses while it has no remote origin. an
+   invitation is `skid://connect/` plus unpadded base64url of
+   `{fleetId, hub:{machine,name,origin}, token, expiresAt}`, at most 4,096 decoded
+   bytes. `skid join` and the phone admit it as human ingress; the hub alone
+   decides use and expiry. it carries no permanent credential.
+8. join is a bearerless `POST /v1/fleet/join {token, deviceId, kind, name,
+   machine?, origin?, verifier}` carrying the hub's machine header. conflicts are
+   checked before the token, which only a committed join consumes. a computer
+   already a member is re-keyed in place, keeping its position; anything else is
+   appended. names are unique case-insensitively and origins unique; a duplicate
+   needs an explicit `--name`, never a silent rename. the hub cannot join its own
+   fleet or be removed. a lost join reply leaves the token spent: run `skid join`
+   again with a fresh invitation.
+9. joining replaces a computer's fleet in one write and restarts it. its handle
+   and tmux sessions survive; its own `config.yaml` stays in place, unused while it
+   is a member, and nothing merges; phones paired to its former fleet stay there.
+10. the phone stages its device id and bearer before joining, so it recovers a
+    lost reply by fetching with them; repair first fetches with the saved identity
+    and stages a new one only on 401. a phone paired to one fleet refuses another
+    fleet's invitation until its app data is cleared.
+11. membership reaches running clients without a restart: the desktop re-reads
+    `fleet.json` each inventory pass; member hosts and the phone follow the
+    revision stream. `stateRevision` grows on membership, origin and settings
+    changes, `configRevision` on accepted-settings changes; a report advances
+    `stateRevision` only when it changes the reporter's origin.
 
-Changing machine closes the chooser, invalidates its requests, clears
-cwd/agent-profile choice, retains a terminal choice, and preserves tmux
-name/objective and the group draft. submission
-names the target and sends
-`POST /v1/sessions` with required `kind:"agent"` and `profile`, or
-`kind:"terminal"` and no profile. creation rejects `model`/`effort` arguments;
-the exact configured command and provider settings own those choices. both carry
-`{cwd, optionalTmuxName?, objective?, group?}` to only that machine:
+### fleet interfaces
 
-1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
-   U+2028/U+2029, and bidi controls are rejected. Exact `~`/`~/` expands against
-   the service UID home; all other input must be absolute. The normalized path
-   must be an existing searchable directory. Failure is typed and mutates
-   nothing.
-2. Agent launch requires one of the target gateway's declared profiles; terminal
-   forbids a profile and uses the host shell policy in [shells.md](shells.md).
-3. Optional tmux name is 1–64 ASCII letters, digits, underscores, or hyphens;
-   optional objective is 1–240 NFC Unicode scalars without terminal controls.
-   optional group is 1–64 unicode-15 nfc scalars with the exact whitespace and
-   display-safety rules in [groups](groups.md#3-labels-equality-and-ordering).
-   invalid input mutates nothing. interactive named-group creation prefills a
-   visible editable label; a group supplies no other launch context.
-4. one tmux queue creates the session; configured commands and providers own
-   provider execution. skid performs no provider preparation. unknown terminal creation remains
-   unknown and never triggers replay or compensating cleanup.
-   the queue creates the session (named
-   `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>` for an agent,
-   `skidbladnir-terminal-<N>` for a terminal),
-   initializes the random
-   server-scoped `@skid_server_epoch` if absent, sets agent-only `@skid_profile` and
-   `@skid_character`, sets encoded `@skid_objective_b64` and `@skid_space_b64`
-   only when supplied,
-   and starts the configured login shell. an agent launch is a one-shot
-   foreground child of that shell; the shell persists after provider exit.
-   terminal uses the same shell without an initial provider. the private
-   current-binary entrypoint carries the launch (the profile's command text,
-   base64url) without shell quoting.
-   omitted names create automatic ownership in that queue. an explicitly
-   supplied name is manual skid intent only. neither provider receives a name; configured
-   configured command flags belong to the user. A later queue failure
-   leaves the newly visible session for inventory/recovery; it never performs
-   an unproven cleanup kill. gateway creation sends no prompt; cli `start --stdin`
-   composes bounded readiness and one guarded initial input under the original
-   start deadline, retaining separate creation/input evidence. the opaque agent's own
-   remaining permission, trust, and setup flows appear in the terminal under
-   the explicit launch policy above.
+fleet routes authenticate with the caller's bearer unless noted, and bind the
+machine header before authenticating:
 
-### new terminal here
+| route | who | contract |
+| --- | --- | --- |
+| `GET /v1/fleet` | member | `state`; the public view for phones |
+| `GET /v1/fleet/events` | member | sse `event: revision`, `data: {"stateRevision":N}` at connect and per revision; re-authenticates on each change, so a removed caller's stream ends |
+| `POST /v1/fleet/join` | hub, no bearer | `201` with `state` (phones: the public view) |
+| `POST /v1/fleet/invites` | hub | one invitation |
+| `POST /v1/fleet/apply` | hub | accept the hub's `config.yaml`; status |
+| `DELETE /v1/fleet/members/{deviceId}` | hub | removal; refuses the hub |
+| `PUT /v1/fleet/self` | hub, from computers | `{origin?, version, application}`, the caller's own report |
+| `/v1/local/{status,network,join,apply,recover}` | installed local bearer | the cli's control surface; a member's apply and network report forward to the hub |
 
-[shells.md](shells.md) owns pr 2's exact request, launch, client-completion,
-ownership, and h/d/p proof contracts. `POST /v1/sessions/{tmuxId}/shell` accepts
-only `{identityToken}`. the host samples current pane cwd and local group,
-guards creation by session lifetime, then returns a new independent session.
-tui `T` (shift+t) and, on a local pane, the android session sheet's
-`new terminal on <owner>` create once and attach the returned reference;
-source name or agent replacement does not retarget the operation.
-the action is unavailable while the source pane is an ssh/mosh transport;
-there the phone row opens the source-scoped forge instead;
-remote cwd never becomes authority for local creation.
-one-shot launch failure may follow session creation; no shell-readiness promise,
-automatic retry, or persistent creation receipt exists. desktop detach leaves the
-created shell selected in the browser; return to the source is ordinary navigation.
+the fleet cli (`cmd/skidbladnir/fleet_cli.go`) prints json on stdout and exits 0,
+1 on failure, 64 on usage:
+
+| command | effect |
+| --- | --- |
+| `skid connect` | refuses when the running service's version differs from the cli; points `https:8443` at the gateway, replacing any 8443 handler; reports this host's origin; prints one invitation line, plus a qr on a tty |
+| `skid join [--name NAME]` | reads one invitation line from stdin, enrols this computer, restarts its service; a failure changes nothing |
+| `skid remove DEVICE_ID` | removal at the hub |
+| `skid recover` | a new fleet with this computer as hub, from its cached accepted settings with itself as default machine; restarts; startup then accepts its own `config.yaml` when valid |
+| `skid apply` | the hub accepts its `config.yaml` |
+| `skid status` | members and each computer's last report, `applied`, `invalid_host` or `pending_offline`; no terminal or account content. a member shows the other computers `pending_offline`, since only the hub holds reports |
+
+a command that needs the hub uses loopback and the local bearer on the hub, else
+the hub's origin and this host's fleet bearer; with no hub origin it fails with
+`hub has no remote address; connect tailscale on the hub and run skid connect there`.
+
+fleet errors are `{code, message}`: 400 `InvalidRequest` or `ConfigInvalid`; 401
+`Unauthenticated` (including a removed device) or `PairingInviteRejected`
+(unknown, expired or used token); 403 `Forbidden` (wrong device kind); 409
+`FleetConflict`, including `this computer is not the hub` from a member; 413
+`RequestTooLarge`; 503 `HubUnavailable` from local routes while the hub has no
+origin; 500 `InternalError`. errors carry no routing; nothing redirects a
+credential.
+
+accepted limits: join, recover and failed writes restart serve (3–10 s; websockets
+drop and clients reattach). moving or losing the hub is a new fleet
+([operations](#fleet-operations)).
+
+## 5. configuration
+
+one human file, `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/config.yaml`, read on
+the hub only (`internal/hostconfig`):
+
+```yaml
+version: 1
+profiles:                    # ordered; [] is valid and the installed default
+  - name: work               # profile key
+    label: "codex · work"    # defaults to name
+    command: codex-work      # opaque shell text, run once in the destination shell
+    provider: codex          # optional observation metadata: codex | claude
+    home: ~/.codex-work      # optional; requires provider
+# shell: /bin/zsh            # absolute bash or zsh; default: each host's login shell
+# terminal: apple-terminal   # mac notification clicks: apple-terminal | ghostty
+# default_machine: laptop    # desktop creation default, by machine name
+# android_push: ...          # optional; see android push
+```
+
+### configuration invariants
+
+1. strict human ingress: at most 64 KiB, one document, unknown or duplicate keys
+   and wrong types refused, then field rules with path-named errors. there is no
+   `hub` or `machines` key, no per-machine override, include, interpolation,
+   credential, endpoint override or provider preflight; `command` alone gets shell
+   expansion. every host reads the same `shell`, `terminal` and `default_machine`.
+2. the installer writes the commented default once and never rewrites it; skid
+   never edits human yaml.
+3. the hub accepts its file at serve start, on `skid apply`, and in the background
+   whenever a desktop browser opens on any computer. acceptance is atomic: a valid
+   file replaces the accepted settings, advancing revisions only on a change; an
+   invalid one answers `ConfigInvalid` and the accepted settings stay. there is no
+   file watcher; clients never upload settings; the hub stores accepted settings
+   as json, not yaml bytes.
+4. `default_machine` is checked against the fleet's machine names
+   case-insensitively at acceptance. a removed machine still named there makes the
+   next apply `ConfigInvalid`; until then a default naming no member resolves to
+   self ([case defect](issues/default-machine-case.md)).
+5. each host resolves accepted settings itself (`hostconfig.Resolve`): the shell
+   is the configured one or the account's login shell and must be an executable
+   bash or zsh; terminal defaults to `apple-terminal`; provider homes default to
+   `~/.codex` and `~/.claude` and expand against the destination home. a host
+   whose new settings do not resolve keeps its previous applied settings and
+   reports `invalid_host`, across restarts; membership and revocation still apply.
+   a fresh host whose first settings do not resolve refuses to start.
+6. resolved settings swap into the session manager as one snapshot under its gate
+   and affect later launches only; existing sessions keep their launch.
+7. joining adopts the destination's settings without merging; profiles of a former
+   standalone hub are copied by hand.
+8. a provisioner may own the hub's file through this same contract
+   ([consumers](#consumers)); skid has no provisioner mode.
+
+## 6. host sessions and tmux
+
+each gateway serves one host: its local default tmux server, that server's
+sessions and the processes in their panes. tmux is the store; the gateway keeps no
+session database and replays nothing. §6 to §9 are the contract of
+`internal/{sessions,tmux,group,catalog,terminalcontext,agentcontrol,agentruntime,process,quota,workdir,pressure}`.
+
+### tmux facts relied on
+
+observed on linux tmux 3.4 and darwin tmux 3.7b through 3.8; the behaviour binds,
+the versions do not. hosts run their package channel's latest stable tmux; a new
+version counts as qualified only after observation's
+[requalification](terminal-observation.md#7-requalification).
+
+- concurrent tmux clients of one session share its current window and active pane;
+  navigation in either is visible to the other. skid targets a session and never
+  moves another client's selection.
+- members of a tmux session group share windows and processes, so deleting one
+  member can leave them alive through another. skid creates no session groups.
+- `if-shell -F` inserts its chosen branch immediately after itself, and one
+  client's queue drains before tmux returns to other event work
+  ([`cmd-if-shell.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/cmd-if-shell.c),
+  [`cmd-queue.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/cmd-queue.c)):
+  a guard and its effect cannot be split by another client.
+- `set-option -s` stores a user option among the server options, which format
+  lookup checks before session, window and pane options, so a local option
+  cannot shadow the epoch
+  ([`options.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/options.c),
+  [`format.c`](https://raw.githubusercontent.com/tmux/tmux/3.4/format.c)).
+- through a tmux client, raw ctrl-j (`0x0a`) is newline without submit and raw cr
+  (`0x0d`) submits in the stock provider tuis.
+- a SIGKILLed tui emits nothing, so only tmux and kernel facts prove liveness.
+- every tmux invocation drops inherited `TMUX` and `TMUX_PANE`, so a gateway
+  started inside tmux still addresses the default server.
+
+### host invariants
+
+1. every effect on a session is one `if-shell -F -t $N` queue whose guard pins the
+   server lifetime and the session id (terminal effects also the active pane),
+   with the effect and a trailing applied marker in the same queue. a refusal
+   mutates nothing; a client failure after start means the effect may have run.
+   no gateway lock, pre-read or retry substitutes for the guard.
+2. one tmux client talks to one server for its life, so a script bracketed by
+   equal server-identity records, printed first (`B`) and last (`E`), ran on that
+   server; unequal records are `WorkspaceSourceChanged`.
+3. names, titles, launch profiles, dwarves and groups never select or authorize an
+   effect. rename, cwd change and agent replacement keep every lifetime-addressed
+   operation valid; a new server or a reused id never matches an old token.
+4. skid metadata are session-local tmux user options. a server, global or
+   global-window `@skid_*` definition makes format values unattributable, so the
+   reader falls back to `show-options -t` per session. window- and pane-local
+   definitions are unsupported and shadow undetected; skid writes none. malformed
+   optional metadata reads absent and is never repaired on read, except the dwarf
+   key.
+5. one capacity-one, context-aware manager gate serializes inventory
+   normalization, creation, rename, group, kill and recovery; an expired waiter
+   starts no tmux work. terminal reads, input and attachment take no gate: they
+   read immutable settings and are guarded in tmux.
+6. a mutation is attempted once. lost completion is `unknown` and never replayed,
+   rolled back or compensated; clients reconcile from a later inventory.
+7. terminal status describes only the current screen of a freshly recognized local
+   agent. a failed stage is `unavailable`, ambiguity is `unknown`, and neither is
+   converted into the other. shells, remote and unrecognized panes are never
+   classified.
+8. an observation describes its row's exact target: session, pane, pane pid,
+   screen size, alternate screen and foreground. a reused detection is valid only
+   while that key proves the screen unchanged.
+9. one pane's failure or refusal never fails another pane or the inventory. only
+   required facts (the tmux snapshot, normalization, the lifetime proof, the
+   budget) fail a host's inventory.
+10. no provider history, conversation identity or provider api enters inventory,
+    control or any skid store, and no conversation route exists. the one native
+    call is the read-only codex quota read.
+
+### inventory
+
+`GET /v1/sessions` runs under 5 s, covering admission, normalization, enrichment
+and projection; a late or failed required step is `500 InternalError`, never a
+partial answer.
+
+1. read: one `-N source-file -` script prints `B`, an inherited-definition probe
+   (`show-options -q` at `-s`, `-g` and `-g -w` for the five session keys), one
+   `list-sessions -F` record per session (8 builtins, the five keys as
+   `#{q:@skid_…}`, the active pane's width, height, alternate flag and window
+   activity), the probe again, then `E`. any probe line triggers one more exec
+   reading local options per session. fields are `#{q:}`-quoted with an unescaped
+   `|` terminator and decoded before record boundaries; duplicate ids and bad
+   required fields are rejected; a transcript is bounded at 8 MiB, and overflow
+   fails rather than truncates ([exec budget a1](tmux-exec-budget.md#a1-inventory-in-one-exec)).
+2. admission: when the read's server is not the last admitted lifetime, the
+   manager inspects it, stamps its epoch if it has sessions, and reads that server
+   again. the remembered lifetime is a hint; the brackets are the proof. an absent
+   server or one without sessions is an empty success; a server that vanishes or
+   is replaced after admission is `WorkspaceSourceChanged`.
+3. normalization, under the gate: dwarf repair, then automatic naming. a write
+   projects only when tmux printed its applied marker.
+4. projection, outside the gate: per row one foreground sample (agent, observed
+   profile, connection); then enrichment under one shared 2 s deadline: screenless
+   statuses and reused detections, one capture batch for every remaining agent
+   pane, and per-pane observation for each refused block
+   ([exec budget a2, a3](tmux-exec-budget.md#a2-all-captures-in-one-exec)). a batch
+   without a bracketed transcript falls back per pane and re-proves the lifetime
+   once.
+5. envelope `{machine:{handle, platform}, observedAt, recovery, profiles,
+   sessions}`; `observedAt` is taken after normalization; rows arrive in numeric
+   tmux-id order, and clients own display order.
+
+a row is `tmuxId, activePaneId, tmuxName, nameMode, identityToken,
+character{key,displayName}, attachedClients, terminalStatus, status` plus optional
+`launchProfile, agent{paneId,pid,startIdentity,provider,profile?,label?},
+connection{transport,id?}, objective, group, cwd, activeCommand, terminalUsage,
+terminalFooter`. `status` is the host-rendered presentation
+([observation §6](terminal-observation.md#6-content-attention-and-filtering)). a
+row describes the current window's active pane, so one session is one card;
+addressing other panes would need its own pane-level discovery. a connection row
+has no agent and no cwd. `attachedClients` is tmux's `session_attached`. a profile
+is `{key, label, provider?, accountScope?}`; inventories carry `profiles: []`,
+never null.
+
+### creation
+
+`POST /v1/sessions` takes `{kind:"agent", profile, cwd, optionalTmuxName?,
+objective?, group?}` or the same with `kind:"terminal"` and no profile;
+`POST /v1/sessions/{tmuxId}/shell` takes `{identityToken}`. both answer
+`201 {observedAt, session}`. terminal creation works with zero profiles.
+
+1. validation precedes any tmux effect: cwd (exact `~` or `~/…` under the service
+   home, else absolute, cleaned, at most 4,096 bytes, no C0/C1, U+2028/2029 or
+   bidi controls, an existing searchable directory), a profile of this host's
+   current settings, a name matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and unused,
+   an objective of 1–240 NFC scalars without C0/C1, U+2028/2029 or bidi controls
+   ([nfc defect](issues/xtext-nfc-validation.md)), and a canonical group label. a present but empty name, objective or group is
+   invalid; null is absent.
+2. one `new-session` queue creates the session, stamps the epoch if absent, sets
+   `@skid_profile` (agent only), `@skid_auto_name_b64` (omitted name only),
+   `@skid_character`, the encoded objective and group when supplied, and prints the
+   identity. an omitted name is the smallest free `skidbladnir-<profile>-<N>` or
+   `skidbladnir-terminal-<N>`, in automatic mode.
+3. the pane runs `skidbladnir terminal-exec <b64url cwd> <launch> <b64url shell>`
+   as direct tmux argv, and the tmux client runs in the cwd so tmux stores it for
+   later windows. terminal-exec drops inherited `SKIDBLADNIR_*` launch markers,
+   sets `SHELL`, `SKIDBLADNIR_SHELL=1` and `SKIDBLADNIR_STARTUP_{PID,CWD,HELPER,AGENT}`,
+   and execs the configured bash or zsh as a login shell. the reason: tmux expands
+   cwd formats, falls back after a failed directory entry, substitutes an invalid
+   default shell and parses trailing semicolons, and encoded argv meets none of
+   those. a shell removed after settings were applied fails only that pane with
+   `terminal startup failed`; the host reports `invalid_host` at its next settings
+   commit.
+4. `shell-init`, sourced at the end of bash and zsh login startup, runs once in the
+   intended shell before its first prompt: it removes itself and the startup
+   variables, enters the cwd (on failure it reports and stays home), and for an
+   agent launch requires tty stdin and stdout, decodes the profile's command text
+   through `agent-exec` and evaluates it once. re-sourcing and subshells cannot
+   replay it. the agent is an ordinary foreground child: its exit, failure or
+   `/exit` returns to the same shell; `exec` and `exit` keep their meaning.
+5. skid adds no provider flags, names, account variables, daemons or hooks.
+   aliases, functions, wrappers and provider settings decide execution; observation
+   metadata never overrides them; a tmux name never reaches a provider.
+6. shell-here reads the source once (lifetime, active pane, its pid and cwd, local
+   group), refuses an ssh or mosh foreground or an unavailable cwd with
+   `WorkingDirectoryUnavailable`, and creates a terminal there in that group, its
+   queue guarded by the source lifetime, so a vanished source or a new server
+   creates nothing and starts no server. the two sessions are then independent.
+7. outcome ([dispatch](#gateway-wire-invariants), item 3): failures before tmux
+   accepted the command are definite (`dispatch:not_sent`). after acceptance any failure is `500 dispatch:unknown`,
+   with `target{tmuxId,identityToken,paneId}` once the complete target was read
+   back; nothing is retried or cleaned up. `201` proves an observed session, not
+   shell or provider readiness; its status usually precedes the provider's first
+   draw.
 
 ### attach and handoff
 
-- opening a card or `skid enter` uses the exact machine/session lifetime. the
-  gateway launches one owned tmux client directly attached to that session;
-  no shadow, tmux session group, active-pane isolation, or second agent is created.
-- the identity predicate and `attach-session -E -t <id>` share one tmux queue.
-  initial effective options must be `window-size latest`, `destroy-unattached off`,
-  and `detach-on-destroy on`. unsupported options emit terminal-only
-  `TerminalConfigurationUnsupported` before `Hello`; no source option is changed.
-- the first measured resize precedes pty creation. both clients participate in
-  latest-client sizing and share window/pane navigation, screen, draft, and turn.
-  [readable sizing](terminal-readable-sizing.md) owns phone viewport behavior.
-- detach, loss, or gateway shutdown closes only the owned pty/client. the existing
-  presence monitor binds that client to the same session lifetime and ignores
-  rename. an explicit session switch closes on detection, not atomically; bytes
-  may pass before the next observation. no extra watchdog or replay exists.
+`GET /v1/sessions/{tmuxId}/terminal` upgrades to the terminal websocket
+([wire](#gateway-wire-invariants)) for the session the `Skidbladnir-Session-Identity`
+header names.
+
+1. the gateway resolves the lifetime before upgrading. the client's first text frame
+   must be a valid `Resize` within 5 s, before any pty or tmux client exists; an
+   invalid, oversized, late or closed start creates nothing, and an initial
+   `Detach` closes cleanly. the pty starts at that size.
+2. one tmux client, `-u -T RGB` under `TERM=xterm-256color`, runs
+   `attach-session -E -t $N` inside a guard pinning the session lifetime and
+   requiring effective `window-size latest`, `destroy-unattached off` and
+   `detach-on-destroy on`; otherwise the gateway sends
+   `TerminalConfigurationUnsupported` before `Hello`. attachment creates no
+   session, group or option and changes none.
+3. startup and lifetime contexts are distinct: admission and readiness (25 ms
+   polls, at most 5 s) use startup; cancelling a finished startup never kills the
+   owned client.
+4. `Hello {attachedClients, paneId, foreground?}` precedes terminal bytes: the owned
+   client's pane is read twice with a foreground sample after each, and
+   `foreground` appears only when pane and pane pid held and the samples are equal
+   and recognized. its uncertainty never refuses a valid terminal
+   ([unused identity](issues/terminal-hello-identity.md)).
+5. presence reads the owned client every 2 s and sends `Presence` on change; a
+   session switch closes the connection on detection, not atomically. detach, loss
+   or shutdown closes only the owned pty and client; the session and its processes
+   are never destroyed by detach. laptop and phone share navigation and
+   latest-client sizing, so a grid change on either resizes the shared window.
+
+### naming
+
+1. `session_name` is the only name. an omitted creation name is automatic; a
+   supplied name, a saved rename and any unmarked or externally renamed session
+   are manual. `@skid_auto_name_b64` holds base64url of the last automatic name:
+   automatic exactly while it decodes canonically to the current name. anything
+   else is manual, and a valid marker naming another name is unset by the next
+   inventory.
+2. each inventory converts the active pane's complete `pane_title` of an automatic
+   session: valid utf-8 of at most 4,096 bytes without controls, bidi controls,
+   U+2028 or U+2029; ascii-lowercased; each run outside `[a-z0-9]` one hyphen;
+   trimmed; cut to 64 and re-trimmed. an empty, invalid or non-ascii-only title
+   changes nothing. a current name already equal to the base or one of its valid
+   suffixes stays; otherwise the base, then `<base>-s<N>`, then `<base>-s<N>-2`,
+   `-3`, … from the inventory's names.
+3. a naming write is one guarded queue: lifetime, current name and marker as format
+   lookup sees them; automatic renames also the pane id and full sampled title; any
+   rename also that no other session holds the name. the rename precedes the
+   marker change, so an interruption reads manual. tmux runs with `-u` because it
+   sanitizes non-ascii output under a non-utf-8 locale; every literal crosses as
+   `#{l:}`.
+4. `PATCH /v1/sessions/{tmuxId}` `{identityToken, expectedNaming, naming}`, each
+   `{mode:"automatic"}` or `{mode:"manual", name}`. expected automatic accepts any
+   current automatic name; expected manual needs that exact current name, which may
+   lie outside skid's grammar. saving the current name while automatic switches to
+   manual; automatic resets ownership even with no usable title. `204`, then
+   inventory. a changed mode or name is `SessionNameChanged`; a held name
+   `SessionNameConflict`; a write failure on a still-valid lifetime is `500` and
+   may have applied.
+
+### dwarves
+
+every returned session carries a valid catalogue key in `@skid_character`.
+inventory repairs an absent or invalid key: among this inventory's least-used
+keys, the greatest `sha256(seed NUL key)`, with seed `epoch NUL $N` (at creation,
+the minted epoch candidate), written only while the session's format value is the
+sampled one. a lost race re-reads once: vanished is omitted, valid is accepted,
+otherwise one more guarded attempt; non-convergence fails the inventory. valid
+keys never change; the key survives rename and process replacement and never
+derives a name. only the key persists: clients derive the seal and colours from
+it ([design language §11](design-language.md#11-dwarf-seals-procedural-portraits)).
+`internal/catalog` embeds the catalogue and panics at start on an invalid or
+duplicate key.
 
 ### groups
 
-`PUT /v1/sessions/{tmuxId}/group` accepts exactly `{identityToken,group}`.
-the required string is a canonical label or empty to clear; omission/null are
-invalid. success is bodyless `204`. the gateway's mutation lock and one tmux
-queue bind assignment to server epoch/pid/start and session id, independently of
-name, pane, or foreground process. rename and agent replacement preserve the
-target; replacing the session rejects it. repeated same-value assignment and
-clearing absence are valid. concurrent writers use last applied write semantics;
-lost completion stays unknown and is never replayed automatically.
+1. a session belongs to zero or one group: a canonical label in session-local
+   `@skid_space_b64` as canonical unpadded base64url. there is no group registry,
+   id, lifecycle, launch context or tmux session group; equal labels group across
+   hosts by exact equality.
+2. canonical label: 1–64 scalars, at most 256 utf-8 bytes, NFC; no C0/C1, U+061C,
+   U+200E–200F, U+2028–202E or U+2066–2069; no edge U+0020 and no other unicode
+   whitespace; interior spaces kept. human drafts normalize to NFC at submission;
+   wire and metadata accept only canonical text. order: ascii-case-folded bytes,
+   then exact bytes; unassigned last. `group.Parse` is the authority; the phone
+   still re-checks host labels with its own mirror
+   ([issue](issues/group-label-trusted-constructor.md)), and invisible code points
+   are admitted ([issue](issues/group-label-invisible-characters.md)).
+3. NFC is plain UAX #15: x/text's whole-string normalizer inserts CGJ after 30
+   non-starters and composes across a blocking starter, so the label owner reuses
+   only its per-scalar tables. those tables follow the go toolchain (unicode 15.0
+   before go1.27, 17.0 from it); `scripts/build-host-binary` holds the go.mod
+   family and the phone pins `[:age=15.0:]`. a toolchain move changes equality for
+   newly assigned code points, and nothing checks it.
+4. `PUT /v1/sessions/{tmuxId}/group` takes exactly `{identityToken, group}` (empty
+   clears; absent or null is invalid): one guarded set or unset, `204`, last
+   applied write wins, the same value and clearing an unassigned session succeed.
+   any tmux error is `500 dispatch:unknown`; a refusal is `SessionNotFound` or
+   `SessionIdentityMismatch`; a bad label is `422 GroupInvalid`, never echoed.
+5. invalid or absent local metadata projects unassigned; globals are never
+   inherited.
 
-membership is only session-local canonical unpadded base64url metadata. invalid
-or absent local metadata projects as unassigned without repair; global options
-are not inherited. creation publishes membership in its existing queue. no group
-id, registry, launch context, lifecycle, tmux session group, or new hook exists.
+### remote context
 
-cli/tui/phone expose assignment and clearing. phone `all` uses headings; selected
-phone groups use the tab as their scope label under the accepted roster.
-json remains peer-oriented with optional `group` per row. machine/group filters
-intersect, selection/actions retain session lifetimes, and an emptied selected
-group stays selected. filtering never removes source inventory or narrows refresh
-by previously observed group membership. android uses one retained dashboard
-entry and the existing metadata mutation/read ordering; a digest-only unresolved
-group can regain its display label from later inventory. exact contracts, file
-ownership, costs, and acceptance are in [groups.md](groups.md).
+1. inside skid shells and tracked inbound connections, `terminal-context-init`
+   defines `ssh` and `mosh` functions, unless the user has one, that mint a
+   128-bit connection id and pass it as `SKIDBLADNIR_CONNECTION` with argv
+   unchanged. an interactive remote shell with a tty consumes the variable,
+   registers its session leader and sets `SKIDBLADNIR_TERMINAL_CONTEXT=1` so nested
+   shells keep the functions. forwarding the variable (ssh `SendEnv`/`AcceptEnv`
+   or tailscale `acceptEnv`) is a deployment prerequisite outside skid.
+2. a registration `{bootId, pid, startIdentity, tty}` lives at
+   `~/.cache/skidbladnir/terminal-contexts/<id>.json` (`0700`/`0600`). registering
+   first prunes other-boot, unreadable and dead records; reads never prune. it
+   holds only while the root is the same live session leader on the same nonzero
+   tty on this boot. it records association, never lifetime, status or history.
+3. the source row carries `connection{transport, id?}` and hides cwd and agent.
+   `GET /v1/terminal-contexts/{id}` answers `{observedAt, cwd?,
+   agent?{provider,profile?,label?}, connection?}` (at most 64 KiB) or
+   `404 TerminalContextUnavailable`. a further transport reports only its
+   connection; tmux or screen in the foreground is unavailable; every read is
+   bracketed by an equal process sample.
+4. clients resolve a marker across every paired peer in one 2 s pass, following
+   onward connections up to 8 hops with a cycle stop; exactly one answering peer
+   matches, none or several is `remoteUnknown`. remote facts describe; the source
+   keeps attachment, availability and every action, and no gateway calls another.
 
-### session naming
+### host interfaces
 
-the terminal identity control edits the actual tmux name. saving selects manual
-ownership, including an unchanged automatic name. `use automatic title` restores
-automatic ownership without requiring a usable current title. existing unmarked
-sessions remain manual; an observed external rename relinquishes automation.
+| tmux option | scope | value | written by |
+| --- | --- | --- | --- |
+| `@skid_server_epoch` | server | `v1-` + 32 hex | creation, first admitting inventory, recovery |
+| `@skid_character` | session | catalogue key | creation, inventory repair, recovery |
+| `@skid_auto_name_b64` | session | base64url automatic name | creation without a name, naming; unset by recovery |
+| `@skid_space_b64` | session | base64url label | creation, group route, recovery |
+| `@skid_profile` | session | launch profile key | agent creation |
+| `@skid_objective_b64` | session | base64url objective | creation |
 
-the existing inventory boundary reconciles the current active pane's complete
-title. the manager owns ascii64 conversion and collision candidates; tmux owns
-exact utf-8/literal comparison and the lifetime/name/marker/pane/title guard.
-rename precedes marker update in one queue, without rollback or replay. clients
-retain drafts, focus and attachments and reconcile only authoritative inventory.
-[the naming contract](automatic-session-names.md) owns the closed api unions,
-ownership transitions, content and acceptance.
+| entrypoint or variable | contract |
+| --- | --- |
+| `skidbladnir terminal-exec`, `agent-exec`, `terminal-context new\|register` | private; one producer each in this binary or its shell integration |
+| `shell-init`, `terminal-context-init` | `deployment/providers`, sourced by installed shell blocks |
+| `SKIDBLADNIR_SHELL=1`, `SKIDBLADNIR_STARTUP_*` | set by terminal-exec, consumed once by shell-init |
+| `SKIDBLADNIR_CONNECTION`, `SKIDBLADNIR_TERMINAL_CONTEXT=1` | connection marker and nested-shell scope |
 
-### Detach
+| package | owns |
+| --- | --- |
+| `tmux` | every tmux invocation: guarded effects, inventory and capture batches, attachment, workspace capture and reconstruction, literal encoding |
+| `sessions` | lifetimes and token admission, inventory normalization and projection, creation, naming, dwarves, group writes, terminal targets and input, recovery policy, the status domain and its presentation |
+| `agentcontrol` | inventory enrichment and reuse, the pure classifier, inspect, read, guarded send and stop |
+| `agentruntime` | profile resolution, provider recognition, account attribution and scope |
+| `process` | kernel foreground, environment, cwd and boot identity: linux `/proc`; darwin `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo` and `proc_pidpath`, never parsed `ps` |
+| `group`, `catalog` | label grammar and order; the frozen dwarf catalogue |
+| `terminalcontext` | connection registrations |
+| `quota` | the codex quota read and its wire |
+| `workdir`, `pressure` | directory admission, listing and search; pressure sampling, policy and history |
 
-detach closes only the selected machine's owned pty/client;
-the source session and its process are never destroyed by Detach. Phone loss,
-app backgrounding, and process recreation destroy only the attachment; the
-next open attaches fresh with no byte replay.
+sessions imports neither agentcontrol nor quota; the gateway composes them. log
+events: `Session.Created`, `Session.Killed`, `Terminal.ObservationFailed`,
+`Terminal.CleanupFailed`, `Workspace.RecoveryChanged`.
 
-### Kill
+### host accepted limits
 
-`DELETE /v1/sessions/{tmuxId}` routes to the selected machine and requires its
-pinned machine header, local tmux session id and inventory `identityToken`.
-the closed body contains only that token. it binds the session id to the server's random epoch
-plus built-in PID and start time. One
-tmux client command queues the epoch/PID/start-time/id predicate and
-`kill-session`; stale tokens, including after server restart and id/name reuse,
-cannot reach deletion. the gateway validates, closes its owned terminal
-connections, then revalidates and deletes. group membership is no restriction:
-only the selected session is removed; shared windows/processes may survive.
-the app confirms `close terminal only` with the exact name/machine and never combines closure and detach in the
-same gesture. There is no working/idle
-gate — the human is looking at the terminal facts; the guarantee is exactness
-of target, not semantic safety.
+- inferred status can be wrong, five-second sampling misses brief transitions,
+  and conservative unknown delays or loses idle; the grammars list each provider's
+  costs and accepted false claims.
+- launchers hide providers ([issue](issues/provider-wrapper-recognition.md));
+  deleted images are not recognized.
+- names follow titles only while some client inventories the host; titles lose
+  punctuation and unicode; a rename away and back between samples is undetectable.
+- window- or pane-local `@skid_*` definitions shadow undetected.
+- remote context is unknown without forwarding, integration or a unique answer,
+  and unavailable under an inner tmux or screen.
+- reuse and recovery residuals live in their specs.
 
-### desktop and agent controls
+## 7. observation and agent control
 
-the implemented [desktop browser](desktop-browser.md) presents one table:
-needs input ordered ready first then requests/notices, all and per-group views
-in stable order across the fleet, with forms/details in the same frame. arrows
-select views; machine filtering and the `f` jump are removed. it owns the exact selection, keys,
-geometry and return rules; no new public api
-or runtime owner. fullscreen direct attachment remains; persistent chrome during
-attachment belongs to pr 4's investigation.
-[single-line desktop rows](desktop-single-line-rows.md) keeps one line per session,
-complete status, faint metadata/location and ordered whole-field omission. full
-machine/path details remain in info; the resting footer holds notices, quota,
-pagination and ordinary action hints under [browser simplification](desktop-browser-simplification.md).
-source and isolated darwin/linux runtime pass; installed owner review remains
-pending. [preceding row qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification) and
-[v0.17.2 installed qualification](desktop-browser-simplification.md#location-refinement-installed-release)
-apply to their recorded renderers. the optional
-[displayed footer](terminal-model-effort.md) comes from the existing terminal
-sample and extends the strict shared session schema; it adds no state owner.
-ordinary commands expose list, info, enter,
-read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
-`--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
-use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
-clients read the installed machine file (`fleet.json`) from
-`${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config` selects another state directory. typed terminal handles select
-once across complete scoped inventory; `--machine` narrows that scope and `--ref`
-preserves exact captured identity for saved automation. names are creation input
-only. cli and tui consume one fleetclient projection. jarvis consumes the current
-cli with its existing exact-target/write policy. its cross-user installed-state
-access is a separately [deferred integration](issues/jarvis-installed-state-access.md). ordinary
-output uses short handles and readable machine labels; full `--json` retains
-captured refs and transport facts. skid does not provision jarvis credentials.
-[agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
-the tui's `n` chooses only a machine, initially the configured default; enter
-creates and attaches a home terminal there. `N` opens explicit new-terminal
-options. mobile retains its machine, directory, and provider chooser.
-`stop` means `stop current work`;
-`close` attempts interruption then independently closes the exact terminal. `close --terminal-only` closes the
-exact session without halt. pending provider input may remain; history is retained.
+### terminal observation
 
-### Pressure
+[observation](terminal-observation.md) owns the status meaning, screen regions,
+grammars, send admission and wait states. around it:
 
-`GET /v1/pressure` samples every five seconds. Both platforms report CPU,
-normalized load, swap, and disk. Linux additionally reports memory available
-and CPU/memory/I-O PSI; Darwin reports native current system memory pressure
-(`Normal | Warning | Critical`) and declares Linux-only signals unsupported.
-Linux's unsupported set is exactly `memoryPressure`; Darwin's is exactly
-`memoryAvailablePercent`, `cpuPsiSomeAvg60Percent`,
-`memoryPsiFullAvg60Percent`, and `ioPsiFullAvg60Percent`.
-`unsupported` is sorted, unique, and constant for a running gateway; `missing`
-contains only supported signals that failed. Absent metric keys equal the
-union of those sets.
+1. recognition: an executable whose base name is `codex` or `claude`, or a direct
+   child of the canonical `~/.local/share/claude/versions` (resolved per call;
+   linux's ` (deleted)` suffix never matches), which outranks the name. only the
+   process-group leader is examined and argv is never read, so an npm or
+   waiting-shell launcher hides its provider. older images keep matching after a
+   launcher relink: launch configuration is not recognition.
+2. account attribution: the one same-provider profile whose canonical home is
+   `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, else absolute `HOME/.codex` or
+   `HOME/.claude`, from the foreground's environment; none or several is unknown,
+   never the launch label. the read keeps only those keys and
+   `SKIDBLADNIR_CONNECTION`, is bounded at 1 MiB, rejects incomplete or duplicate
+   records, and closes with an equal foreground sample; a change discards the
+   whole sample.
+3. focused observation: one guarded read of screen size and alternate state, one
+   guarded queue capturing each selected row with its own `capture-pane -p -e`
+   while that read holds, then a foreground re-sample against the session's own.
+   inspect, guarded send and the enrichment fallback share it. an expired or
+   cancelled context is `observation_timeout` at any stage; a target change is an
+   error for explicit operations and `capture_failed` in inventory.
+4. the classifier is pure; a classifier defect panics, confined to its request,
+   and is never reported as unavailable.
+5. `sessions.PresentStatus` is the one presentation
+   ([observation §6](terminal-observation.md#6-content-attention-and-filtering)):
+   the gateway sends it as each row's `status` and go clients call it.
+6. from the same successful sample of a local agent only: `terminalUsage
+   {fiveHourUsedPercent?, sevenDayUsedPercent?}` (integers 0–100, at least one)
+   and `terminalFooter` (1–1,024 bytes, no `Cc`, `Cf`, `Zl` or `Zp`, no edge
+   whitespace). each sample replaces both; a failed or changed capture carries
+   neither, and absence means not observed. both are displayed text, never account
+   reports or execution settings, and reading them never changes status, composer,
+   rules or clipping; the grammars own their productions
+   ([codex §8](terminal-observation-codex.md#8-displayed-statusline-items),
+   [claude §7](terminal-observation-claude.md#7-displayed-statusline-suffix)).
+   `terminal/inspect` carries status only.
+7. every unavailable observation logs `Terminal.ObservationFailed` with its reason
+   and duration.
 
-WARM/HOT thresholds remain memory available 15%/8%, disk 15%/5%, normalized
-load 1.0/2.0, CPU PSI some avg60 20%/50%, and memory/I-O PSI full avg60 1%/5%
-on Linux. Darwin memory warning maps to WARM and critical to HOT. Required
-inputs are disk/load plus Linux memory/PSI or Darwin native memory pressure;
-a missing required supported signal yields `UNKNOWN`, while unsupported never
-does. CPU and swap remain display-only. Escalation is immediate and
-de-escalation advances one level after each continuous 60 seconds below the
-held level. Pressure never blocks Start. The wire returns `current` plus at
-most 180 chronological five-second samples from the last 15 minutes; the final
-history item is `current`.
+### terminal control
 
-## 5. Host architecture
+`POST /v1/sessions/{tmuxId}/terminal/{op}` takes `{identityToken, paneId}` and only
+that op's members; the gateway checks shape and bounds once. every op runs under
+10 s, and each tmux command stops waiting 100 ms after its context ends. every
+terminal supports these ops whether or not an agent is present, and status
+uncertainty never disables stop or close.
+
+| op | members | result | contract |
+| --- | --- | --- | --- |
+| inspect | `explain?` | `{terminalStatus, diagnostics?:{rules}}` | fresh resolve, one sample, 2 s; `rules` present iff explain, possibly empty; a failure after admission is `200` unavailable |
+| read | `maxBytes?` 1–32,768, default 16,384 | `{text, source:"terminal", scope:"terminal_history"\|"visible", truncated}` | the visible screen under an alternate screen, else the retained tail; a foreground change across the read is `TerminalUnavailable`; the newest text fitting one response |
+| send | `text`, `initialProfile?` | `{method:"terminal", outcome:"written"\|"unknown"}` | paste and Enter only if the sample admits it ([observation §5](terminal-observation.md#5-controls-and-diagnostic-api)); `initialProfile` also needs that observed profile, idle and no notice, else `initial_not_ready` |
+| text | `text` | write receipt | deliberate paste and Enter |
+| keys | 1–16 of `enter escape ctrl-c up down left right tab backspace page-up page-down` | write receipt | deliberate keys |
+| stop | none | write receipt | one key, never repeated or escalated: escape to local codex, ctrl-c otherwise |
+| close | none | `{interrupt:written\|not_sent\|unknown, terminal:closed\|not_closed\|unknown}` | validate the lifetime, one stop, end owned connections, delete the exact session |
+
+text is nonempty valid utf-8 of at most 32 KiB, without NUL. `DELETE
+/v1/sessions/{tmuxId}` with exactly `{identityToken}` is close without the
+interrupt: one guarded `kill-session` queue after the gateway closes its owned
+connections, answering `204`. only the selected session is removed; shared windows
+or processes of a tmux session group may survive. there is no working or idle gate:
+the guarantee is the exactness of the target, not semantic safety.
+
+1. input is staged in a unique tmux buffer before the final foreground
+   revalidation; paste (bracketed) and Enter run in one guarded branch that also
+   requires a live pane; a refusal runs neither, and cleanup removes only that
+   buffer within 1 s. provider-specific input (send, stop to an agent) revalidates
+   the agent and foreground; text and keys need terminal authority only.
+2. bytes written prove terminal delivery only, not a program's or provider's
+   acceptance, submission or completion. ctrl-c and closure prove no cancellation.
+   no step joins job control, the screen read and consumption, and no supervisor
+   pretends to.
+3. close inside its 10 s: validation ends 2 s before the deadline; the interrupt
+   gets at most 2 s, ending by deadline − 8 s; connection cleanup at most 6 s,
+   keeping the last 2 s for deletion; each phase has its own context; cleanup
+   failure is logged and never vetoes deletion. `not_closed` means refused before
+   deletion; `unknown` means possibly deleted. closure proves nothing about
+   shared-window, background or remote work.
+4. wait is a client loop over inspect: capture the target once, sample at once and
+   every 5 s, 60 s by default, at most 1 h, matching the states
+   [observation §5](terminal-observation.md#5-controls-and-diagnostic-api)
+   defines. an unavailable sample fails the wait; `TerminalTargetChanged`,
+   `SessionNotFound` or `SessionIdentityMismatch` end it `target_changed`. provider
+   exit or restart in the same pane is the same target.
+
+accepted limits: terminal input is not atomic with consumption; remote panes get
+generic controls only.
+
+## 8. workspace recovery
+
+[the spec](session-recovery.md) owns the recipe, the restore algorithm and the
+failure vocabulary. the contract:
+
+1. the recipe is never inventory, status or authority; tmux stays the store. a
+   gateway or client restart while the server survives only re-lists it.
+2. loss is proven only by a changed boot identity, or the saved server pid absent
+   or reused (kernel start identity). a missing socket or a failed observation
+   proves nothing.
+3. restoration targets only an absent or empty server, after durably claiming the
+   confirmed recipe (`attempted=true`), and rebuilds fresh shells at their saved
+   local cwds. it runs at most once per claim and is never merged, rolled back or
+   replayed; the user resumes agents and conversations.
+4. one writer holds a flock on `workspace.lock`. recovery starts after the listener
+   and reconciles every 30 s and after each confirmed create, shell, rename, group
+   and kill, under the manager gate. a checkpoint failure never changes a confirmed
+   mutation's outcome.
+5. every inventory carries `recovery {state:"tracking"|"recovered"|"delayed"|"broken",
+   savedAt?, failure?{at,phase,cause}, notice?{summary,action?}}`. `savedAt` is the
+   capture time of the last confirmed recipe; delayed retries on the tick; broken
+   latches for the process lifetime; the host renders `notice`, clients add the
+   host and the local save time. failed recovery leaves live inventory
+   authoritative, and clients never use a recipe as inventory or revive old
+   terminal authority from it.
+
+## 9. quota, pressure and directories
+
+### account quota and usage
+
+1. `GET /v1/profile-usage` reads every codex profile, unused ones included, in
+   configured order, concurrently under one 5 s deadline: a websocket over
+   `<home>/app-server-control/app-server-control.sock`, then `initialize` (client
+   `skidbladnir`), `initialized` and `account/rateLimits/read`, with no close
+   handshake. server messages are skipped, never answered. it never starts,
+   restarts, logs into or updates a daemon, runs no tmux and dispatches nothing to
+   conversations.
+2. it answers `{machine, observedAt, profiles:[{key, label, provider, accountScope?,
+   readState:"ok"|"unavailable", report?:{reportedAt, fiveHour?, sevenDay?:
+   {usedPercent, resetsAt?}}}]}`, `[]` without codex profiles. only the
+   `rateLimits` default snapshot counts; windows are named by `windowDurationMins`
+   300 and 10080, never position; unknown durations are skipped; a duplicate, a
+   non-integer token or a reset outside years 1–9999 makes that profile
+   unavailable; frames are at most 4 MiB. a report dated after `observedAt` is
+   dropped; a settings change during the reads fails the route.
+3. `accountScope` is lowercase hex `sha256(provider NUL canonical home)`: local
+   configuration scope, not a verified account; omitted when the home cannot be
+   resolved.
+4. the owner guarantees that one profile key is one account on every host; usage
+   selection rests on that ([desktop usage](#desktop-usage)). windows are never
+   spliced or summed, remote clocks never compared, and usage never gates
+   admission, readiness or controls.
+
+### pressure
+
+`GET /v1/pressure` returns `{unsupported, current, history}`, sampled in process
+every five seconds. both platforms report cpu, normalized load, swap and disk.
+linux also reports memory available and cpu, memory and i/o psi; darwin reports
+native system memory pressure (`Normal | Warning | Critical`). linux's
+`unsupported` set is exactly `memoryPressure`; darwin's is exactly
+`memoryAvailablePercent`, `cpuPsiSomeAvg60Percent`, `memoryPsiFullAvg60Percent` and
+`ioPsiFullAvg60Percent`. `unsupported` is sorted, unique and constant for a running
+gateway; `missing` holds only supported signals that failed; absent metric keys
+equal the union of the two.
+
+warm/hot thresholds: memory available 15%/8%, disk 15%/5%, normalized load
+1.0/2.0, cpu psi some avg60 20%/50%, memory and i/o psi full avg60 1%/5% on linux;
+darwin's warning is warm and critical hot. required inputs are disk and load plus
+linux memory and psi or darwin memory pressure; a missing required supported
+signal yields level `Unknown`, an unsupported one never does. cpu and swap are display
+only. levels escalate at once and step down one level per continuous 60 s below
+the held level. pressure never blocks creation. history holds at most 180
+chronological samples from the last 15 minutes; its last item is `current`.
+
+### directories
+
+listing and search admit what creation admits and cache nothing; neither starts
+tmux, a shell, an agent or another gateway.
+
+- `POST /v1/directory-listings {directory}` takes a browse token: exactly `~` or
+  `~/c1/…/cn` with no empty, `.` or `..` component, at most 4,096 bytes of valid
+  text; anything else is `InvalidRequest`. it answers `{machine, directory,
+  parentDirectory?, children:[{directory, kind}], omitted}`: the token's immediate
+  child directories, read through an `os.Root` at home so nothing escapes it. a
+  symlink is listed as `SymbolicLink` only when its relative target resolves
+  lexically inside home to a searchable directory; files, links to files,
+  absolute or escaping links are skipped, and unreadable or unsearchable
+  directories set `omitted`. children sort ascii-folded, then exact. more than
+  4,096 scanned entries, 256 children, 32 KiB of path text or a 64 KiB response is
+  `DirectoryListingTooLarge`, with no partial result; an unreadable token is
+  `DirectoryListingUnavailable`. a listing is advisory: creation validates again,
+  and an entry may change kind under it ([fifo hang](issues/directory-listing-fifo-hang.md)).
+- `POST /v1/directory-searches {terms}` runs the `zoxide` found on serve's `PATH`
+  (`query --list -- <terms>`): 1–8 terms without whitespace, at most 256 bytes,
+  under 1.9 s, stdout at most 64 KiB. it answers at most 64 existing searchable
+  absolute paths in zoxide order within 32 KiB, `omitted` when any were dropped; no
+  zoxide is `DirectorySearchUnavailable`, an oversized answer
+  `DirectorySearchTooLarge`. zoxide's own bookkeeping may update its database on
+  query.
+
+## 10. gateway wire and errors
+
+admission, in order, for every request: an unescaped `/v1` path; bearer
+authentication; machine binding; no query; a declared body of at most 64 KiB; a
+canonical path matching one route (anything else, `HEAD` and trailing slashes
+included, is 400). `/v1/fleet*` and `/v1/local/*` go to fleet, which admits its
+own; `/v1/notifications/*` go to the hub's notifier.
+
+| route | section |
+| --- | --- |
+| `GET /v1/sessions` | [inventory](#inventory) |
+| `POST /v1/sessions`, `POST /v1/sessions/{tmuxId}/shell` | [creation](#creation) |
+| `PATCH /v1/sessions/{tmuxId}` | [naming](#naming) |
+| `PUT /v1/sessions/{tmuxId}/group` | [groups](#groups) |
+| `GET /v1/sessions/{tmuxId}/terminal` | [attach and handoff](#attach-and-handoff) |
+| `POST /v1/sessions/{tmuxId}/terminal/{op}`, `DELETE /v1/sessions/{tmuxId}` | [terminal control](#terminal-control) |
+| `GET /v1/terminal-contexts/{connectionId}` | [remote context](#remote-context) |
+| `POST /v1/directory-listings`, `POST /v1/directory-searches` | [directories](#directories) |
+| `GET /v1/profile-usage` | [account quota](#account-quota-and-usage) |
+| `GET /v1/pressure` | [pressure](#pressure) |
+| `/v1/fleet*`, `/v1/local/*` | [fleet](#fleet-interfaces) |
+| `/v1/notifications/*` | [notifications](#notification-interfaces) |
+
+### gateway wire invariants
+
+1. request bodies are `application/json`, decoded strictly (`internal/strictjson`):
+   duplicate or unknown members, invalid utf-8 and trailing data are 400, oversize
+   413; a `null` member reads as absent. responses are same-release data decoded
+   tolerantly ([rules](rules.md#trust-boundaries)): an undecodable response is a
+   lost one, so an observation shows that machine unavailable and a possibly
+   dispatched mutation is `unknown`. the one exception is the phone's terminal
+   websocket frames, decoded with exact keys and exact error copy
+   ([terminal connection](#terminal-connection)).
+2. each json document is declared once in go: `internal/api` holds the inventory,
+   session, terminal-operation, profile-usage and error documents; pressure,
+   directory, notification (`internal/attention`) and websocket
+   (`internal/terminal`) documents belong to their producers. kotlin declares its
+   own readers by hand; there is no codegen, digest or schema lock. optional
+   members are omitted, never `null`.
+3. errors are `{code, message, dispatch?, target?}`. `not_sent` means no effect
+   happened; `unknown` means one may have, and no client replays it. a session
+   mutation route's error defaults to `not_sent` unless its handler says
+   `unknown`; rename has no default, because its internal error can follow a
+   naming effect. `target` appears only on a creation's `InternalError` with
+   `unknown`, once the new session's lifetime and pane were captured; a lost
+   creation response yields no target, and nothing invents one. producers own the
+   copy (`internal/gateway/errors.go`, `internal/auth`, fleet, notifier); clients
+   show it and branch on codes.
+4. status classes: 400 malformed; 401 authentication, with
+   `WWW-Authenticate: Bearer`; 404 absent session or context; 409 changed identity,
+   name conflict, machine mismatch or refused terminal input; 413 oversize; 422
+   domain validation; 503 hub or notification state unavailable; 500
+   `InternalError`, content-free, for every unmodeled defect.
+5. the terminal websocket takes the inventory `identityToken` in
+   `Skidbladnir-Session-Identity`, never a query. client text frames are
+   `Resize | Detach`, gateway text frames `Hello | Presence | Error`; binary frames
+   carry pty bytes both ways (`internal/terminal`). `TerminalConfigurationUnsupported`
+   is a frame, not an http error. one socket owns one tmux client; a write stalled
+   for 5 s ends it, and the gateway pings every 10 s, releasing a peer silent for 5 s
+   more; there is no replay or gateway scrollback, and any loss means reconnect.
+6. bounds that cross components: request body and terminal frame 64 KiB; geometry
+   20–1024 × 5–512 cells. feature bounds live with their owners.
+7. each request logs one `Request.Completed` with method, route pattern, status,
+   duration and error code; no diagnostics enter http documents.
+
+### error codes
+
+| code | status | meaning |
+| --- | ---: | --- |
+| `InvalidRequest`, `RequestTooLarge`, `Unauthenticated` | 400, 413, 401 | admission |
+| `MachineIdentityMismatch` | 409 | the machine header names another installation |
+| `WorkingDirectoryInvalid`, `WorkingDirectoryUnavailable` | 422 | creation cwd, by grammar or by existence |
+| `ProfileUnknown`, `SessionNameInvalid`, `ObjectiveInvalid`, `GroupInvalid` | 422 | creation, rename or group input |
+| `SessionNameConflict`, `SessionNameChanged` | 409 | naming |
+| `SessionIdentityMismatch` | 409 | the token names another lifetime |
+| `SessionNotFound` | 404 | no such session |
+| `TerminalTargetChanged`, `TerminalUnavailable`, `TerminalInputBlocked` | 409 | terminal control; a blocked input's message names its reason (`dialog`, `draft`, `initial_not_ready` or `unknown`); there is no reason member |
+| `TerminalContextUnavailable` | 404 | no live registration |
+| `DirectoryListingUnavailable`, `DirectoryListingTooLarge`, `DirectorySearchUnavailable`, `DirectorySearchTooLarge` | 422 | directories |
+| `NotificationsUnavailable` | 503 | hub notification state |
+| `InternalError` | 500 | an unmodeled defect |
+
+token admission order: a malformed id is not found; a malformed or foreign token
+is a mismatch; no server or an absent id is not found; another server is a
+mismatch. create, shell, group, delete and terminal routes answer errors as
+`dispatch:not_sent` unless an effect may have run: possibly written input,
+possible deletion, accepted creation and failed group writes are
+`dispatch:unknown`. fleet codes are listed under [fleet](#fleet-interfaces).
+
+## 11. desktop clients
+
+the desktop is four go packages over the same gateways the phone uses. there is no
+desktop daemon and no desktop state on disk: every fact comes from a gateway
+inventory, the hub's notification state or `fleet.json`, and is rebuilt each run.
+
+| owner | owns |
+| --- | --- |
+| `internal/fleetclient` | peer routing from `fleet.json`, one http/websocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution, the shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `CloseText`, `RecoveryNotice`) |
+| `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes |
+| `internal/sessionui` | the browser: one bubble tea model holding peers, one selected view, one cursor, one page and at most one pending operation |
+| `internal/terminalclient` | lending the local tty to one exact session over the terminal websocket, and acknowledging that visit |
+
+### desktop concepts
+
+- **peer**: one fleet machine as `fleet.json` lists it: label, handle, origin,
+  bearer. the roster follows `fleet.json`, re-read every tick; clients never write
+  host state.
+- **row**: one session with its peer's label, handle, inventory `observedAt` and
+  availability (the peer's current inventory succeeded).
+- **execution context**: where a row's work runs: `local` (this host's pane cwd and
+  agent), `remote` (the host that answers for an ssh/mosh connection chain) or
+  `remoteUnknown`.
+- **status view**: the host's copy plus two client overlays: stale
+  (`last observed: <label>`, muted, never ready) and ready.
+- **captured target**: the reference and display names a page pins when it opens
+  (confirmation, info, editors, creation drafts).
+
+### desktop invariants
+
+1. at most once. a write is sent at most once: no retry, no redirect, and requests
+   carry no `GetBody`, so net/http cannot resend. once a write may have left, any
+   failure without a definite gateway rejection is `dispatch: unknown`. no cli or
+   browser path repeats an unknown write; a later deliberate command is a new
+   write.
+2. exact targets. every effect is addressed by a captured reference. names, labels,
+   row positions, rendered or shortened paths and provider text never become
+   identities, mutation inputs or inferred facts. pages keep their captured target
+   through refresh, rename, reorder and pane change; an unavailable or replaced
+   lifetime disables the action instead of retargeting it; the gateway rechecks
+   lifetime and pane.
+3. one resolution. a handle resolves once per invocation over one complete
+   inventory of its scope (`--machine` narrows it). an exact reference needs no
+   inventory, except `info`, which reports its row.
+4. tolerant same-release reading. responses decode with plain `encoding/json`:
+   null is absent, unknown keys are ignored. the client checks only what it
+   branches on: the answering machine handle, ids that form a reference, and the
+   closed enums (status, name mode, provider, read state, write and close
+   outcomes). a failed check rejects the whole document as `protocol_error`, a lost
+   response: the peer reads unavailable and a possibly sent write is unknown.
+5. availability. only the owning peer's current successful inventory admits a
+   row's actions. a mutation fences its peer's reads (a **fence** makes every
+   reply sampled before it stale) until the mutation's own post-write read, so a
+   reply sampled before the write cannot restore eligibility; that peer's rows
+   read `checking` meanwhile. `Unauthenticated` or `MachineIdentityMismatch` from
+   any call invalidates the whole host at once.
+6. one read per stream. per peer at most one inventory read and one remote-context
+   pass are in flight; the browser also has one hub notification read and one
+   usage read. a manual refresh during a read owes one trailing read; ticks skip
+   busy streams. entering a terminal fences and cancels every browser read.
+7. fleet-wide views. every view, group suggestion and failure notice uses the full
+   retained fleet; there is no machine scope. a failed host's rows stay as last
+   observed, also while it is re-read, and its notice shows in every view. a host
+   not yet observed, or re-read after the browser's own write, reads `checking`,
+   never `unavailable`.
+8. ready is the hub's verdict. a row reads `ready` only if its host renders it idle
+   without interaction, its inventory is fresh, the last hub read succeeded after
+   the browser last regained the screen, and the hub's pending ready names the same
+   foreground (provider, pid, start identity). the cli keeps no notification state
+   and never prints `ready`.
+9. creation. confirmed creation (`n`, `N`, `T`) reveals and selects the returned
+   lifetime, leaving needs input or a non-matching group for its actual group,
+   then attaches it. failed or unknown creation changes no view or selection and
+   is never retried; attachment failure leaves the new terminal selected, and retry
+   means attach. a closing browser never enters what it created.
+10. return. detach resumes the same view, selection and scroll, then refreshes.
+    restarting skid begins at `all`, first row.
+11. display text. every external string is sanitized with `attention.SingleLine`
+    and measured in display cells before styling. styled fragments never pass back
+    through sanitization, which maps ESC to a space. colour never carries meaning
+    alone; `NO_COLOR` strips styles, never words.
+12. the tty is lent, not shared. while attached the browser draws nothing and reads
+    no input. before returning, terminalclient cancels and joins both readers and
+    restores the local tty (cooked mode, remote-set presentation modes reset), also
+    after transport loss.
+13. quota is evidence only: usage never supplies readiness, attention, admission
+    or control.
+
+### desktop interfaces
+
+- **files**: clients read `fleet.json` (written only by serve) from
+  `${XDG_STATE_HOME:-~/.local/state}/skidbladnir`; `--config DIR` selects another
+  state directory. the creation default is the hub configuration's
+  `default_machine`, else this machine. opening the browser asks the local service
+  to apply the hub's configuration (`POST /v1/local/apply`, 10 s, failure ignored;
+  `skid status` reports it).
+- **gateway calls**: every request carries `Authorization: Bearer` and
+  `Skidbladnir-Machine`; the terminal websocket adds `Skidbladnir-Session-Identity`.
+  request bodies are at most 64 KiB; responses at most 64 KiB, inventories 1 MiB.
+  an operation has 15 s, a directory search 2 s, a remote-context pass 2 s, a hub
+  call 3 s. no proxy; redirects are never followed.
+- **remote context**: for an ssh/mosh row the client follows the connection chain
+  through `GET /v1/terminal-contexts/{id}` on every unfailed peer
+  ([remote context](#remote-context), item 4).
+- **hub**: the browser reads `GET /v1/notifications/state` each tick; a visit sends
+  `POST /v1/notifications/handled {slot, episode, readyGeneration}` for the row
+  read at entry, and the hub ignores a stale capture
+  ([notifications](#12-notifications)).
+- **terminal websocket**: the client requires a 20–1024 × 5–512 tty, sends `Resize`
+  before anything else and waits at most 15 s for `Hello` or `Error`. binary frames
+  are pty bytes both ways; `Presence` is ignored. `ctrl-] d` sends `Detach`;
+  `ctrl-] ctrl-]` sends one `0x1d`; every other byte, `ctrl-c` included, reaches
+  the remote program. SIGWINCH resends `Resize`; SIGINT, SIGTERM and SIGHUP end
+  the visit. each write has 5 s and is never repeated.
+
+### cli
+
+`skid --help` (`internal/agentcli/run.go`) is the command reference and ends with
+an automation guide; dev-server keeps only a pointer to it. ordinary commands are
+`list`, `info`, `enter`, `read`, `send`, `text`, `keys`, `wait`, `stop`, `close`,
+`start`, `shell` and `group`, beside the fleet commands of [§4](#fleet-interfaces)
+and `update`/`uninstall`.
+
+- **targets**: a handle is `t-` plus the hex of the first 8 bytes of sha256 over
+  `["skid-terminal-handle", machine, tmuxId, identityToken]`. it names a lifetime,
+  not a pane, so it resolves to the session's current pane; collisions are not
+  promised away, and a selector over an incomplete inventory refuses. `--ref` takes
+  a full reference as base64url json, at most 4,096 characters, admitted only if it
+  re-encodes identically; it pins lifetime and pane, so automation captures it once
+  and reuses it. names are creation input only; any other target text is
+  rejected before any effect.
+- **output**: exit 0 only for a confirmed outcome; 1 for any failure, unknown
+  delivery, partial list or close, or unmatched wait; 2 for invalid input or a
+  missing tty. `--json` writes one envelope, `{ok:true, result}` or
+  `{ok:false, error{code, dispatch, target?}}`, with full refs; control results
+  are bounded at 64 KiB and list at 1 MiB, over which a result becomes
+  `output_limit` ([list limit](issues/list-json-output-limit.md)). ordinary output
+  uses handles and machine labels; `read` prints text on stdout and its metadata on
+  stderr.
+- **groups**: `list --group LABEL | --unassigned` filters locally after decoding and
+  never narrows the lookup; `start --group LABEL` and `group TARGET --set LABEL |
+  --clear` send the typed draft; `--set` acknowledges `{group}` after `204`.
+- **info**: one row's facts; `--explain` inspects the same target and prints the
+  status, reason and rule ids from that sample, replacing the row's status and
+  clearing its usage and footer, which inspect does not carry.
+- **wait** follows [terminal control](#terminal-control), item 4.
+- **stop** interrupts; **close** interrupts, then closes regardless, reporting both;
+  `close --terminal-only` closes without interrupting.
+- **start**: `start [NAME] --machine HOST (--profile PROFILE [--stdin] | --terminal)
+  [--cwd DIR] [--group LABEL]` creates once, then, with `--stdin`, inspects only its captured terminal every 500 ms
+  within the one 15 s start budget and sends the prompt once, only when the
+  terminal reads idle with no interaction or notice; a request or notice ends it
+  `TerminalInputBlocked` with `not_sent`, and the gateway's `initialProfile` guard
+  re-checks. an initial prompt is bounded by the terminal text bound, checked before
+  creation and again before input, and never truncated. the result keeps creation (`not_sent | created | unknown`) and
+  prompt (`not_requested | not_sent | unknown | <send outcome>`) as separate facts
+  and carries the target and handle once creation captured them; a partial attempt
+  exits nonzero with its facts. `written` proves terminal delivery, not provider
+  acceptance; a cold startup can return `created` with the prompt `not_sent`.
+- **consumers**: jarvis or the owner decides reuse, steering and waiting. skid
+  enforces no workflow, reservation or reply protocol, keeps no durable receipts,
+  and never certifies task completion; longer waits and persistence belong to the
+  caller.
+
+### views and the needs-input queue
+
+shared with the phone. views are exclusive, never intersecting filters, in this
+order: `needs input`, `all`, the observed named groups in `group.Compare` order,
+then unassigned. a selected group stays while empty; a label appearing or
+vanishing moves tabs, never the view. built-in views and same-named groups remain
+distinct: views are typed values, never indices or label text.
+
+needs input holds fresh local agents in two tiers. ready ([desktop invariant 8](#desktop-invariants),
+[phone](#phone-invariants)) comes first; then action: any request, or a current
+error or interruption notice, whatever the activity. a request or notice outranks
+a stored ready. a menu alone, quiet idle, starting, working, unknown, stale or
+checking rows, terminals and remote agents stay out. a menu that hides a
+qualifying notice keeps `menu open` and appends the notice (`· error shown`), so
+its inclusion is visible. ties keep each client's stable session order. membership
+derives from typed facts, never rendered strings or colours.
+
+a row leaves when its last reason ends: ready when a visit's output acknowledges it
+or fresh non-idle replaces it; a request or notice when a fresh observation no
+longer shows it. a replaced foreground never inherits ready. selecting, opening
+info, changing views and failed entry acknowledge nothing; opening a terminal never
+answers a request or clears a notice; there is no manual dismiss; tmux visits
+outside skid acknowledge nothing. `all` and group views keep group, then session
+order, and include terminals and stale rows; only `all` draws group headings.
+group choices come from the complete retained inventory, not the queue. a hub read
+failure hides ready, keeps requests and notices, and shows
+`notifications unavailable` outside every view. the queue is a human view, never
+control admission: `wait --state needs-input` stays the explicit-request
+predicate.
+
+### browser
+
+row 1 is the reversed ` skid ` wordmark and the view strip; below the body come
+notices, the usage summary, one rule and key hints. visual values are in
+[design language §17](design-language.md#17-terminal-browser). the minimum is
+80×24; below it the browser keeps all state, draws only the size notice and the
+outcome, and admits only `ctrl-c` and the keys that close or cancel the page.
+
+**strip.** `needs input`, `all` and the current label never hide or truncate.
+other group labels share one cap, 24 cells down to 7, chosen so stepping between
+groups never changes it; past the floor the groups farthest from the current view
+hide behind counted `←n` and `n→`. from 80 columns row 1 fits one line. left and
+right step through it and clamp, never wrap; a new view keeps the selected session
+if it holds it, else selects its first row; a refresh follows the exact lifetime,
+else clamps the former index.
+
+**rows.** one session per line at every supported size. the owner fixed this
+priority, which is also the display order: `name → status → group → provider →
+profile → model/effort → machine/path`. lower fields are omitted whole before
+higher ones shrink, and a nonfitting field is never skipped to rescue a later one;
+a faint `…` at the right edge means a present field was omitted, while ordinary
+elision of a name, group or path does not.
+
+- names share one width across the whole collection (at most 28 cells, end
+  ellipsis); tmux names may be any length, and info shows them whole.
+- status is never clipped. the widest cell, `last observed: status unavailable`, is
+  33 cells, so name and status take at most 65 of the 78-cell body at 80 columns,
+  68 with the marker; a status vocabulary change must recheck this bound.
+- group appears only in needs input; provider, profile (`unknown` when not
+  attributed) and displayed model/effort are whole or omitted. model/effort reads
+  `—` for a recognized agent without a footer and is absent for terminals and
+  unresolved remotes.
+- location is the execution context's machine (at most 16 cells) and the cwd's
+  last two components, taken lexically (no lookup, home substitution or
+  normalization), shown only when at least `min(8, width of the shortened path)`
+  cells remain for it; never provider footer text, which may repeat the cwd as a
+  separate observation. an unresolved or stale remote row reads
+  `remote context unknown`.
+- a group heading never dangles: an interior transition admits gap, heading and
+  first session together.
+
+**keys.** escape closes or cancels a page and does nothing on the table; `q` quits
+from the table; `ctrl-c` quits from any page, discarding drafts. while an operation
+is in flight every key, `ctrl-c` included, is refused with
+`operation in flight; delivery will be reported`. `ctrl-r` refreshes inventory, and
+on the table also usage. the rest is in the help text.
+
+**actions.**
+- `s` and `x` open a confirmation pinned to the captured name, host and pane. its
+  title and literal effect stay fixed while the facts scroll; it promises no stop.
+  enter dispatches at any scroll offset if the lifetime is still available.
+- `T` (available local rows only) sends `shell` with the captured reference; the
+  host samples the source's cwd and group. a remote row refuses, without dispatch
+  or fallback, pointing at `n`.
+- `n` opens a machine-only chooser at the configured default, never the cursor's
+  host, the last choice or the first reachable one. it cycles every configured
+  machine in order, unavailable ones included; refresh changes availability, never
+  the choice. enter sends `{kind: terminal, cwd: "~", group?}` (the current named
+  view's label, omitted otherwise) only to an available machine; checking and
+  unavailable refuse in place, a known error taking precedence. the host expands
+  home and names the session; `201` proves creation, not shell readiness.
+- `N` offers machine (available ones only), launch, name (blank follows the
+  terminal title), directory and group, then an explicit `create`. directory:
+  empty is home; `/…` and `~…` are literal; other text is search words sent to the
+  host after 150 ms. typing supplies choices, ←→ cycles, tab or enter accepts and
+  advances without dispatch, shift-tab returns without accepting, `ctrl-u` clears
+  to home or unassigned. a highlighted choice enters the draft only when accepted,
+  and only an accepted match or literal can be submitted. editing, machine change,
+  focus loss or cancellation invalidates a pending search, so a late reply never
+  fills another draft. group suggestions come from observed labels, ranked as on
+  the [phone](#creation-sheet). the group editor's `ctrl-s` saves the typed draft.
+
+**info and editing.** space opens info on the selected row, available or not. info
+pins its lifetime independently of the table; refresh updates its facts without
+retargeting. when the session leaves inventory or its host fails, info keeps the
+last facts with `state: last observed: …` and `availability: unavailable` (or
+`checking`). `r` and `g` edit from info only. an editor resolves its lifetime from
+full inventory, sends one write and returns to info after the post-write read;
+views never change. while it checks, its draft and uncertainty survive escape to
+info and block another edit; `N` stays available. a matching fresh state resolves
+it (an unknown write says `request outcome unknown; requested metadata observed`);
+a differing state keeps the draft for review; a definite rejection never becomes
+success because another writer matched. saving a name selects manual naming, even
+for unchanged text; `ctrl-a` restores automatic naming; automatic reconciliation
+compares ownership, never a predicted title; a changed name or ownership keeps the
+draft with a conflict notice and a fresh expectation. creation results attach to
+an older peer receipt without usage or footer; the next inventory supplies them.
+
+**notices.** the outcome notice comes first, then `notifications unavailable`, then
+each failed host (`<host> unavailable (<code>)`), each checking host and recovery
+notices. a host failure never replaces the outcome, so an unknown result stays
+visible. start failures prefix the chosen host.
+
+### desktop usage
+
+- two streams, both blind to views: inventory (every 5 s) carries each session's
+  terminal usage; the native stream reads `GET /v1/profile-usage` on every peer
+  each minute, immediately on opening or leaving the usage page, and only while the
+  table or usage page shows. neither clears the other's facts.
+- one whole observation per profile, never windows spliced from several; a newer
+  partial report replaces an older complete one. codex: a fresh native report with
+  a live window, else fresh terminal evidence, else the retained native report as
+  diagnosis, else stale terminal evidence. claude: terminal evidence only. terminal
+  evidence is, per host, the matching local session with the most known windows
+  (ties: numeric tmux id), and across hosts the latest client receipt (ties: the
+  smaller machine handle). without a candidate a profile reads `unavailable` after
+  a failed read, else blank.
+- values show remaining capacity; terminal-sourced values carry `~`. a window is
+  stale at one hour: native age is `observedAt − reportedAt` plus client monotonic
+  time since receipt; terminal age is only the time since the inventory that
+  carried it. a failed host or profile read makes a retained report stale at once;
+  stale numbers are hidden. resets count down from host timestamps plus client
+  monotonic time, never comparing host clocks; at or past reset a window reads
+  `awaiting update` and never infers replenishment.
+- the footer shows each profile's weekly window; the usage page hides the view
+  strip and adds the 5h window when reported; `ctrl-r` is ignored there.
+
+### desktop errors
+
+- `dispatch` is `not_sent` before transmission, for client refusals and for known
+  gateway rejection codes; a write's other failures are `unknown`. a body's own
+  dispatch wins. an unknown error code is still the gateway's answer and keeps its
+  dispatch; an empty code or unknown dispatch fails the decode.
+- client codes: `machine_unknown`, `unavailable`, `protocol_error`, `input_limit`,
+  `output_limit`, `handle_not_found`, `handle_ambiguous`, `inventory_incomplete`,
+  `terminal_unavailable`, `readiness_timeout`, `cancelled`, `configuration_invalid`,
+  `invalid_input`, `input_unavailable`; gateway codes pass through
+  ([error codes](#error-codes)). `fleetclient.ErrorMessage` owns the wording both
+  clients print.
+- a create whose follow-up failed after the host created it reports `created` with
+  the new handle; uncertain creation reports `unknown`, to inspect, never relaunch.
+
+### desktop accepted limits
+
+- while attached the browser's chrome and status are gone; navigation needs detach.
+- `ctrl-c` is refused in flight for up to 15 s; a held `ctrl-c` then quits as soon
+  as the outcome lands, possibly unread, and a restart keeps no record. after `n`,
+  `N` or `T` the new terminal still attaches: detach, then quit. a reflexive
+  `ctrl-c` after `ctrl-] d` quits skid.
+- duplicate suppression lasts only while an action is in flight; a later `n`
+  creates another terminal. there is no exactly-once creation or remote
+  cancellation.
+- `n` restarts at the default and costs an enter even with one machine;
+  unavailable machines stay in its cycle; first creation waits for inventory, with
+  no optimistic bypass.
+- strict field priority can hide machine and path and leave cells unused; the
+  shared name width spends cells on short names; end ellipsis and two-component
+  paths let prefix twins collide (info resolves them); secondary columns do not
+  align.
+- group views hide other groups and do not sort by urgency; labels share one cap,
+  can read like built-in views, and may differ only in invisible characters.
+- ready and the queue are sampled inference: unknown can hide a request; a notice
+  persists after inspection until the screen changes; a deliberate interruption
+  qualifies; an agent exit raises nothing ([issue](issues/agent-exit-attention.md));
+  an empty queue is not health. tie order differs between clients.
+- claude quota loses sub-percent precision (up to one point optimistic) and has no
+  resets or provider age, so recently captured old values look fresh; whole
+  replacement can discard an older complete window; countdowns step every 5 s.
+- refresh shows no progress; hints are written per page and can drift from
+  dispatch.
+- faint varies by terminal and vanishes under mosh; bright yellow is weak on light
+  themes; `▌`, `←`, `→` and `…` are east-asian-ambiguous, so such a terminal can
+  wrap row 1.
+- a cancelled browser can race its input reader
+  ([issue](issues/bubbletea-canceled-input-race.md)); sigterm can be ignored
+  ([issue](issues/tui-sigterm-hang.md)).
+
+### desktop rationale
+
+- one table with a strip of views: an agents sidebar would be a second rendering of the
+  same rows with its own cursor; the strip gives left and right a visible referent
+  and names views, never sessions. digits or tab cycling would name different
+  views on different days, since tabs come from observed labels.
+- no badges, counters or attention row: status is sampled and incomplete, so a
+  missing badge would claim that nothing needs you.
+- escape never quits because codex and claude train a reflexive escape, often
+  right after `ctrl-] d`.
+- styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision
+  that bubble tea 2.0.9 was not released with.
+
+## 12. notifications
+
+the hub's notifier is the one owner of attention. it reads every machine's
+inventory, keeps one record per session lifetime with the owner's
+acknowledgement, projects records into one verdict per session and hints clients
+when that projection changes. clients reconcile native notices against it and
+keep only one in-memory `alerted: slot -> episode` map per process
+(`internal/notifier`, `internal/macnotifications/reconcile.go`).
 
 ```text
-                    trusted Android phone
-                      Compose + xterm.js
-                   /          |          \
-        HTTPS/WSS :8443       |       HTTPS/WSS :8443
-                /             |             \
-  Devbox Go gateway   MacBook Go gateway   Arch Go gateway
-   systemd/Linux       launchd/Darwin       systemd/Linux
-          |                  |                   |
-      local tmux          local tmux           local tmux
+gateways (5 s per machine) -> hub notifier: records -> projection
+  -> GET /v1/notifications/state     (every client)
+  -> sse "data: changed"             (mac app)
+  -> fcm {kind:"hint"}               (phone, optional)
+<- POST /v1/notifications/handled    (dismiss, click, a visit's first output; any device)
 ```
 
-- members fetch control state from the hub; execution remains strictly local. each
-  binds numeric loopback, exposes only
-  `/v1` through its exact Tailscale Serve `:8443` mapping, and observes and
-  mutates only the local default tmux server.
-  Gateway restart never kills tmux or changes the stock agent runtime. Every
-  gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, `TMUX_TMPDIR`,
-  `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux child environments also drop
-  `HERDR_*`; pane exec boundaries repeat that removal because existing tmux
-  servers have their own inherited environment.
-- `sessions.Manager` owns one private `~/.local/state/skidbladnir/workspace.json`
-  recipe and adjacent process-held writer lock. the gateway listens before
-  starting recovery, then observes immediately and every 30 seconds without
-  clients. structural mutations checkpoint under its existing mutation lock.
-  boot identity and kernel process-start identity prove loss; a missing socket
-  alone cannot. restoration durably claims one attempt before effects, requires
-  an absent or empty target, and verifies the complete native graph before
-  saving success. safe ordinary-save failures retain the confirmed recipe and
-  retry on the existing tick; source/admission contradictions and possible
-  reconstruction effects remain blocked. transition-only diagnostics carry no
-  authority. manual repair remains outside skid.
-- only Linux and Darwin build; the gateway reports `platform` from `runtime.GOOS`.
-  `internal/hostconfig` strictly decodes the one human yaml; `internal/fleet`
-  owns accepted settings, per-host application, identity and membership, with no
-  authority transfer. join, recover and a failed state write restart the service
-  (crash-only; tmux survives). an invalid local shell/path retains previous launch
-  settings without blocking newer membership or revocation. no json host config,
-  injected provider command policy or daemon lifecycle remains.
-  `internal/process` owns foreground observation for
-  process identity and foreground revalidation, not work state.
-  `internal/agentruntime` owns provider/profile validation,
-  foreground classification and optional observation metadata. Linux process and
-  pressure collection stays behind Linux build constraints; Darwin uses
-  `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
-  ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
-  `ps` output or a Linux fallback.
-  `internal/agentcontrol` and `internal/quota` depend on sessions; sessions
-  imports neither. the gateway composes them. `internal/quota` reads existing
-  codex account daemons over each profile's control socket and owns no provider runtime.
-- `internal/install` owns the signed bootstrap, immutable releases, dependencies,
-  services and marker-delimited shell blocks at fixed skid-owned paths.
-  install/update stage and validate before switching `current`, restart skid
-  services only, then delete superseded releases. uninstall
-  retains private/user/provider/tmux state and shared packages. public dev-server
-  is an optional personal consumer of that ordinary installer and hub yaml.
-- one host service composes gateway/fleet and, only on the hub, the notification
-  observer. mac retains its separate notification app lifetime.
-  optional android push uses the hub's local user-owned firebase credential and
-  outbound fcm https. public runtime options travel in the hub's fleet state; private
-  credentials never leave the hub. no firebase setup is required for sessions or
-  mac notifications. receiver registration/revocation and connection
-  fencing have distinct contracts.
-- startup initializes and preserves the private `mh-` machine handle. identity,
-  label, network origin and device credentials remain separate. a deleted handle
-  cannot silently adopt existing fleet identity. `skid connect`, `join`, `remove`,
-  `apply`, `status` and explicit new-fleet `recover` own setup/control operations.
-  the [generalization contract](generalization-plan.md#3-application-enrollment-and-access)
-  defines strict routes, errors, invitations and caches.
-- No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
-  `@skid_objective_b64`, `@skid_space_b64`, `@skid_character`, `@skid_agent_runtime`, the
-  server-scoped `@skid_server_epoch`). Poller state is in-memory and rebuilt on start.
-- Authentication runs before identity disclosure. Ordinary requests send
-  exactly one `Skidbladnir-Machine` header matching the gateway installation
-  handle. A missing or wrong handle fails before mutation, WSS upgrade, or tmux
-  invocation. There is no headerless inventory exception. Profile and session
-  DTOs carry no machine fields: machine
-  identity appears only in the top-level envelope, and Android composes each
-  session with its machine target client-side, so a gateway cannot mislabel
-  local facts as another machine's. The API is:
+### attention concepts
 
-| Method/path | Contract |
+- **slot**: `{machine, tmuxId, identityToken}`, one session lifetime and the
+  native notice id; the slot plus its pane is the [reference](#2-concepts) a click
+  or entry targets.
+- a record's foreground is its [agent](#2-concepts) as `{provider, pid,
+  startIdentity}`: one process lifetime.
+- **record**: phase `quiet | armed | ready`, `readyGeneration`,
+  `attentionEpisode`, `cause` (`ready`, or `action` with a request and/or a
+  notice), `handledEpisode`, `ackedReadyGeneration`
+  (`internal/notifier/transitions.go`). episodes and generations are observer
+  revisions: monotonic, never timestamps, never served.
+
+### attention invariants
+
+1. evidence: non-idle is a request interaction, a menu, or activity starting or
+   working; idle is activity idle with interaction none; everything else is a
+   gap, and gaps (unknown, unavailable, outage) retain state. only fresh
+   terminal-source evidence of a known local foreground moves a phase; a request
+   or notice is an action cause even when another dimension is unknown
+   (`transitions.go`).
+2. ready means the same foreground was seen non-idle and later idle: available
+   again, never proof of completion, a new answer or an answered request.
+   first-ever idle is quiet; startup, a closed menu or a declined request can
+   lead to ready.
+3. identity: pane, process or agent replacement resets a record; ssh/mosh agents
+   are never local targets; names, titles, groups and profiles never identify.
+   a complete inventory retires absent lifetimes; failed machines, unproven
+   foreground absence and removed machines keep their records, so a re-enrolled
+   computer resumes its acknowledgements.
+4. an episode is allocated when a cause appears, changes or belongs to a new
+   foreground. action outranks latent ready; clearing a notice to reveal pending
+   ready alerts again, acknowledged ready does not; renames never allocate.
+5. durability: a commit is saved before it is published, and the file is written
+   only when a machine's records change, so every value a client holds was saved
+   under a revision at least as large and a restart allocates above it. startup
+   marks every machine a gap until its first fresh read. a missing or
+   other-fleet file starts empty and a new fleet deletes it; any other read,
+   decode or save failure answers 503 `NotificationsUnavailable` until restart,
+   never an empty state (`observer.go`, `cmd/skidbladnir/standalone.go`).
+6. projection, per session of a fresh machine (`transitions.go`): `clear`
+   when there is no cause, the episode is handled, or the cause is ready and its
+   generation acknowledged; otherwise title, body and episode with `post` while
+   qualified terminal evidence still shows the cause (ready: only while pending)
+   and `keep` otherwise, which never posts and never removes. ready is pending
+   when the foreground is known, the phase ready, the status idle and
+   `readyGeneration > ackedReadyGeneration`; only then the row carries
+   `readyGeneration` and `foreground`. a gap machine has no rows, and its
+   notices are neither posted nor removed.
+7. acknowledgement is the owner's, held by the hub. `POST handled {slot,
+   episode, readyGeneration}`: each nonzero field applies only while it equals
+   the record's current value, so stale acks are no-ops, and every well-formed
+   body answers 204. dismiss and click send the episode; a visit (`skid enter`,
+   browser entry, the phone's terminal page) reads its row while dialing and,
+   after the first nonempty output, sends that row's episode and ready
+   generation. the state read runs beside dialing and never delays output; a
+   detach before any output posts nothing; a failed read or ack is secondary
+   (`skid enter` prints `notifications unavailable`, its exit unchanged).
+   acknowledging on any device clears everywhere; a watched session alerts like
+   any other.
+8. reconcile, per client (`reconcile.go`): read the os's delivered notices,
+   then the hub's state. `clear` cancels a copy or an alerted slot; `keep`
+   silently retitles a same-episode copy; `post` silently updates a same-episode
+   copy, does nothing when `alerted` holds the episode, posts audibly when
+   allowed, else cancels the older copy. delivered notices without a row are
+   cancelled unless their machine is a gap. an audible post, dismiss or click
+   records the slot in `alerted`, so a process never re-alerts what the owner
+   has seen, even when the ack failed. a failed read applies nothing.
+9. the hub samples each machine on its own coalesced five-second lane with a
+   five-second deadline; a sleeping machine delays no other (`observer.go`).
+   the hub is a readiness dependency without failover. clients show a pending
+   ready only beside a direct idle row with the same foreground: direct
+   inventory qualifies ready and never creates it.
+
+content: the title is the session name with control, format and separator
+characters replaced (`attention.SingleLine`); the body is `ready`, the request
+phrase, the notice phrase or `request · notice` (`sessions/status.go`). no
+machine, directory, profile, objective, question or transcript. alerts share one
+prominence and the platform's default sound and respect do-not-disturb.
+excluded: provider hooks, agent-exit detection, foreground suppression,
+per-device acknowledgement, priority tiers, custom sounds, snooze, mute, inline
+replies, history or replay, linux popups.
+
+### notification interfaces
+
+| route (hub) | contract |
 | --- | --- |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; profiles have `key,label,provider?,accountScope?`; session includes terminal identity/facts, optional foreground `agent`, and optional `connection`. connection suppresses local cwd/agent |
-| `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
-| `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
-| `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
-| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without agent options; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the strict session DTO; errors carry `code,message,dispatch` plus optional `target:{tmuxId,identityToken,paneId}` only after complete validated capture |
-| `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/group and session-lifetime gate; no agent predicate |
-| `PUT /v1/sessions/{tmuxId}/group` | exact `{identityToken,group}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
-| `PATCH /v1/sessions/{tmuxId}` | `{identityToken,expectedNaming,naming}`; closed automatic/manual unions under the [naming contract](automatic-session-names.md), bodyless `204`, then inventory confirmation |
-| `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates server lifetime/id before direct pty/client attachment |
-| `DELETE /v1/sessions/{tmuxId}` | `{identityToken}`; one-queue exact lifetime session deletion |
-| `POST /v1/sessions/{tmuxId}/terminal/{operation}` | exact `{identityToken,paneId}` plus operation fields; inferred `inspect`, rendered `read`, guarded `send`, deliberate `text`/`keys`, interrupt `stop`, separate-effects `close`; [terminal contract](terminal-agent-control.md#4-api-and-client-commands) |
-| `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
-| `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` codex-only quota observation; configured descriptors, read state and optional normalized native report, governed by [profile usage](profile-usage.md) |
+| `GET /v1/notifications/state` | the projection; phones also get `receiver.status` |
+| `GET /v1/notifications/events` | `text/event-stream`: `data: changed` at connect and per projection change, `: keepalive` every 60 s; no ids or replay |
+| `POST /v1/notifications/handled` | strict json at most 4 KiB; 204 |
+| `PUT /v1/notifications/receivers/me` | phones only, else 403; [android push](#android-push), item 3 |
 
-errors use `{code,message}` and the existing optional `dispatch` for operations
-that distinguish `not_sent` from `unknown`. the groups route requires that
-distinction; its mapping is in [groups](groups.md#5-host-api-and-projection).
-agent-control errors retain their own spec. session and v0 mappings:
+requests pass gateway admission, then the notifier authenticates again to learn
+the device kind ([issue](issues/notification-member-auth.md)); responses are
+`no-store`. a member answers 503 `NotificationsUnavailable` `notification hub
+unavailable; check skid status and service logs`.
 
-| Code | HTTP | Literal message |
-| --- | ---: | --- |
-| `Unauthenticated` | 401 | `Authentication required.` |
-| `InvalidRequest` | 400 | `The request is not valid.` |
-| `RequestTooLarge` | 413 | `The request is too large.` |
-| `WorkingDirectoryInvalid` | 422 | `Choose a valid working directory.` |
-| `WorkingDirectoryUnavailable` | 422 | `That directory does not exist or cannot be opened.` |
-| `DirectoryListingUnavailable` | 422 | `This directory cannot be browsed. Enter the path instead.` |
-| `DirectoryListingTooLarge` | 422 | `This directory has too many folders to show. Enter the path instead.` |
-| `DirectorySearchUnavailable` | 422 | `Directory search is unavailable on this machine.` |
-| `DirectorySearchTooLarge` | 422 | `Too many directory search results. Narrow the search.` |
-| `TerminalContextUnavailable` | 404 | `Remote context is unavailable.` |
-| `ProfileUnknown` | 422 | `Choose an available profile.` |
-| `SessionNameInvalid` | 422 | `use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number.` |
-| `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
-| `GroupInvalid` | 422 | `use 1–64 nfc characters; only interior ordinary spaces, without display controls.` |
-| `SessionNameConflict` | 409 | `another session on this machine uses that name.` |
-| `SessionNameChanged` | 409 | `the session name changed. review and save again.` |
-| `SessionNotFound` | 404 | `That session no longer exists.` |
-| `SessionIdentityMismatch` | 409 | `The session changed. Refresh and try again.` |
-| `PairingInviteRejected` | 401 | `This fleet invite is invalid, expired, or already used.` |
-| `MachineIdentityMismatch` | 409 | `The machine identity changed. Fleet reset is required.` |
-| `InternalError` | 500 | `Skíðblaðnir could not complete the request.` |
+mac app: the signed `Skid.app` in the mac archive, one instance per state
+directory, run by its own launch agent. one loop syncs on stream hints, wake,
+permission, setup, dismiss and click; a hint during a fetch discards that
+result; the stream reconnects with 1-30 s backoff. `skid notifications setup`
+asks it over `notifications.sock` to show its setup window. a click runs
+`skid --config STATE enter --ref REF` in a new ghostty window or apple terminal
+`do script`, per the accepted `terminal`.
 
-Malformed, oversized, auth, and machine-binding failures are distinguished;
-expected Start and Kill failures retain their domain codes. A missing required
-supported pressure input is modeled as `UNKNOWN`; only unmodeled defects become
-the content-free `InternalError`. The gateway decodes request bodies strictly.
-Clients decode responses tolerantly, ignoring keys they do not read; an undecodable
-response is a lost response, so observations show that machine unavailable and a
-possibly dispatched mutation is `unknown`, never a defect or crash. There is no
-protocol branch or compatibility state; [rules](rules.md#trust-boundaries) own decode
-policy. Today the phone's terminal frames (`TerminalConnection.kt`) still decode
-strictly and treat a mismatch as a defect; its cleanup slice converts them.
+`skid notifications setup` exists only on macos; elsewhere it exits 2.
 
-- WSS: text frames `Hello | Presence | Resize | Detach | Error`; Presence
-  contains kind and attached-client count. Hello also carries the final
-  pane id and may include the exact stable foreground triple;
-  [the latency contract](session-latency.md) owns validation and ordering. The first client Resize gates
-  attachment creation. Binary
-  frames are pty bytes both ways. one websocket owns one pty/client and closes
-  both on connection loss. terminal-only `TerminalConfigurationUnsupported` names
-  the three required tmux options; it is not an http error. No byte
-  replay or gateway scrollback; a client whose writes stall for 5 s disconnects and reattaches fresh.
-  Any WSS loss freezes terminal input behind a typed `Reconnect required`.
-- Bounds: HTTP body 64 KiB; cwd 4,096 bytes; directory search accepts 1–8 terms
-  totalling at most 256 bytes and returns at most 64 paths / 32 KiB;
-  a remote-context response is at most 64 KiB; one directory listing scans at
-  most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
-  encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
-  views; objective 240 scalars; group 64 scalars / 256 utf-8 bytes; terminal frame 64 KiB; geometry
-  20–1024 × 5–512. Named, not schema-frozen.
-- Hand-written DTOs; no generated clients, contract digests, or lock files.
-  Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
-  providerless profile rows, flat `activity`/`status`, `runtime`, `interaction`, `attention`,
-  and compatibility decoders do not exist.
+phone: one `needs-input` channel; tag = slot; sync after fcm hints, resume, the
+foreground's five-second cadence and fleet changes (`NotificationOwner.kt`,
+`NativeNotifications.kt`).
 
-## 6. Android surface
+### android push
 
-- compile/target sdk36, minimum sdk33; one manually installed package distributed as the
-  public GitHub Release asset `skidbladnir-android.apk`.
-- accepted 2026-09-17 installation contract: `scripts/install-android <apk>`
-  validates the package and pinned public signer, requires exactly one connected
-  authorized device, runs `adb install -r`, and exits with the installation result.
-  same-version replacement is supported. it preserves app data, never uninstalls
-  or clears storage, and has no app launch, reconnect, visual confirmation, host
-  verification, or acceptance journey. package-manager failure is a command
-  failure, never an automatic uninstall or downgrade. sdk build-tools 36.1.0 and
-  platform-tools are required; optional `ANDROID_HOME` selects the sdk, defaulting
-  to `~/Library/Android/sdk` on macos or `~/Android/Sdk` on linux. adb may also be
-  on `PATH`. usb debugging authorization is a one-time device setup prerequisite.
-  installation, optional qr pairing, and behavioral verification are separate
-  operations. success establishes installation only.
-- release artifacts use one dedicated Skidbladnir signing key held outside git;
-  release builds never use the ambient android debug keystore. the repository
-  pins the public certificate digest. ordinary debug builds use android's debug
-  identity and are a compile/development lane; there is no signed debug variant
-  or device acceptance gate. `scripts/install-android` accepts only the pinned
-  release identity. the private identity and password file are
-  an operator backup obligation; losing them requires reinstall rather than a
-  trust bypass. A release tag also carries Linux-amd64 and Darwin-arm64 host
-  bundles, `SHA256SUMS`, and the public signing-certificate digest; signing
-  remains local and release publication remains a reviewed draft action.
-- `MachineStore` atomically encrypts one phone identity, a staged enrollment and
-  the hub's public routing under android keystore. machine names/order come from
-  the hub's membership, without a fixed roster. unavailable origins remain visible.
-- an empty store opens connect. scan `skid connect`'s five-minute one-use invite qr,
-  persist a staged credential before joining, and recover lost replies using
-  that same credential. saved bearers go only to the cached hub or the scanned
-  invite's hub. same-fleet repair retains identity. a removed
-  phone sees auth failures until a fresh scan re-enrolls it with a new device
-  identity. tailscale login remains external.
-- optional fcm carries only change hints.
-  one standard apk initializes the default firebase app from durable
-  public fleet options before cold service startup. options changes fence old
-  push immediately and require one app restart; the changed project is explicitly
-  unregistered then registered again. omitted configuration is
-  healthy disabled operation. [setup](android-push-setup.md) owns credential setup,
-  local storage and new-hub prerequisites.
-  background jobs fetch the hub's authenticated state with the process's cached hub
-  credential and use the notification owner's stateless reconcile; only
-  enrollment refreshes fleet routing, and the foreground refreshes the rest. failed reads receive bounded
-  retries; snapshots alone cannot clear independent push-transport failure.
-  approved temporary conversion preserves old memory; final source has no
-  schema3/ntfy/pairing reader.
-- dashboard fleet collection, exclusive views, one machines/details disclosure,
-  forge and terminal follow §4. one dashboard entry lives above the destination
-  switch and owns selected view, one live lazy grid and pending restoration.
-  android saved state carries one exact-version schema-4 capsule under
-  [session views](session-views.md#saved-navigation), using domain-separated
-  comparison fingerprints and typed session/heading anchors. it never contains
-  raw labels/tokens, inventory, attachment or credentials and is never stored in
-  preferences, files, tmux or gateways. unsupported versions start all/top.
-  pairings, text size and independent v2 attention remain unchanged. forge keeps
-  invalid drafts; directory/group entry uses one active inline field with bounded
-  live choices, disabled autocorrect/capitalization and explicit acceptance.
-  ime next accepts the visible literal/default without creation; browse returns
-  to the primary directory field.
-  picker state, inventory and drafts remain process-memory only.
-- terminal renderer: Vendored pinned xterm.js in a locked WebView
-  (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
-  network/file access; Kotlin owns WSS/auth; bearer never enters WebView).
-  The CSP admits xterm's generated style elements and attributes, which are
-  required for ANSI rendering, while scripts remain bundle-only and every
-  exfiltration-capable resource class remains denied.
-  The tmux phone client explicitly advertises its RGB capability; xterm owns a
-  deterministic ANSI palette. The renderer fits whole cells at the phone's
-  saved nominal text size (`16sp` default, `12..24sp`, step `1sp`), applying
-  Android text scaling once. Keyboard/rotation refit the grid without rewriting
-  that preference. An insufficient viewport blocks user input with explicit
-  recovery controls while preserving output and automatic terminal replies.
-  [Readable terminal sizing](terminal-readable-sizing.md) owns the preference,
-  initial geometry, content, and proofs; [terminal shift](terminal-shift.md)
-  owns its packaged-page protocol extension;
-  [selection copy](terminal-selection-copy.md#exact-packaged-page-api) lists
-  the version-6 packaged-page protocol.
-  The [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
-  input surface: `Esc / Shift Home ↑ End PgUp` over
-  `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` always owns phone detach. Android Back
-  dismisses active native terminal selection first and otherwise owns phone
-  detach.
-  ctrl, alt and shift are independent visible one-shot modifiers; the page
-  publishes their state atomically, consumes all three on the next input and
-  resets them at lifecycle boundaries. shift changes only custom-bar navigation
-  and tab, with exact encoding owned by the shift specification. proven keys
-  retain the existing ctrl/alt encoding;
-  IME, dictation-shaped, Unicode, multi-character, and pasted text remain
-  literal while consuming modifiers. Deck, typed, composed, and pasted input
-  share one page-owned ordered ingress. Equal cells are at least `48dp` square,
-  with `4dp` outer padding and `2dp` row/column gaps; both rows share one
-  horizontal overflow state below the content-measured width; `356dp` is only
-  the minimum target footprint. Gboard Enter sends `0x0d`. Paste strips ESC
-  and C0 except newline/tab before bracketed paste. Gboard owns typing,
-  clipboard reads/paste UI, and dictation; dictation stays editable and never
-  auto-sends. The app owns only the explicit terminal-selection clipboard
-  write. IME composition and non-composition Gboard input stay inside the
-  terminal edge; both the page and native WebView enforce zero horizontal
-  viewport movement.
-  One prevented DOM TouchEvent stream owns terminal tap, scroll, and
-  selection on the API-36 client. A primary one-finger vertical drag over the
-  xterm screen becomes wheel units at the touched cell, routed from xterm's
-  public state: one SGR wheel report when the application tracks the mouse,
-  else one normal/application-cursor Up or Down in the alternate screen, else
-  exact local scrollback. A completed sub-threshold tap sends one SGR primary
-  press and release (press only under X10) when the application tracks the
-  mouse. There is no transcript, synthetic wheel-event injection, or tmux
-  scroll command. The closed implementation and proof
-  boundary is [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
-  If IME composition is active when an otherwise eligible touch begins and no
-  released selection already owns the interaction, the page latches that
-  complete touch stream as composition-owned. It consumes the stream without
-  tap, scroll, mouse, cursor, selection, modifier, or viewport effects and does
-  not reclassify it when composition ends. Android/WebView alone decides the
-  composition outcome through xterm's existing literal input path; the next
-  fresh gesture resumes ordinary terminal routing.
-  A single-contact long press instead claims phone-local selection even under
-  negotiated mouse reporting; hold-drag extends a range the page applies
-  through xterm's public selection API. Release snapshots at most `256 KiB` of
-  well-formed UTF-8 text into one transient native floating action mode. Its explicit `Copy` writes that exact
-  snapshot once to Android's primary plain-text clipboard and clears it. The
-  path emits no terminal input and has no WSS, tmux, provider, transcript,
-  browser-clipboard, persistence, or clipboard-read capability. The closed
-  implementation and proof boundary is
-  [`terminal-selection-copy.md`](terminal-selection-copy.md).
-- The terminal's top chrome is one rail row: `Detach`, then the session
-  identity (tmux name over execution host, terminal owner when remote, and
-  presence), which opens the session sheet. The sheet holds status and context,
-  rename, new terminal, text size, interrupt and both closures, each routed to
-  its existing owner. No second row exists, and the rail's height never
-  depends on state; [terminal chrome](terminal-chrome.md) owns the contract.
-  At most one active phone terminal exists, and its connection owns one exact
-  `SessionTarget`;
-  the gateway checks the session lifetime at attach.
-  a mismatched machine identity closes the active terminal and refuses that
-  endpoint. membership updates from the hub own routing.
-  Rotation, IME resize, Activity/process recreation, and app backgrounding
-  cleanly recreate or release the attachment; nothing replays. Recreation from
-  Terminal returns to the saved Dashboard entry and never restores or
-  automatically opens an attachment.
-- Near-black tonal surfaces and deterministic procedural dwarf icons as
-  landmarks. [`design-language.md`](design-language.md)
-  owns the implemented palette, typography, shape, ornament, motion and
-  terminal theme. The phone has no screen-reader support (owner cut,
-  2026-10-21; [design language §14](design-language.md#14-accessibility-floor)).
+optional. the hub sends content-free fcm messages straight to google with the
+user's own firebase project and credential; skid runs no notification backend.
+omitting `android_push` is healthy: no firebase initialisation or registration,
+no setup error, and pairing, sessions and mac notices all work.
 
-## 7. Security
+```yaml
+android_push:              # public client options; operations: android push setup
+  project_id: your-firebase-project
+  application_id: '1:123456789:android:0123456789abcdef'
+  sender_id: '123456789'
+  api_key: your-public-android-client-key
+```
 
-- Tailnet-only ingress; TLS via Tailscale Serve; no Funnel, cookies,
-  redirects, or CORS.
-- each enrolled device owns an independent256-bit bearer; hosts retain its
-  sha256 verifier. private host state is computer-only; phones get public routing.
-  local access uses a distinct installed local credential, never loopback-address
-  authority. removals close connections and removed bearers get 401.
-- hub invitations are five-minute single-use tokens naming the hub. a phone
-  repair sends its saved bearer only to a `*.ts.net:8443` tailnet origin; the
-  tailnet is the trust boundary. qr output is transient and contains no
-  permanent bearer.
-- After authentication, `Skidbladnir-Machine` binds the pinned pairing to the
-  reached installation. It is not a credential and never substitutes for the
-  bearer. A mismatch discloses no actual handle and cannot reach tmux.
-- The terminal endpoint is shell-equivalent authority: Kotlin supplies the
-  inventory token outside the WebView in the non-query
-  `Skidbladnir-Session-Identity` header; one tmux queue validates the full
-  server lifetime and id before direct pty/client attachment, and the stream
-  closes on mismatch. Android never supplies raw tmux targets, commands, or
-  homes.
-- Logs carry content-free timings and typed errors — never session names, titles,
-  ownership markers, terminal bytes, cwd,
-  objectives, prompts, provider session ids/names, provider homes, argv,
-  transcript paths, origins, bearers, account data, or other credentials.
-  The machine handle may appear in protocol diagnostics; it is opaque and
-  non-secret.
-- Terminal selection and clipboard text, previews, and hashes remain transient
-  and never enter logs, analytics, saved state, crash context, or evidence.
-  Production never reads the Android clipboard. Explicit manual copies use the
-  Android system preview and remote-device rendering hint; those are not
-  secrecy or device-locality guarantees.
-- YOLO agents share their host UID; containment requires a separate UID/VM and
-  is explicitly out of scope.
+1. public options reach phones in the fleet view as `androidPush {id, projectId,
+   applicationId, senderId, apiKey}`; `id` is lowercase hex sha256 of
+   `skidbladnir.android-push.v1\nPROJECT\nAPPLICATION\nSENDER\nAPIKEY` and names
+   the configuration everywhere (`hostconfig/config.go`). the private
+   service-account export (`0600`, at most 64 KiB, matching `project_id`, google
+   token uri) never leaves the hub (`internal/fcmpush/client.go`); serve
+   reloads it when the accepted options or the file's bytes change, at start and
+   on `skid apply`.
+2. one apk serves every project: no compiled firebase identity; the phone
+   initialises firebase at process start from its fleet's options. options are
+   immutable within an android process, so a change fences push and reports
+   restart required. after a project change the phone unregisters before it
+   registers again: a cached registration can report success while delivery
+   fails (`FirebasePush.kt`).
+3. each phone has one receiver `{deviceId, floor, fid?, failed}`.
+   `PUT receivers/me {configuration, generation, fid}` for the current
+   configuration activates when `generation > floor` and is 204 for the
+   identical active tuple; anything else, or push off, is 409 `ReceiverConflict`
+   (`internal/notifier/receivers.go`). a configuration change erases
+   destinations and keeps floors; removed members' receivers are deleted.
+4. a message is data-only `{kind:"hint"}`, restricted to `dev.niels.skidbladnir`,
+   four-week ttl, collapse key and priority `attention`/high when an episode was
+   allocated since the last send, else `sync`/normal (`receivers.go`). hints
+   go on projection change, hub start, push reconfiguration and registration,
+   never periodically. a hint only wakes the phone: it checks the sender against
+   its options and schedules one bounded authenticated state read (expedited
+   when high, three retries); only that read presents. no text, terminal data or
+   fleet identity passes through google.
+5. fcm `UNREGISTERED` or `SENDER_ID_MISMATCH` clears a destination; another
+   failure marks it failed until the next change retries. hub receiver status:
+   `disabled` (push off), `unconfigured` (no usable credential), `unavailable`
+   (no destination or failed), `active`. a state read never clears a push
+   failure.
 
-## 8. Upgrade ladder
+### notification accepted limits
 
-2026-10-20 accepted design: [terminal shift](terminal-shift.md) replaces the
-hyphen accessory with one-shot `Shift`, limited to custom-bar navigation and
-tab. it extends the existing page-owned modifier snapshot and hard-cuts the
-packaged page port from 4 to 5; gateway/public protocols remain unchanged.
-the spec owns exact encoding, content, measured-width costs, disjoint slices
-and temporary integration/live/device acceptance. implementation and qualification
-completed on 2026-10-21, including owner haptic/talkback/gboard checks and final
-engineering verification. temporary support was removed; deployment is separate.
+- five-second sampling misses brief transitions; inference can be wrong and has
+  no grace period.
+- a notice removed without a callback (android reboot) or dismissed with a
+  failed ack re-alerts once in the next process.
+- ready during an open visit stays unacknowledged until the next entry or until
+  the session goes non-idle; a visit clears that session's action notices
+  everywhere while the request stays queued.
+- a gap machine's acknowledgement reaches other devices at the hub's next read
+  of it; clears reach a dozing phone at normal priority; the foreground phone
+  sees changes on its five-second cadence.
+- a failed fcm send retries only at the next change; force-stop, revoked
+  permission or stopped tailscale suspend delivery, and nothing is delivered
+  before first unlock. linux has no os popups.
+- each entry adds one state read beside dialing; exit may wait 3 s for its ack.
+- a hand-edited observer record yields odd verdicts, not a 503; delete the file.
+- fleet and notification hints stay two streams: one merged stream would make
+  member gateways refetch the fleet on every attention change.
 
-2026-10-20: [standalone generalization](generalization-plan.md) explicitly accepts
-arbitrary enrolled hosts/profiles, standalone installation, signed per-device
-fleet access and planned hub moves, and optional user-configured direct hub→fcm
-delivery with one runtime-configured apk. skid has no project-operated notification
-backend. it supersedes the older fixed-fleet, daemon-launch, ntfy and
-creation model/effort clauses below. dated entries retain their historical
-qualification; they do not reauthorize retired runtime paths.
+## 13. phone app
 
-2026-10-20 accepted design: [session inventory and attachment latency](session-latency.md)
-owns batched native inventory, cancellable mutation admission, independent client
-publication, optional context enrichment and direct desktop captured entry. the
-coordinated gateway/desktop/android greeting and notification contracts preserve
-exact lifetime authority while moving optional notification work off terminal
-i/o. uncertain entry acknowledgement preserves ready. phone notification-click
-and reconnect metadata lookups remain deferred with the target-model split;
-interaction and visual redesign are separate issues. source is implemented in
-an isolated worktree; v4 reset identity is approved. isolated host and real-phone
-behavioral [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/session-latency-qualification.md) passes; the preexisting
-canceled-input dependency race is explicitly deferred. installation and coordinated
-release remain unperformed. the plan owns the explicit cutover.
+the phone is one compose activity over the fleet's gateways. its dashboard
+shows every enrolled machine's tmux sessions in one collection, the forge
+creates sessions, and the phone terminal attaches one. it owns no inventory:
+every fact it shows is the latest admitted gateway answer, held in process
+memory and rebuilt on start. three constraints explain most of what follows:
+the host owns meaning, so the phone renders and never re-derives; knowledge
+ages per machine, so one machine's failure fences only that machine; and
+nothing is replayed, so an unknown outcome is shown, not retried. visual values
+belong to the [design language](design-language.md).
 
-2026-10-19: [session name presentation](session-name-presentation.md) implements
-the desktop correction. its specification owns scope and passing isolated
-darwin/linux qualification; deployment and installed owner review are separate.
-no public api, schema or stored state is added.
+### phone concepts
 
-2026-10-16 deployed in v0.17.3: [single-line desktop rows](desktop-single-line-rows.md)
-replaces stacked records with one line, faint location text and the owner's
-ordered field omission. complete status
-remains visible; lower fields may be omitted with a marker and full info remains
-available. this is a presentation-only hard cut; public api, schemas, state,
-observation and controls retain their owners. rendered integration and isolated
-darwin/linux runtime qualification pass; the spec records evidence and limits.
-[installed qualification](desktop-single-line-rows.md#installed-qualification) records
-three-host/phone deployment and smokes; owner readability review remains `NOT_RUN`.
+- **machine state.** per enrolled machine: access (`ready | auth required |
+  identity changed`), inventory (`reading | fresh | superseded | stale |
+  unreachable`) and pressure (`reading | fresh | stale | unavailable`).
+  superseded is a fresh snapshot older than a mutation the phone just sent. a
+  machine *can act* only while access is ready and inventory fresh.
+  *availability* is the one classification derived from access and inventory
+  (`ready`, `refreshing`, `reading`, `stale`, `unavailable`, `auth required`,
+  `identity changed`); every notice, card marker, tone and forge affordance
+  reads it.
+- **dashboard entry.** one owner, above the dashboard/terminal switch, of the
+  selected view, the grid's scroll state and a pending saved restoration. it
+  outlives the dashboard leaving composition.
+- **view.** exactly one of `needs input | all | named group | unassigned`,
+  identified by type and, for a group, a label fingerprint, never by tab index
+  or displayed text (a group named `all` is not the built-in view). strip
+  order: needs input, all, observed groups in label order plus a selected label
+  no longer observed, an unresolved selected group, then unassigned when
+  selected or observed.
+- **card.** one tmux session lifetime on one machine: machine handle, tmux id
+  and identity token. its actions capture that lifetime.
+- **forge.** the creation sheet, entered through the forge seal at the
+  dashboard's bottom-end corner.
+- **machines disclosure.** one transient modal: every machine's pressure rail
+  and notice, and one machine's pressure details.
 
-2026-10-15 accepted installed-row refinement: [browser simplification](desktop-browser-simplification.md)
-shows current machine plus the final two path components and retains full info.
-the owner explicitly accepts [bounded codex model/effort parsing](terminal-model-effort.md)
-from the already anchored footer, replacing its whole-bar display. this is
-display-only text inference with declared unsupported/ambiguous cases; native
-execution settings, provider configuration, cwd acquisition, shared schemas,
-polling and control admission do not change.
+copy follows the [product language](#product-language).
 
-2026-10-15 implemented [browser simplification](desktop-browser-simplification.md):
-the desktop removes machine collection scope and selected-footer facts, gives
-every row its sampled directory, and presents `n`/`N`/`T` as ordinary actions.
-needs-input/all/group views, explicit creation destinations and asynchronous
-ownership remain. no public api, wire/config schema, persistence or polling change.
-the spec owns source qualification and the separate installed usability step.
+### phone invariants
 
-2026-10-15 accepted claude update-recognition correction: [the spec and plan](claude-update-recognition.md)
-replaces the mutable `executablePath` rule with direct-child matching in a
-configured canonical versions directory. launch configuration stays separate;
-foreground group-leader selection, codex basename matching,
-controls, parsers and clients are unchanged. wrapper discovery and deleted-image
-recovery remain excluded. source qualification passes on darwin/linux; `v0.17.0`
-is installed across the host fleet, with original-process continuity qualified.
+1. the host owns meaning. the phone renders host-rendered status copy and tone,
+   host-evaluated pressure levels and signal states, and host recovery copy. it
+   overlays only what it alone knows: staleness, the hub's pending ready and
+   notification availability. it has no pressure thresholds, decays no status
+   by time and re-derives nothing the host sent.
+2. stale knowledge is absence, not failure. a machine that cannot act keeps its
+   last cards, reading `last observed: <label>` in muted, never green and never
+   in needs input. its cards are inert (no open, no action) and carry a marker
+   naming the reason (`STALE · actions disabled`, `AUTH REQUIRED · actions
+   disabled`, ...). only trust events (auth required, identity changed) are
+   failure-toned; an unreachable or stale host is degraded, because one host
+   out is the federation's normal state. a pressure failure never fences
+   actions.
+3. one projection, `dashboardItems`, owns membership, order, render keys and
+   restoration anchors. sessions sort by machine label (root-locale lowercase,
+   then exact), machine handle, numeric tmux id. `all` places them under one
+   heading per nonempty group in label order (ascii-folded utf-8, then exact
+   bytes), unassigned last. a selected group or unassigned view has no heading:
+   the tab names the scope. needs input is flat. the host promises no order.
+4. needs input holds a fresh session whose host queue is `action`, or whose
+   host queue is `ready` while the hub holds its pending ready and
+   notifications are available. ready sessions come first, then actions, each
+   in session order. the queue never admits a control action.
+5. every card shows its machine. every action, menu row and confirmation
+   carries the card's captured lifetime. a machine that stops being able to *act*
+   while a menu is open disables that menu's rows in place; nothing retargets from a displayed label,
+   and the controller re-checks admission when a late tap lands. a menu
+   dismisses before it acts. destructive rows follow a rule and are
+   failure-toned; both closures confirm, and only the confirmation's commit
+   button carries the [cleft](design-language.md#6-shape-grammar).
+6. pull over the collection is the only manual refresh. it asks every live
+   poller, whatever the view, for one inventory read that starts after the
+   pull; a read already in flight cannot end it. pressure is not refreshed. a
+   gesture that begins on a recovery notice scrolls but never refreshes. the
+   view strip, notices and forge seal lie outside the gesture.
+7. drill-in never resets the dashboard. terminal return (top `Detach` or back)
+   lands on the same entry with the same view and grid state, so the keyed grid
+   keeps the first visible item's place and a vanished item clamps. saved-task
+   restoration holds the [capsule](#saved-state) until no ready machine is still on its first
+   read, then scrolls once before any card is shown. a terminal is never
+   restored: recreation or backgrounding from it lands on the dashboard with no
+   attachment.
+8. creation names an explicit machine and submits only the visible draft. a
+   create failure is definite only when the gateway answers `dispatch:
+   not_sent`; any other failure is an unknown outcome: the forge closes, the
+   draft becomes a recovery held on the dashboard, and nothing is replayed.
+9. a directory or group draft is the one editable value. choices, highlights
+   and replies never rewrite it; acceptance writes an exact domain value into
+   it; only the separate create or save action submits it, after the domain
+   re-validates it. a directory reply is admitted only for the draft revision
+   and machine that issued it. browsing never builds a path: it sends only
+   tokens the host returned.
+10. decoration is silent and subordinate. marks and seals carry no meaning and
+    no action, every screen is complete with them deleted, and nothing
+    ornaments an error, notice or destructive surface.
 
-2026-10-15 accepted desktop usage revision: [the spec](desktop-usage.md) owns
-uniform remaining presentation, one-hour age staleness, compact weekly/short
-records and usage-page key removal. acquisition, source selection, external
-schemas and cadence stay unchanged. [isolated desktop acceptance](desktop-usage.md#qualification)
-passes; deployment remains separate.
+### phone interfaces and owners
 
-2026-10-15 preceding readability revision: [desktop rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md)
-owns section/record hierarchy, complete-entry viewport admission and selected
-directory presentation. this is a client presentation hard cut with no public
-api, wire schema, stored state or execution change. source, isolated runtime and
-separate installed usability acceptance are required. source and isolated runtime
-passed; the successor's [v0.17.2 qualification](desktop-browser-simplification.md#location-refinement-installed-release)
-records the later installed usability acceptance.
+- gateway routes, each to one machine with its own bearer and pinned machine
+  header, responses decoded tolerantly: `GET /v1/sessions` (every five seconds
+  and on demand) and `GET /v1/pressure` (every five seconds) per live poller;
+  `GET /v1/terminal-contexts/{id}` for remote context; `POST /v1/sessions`,
+  `POST /v1/sessions/{id}/shell`, `POST /v1/directory-searches`,
+  `POST /v1/directory-listings`, `PATCH /v1/sessions/{id}`,
+  `PUT /v1/sessions/{id}/group`, `POST /v1/sessions/{id}/terminal/stop`,
+  `POST /v1/sessions/{id}/terminal/close`, `DELETE /v1/sessions/{id}` and the
+  terminal websocket ([§14](#14-phone-terminal)).
+  mutations run in the machine's serial lane and are never retried.
+- android: the saved-state capsule (below) and the notification-settings
+  intent behind the header menu.
+- owners: `Machines.kt` machine state, polling, mutation lanes and awaited
+  reads; `SkidbladnirController.kt` the ui state machine (forge, recovery,
+  confirmations, access loss); `ProductModel.kt` availability, notices, the
+  status overlay and copy; `Groups.kt` views, label rules and
+  `dashboardItems`; `DashboardEntryState.kt` the view, grid state and capsule;
+  the screen files presentation; `Theme.kt` and `Ornament.kt` tokens and
+  frozen art.
 
-2026-10-15 preceding design: [compact desktop rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md) keeps
-identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).
-claude supplied its delimited model/effort phrase; codex initially supplied its
-whole native status line. the accepted refinement above replaces the latter with
-bounded phrase extraction. one optional
-`terminalFooter` session field flows through existing host/go/android boundaries.
-no new capture, native getter, publisher, persistence or effective-setting claim.
-the specs own exact grammar, responsive geometry and temporary integration/live
-acceptance. source `6974851` passes the scoped
-[qualification](terminal-model-effort.md#qualification), including native rendering
-on darwin and a linux container. release and installed-fleet deployment remain
-separate.
+### dashboard
 
-2026-10-14 accepted cutover: [terminal usage](terminal-usage.md) replaces claude's
-quota-file path with optional evidence from the existing exact terminal capture.
-the desktop consolidates both providers across all hosts using original local
-receipts. [desktop usage](desktop-usage.md) now owns remaining presentation;
-this acquisition cutover retains raw used percentages and native reset facts.
-the strict shared session schema changes with host, go and android consumers;
-the native quota route becomes codex-only and the managed formatter stops
-publishing. no new state owner, poller, provider getter, compatibility or fallback
-is accepted. this supersedes the 2026-10-07 devbox-only design and the 2026-10-02
-claude publication clauses. qualification and separate deployment work follow
-the accepted specification.
+order: the header (`Dwarves` led by the hlíðskjálf mark, and a
+`dashboard options` overflow holding `machines` and `notification settings`);
+the view strip; one notice line per machine whose availability or pressure is
+exceptional; the notification-setup notice with `set up notifications`, absent
+while notifications are ready or disabled; the controller's failure notice; a
+forge-recovery notice; then the collection. the forge seal overlays the
+collection's bottom-end corner and is lit while any machine can act; the
+grid's trailing padding lets the last row scroll clear of it while other rows
+pass beneath. opening the header menu
+or the machines disclosure requests nothing, filters no card and prefills no
+draft. the strip scrolls horizontally and reveals the selected tab only when
+the selection, its resolved label or the strip's width changes; polls never
+move it.
 
-2026-10-02 accepted design: [native needs-input notifications](native-notifications.md)
-adds a devbox observer client, a private ntfy/unifiedpush android transport and a
-mac native app with authenticated revision hints. it observes the independent
-gateways at their existing cadence and retains only content-free transition
-summaries; execution/history, terminal authority and direct controls retain their
-owners. this narrowly extends topology/state with notification-only observation
-and current-state endpoints, and platform packaging with the mac app and private
-ntfy origin. the hub holds the owner's acknowledgement; no execution coordinator
-or historical replay. the spec supersedes affected
-device-local readiness/visit clauses, defines schemas, disjoint implementation
-paths and temporary end-to-end/live acceptance. source is implemented; [qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/native-notifications-qualification.md)
-records tested boundaries. release and fleet deployment remain separate actions.
+the collection is one lazy grid of adaptive columns in every state:
+full-span workspace-recovery notices first (failure-toned when broken, the
+save time in the phone's zone), then the items or one empty state (`no
+sessions currently need input in this view`; `no matching sessions in
+available inventory` with each waiting machine's copy, failure-toned if any
+machine's is; or `no sessions in this view` with the hlíðskjálf mark). a
+pull draws only the [refresh line](design-language.md#13-component-register),
+determinate while pulling and indeterminate while the pulled read runs, absent
+at rest; it reserves no height.
 
-2026-10-02 accepted native mechanism: [codex profile usage](profile-usage.md)
-reads existing account daemons through a machine-bound route and the browser's
-existing tick. the 2026-10-14 cutover retains that mechanism and replaces the
-original claude acquisition and presentation contract.
+**card.** work first: the exact tmux name (two lines), then the status line (the
+status facet, the literal label in its tone, an optional muted detail on one
+line) beside the dwarf's display name; then, when present, the availability
+marker, `notifications unavailable` and the objective (two lines); then a
+wrapping footer of one profile/host cluster and the directory:
 
-2026-10-02 accepted design: [jarvis orchestration](jarvis-orchestration.md)
-adds literal model/effort launch overrides, native-default precedence, optional
-stdin initial input, bounded idle/profile/composer admission and compound start
-receipts. discovery and controls use compact ordinary output and existing typed
-handles; captured refs remain in structured host output. native-handle inspect
-reuses current native resolution. the spec owns wire shapes, bounds and acceptance.
-the 2026-10-20 [terminal-only cut](terminal-only-control.md) retires those launch
-overrides and native inspect; ordinary commands/settings own provider options.
-jarvis owns durable asynchronous waits, target capture and notification judgment;
-skid retains synchronous observation and gains no watcher, task/reply protocol,
-new targeting registry, provider association or durable receipt store.
-after the original owner turn closes, worker events permit reading, integration
-and notification only; broader write/continuation authority remains separate.
-the owner authorized implementation and temporary integration/live qualification.
-the spec records corrected audit findings and exercised boundaries. current-source
-darwin/linux providers, native cognition, postgres crash/recovery and service
-observation checks pass; exact fleet installation, external Discord delivery and
-production activation remain separate, unqualified cutover work.
+| context | cluster | directory |
+| --- | --- | --- |
+| local | `[profile · ]<machine>` | `…/<last two>` of the pane cwd |
+| resolved remote | `[profile · ]running on <execution machine> · terminal on <machine>` | the remote cwd, else `directory unavailable` |
+| unresolved remote | `remote context unknown · terminal on <machine>` | none |
 
-2026-10-02 accepted design: [session views and needs input](session-views.md)
-replaces phone machine/group/needs-input controls and the desktop agents view
-with exclusive needs-input/all/group views. needs input includes ready, explicit
-requests and current error/interruption notices, ordered ready first; quiet idle
-is excluded. phone browsing spans the fleet, with pressure/reconnect in a
-separate machine disclosure. the later desktop simplification also removes
-desktop machine scope. the spec owns the
-replacement navigation, schema-4 task capsule, narrow implementation plan and
-acceptance, superseding affected collection/pressure clauses in §§2, 4 and 6.
-source implements this design; observation, attention persistence/visits and
-exact control identities retain their existing owners. no crash/exit notification or
-notice-acknowledgement lifecycle is added.
+the profile is the host's configured label, else `<provider> · profile
+unknown`; a plain pane shows none, since its status reads `terminal`; a launch
+profile never substitutes. the directory moves whole to a second line and
+start-ellipsizes only when wider than a line, so no useless fragment shows. in
+needs input a last line names the group (`group: <label>` or `unassigned`)
+and a queue reason wraps in full. readable status and full dwarf names may grow
+a card; nothing shrinks, reserves space or animates to hide that. the status
+qualifier (`evidence`) is the same on every agent card, so cards omit it; the
+terminal's session sheet shows it. the facet's notch turns only for a fresh
+working local agent with animation on. status carries no age; only inventory
+freshness has a clock.
 
-2026-10-02 source implemented: [directory and group entry](directory-group-entry.md)
-unifies selection and presentation within each native client, replaces mobile's
-primary picker pages with inline search, and retains secondary Home browsing.
-its specification owns value admission, focus, request lifetimes, implementation
-paths and acceptance. gateway protocol, polling, persistence, release and
-deployment retain their existing owners.
+one body tap opens the terminal directly, without an inventory read; the
+gateway checks the lifetime at attach. every other verb sits in the card's overflow,
+in this order: `change group`, `send interrupt`, `close terminal only`,
+`interrupt and close terminal`. the last three are the terminal-lifetime list
+the terminal's session sheet renders too. the overflow is enabled while any
+row is; its description is `session actions for <tmux name> on <machine>`.
 
-2026-10-02 source implemented: [searchable group entry](group-entry.md) adds local
-observed-label matching to desktop and phone creation/editing, with explicit
-desktop create/save actions after group. it owns the input contract, narrow
-implementation plan and acceptance; [qualification](group-entry.md#qualification)
-records the exercised boundaries. membership, observation scope, transport and
-persistence retain their existing owners.
+**machines disclosure.** `machines` lists every machine's pressure rail and
+notice, `reconnect fleet` (which closes the sheet first) and `dismiss`. a rail
+opens that machine's details in the same modal; back returns to the list,
+then closes. each machine keeps its own five-second inventory and pressure
+polling; the disclosure adds no request.
 
-2026-10-01 accepted scope: [terminal attention](reply-notifications.md) replaces
-consecutive working-to-idle detection with durable device-local non-idle-to-idle
-attention. its specification owns the exact transitions, visit semantics,
-versioned cache reset, implementation paths and acceptance criteria. source
-implements that contract; [qualification](reply-notifications.md#qualification)
-records its actual boundaries. screen classification, gateway
-protocol, native capabilities and polling cadence stay with their existing owners.
+**pressure rail.** one disclosure surface: a header `<MACHINE> <state>`, one
+non-wrapping, horizontally scrolling metric row in the fixed order `CPU MEM
+SWAP LOAD DISK`, then the history band; colours are in
+[design language §13](design-language.md#13-component-register). `MEM` is
+linux ram available, else darwin memory pressure; psi is detail-only. each
+metric reads `<label> <value> <mark>` with literal marks `i N W H ?`, so colour
+is redundant; only host-evaluated warm and hot spend gold or ember. a supported
+signal that is missing keeps its slot as `NO DATA ?`; an unsupported one has
+none. `UNKNOWN` names the first missing metric other than cpu and swap.
+presentation is total: an inconsistent snapshot renders literally
+(`RECOVERING FROM NORMAL`, bare `UNKNOWN`) instead of failing. details list
+every supported metric with its word: informational, normal, warm, hot or no
+data.
 
-2026-09-30 accepted implementation scope: [non-native terminal observation](terminal-observation.md)
-replaces ordinary terminal status and screen classification at coordinated
-host/client cutover. it adds independent activity/input facts, bounded diagnostic
-explanations, managed codex statusline cues and a needs-input filter; it includes
-the manual claude recognition prerequisite. obscured state may be unknown.
-no title/progress watcher, native status dependency, request store or new poller
-is authorized. the plan owns acceptance and narrow changes to §4 and feature
-contracts. source implements it, and its
-[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
-passes on darwin, and on linux for capture, recognition, classification and cost,
-within recorded limits. current-artifact linux gateway/public-cli launch, input,
-read, wait, refusal, stop and close also pass the narrow
-[orchestration qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance).
-physical-phone acceptance and remaining linux product/family rows stay open
-([roadmap](roadmap.md)). nothing is
-deployed.
+### creation sheet
 
-agent control, groups, terminal creation and the organized desktop browser are
-accepted and implemented. their detailed specifications own their limits.
-[the composition plan](groups-and-shells.md) leaves terminal embedding as a
-separate feasibility experiment; shipping it requires an accepted production
-contract and its own evidence.
+the forge opens only while some machine can act and no group editor is open.
+its draft starts with no machine and no launch choice, empty name, objective
+and directory, and the selected view's group (empty for the built-in views; a
+restored, still unresolved named view needs an explicit group choice before
+submission). changing machine clears the directory and an agent profile,
+keeps a terminal choice, the name, objective and group, closes browsing and
+drops a pending search. creation from a remote pane's terminal opens the forge
+on that pane's own machine with a terminal launch and its group.
 
-2026-10-07 source cutover: [workspace recovery](session-recovery.md) defines one
-host-local workspace checkpoint and automatic reconstruction after confirmed
-tmux server loss. it covers all exposed sessions, restores only into an absent
-or empty server, and leaves conversation resume and failed repair to the user.
-its acceptance owns the narrow durable-workspace exception to §§1/2/5, required
-inventory recovery fact and deployment recovery-owner cutover. existing shell
-startup is unchanged. there are no recovery controls, provider launches or
-history copies.
-isolated darwin/linux and physical-phone qualification is recorded in that spec;
-actual host reboots are deferred. release and installed-fleet activation remain
-separate. dev-server must retire the old recovery owner before activation.
+**directory field.** exact empty means home (`~`). a draft beginning `/` or
+`~` is a literal: the phone checks its grammar, the host its existence at
+creation, and it never searches. leading whitespace before a path,
+whitespace-only and display-unsafe text are invalid and stay editable.
+anything else is 1–8 search words within 256 bytes and must be resolved to a
+literal before creation. empty input offers home, then the distinct cwd values
+of the selected machine's local sessions (remote cwd never suggests a local
+launch); a query offers the host's zoxide results 150 ms after the last edit;
+`browse home` is always offered. accepting a choice touches no filesystem.
 
-2026-10-15 source correction: [checkpoint reliability](workspace-checkpoint-reliability.md)
-replaces the blanket failure latch with delayed saving, typed transition
-diagnostics and a strict host/go/android wire cutover. isolated darwin/linux,
-desktop tty and physical-phone evidence is recorded there. it preserves the
-file schema, writer, budgets and sole owner. mixed versions are unsupported;
-coordinated release/activation and actual reboots remain separate.
+**group field.** choices are the observed labels of every retained snapshot,
+ranked exact canonical, ascii-case-insensitive equal, prefix, substring, then
+ordered subsequence, ties in label order; only ascii folds, and matching never
+rewrites the draft. a valid draft without an exact match also offers `use
+label: <text>`. an explicit `unassigned` choice (first when empty, last
+otherwise) means no membership and is distinct from a group named
+`unassigned`. observations may be stale: a choice is typing help, and the
+target's admission still decides save. both clients share these ranking
+rules; the desktop's keys are in the desktop section.
 
-cross-device unread sync, provenance, copied provider history, durable
-receipts and replay remain excluded. any new capability requires an explicit
-scope and acceptance-criterion change; removing old code does not authorize it.
+**both fields.** focusing one opens its bounded choices in the same sheet and
+closes the other's; an edit returns the list to its top; tapping a choice fills
+the draft and ends text entry; keyboard next accepts only a valid visible
+literal or default and never picks a result or submits. back first hides the
+keyboard, then closes the choices, then the sheet. autocorrect and
+capitalization are off; paths render left-to-right.
 
-## 9. Verification
+**browse home.** a secondary page of the forge sheet on the selected machine.
+it opens `~` and navigates only host-returned children and parent. a local
+basename filter (at most 256 scalars) ranks exact, prefix, substring, then
+ordered subsequence under root-locale lowercase, ties by shorter basename,
+then server order. dot-folders are hidden by default, with a toggle only when
+some exist. back history keeps up to 32 views with their filter, hidden flag
+and scroll position. loading keeps the previous rows and disables parent,
+folders and use; failure reactivates retained rows; transport and internal
+failures offer retry, unavailable and too-large listings offer `enter path`.
+`Use` writes only the directory draft, clears a directory rejection and returns
+to the field; back from the root, cancel and `enter path` return to the
+unchanged field. backgrounding settles a loading browse to its retained view
+(or the form) and drops a search, with no retry, focus or keyboard.
 
-[testing policy](rules.md#testing) owns the temporary-test cleanup workflow and
-retained engineering commands. `scripts/check verify` runs static checks and
-builds, with no behavioral tests or live tmux/provider/device boundary.
-release integrity is separate from behavioral acceptance.
+**outcome.** success opens the new session's terminal and, unless the current
+view already admits it, selects its group (or unassigned) at the top. a
+definite failure keeps the draft with the rejection. an unknown outcome closes
+the forge, marks that machine's inventory stale and holds a recovery notice
+naming the one available repair: `Pull down to check again`, reconnect the
+fleet, or reset the fleet outside the app. once that machine reads fresh it
+offers `Resume draft` or `Discard`. a forge still pending when the app leaves
+the foreground becomes the same recovery.
 
-accepted feature specifications retain their product acceptance criteria.
-removed suites, unavailable boundaries and unexecuted checks are never passes.
-[the roadmap](roadmap.md) points to open issues and source-attributed historical
-evidence. deleting old test recipes does not erase failures or satisfy gaps.
+### saved state
+
+`MainActivity` installs the entry into its saved-state registry once, before it
+constructs the controller. the capsule is a primitive bundle under
+`dev.niels.skidbladnir.dashboard-entry`:
+
+| key | value |
+| --- | --- |
+| `version` | `4` |
+| `viewKind` | `needsInput`, `all`, `unassigned` or `named` |
+| `viewLabelSha256` | named only: the label fingerprint |
+| `anchorKind` | `none`, `session`, `space` (a group heading) or `unassigned` |
+| `anchorSha256` | session or space only: the fingerprint |
+| `fallbackIndex`, `offsetPx` | first visible rendered index and pixel offset; both 0 without an anchor |
+
+a session fingerprint is sha-256 over `skidbladnir.dashboard-card.v1`, then the
+machine handle, tmux id and identity token, each preceded by its 4-byte
+big-endian utf-8 length; a label fingerprint is sha-256 over
+`skidbladnir.space-label.v1`, the label's 4-byte length and the label. the
+capsule holds no inventory, raw label, name, path, token, draft, attachment or
+credential, and nothing else persists dashboard state: no preferences, file,
+tmux option or gateway field.
+
+an unsupported version starts `all` at the top; a malformed current-version
+capsule is a trusted-state defect and crashes. a restored named view whose
+label is unobserved stays selected as `previously selected group` until an
+inventory shows it. while restoration is pending the collection shows only a
+progress mark, and a save re-emits the pending capsule unchanged. restoring
+scrolls to the anchor's current index, else to the clamped former index.
+selecting another view cancels a pending restoration; selecting the active
+view does nothing. a return from a terminal that never presented output
+verifies inventory as a pull does. terminal access loss returns to the
+dashboard at the top of the same view with that machine's notice.
+
+### phone errors
+
+- a failed inventory read downgrades only its machine: fresh or superseded
+  becomes stale with its snapshot, reading becomes unreachable. a failed
+  pressure read: fresh becomes stale, reading becomes unavailable.
+- `401` becomes auth required. `409 MachineIdentityMismatch`, or a success
+  naming another handle, becomes identity changed. either stops that machine's
+  polling, fails its open forge with the rejection, drops its confirmation and
+  group editor, posts a dashboard notice and closes its open terminal.
+- a refresh that reaches no live poller posts a notice naming each machine's
+  access state.
+- copy names its machine and claims nothing tmux did not report. recovery copy
+  names only a path that exists for the target's modeled access: `Pull down to
+  check again` when reachable, `Reconnect fleet` for auth, fleet reset outside
+  the app for identity.
+
+### phone accepted limits
+
+- no screen-reader support: no curated narration, roles, headings, live
+  regions or custom actions. talkback reads compose's merged visible text and
+  the descriptions of the two text-less controls (the card overflow and the
+  forge seal). labels carry no bidi isolates, so an rtl name may reorder
+  neighbouring punctuation; paths stay left-to-right.
+- pull has no tap, menu or accessibility equivalent.
+- one dashboard context: no per-view position history. a cold launch or an
+  os-discarded task starts at `all`, top. a deleted anchor clamps its index,
+  since no neighbour list is saved and so no inventory persists; offsets land
+  approximately after layout changes; the strip's scroll offset and input
+  focus are not restored.
+- machines and notification settings sit behind the header overflow.
+- card seals are not individually distinguishable; recognition is seal plus
+  names ([design language §11](design-language.md#11-dwarf-seals-procedural-portraits)).
+- directory search covers zoxide-visited paths only; browsing covers Home only;
+  links that escape Home are reachable only by literal entry. listings are
+  advisory: creation re-validates, and under concurrent change a listing may
+  show an entry's earlier kind ([fifo hang](issues/directory-listing-fifo-hang.md)).
+- label fingerprints leak equality and are dictionary-guessable. they keep raw
+  labels out of the os-held bundle; they are not secrecy.
+- open: [sheet uniformity](issues/sheet-uniformity.md),
+  [picker nullables](issues/picker-model-nullables.md),
+  [interaction redesign](issues/phone-interaction-redesign.md),
+  [visual redesign](issues/visual-redesign.md),
+  [invisible label characters](issues/group-label-invisible-characters.md) and
+  the phone lines of [unrun acceptance](issues/unrun-acceptance.md).
+
+## 14. phone terminal
+
+the phone renders one tmux client of one exact session. kotlin owns the
+connection, credentials and android surfaces; a packaged xterm.js page owns
+rendering, input encoding, modifiers, touch, selection and grid fitting. they
+meet only at the page port. four constraints explain the rest: the window is
+shared with every other client under tmux `window-size latest`, so any grid
+change resizes it for everyone; the bearer never enters the webview; nothing is
+replayed; terminal content stays transient.
+
+### phone terminal concepts
+
+- **attempt**: one entry into the terminal screen for one `SessionTarget`
+  (machine handle, tmux id, identity token). it is numbered and owns at most
+  one page, one connection and one notification visit (`TerminalAttachment`).
+  every page and connection callback names its attempt; stale ones are ignored.
+- **page**: `assets/terminal` inside `LockedTerminalWebView`, one per attempt.
+  a failed page never recovers.
+- **page port**: the one web-message channel between native and page,
+  version 6, internal to one apk.
+- **connection status**: `Preparing` (no page) → `Connecting` (page ready) →
+  `Connected(attachedClients)`; any failure → `ReconnectRequired(message)`.
+- **viewport**: `Pending | Fitted(columns, rows) | TooSmall`, published by the
+  page and held natively apart from connection status.
+- **text size**: one phone-wide nominal size, 12..24 sp in steps of 1,
+  default 16. the bounds are product choices, not optima, and the default
+  awaits the owner's readability check ([unrun acceptance](issues/unrun-acceptance.md)).
+
+### phone terminal owners
+
+| owner | owns |
+| --- | --- |
+| `SkidbladnirController` | attempts, admission (connection × viewport), leave, text-size writes |
+| `TerminalConnection` | the wss: opening resize, frame order and bounds, the input queue |
+| `LockedTerminalWebView` | webview lockdown, the port decoder, the output budget, ime requests, selection haptic and too-large toast |
+| `TerminalSelectionToolbar` | the floating `Copy` action mode, its overlay Back callback, the one clipboard write |
+| `terminal.js` | xterm, fitting, the input reducer and modifiers, deck encoding, paste sanitizing, ime containment, touch, wheel and tap routing, selection ranges and snapshot |
+| `TerminalScreen` | insets, rail, sheets, overlays; mirrors page snapshots |
+| `TerminalTextSize` | the committed size file |
+
+### phone terminal invariants
+
+1. at most one attempt is live; entering a terminal leaves the previous one.
+   the phone names a session only by `SessionTarget`, never a raw tmux target;
+   the gateway checks the lifetime at attach.
+2. leaving (detach, Back, backgrounding, page or connection failure, loss of
+   the machine's authority, closure, another entry) closes only the owned
+   client. nothing is buffered or replayed; re-entry is a fresh attempt with a
+   fresh page and empty scrollback. activity or process recreation, including
+   a font-scale change, lands on the dashboard and never reopens a terminal.
+   rotation and keyboard changes keep the attachment (the activity handles
+   those configuration changes) and only refit.
+3. the bearer, machine pin and identity header stay in kotlin. the page has no
+   network, file, storage, navigation or javascript-bridge capability.
+4. one ordered ingress: typed, ime, dictation, paste, deck, wheel and tap
+   reports and xterm's automatic replies all leave the page as `Input`
+   messages, in order, and the connection sends them unchanged.
+5. the page publishes only whole-cell grids fitted to its measured box in the
+   loaded font, capped at 1024 × 512 and never raised to a floor. the wss opens
+   only after page `Ready` and the first fitted grid, which is its first client
+   frame. below 20 × 5 the page keeps its last grid and publishes
+   `ViewportTooSmall` once per episode; recovery republishes `Resize` even when
+   unchanged.
+6. user ingress (touch, focus, typing, deck) needs `Connected` and `Fitted`.
+   output and xterm's automatic replies never wait for either.
+7. chrome never changes the terminal's box. only the keyboard, rotation,
+   window size and font scale do; text size changes only the grid. the rail is
+   one row whose height depends only on font scale.
+8. the page alone owns ctrl, alt and shift, each `Off` or `Armed`, and
+   publishes all three in one `ModifierState`: all-off before `Ready`, all-off
+   before the `Input` that consumes armed ones, never an unchanged snapshot.
+   every `Input` consumes all three. reset emits no input and happens on page
+   failure, disable, window-focus loss, rotation, opening a sheet or
+   confirmation, sending an interrupt, and leave. compose mirrors the current
+   attempt's snapshot and never toggles optimistically.
+9. `Detach` destroys nothing. closures exist only in the session sheet and
+   commit only through the confirmation.
+10. the page owns, before xterm, every touch stream that starts on xterm's
+    screen and every stream while a gesture or selection exists. a stream it
+    cannot own whole (a second contact, a non-cancelable or edge start, a start
+    during a claimed gesture) is swallowed until every finger lifts and emits
+    nothing. touch never fails the page.
+11. each wheel unit takes exactly one route; at most one remote unit leaves per
+    animation frame, and nothing after release.
+12. selection emits no terminal input. only an explicit `Copy` writes the
+    clipboard, at most once per selection, with exactly the release snapshot.
+    selected text leaves the page only in `SelectionAvailable`. production
+    never reads the clipboard.
+13. terminal bytes, keys, touch coordinates and selected or clipboard text
+    never enter logs, saved state, analytics or evidence.
+14. the text size shown and applied is the committed one. orientation,
+    keyboard, machine and session never rewrite it. android text scaling is
+    applied once, natively (`applyDimension(SP) / density` css px, with
+    `textZoom` 100 and zoom off).
+
+### terminal connection
+
+`GET /v1/sessions/{tmuxId}/terminal` over wss, with the bearer, the machine pin
+and `Skidbladnir-Session-Identity: <identityToken>`.
+[attach and handoff](#attach-and-handoff) owns the host side.
+
+- phone → gateway: text `{"kind":"Resize","columns":c,"rows":r}` within
+  20..1024 × 5..512, first and within 5 s; binary input in frames of at most
+  64 KiB; `{"kind":"Detach"}` then close 1000 on leave. more than 1 MiB of
+  queued input fails the connection.
+- gateway → phone: `Hello{attachedClients,paneId,foreground?}` once and first,
+  then `Presence{attachedClients}` and binary output of at most 64 KiB, and at
+  most one final `Error{error{code,message}}`.
+- unlike every other gateway document, these frames decode strictly
+  (`TerminalConnection.kt`): exact keys, an error code from the terminal set and
+  a message equal to that code's fixed copy. a host that adds a member or
+  rewords a terminal error therefore puts an older apk's every attach into
+  `ReconnectRequired`, so such a change is a [lockstep cutover](#lockstep-cutovers).
+- an ordering, size or decode violation, a close, or a transport failure is
+  `ReconnectRequired`.
+
+### page port
+
+native posts the handshake as a window message carrying the one port:
+`{"kind":"PagePort","version":6,"longPressMilliseconds":n,"fontSizeCssPx":x}`
+(n from `ViewConfiguration`, a positive integer; x finite and positive).
+
+| native → page | meaning |
+| --- | --- |
+| binary `ArrayBuffer` | 1..65536 output bytes, posted as they arrive |
+| `Accessory{key}` | one of `Escape Slash Shift Home Up End PageUp Tab Control Alt Left Down Right PageDown` |
+| `ResetInputState` | reset modifiers and gesture, dropping any selection |
+| `FontSize{fontSizeCssPx}` | a committed text size |
+| `ClearSelection` | the toolbar closed or could not open; drops only a released selection |
+
+| page → native | meaning |
+| --- | --- |
+| `Ready` | port bound; once |
+| `Input{value}` | at most 1 MiB of utf-8 |
+| `Resize{columns,rows}` | a fitted grid |
+| `ViewportTooSmall` | below 20 × 5 |
+| `ModifierState{control,alt,shift}` | each `Off` or `Armed` |
+| `ImeRequested` | a tap asks for the keyboard |
+| `OutputApplied{bytes}` | xterm wrote one frame; one per frame, in order |
+| `SelectionStarted` | a long press selected; native plays the long-press haptic |
+| `SelectionAvailable{anchorX,anchorY,text}` | the release snapshot, at most 256 KiB; anchors in [0, 1] of the window |
+| `SelectionCleared` | the page dropped a selection it held |
+| `SelectionTooLarge` | the release text exceeded 256 KiB and was cleared |
+| `PageFailure` | the page is dead |
+
+both ends ship in one apk: one version, exact keys and types, no negotiation,
+alias or fallback. a rejected message fails the receiving end for good. each
+direction is fifo, so no correlation token exists. native admits at most 1 MiB
+of output posted and not yet acknowledged; more fails the page. the first
+acknowledgement while the app is foreground presents the attempt's
+notification visit.
+
+### terminal input
+
+the key deck is one fixed 2 × 7 matrix, `Esc / Shift Home ↑ End PgUp` over
+`Tab Ctrl Alt ← ↓ → PgDn`, of equal minimum-size cells; when the measured
+labels exceed the width, both rows scroll together. keys are raw terminal
+input: no lifecycle, navigation, macro or local-history key, and pgup/pgdn
+never scroll locally. each enabled tap plays the keyboard-tap haptic.
+
+encoding, from one modifier snapshot, with `m = 1 + shift + 2·alt + 4·ctrl`:
+
+- arrows, home, end: xterm's normal or application-cursor sequence; modified,
+  `CSI 1;m A/B/C/D/H/F`. pgup, pgdn: `CSI 5~`, `CSI 6~`; modified `CSI 5;m~`,
+  `CSI 6;m~`.
+- tab is `HT`, or backtab `CSI Z` under shift; ctrl leaves it, alt prefixes
+  `ESC`. escape and slash ignore shift.
+- ctrl, then alt, apply to a proven key: a deck literal, or a typed unit that
+  xterm's `onKey` proves is one printable ascii keystroke. ctrl uppercases
+  ascii letters, maps `@`..`_` to `& 0x1f` and `?` to `0x7f`; alt prefixes
+  `ESC`. ime commits, composition, dictation, paste, non-ascii and
+  multi-character text stay literal and still consume all three. shift never
+  changes text.
+
+shift exists for codex's pending questions (shift+←/→) and claude's mode switch
+(shift+tab): providers interpret keys, skid never detects a question.
+alt+shift+tab is `ESC CSI Z`, deliberately unlike xterm's physical-key
+evaluator. gboard supplies hyphen and capitals.
+
+gboard owns typing, dictation (editable, never auto-sent) and the paste ui;
+enter is CR. paste drops C0 except tab and newline, DEL and C1, turns CR and
+CRLF into LF, and wraps the result in bracketed paste when the application
+asked. only a tap and deck keys focus xterm's helper textarea, so page-sent
+input never fakes a focus-in. ime composition is clipped to the terminal edge,
+and page and webview both pin scroll at the origin.
+
+### touch and selection
+
+one page state machine per stream: `Composing | Pending | Scrolling |
+Selecting | Selected | PendingSelected | BlockingSelected | Blocked`.
+
+- a stream that starts during ime composition, with no released selection, is
+  consumed whole without effect; the next fresh gesture routes normally.
+- slop is 8 css px. before the long-press timeout, vertical-dominant travel
+  claims scroll and horizontal-dominant travel blocks the stream. over a
+  released selection a drag is swallowed and keeps it; a tap drops it.
+- scroll accumulates signed travel and emits, per animation frame, one wheel
+  unit of whole rows at the start cell, clamped to the screen with excess debt
+  dropped. release sends one bounded correction to the absolute travel.
+- a wheel unit routes: mouse tracking `vt200`, `drag` or `any` → one SGR wheel
+  report; else the alternate buffer → one cursor up or down (application mode
+  respected); else local `scrollLines`, no input.
+- a sub-slop release focuses the terminal, sends an SGR primary press and
+  release when the application tracks the mouse (press only under X10), then
+  `ImeRequested`. native raises the ime only while live, enabled, shown and
+  window-focused. the page never asks while it holds a selection.
+- at the long-press timeout the page selects the word under the finger even
+  under mouse reporting: the cell alone when blank, else the run of cells
+  without `` ()[]{}',"` `` or space, continued across soft wraps. hold-drag
+  extends by cells and, beyond the top or bottom edge, scrolls 1..15 rows per
+  50 ms tick. an xterm marker anchors the word, so it follows its text as
+  output scrolls; the range is reapplied on every move, tick and release.
+- release snapshots `getSelection()`: empty clears; over 256 KiB clears with a
+  toast; otherwise native shows the floating `Copy` toolbar at the release
+  point if still enabled and window-focused, else answers `ClearSelection`.
+- the page drops a selection on a new tap, a second contact, window blur, page
+  hide, reset or failure. one still being made also drops on textarea blur or
+  resize, and when its anchor row leaves the buffer or the buffer switches.
+- `Copy` writes `ClipData.newPlainText("Terminal selection", snapshot)` with
+  `EXTRA_IS_REMOTE_DEVICE`, closes the toolbar and sends `ClearSelection`. the
+  system clipboard preview is the only success feedback, so
+  `EXTRA_IS_SENSITIVE` stays unset.
+- Back closes the toolbar first, through an overlay-priority callback, because
+  the floating action mode does not consume Back; the next Back detaches.
+- a window capture listener stops xterm's own copy handler, so the page never
+  writes the clipboard.
+
+### terminal chrome and sizing
+
+top to bottom: the rail (under the status bar), the terminal, the key deck and
+a band filling the navigation-bar or keyboard inset; their surfaces are in
+[design language §13](design-language.md#13-component-register).
+`TerminalScreen` is the sole inset owner; the app pins dark system bars on any
+system theme.
+
+- the rail is `Detach` (Back is equivalent), then one control showing the tmux
+  name over `<place> · <presence>` that opens the session sheet. place is where
+  typed input runs, host first: `macbook`; `devbox via macbook` for a resolved
+  ssh/mosh pane; `remote via macbook` when the destination is unknown. presence
+  is `preparing`, `connecting`, `input frozen` or `N client(s)`; only frozen
+  input is coloured.
+- the session sheet holds status and context and routes to existing owners:
+  `rename`, `new terminal on <owner>` (create-here on a local pane, the
+  source-scoped forge on an ssh/mosh pane), `text size · N`, then the card's
+  lifetime rows `send interrupt` (unconfirmed, toast receipt),
+  `close terminal only` and `interrupt and close terminal` (both confirmed).
+  rows disable while a rename or close is pending or their owner would refuse.
+  inferred status shows only here while attached.
+- the too-small overlay covers terminal and deck above the inset band, so it
+  never moves the webview's bounds and stays reachable at zero height. it
+  offers `Hide keyboard` while the ime is up and `Text size`; there is no
+  automatic shrinking. `Detach` stays outside it.
+- the text-size sheet steps `−`, `+` and `Reset to 16`, each admitted only
+  while the page is live, no write is pending and the value changes.
+
+rejected, because each would resize the shared window or cost a scarce row:
+hiding the status bar, an auto-hiding or bottom rail (it would put `Detach`
+over `Esc`), a deck menu key (eight 48 dp keys overflow a 384 dp phone), pinch
+zoom (column reflow, and it competes with selection).
+
+### page and files
+
+- `filesDir/datastore/terminal-text-size`, replaced through `AtomicFile`:
+  exactly two ascii digits, 12..24. absent means 16; anything else is a read
+  failure. the size loads before the page exists.
+- `assets/terminal/` (`index.html`, `terminal.css`, `terminal.js`, `vendor/`)
+  is served only at `https://appassets.androidplatform.net/assets/terminal/`;
+  every other request answers 403 and other main-frame navigation is refused.
+  the csp is `default-src 'none'` with bundle-only scripts, styles and fonts,
+  plus the inline style elements and attributes xterm generates.
+- the tmux client advertises `RGB` and runs with `TERM=xterm-256color`; the
+  page owns one palette ([design language §10](design-language.md#10-terminal-theme)).
+- geometry is published only after both JetBrains Mono faces load (on failure,
+  monospace); the page then re-measures xterm's cell through its private
+  `_charSizeService`.
+- `screenReaderMode` stays on: it selects xterm's keydown and `insertText`
+  input path, and with it off stock xterm lost the first gboard letter in 4 of
+  72 emulator runs against 0 of 87. the phone has no screen-reader support
+  ([design language §14](design-language.md#14-accessibility-floor)).
+- `vendor/` holds verbatim upstream bytes, never edited, with no build step or
+  check:
+
+| file | source | identity |
+| --- | --- | --- |
+| `xterm-6.0.0.js` | `package/lib/xterm.js`, npm `@xterm/xterm@6.0.0` | tarball `sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==`; file sha256 `14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972` |
+| `xterm-6.0.0.css`, `xterm-6.0.0.LICENSE` | `package/css/xterm.css`, `package/LICENSE`, same tarball | byte-identical |
+| `xterm-addon-fit-0.11.0.{js,LICENSE}` | `package/lib/addon-fit.js`, `package/LICENSE`, npm `@xterm/addon-fit@0.11.0` | tarball `sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==` |
+| `JetBrainsMono-{Regular,Bold}.woff2`, `JetBrainsMono-2.304.LICENSE` | `fonts/webfonts/` and `OFL.txt`, JetBrains Mono v2.304 release zip | byte-identical |
+
+re-verify from the repository root:
+
+```sh
+curl -sL https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz -o x.tgz
+openssl dgst -sha512 -binary x.tgz | base64
+tar -xzOf x.tgz package/lib/xterm.js | cmp - android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js
+rm x.tgz
+```
+
+an xterm upgrade is a file swap, a check that `_charSizeService.measure()`
+still exists, and a rerun of the phone typing, touch and selection journeys.
+
+### phone terminal errors
+
+- page failure (a rejected message, over-bound input or output, an asset or
+  http error, a renderer crash, 10 s without `Ready`) and every connection
+  failure end the attempt as `ReconnectRequired`. the panel says no input will
+  be replayed and offers `Reattach` (a fresh attempt) and `Back to Dwarves`.
+- a server `Error` shows its code's fixed message;
+  `TerminalConfigurationUnsupported` names the three tmux options, which skid
+  never changes.
+- an upgrade answered `Unauthenticated` or `MachineIdentityMismatch` ends that
+  machine's access, not only the terminal.
+- a text-size read failure blocks the page with `Retry` (a reread); a write
+  failure keeps the prior size and says so. nothing retries automatically.
+- a clipboard `SecurityException` keeps the toolbar for another explicit try;
+  a toolbar that cannot start clears the selection.
+
+### phone terminal assumptions
+
+- tmux enables SGR 1006 with every mouse mode, so the page encodes every
+  report as SGR whatever encoding the application negotiated.
+- a resizing client becomes the window's latest before tmux recalculates
+  sizes, and `#{window-size}` resolves the session's current window option,
+  then the global one (read from tmux source, not run).
+- the api-36 webview withholds PointerEvent move and up after a long press but
+  keeps TouchEvents, so the page uses TouchEvents; xterm misreads constructed
+  DOM wheel events, so the page never synthesizes them.
+- stock xterm on a physical phone (ansi, unicode, ime composition, editable
+  dictation, clipboard, automatic da/dsr/cpr replies, resize and rotation) is
+  `NOT_RUN`, owner-accepted; only an emulator differential, with its own gaps,
+  qualifies it ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
+
+### phone terminal accepted limits
+
+- one swipe is local scrollback or shared application input, by mode; a wheel
+  into tmux moves what the laptop sees. no fling; remote velocity is capped at
+  one unit per frame. a physical mouse wheel bypasses the page router.
+- readable text costs columns; concurrent clients alternate the shared size;
+  reflow can move content; conflicting tmux overrides need the operator.
+- opening a sheet takes window focus: gboard hides, modifiers reset and the
+  shared window resizes until the keyboard returns.
+- one-shot modifiers must be re-armed per shortcut, and any intervening
+  `Input`, including an automatic reply, consumes them. the five-letter
+  `Shift` label can force shared deck overflow on a narrow phone.
+- a gesture that starts during composition is lost.
+- selection: the highlight can vanish for one tick when tmux resends mouse
+  modes, and later output can change highlighted cells, but `Copy` stays the
+  release snapshot. rows shifted in a region not starting at row 0 (a lower
+  split pane) do not move the anchor, and a text-size change during a hold
+  leaves it in the old grid. word bounds differ from xterm's own at soft-wrap
+  separators and exact cell boundaries. there are no post-release handles, and
+  clearing after `Copy` prevents an immediate re-copy. a `ClearSelection`
+  crossing a newer selection clears it; no wrong text is copied.
+- the system preview shows copied text and android may retain or sync the
+  clip; the remote-device extra is a rendering hint, not a guarantee.
+- output frames queued on a stalled ui thread are uncounted until it runs.
+- open records: [stock xterm phone acceptance](issues/stock-xterm-phone-acceptance.md),
+  [resize churn](issues/terminal-resize-churn.md),
+  [landscape keyboard](issues/terminal-landscape-keyboard.md),
+  [ime reshow](issues/terminal-ime-reshow-selection.md),
+  [hello identity](issues/terminal-hello-identity.md).
+
+## 15. operations
+
+### installation
+
+a host archive holds the `skidbladnir` binary, `release.json` `{platform,
+sourceSha, version}`, `providers/shell-init`, `providers/terminal-context-init`
+and, on mac, the signed `Skid.app`. it ships no interpreter; runtime startup
+downloads nothing. supported: `darwin-arm64` on macos 26+; `linux-amd64` on
+ubuntu 24.04+ or arch-family (`ID=arch`, or `arch` in `ID_LIKE`) with systemd
+user services (`internal/install/platform.go`); android 13+ (min sdk 33, target
+36) with google play services, where the owner waives verification on versions
+older than the test phone's.
+
+`bash install [vX.Y.Z]` (the release's bootstrap; latest stable when omitted)
+verifies and hands off to the archive's own `skid install`. installed commands:
+`skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]` and
+`skid uninstall`; one installation operation runs at a time (`install.lock`).
+
+1. trust starts at the bootstrap. `scripts/install` embeds the ed25519 release
+   public key; a key fetched beside an archive would authenticate nothing.
+   archives are signed over their sha256 digest, and the installed binary
+   verifies with its compiled-in key (`internal/install/release-public-key.pem`),
+   so rotating the key needs a new bootstrap on every host. the bootstrap needs
+   curl and openssl 3+ (`pkeyutl -rawin`); on mac it installs homebrew
+   `openssl@3` when the system one lacks it.
+2. nothing skid-owned changes until an archive is verified, safely extracted (no
+   absolute or `..` paths, no duplicates, regular files and directories only),
+   matched to this platform, its binary's `version` equals its manifest and, on
+   mac, `codesign --verify --strict` accepts `Skid.app`. a release older than
+   `current/release.json` is refused.
+3. layout: `${XDG_DATA_HOME:-~/.local/share}/skidbladnir/releases/<version>-<sha>`,
+   `current` a symlink to one, `~/.local/bin/skid` into `current`. install
+   writes service files and shell blocks, stops skid services, moves the release
+   in, switches `current`, starts services, and only then deletes every other
+   release; tmux and providers are never restarted. a failure after the stop
+   leaves skid stopped until the next install; a startup failure reports the
+   release installed and keeps the older releases.
+4. skid owns fixed paths by name and records nothing: `releases/`, `current`,
+   `bin/skid`, its service files and two marked shell blocks. install overwrites
+   them; hand edits inside them are lost.
+5. shell blocks: a guarded `managed shell` block, sourcing
+   `current/providers/shell-init` only when `SKIDBLADNIR_SHELL=1`, goes last in
+   `.bashrc`, the bash login file (first of `.bash_profile`, `.bash_login`,
+   `.profile`), `$ZDOTDIR/.zlogin` and `$ZDOTDIR/.zshrc`, with `ZDOTDIR` as zsh
+   itself resolves it. `.zshrc` also starts with a `managed zsh prompt` block
+   that turns off powerlevel10k's instant prompt only in the exact shell skid
+   started, because its cached preamble can redirect the first command's
+   terminal. symlinks are followed, modes kept, files replaced atomically; an
+   incomplete or duplicated block stops installation. dev-server's dotfiles rely
+   on this placement (`internal/install/shell.go`).
+6. services: on linux one user unit `skidbladnir.service` (`Restart=on-failure`,
+   `RestartSec=3`, `KillMode=process`); startup before login needs
+   `sudo loginctl enable-linger USER`. on mac the launch agents
+   `dev.niels.skidbladnir` (serve: `KeepAlive`, `AbandonProcessGroup`,
+   `ProcessType=Interactive`) and `dev.niels.skidbladnir.notifications`; install
+   fails when the new serve runs below scheduling priority 31, since tmux and
+   every agent inherit serve's priority (`services.go`).
+7. missing tmux or tailscale install through homebrew (`tmux`, cask
+   `tailscale-app`; homebrew is a prerequisite), apt plus tailscale's official
+   installer, or pacman; privilege prompts are the user's. providers, zoxide,
+   ssh and mosh are never installed.
+8. `skid update` runs the installed binary's installer, so a release's installer
+   changes apply from the following update, or at once through its own
+   `bash install TAG`. running desktop browsers keep their loaded binary until
+   reopened.
+9. uninstall turns off tailscale serve `https:8443` (warning if it cannot), stops
+   services, strips the blocks from every file install could have chosen under
+   the current `ZDOTDIR`, deletes the owned paths, and succeeds when nothing is
+   installed. settings, private state, provider data, tmux and shared packages
+   remain; there is no purge.
+
+### release
+
+`scripts/release TAG` runs on the darwin arm64 signing host.
+
+1. preconditions: a clean worktree at exact `origin/main` of the original public
+   repository, immutable releases enabled, a successful hosted `verify` push run
+   for that sha, a tag that exists nowhere and whose android version code
+   (`major*10^6 + minor*10^3 + patch`) exceeds every existing tag's. keys:
+   `SKIDBLADNIR_MAC_SIGNING_IDENTITY` (sha1 of the certificate pinned by
+   `macos/app-signing-cert.sha256`, in the user keychain), the ed25519 key at
+   `SKIDBLADNIR_RELEASE_SIGNING_KEY` (default
+   `~/.config/skidbladnir/release-signing.pem`) matching the pinned public key,
+   and `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/android-signing.properties`
+   for the signer pinned by `android/app-signing-cert.sha256`.
+2. everything ships from a fresh clone of that sha: host binaries by
+   `scripts/build-host-binary` (go.mod's go family at or above its patch,
+   `GOTOOLCHAIN=local`, trimmed and stamped; mac deployment target 26.0), the apk
+   by gradle `assembleRelease`, never the debug keystore.
+3. exactly eight assets: both host archives and their `.sig`,
+   `skidbladnir-android.apk`, `android-signing-cert.sha256`, `install` and a
+   four-entry `SHA256SUMS`. `scripts/check-release` verifies every artifact once,
+   before the draft; `--reproduce` also rebuilds and compares bytes.
+4. publication is a separate reviewed action. then `scripts/check
+   published-release TAG SHA` re-verifies the public release, its tag and hosted
+   run, and requires `release-pin.json` at `HEAD` to pin version, source sha and
+   five asset digests. the pin states what is published, never what a host runs.
+5. signing keys are operator backups outside git. a lost android key means
+   reinstalling the app, since android refuses another signer. checksums detect
+   corruption; signatures prove possession of the key.
+6. hosted ci runs `scripts/check verify` on each pull request and main push,
+   scoped by changed paths (`.github/workflows/verify.yml`); docs, `AGENTS.md`
+   and `release-pin.json` build nothing. release integrity and engineering
+   checks are not behavioral acceptance ([testing](rules.md#testing)).
+
+### lockstep cutovers
+
+host, desktop and phone ship from one release and consumers decode tolerantly,
+so an additive wire change needs no install order, except in the phone's
+[terminal frames](#terminal-connection). removing or retyping a field
+a consumer reads, adding an enum value it branches on, or changing a durable
+format is a lockstep cutover with no converter or old reader. each such release
+records its cross-repo operator steps as an issue
+([release cutover](issues/release-cutover.md),
+[attention cutover](issues/attention-cutover.md)).
+
+### fleet operations
+
+- first computer: `bash install` bootstraps a fleet with itself as hub, named by
+  its hostname without `.local`. for remote access sign in to tailscale, enable
+  tailnet https and run `skid connect` on the hub first: invitations need its
+  origin.
+- another computer: install, sign in to tailscale, run `skid connect` on any
+  enrolled computer, then `skid join --name NAME` on the new one and paste the
+  line. if `skid status` on the hub lacks its origin, run `skid connect` on it
+  once and discard the invitation.
+- phone: `scripts/install-android APK` checks the pinned signer and the package
+  `dev.niels.skidbladnir`, needs exactly one authorized adb device and sdk
+  build-tools 36.1.0, and runs `adb install -r`, keeping app data; installation
+  is not pairing. sign the phone in to the same tailnet and scan a
+  `skid connect` qr.
+- remove a device: `skid remove DEVICE_ID`, ids from `skid status`.
+- move or lose the hub: with push configured, first place a matching credential
+  on the new hub; run `skid recover` there; `skid join` every other computer
+  with a fresh invitation; clear skid's app data on each phone and scan again.
+  attention, acknowledgements and receivers are not carried. a returned old hub
+  cannot reclaim recovered devices, which fetch only from the new one; offline
+  devices stay in the old fleet until re-enrolled.
+- roll back: `skid uninstall`, the previous release's `bash install vPREVIOUS`,
+  then `skid connect` once for the route. android refuses an in-place
+  downgrade: uninstall the app, losing its data, and re-pair. the release's
+  cutover issue names the state files to restore or delete.
+
+### android push setup
+
+once, on the hub, for optional [android push](#android-push):
+
+1. create a firebase project with an android app for `dev.niels.skidbladnir`;
+   enable the fcm http v1 api and keep the client key restricted to the firebase
+   apis it needs. phones use the ordinary signed apk.
+2. create a dedicated service account with a custom role holding only
+   `cloudmessaging.messages.create`; export its json key.
+3. `install -m 600 KEY "${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-push-credentials.json"`
+   as the hub user, directory `0700`. never put it in yaml, arguments, a phone
+   or a repository.
+4. from `google-services.json`, client package `dev.niels.skidbladnir`:
+   `project_id` = `project_info.project_id`, `application_id` =
+   `client[].client_info.mobilesdk_app_id`, `sender_id` =
+   `project_info.project_number` (quoted), `api_key` =
+   `client[].api_key[].current_key`. add them under `android_push` and run
+   `skid apply`; paired phones learn them from the fleet view.
+5. confirm a real notification with the phone backgrounded: pairing or an
+   accepted fcm request proves no delivery.
+
+rotate the key by replacing the file (`0600`) and running `skid apply`, then
+revoke the old key. disable by dropping `android_push` and applying; attention
+and channels stay. changed public options need one phone restart: stop skid in
+android's app settings and reopen it (swiping a task may leave the process alive).
+
+### logs
+
+serve writes one content-free json event per line (`time`, `event.name`,
+attributes, with codes, ids and durations but never names, titles, cwd,
+objectives, terminal bytes, prompts, homes, origins, bearers or account data;
+the opaque machine handle may appear): to the journal on linux, to `serve.log` on mac, rotated at 8 MiB
+into `serve.log.1` (two overlapping serve processes can approach twice that).
+mac serve stderr is discarded ([issue](issues/macos-serve-stderr-discarded.md)).
+
+### consumers
+
+- dev-server, the owner's provisioner, fetches `scripts/install` at a pinned
+  source sha, checks its sha256, runs `bash install VERSION`, and on the hub
+  alone writes `config.yaml` (`0600`) from its own source and runs `skid apply`.
+  its next run replaces hand edits, so lasting changes belong in dev-server;
+  membership and generated state stay skid's.
+- jarvis drives workers through the public [cli](#cli) and its json and reads no
+  fleet files: it captures a full `--ref` before admitting a worker and executes
+  with it. its cross-user access to installed state is its own record
+  ([topology](#trust-invariants), invariant 6); skid provisions no jarvis
+  credentials and gains no watcher, task protocol or receipt store for it.
+
+## 16. cross-cutting invariants
+
+beside the five constraints at the top, these hold across every section; each
+link names the rule that owns it.
+
+1. identities are distinct and never substitute for each other: machine handle,
+   device id, server lifetime, session lifetime, pane id, foreground start
+   identity. names, labels, dwarves, groups and positions describe; they never
+   select or authorize ([rules](rules.md#identities-and-exact-targets)).
+2. validate once, at ingress: human yaml and arguments, os, tmux and provider
+   output, gateway requests. same-release peers decode tolerantly, except the
+   phone's terminal frames ([terminal connection](#terminal-connection)), and an
+   undecodable answer is a lost answer ([rules](rules.md#trust-boundaries)).
+3. producers render copy. the host renders status, recovery notices and errors;
+   clients add only what they alone know ([rules](rules.md#copy-and-drafts)).
+4. host clocks are never compared: ages run on local monotonic time from receipt,
+   and transmitted instants are utc ([rules](rules.md#timing-and-polling)).

@@ -1,8 +1,7 @@
 # sheet uniformity
 
 problem: the phone's bottom sheets share one body (`SheetForm` in `Theme.kt`)
-but still disagree on chrome and busy dismissal. the 2026-10-22 structure
-cleanup kept every difference because it was pixel-preserving.
+but still disagree on chrome and busy dismissal.
 
 - title: the group sheet hand-rolls `headlineSmall` Display without SemiBold;
   every other sheet uses `SheetTitle` (`SessionEdit.kt` `GroupSheet`).

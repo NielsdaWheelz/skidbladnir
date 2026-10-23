@@ -92,7 +92,7 @@ func automaticName(base, id, current string, names map[string]struct{}) string {
 	}
 }
 
-// normalizeNames applies automatic naming (automatic-session-names.md) to
+// normalizeNames applies automatic naming (docs/architecture.md, naming) to
 // rows, normalizeCharacters' copy, in place. A write that tmux applied is
 // projected; a refused or uncertain write keeps the observed row, and the next
 // inventory observes the outcome. Guards compare format lookup, so the marker

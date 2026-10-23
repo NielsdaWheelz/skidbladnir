@@ -271,7 +271,7 @@ func (manager *Manager) scanCapture(capture tmuxclient.InventoryCapture) session
 }
 
 // normalizeCharacters gives each row without a catalogue key the least-used
-// one (automatic-dwarf-identity.md), written only while the session's
+// one (docs/architecture.md, dwarves), written only while the session's
 // format-visible raw value is the sampled one. A lost race re-reads the row
 // once: a vanished session is omitted, a now-valid key is accepted, otherwise
 // one more guarded attempt runs against the newly observed raw value.
