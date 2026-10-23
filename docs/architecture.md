@@ -944,9 +944,7 @@ own; `/v1/notifications/*` go to the hub's notifier.
    413; a `null` member reads as absent. responses are same-release data decoded
    tolerantly ([rules](rules.md#trust-boundaries)): an undecodable response is a
    lost one, so an observation shows that machine unavailable and a possibly
-   dispatched mutation is `unknown`. the one exception is the phone's terminal
-   websocket frames, decoded with exact keys and exact error copy
-   ([terminal connection](#terminal-connection)).
+   dispatched mutation is `unknown`.
 2. each json document is declared once in go: `internal/api` holds the inventory,
    session, terminal-operation, profile-usage and error documents and the vocabulary
    they carry (terminal status, usage, footer, name mode, recovery, account quota)
@@ -1939,7 +1937,7 @@ replayed; terminal content stays transient.
 - **page**: `assets/terminal` inside `LockedTerminalWebView`, one per attempt.
   a failed page never recovers.
 - **page port**: the one web-message channel between native and page,
-  version 6, internal to one apk.
+  internal to one apk.
 - **connection status**: `Preparing` (no page) → `Connecting` (page ready) →
   `Connected(attachedClients)`; any failure → `ReconnectRequired(message)`.
 - **viewport**: `Pending | Fitted(columns, rows) | TooSmall`, published by the
@@ -2028,18 +2026,17 @@ and `Skidbladnir-Session-Identity: <identityToken>`.
 - gateway → phone: `Hello{attachedClients,paneId,foreground?}` once and first,
   then `Presence{attachedClients}` and binary output of at most 64 KiB, and at
   most one final `Error{error{code,message}}`.
-- unlike every other gateway document, these frames decode strictly
-  (`TerminalConnection.kt`): exact keys, an error code from the terminal set and
-  a message equal to that code's fixed copy. a host that adds a member or
-  rewords a terminal error therefore puts an older apk's every attach into
-  `ReconnectRequired`, so such a change is a [lockstep cutover](#lockstep-cutovers).
-- an ordering, size or decode violation, a close, or a transport failure is
-  `ReconnectRequired`.
+- the phone decodes each text frame once, tolerantly
+  ([rules](rules.md#trust-boundaries)), and reads only `kind`, `attachedClients`
+  and `error.code`: `Hello` and `Presence` both report the count, and an unknown
+  code reads as `InternalError`. it re-checks no frame order, count or size.
+- an undecodable text frame, an unknown kind, a missing read field, a close, or
+  a transport failure is `ReconnectRequired`.
 
 ### page port
 
 native posts the handshake as a window message carrying the one port:
-`{"kind":"PagePort","version":6,"longPressMilliseconds":n,"fontSizeCssPx":x}`
+`{"longPressMilliseconds":n,"fontSizeCssPx":x}`
 (n from `ViewConfiguration`, a positive integer; x finite and positive).
 
 | native → page | meaning |
@@ -2065,12 +2062,14 @@ native posts the handshake as a window message carrying the one port:
 | `SelectionTooLarge` | the release text exceeded 256 KiB and was cleared |
 | `PageFailure` | the page is dead |
 
-both ends ship in one apk: one version, exact keys and types, no negotiation,
-alias or fallback. a rejected message fails the receiving end for good. each
-direction is fifo, so no correlation token exists. native admits at most 1 MiB
-of output posted and not yet acknowledged; more fails the page. the first
-acknowledgement while the app is foreground presents the attempt's
-notification visit.
+both ends ship in one apk: no version, negotiation, alias or fallback, and
+neither end re-checks the bounds the other guarantees. each end reads only the
+fields it uses; an unparseable message, an unknown kind, accessory key or
+modifier phase, or a missing or mistyped read field fails the receiving end for
+good, and extra fields are ignored. each direction is fifo, so no correlation
+token exists. native admits at most 1 MiB of output posted and not yet
+acknowledged; more fails the page. the first acknowledgement while the app is
+foreground presents the attempt's notification visit.
 
 ### terminal input
 
@@ -2280,7 +2279,8 @@ still exists, and a rerun of the phone typing, touch and selection journeys.
   [resize churn](issues/terminal-resize-churn.md),
   [landscape keyboard](issues/terminal-landscape-keyboard.md),
   [ime reshow](issues/terminal-ime-reshow-selection.md),
-  [hello identity](issues/terminal-hello-identity.md).
+  [hello identity](issues/terminal-hello-identity.md),
+  [error copy](issues/terminal-error-copy.md).
 
 ## 15. operations
 
@@ -2390,8 +2390,7 @@ verifies and hands off to the archive's own `skid install`. installed commands:
 ### lockstep cutovers
 
 host, desktop and phone ship from one release and consumers decode tolerantly,
-so an additive wire change needs no install order, except in the phone's
-[terminal frames](#terminal-connection). removing or retyping a field
+so an additive wire change needs no install order. removing or retyping a field
 a consumer reads, adding an enum value it branches on, or changing a durable
 format is a lockstep cutover with no converter or old reader. each such release
 records its cross-repo operator steps as an issue
@@ -2483,8 +2482,7 @@ link names the rule that owns it.
    identity. names, labels, dwarves, groups and positions describe; they never
    select or authorize ([rules](rules.md#identities-and-exact-targets)).
 2. validate once, at ingress: human yaml and arguments, os, tmux and provider
-   output, gateway requests. same-release peers decode tolerantly, except the
-   phone's terminal frames ([terminal connection](#terminal-connection)), and an
+   output, gateway requests. same-release peers decode tolerantly, and an
    undecodable answer is a lost answer ([rules](rules.md#trust-boundaries)).
 3. producers render copy. the host renders status, recovery notices and errors;
    clients add only what they alone know ([rules](rules.md#copy-and-drafts)).

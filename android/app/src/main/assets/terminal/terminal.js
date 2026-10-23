@@ -25,7 +25,7 @@
     var gesture = null;
     var longPressMilliseconds = 0;
 
-    window.addEventListener("message", acceptPagePort);
+    window.addEventListener("message", acceptPagePort, { once: true });
     if (!terminalHost) {
         failPage();
         return;
@@ -92,12 +92,14 @@
         pendingProvenKey = null;
     }
 
+    // Resets the page once and tells native on whichever port is current.
     function failPage() {
-        if (pageFailed) return;
-        pageFailed = true;
-        cancelGesture(false);
-        clearProvenKey();
-        setModifiers("Off", "Off", "Off");
+        if (!pageFailed) {
+            pageFailed = true;
+            cancelGesture(false);
+            clearProvenKey();
+            setModifiers("Off", "Off", "Off");
+        }
         send({ kind: "PageFailure" });
         pagePort = null;
     }
@@ -228,24 +230,12 @@
         window.requestAnimationFrame(resizeTerminal);
     }
 
-    function isFontSizeCssPx(value) {
-        return typeof value === "number" && Number.isFinite(value) && value > 0;
-    }
-
-    function exactObject(value, expectedKeys) {
-        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-        var actualKeys = Object.keys(value);
-        if (actualKeys.length !== expectedKeys.length) return false;
-        return expectedKeys.every(function (key) {
-            return Object.prototype.hasOwnProperty.call(value, key);
-        });
-    }
-
-    function parseObject(value) {
-        if (typeof value !== "string") return null;
+    // Same-APK native messages, read only for what the page uses: a message
+    // it cannot parse, an unknown kind or a missing or mistyped field fails
+    // the page.
+    function parseMessage(data) {
         try {
-            var parsed = JSON.parse(value);
-            return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+            return JSON.parse(data);
         } catch (error) {
             return null;
         }
@@ -823,60 +813,34 @@
             });
             return;
         }
-        var payload = parseObject(message.data);
-        if (!payload) {
-            failPage();
-            return;
-        }
-        if (payload.kind === "Accessory" && exactObject(payload, ["kind", "key"]) &&
-            typeof payload.key === "string") {
+        var payload = parseMessage(message.data);
+        var kind = payload && payload.kind;
+        if (kind === "Accessory" && typeof payload.key === "string") {
             acceptAccessory(payload.key);
-            return;
-        }
-        if (payload.kind === "ResetInputState" && exactObject(payload, ["kind"])) {
+        } else if (kind === "ResetInputState") {
             resetInputState();
-            return;
-        }
-        if (payload.kind === "FontSize" && exactObject(payload, ["kind", "fontSizeCssPx"]) &&
-            isFontSizeCssPx(payload.fontSizeCssPx)) {
+        } else if (kind === "FontSize" && typeof payload.fontSizeCssPx === "number") {
             terminal.options.fontSize = payload.fontSizeCssPx;
             scheduleFit();
-            return;
-        }
-        // The person closed the Copy toolbar. A selection still being made is
-        // newer than any toolbar, so only a released one drops.
-        if (payload.kind === "ClearSelection" && exactObject(payload, ["kind"])) {
+        } else if (kind === "ClearSelection") {
+            // The person closed the Copy toolbar. A selection still being made is
+            // newer than any toolbar, so only a released one drops.
             if (gesture !== null && gesture.state !== "Selecting" && holdsSelection(gesture.state)) {
                 cancelGesture(true);
             }
-            return;
+        } else {
+            failPage();
         }
-        failPage();
     }
 
+    // Native posts the one handshake, carrying the port, once the page has
+    // loaded. A page that already failed reports it on the new port.
     function acceptPagePort(event) {
-        var handshake = parseObject(event.data);
-        var validHandshake = event.ports && event.ports.length === 1 &&
-            handshake &&
-            exactObject(handshake, ["kind", "version", "longPressMilliseconds", "fontSizeCssPx"]) &&
-            handshake.kind === "PagePort" && handshake.version === 6 &&
-            typeof handshake.longPressMilliseconds === "number" &&
-            Number.isFinite(handshake.longPressMilliseconds) &&
-            Number.isInteger(handshake.longPressMilliseconds) &&
-            handshake.longPressMilliseconds > 0 &&
-            isFontSizeCssPx(handshake.fontSizeCssPx);
-        if (!validHandshake) {
+        var handshake = parseMessage(event.data);
+        pagePort = event.ports[0] || null;
+        if (pageFailed || !pagePort || !handshake ||
+            typeof handshake.longPressMilliseconds !== "number" || typeof handshake.fontSizeCssPx !== "number") {
             failPage();
-            return;
-        }
-        if (pagePort !== null) {
-            failPage();
-            return;
-        }
-        pagePort = event.ports[0];
-        if (pageFailed) {
-            send({ kind: "PageFailure" });
-            pagePort = null;
             return;
         }
         terminal.options.fontSize = handshake.fontSizeCssPx;

@@ -822,9 +822,11 @@ internal class SkidbladnirController(
         // A fleet change that removes or re-authorizes this machine leaves the terminal first.
         val credential = checkNotNull(machines.credential(handle))
         owned.connect(credential, current.target, viewport, object : TerminalConnectionObserver {
-            override fun onHello(attachedClients: Int, paneId: String, foreground: ForegroundObservation?) =
-                connected(attachedClients)
-            override fun onPresence(attachedClients: Int) = connected(attachedClients)
+            override fun onConnected(attachedClients: Int) {
+                if (attachment !== owned) return
+                val terminal = state as? SkidbladnirUiState.Terminal ?: return
+                state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
+            }
             override fun onFailure(code: ApiErrorCode) {
                 if (attachment !== owned) return
                 val failure = GatewayFailure.Api(code = code, message = apiErrorMessage(code))
@@ -832,11 +834,6 @@ internal class SkidbladnirController(
                 val terminal = state as? SkidbladnirUiState.Terminal ?: return
                 leaveTerminal()
                 state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
-            }
-            private fun connected(attachedClients: Int) {
-                if (attachment !== owned) return
-                val terminal = state as? SkidbladnirUiState.Terminal ?: return
-                state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
             }
         })
     }

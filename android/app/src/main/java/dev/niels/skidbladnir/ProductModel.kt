@@ -7,7 +7,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
 
 internal fun String.hasDisplayUnsafeCodePoint(): Boolean = codePoints().anyMatch { codePoint ->
     Character.isISOControl(codePoint) ||
@@ -332,9 +331,6 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.TerminalConfigurationUnsupported ->
         "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
 }
-
-internal fun parseApiErrorCode(value: String): ApiErrorCode =
-    ApiErrorCode.entries.singleOrNull { it.name == value } ?: throw SerializationException("unknown API error code")
 
 @Serializable internal enum class SessionStatusTone {
     @SerialName("working") Working,

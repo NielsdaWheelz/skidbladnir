@@ -18,12 +18,6 @@ import kotlinx.serialization.encoding.Encoder
 @Serializable internal data class CharacterSummary(val key: String, val displayName: String)
 @Serializable internal data class MachineSummary(val handle: MachineHandle)
 
-internal data class ForegroundObservation(
-    val provider: AgentProvider,
-    val pid: Long,
-    val startIdentity: String,
-)
-
 @Serializable internal data class AgentRuntime(
     val provider: AgentProvider,
     val pid: Long,
