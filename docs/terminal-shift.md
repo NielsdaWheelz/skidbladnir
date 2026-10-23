@@ -140,6 +140,8 @@ the packaged page port hard-cuts from actual version `4` to `5`:
 
 the first two messages are native → page; the third is page → native.
 initialisation numbers above are examples of existing platform-derived fields.
+terminal-page (2026-10-22) moved the port to version 6;
+[selection copy](terminal-selection-copy.md#exact-packaged-page-api) lists it.
 `Accessory.key` accepts exactly the enum above; the three modifier fields are
 required and each accepts exactly `Off` or `Armed`. `ResetInputState`, `Ready`
 and `Input` retain their current shapes. retain strict missing/extra-field,

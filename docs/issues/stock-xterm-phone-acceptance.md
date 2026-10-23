@@ -37,5 +37,9 @@ openings), Gboard typing with suggestions, Backspace in and out of composition,
 Enter, dictation and paste unchanged; a drag scrolls copy-mode at the touched
 cell; a tap clicks that cell and raises Gboard; a long press highlights a word
 and keeps it while output streams, a drag extends it including past the bottom
-edge, and release offers `Copy` whose clip equals the highlight. at release, if still unobserved, this becomes one
+edge, and release offers `Copy` whose clip equals the highlight; Back closes
+that toolbar first; a second finger or a touch starting on the 4 px padding
+never shows "Reconnect required"; Gboard composition at the right edge never
+shifts the page; the phone WebView supports ArrayBuffer web messages (the page
+port's version 6 requires them). at release, if still unobserved, this becomes one
 phone line in [unrun acceptance](unrun-acceptance.md) and this file goes.

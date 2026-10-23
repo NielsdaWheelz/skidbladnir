@@ -110,8 +110,8 @@ invoke a tmux macro. Gboard Enter continues to emit CR.
   and alt prefixes `ESC`. escape/slash ignore shift. the
   [exact encoding table](terminal-shift.md#terminal-encoding) owns combinations.
 - shift never changes typed/composed/pasted text or hardware input.
-- A typed unit is modifier-eligible only when xterm's trusted `onKey`
-  provenance proves one discrete printable ASCII key. A deck accessory is
+- A typed unit is modifier-eligible only when xterm's `onKey` provenance
+  proves one discrete printable ASCII key. A deck accessory is
   intrinsically proven.
 - IME commit/composition, dictation-shaped input, paste, Unicode,
   multi-character text, and uncertain xterm input remain literal and consume
@@ -174,8 +174,8 @@ Page to native:
 {"kind":"Input","value":"..."}
 ```
 
-the page-port version is `5`: native and packaged page assets ship
-atomically and the port is internal. Unknown kinds, keys, states, missing or
+the page port (version 6, [exact list](terminal-selection-copy.md#exact-packaged-page-api))
+ships atomically with native and is internal. Unknown kinds, keys, states, missing or
 extra fields, and malformed values fail closed. There is one protocol shape,
 one input path, and no alias, fallback, negotiation, or compatibility decoder.
 

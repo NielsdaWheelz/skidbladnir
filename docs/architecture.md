@@ -894,7 +894,9 @@ strictly and treat a mismatch as a defect; its cleanup slice converts them.
   recovery controls while preserving output and automatic terminal replies.
   [Readable terminal sizing](terminal-readable-sizing.md) owns the preference,
   initial geometry, content, and proofs; [terminal shift](terminal-shift.md)
-  owns the version-5 packaged-page protocol extension.
+  owns its packaged-page protocol extension;
+  [selection copy](terminal-selection-copy.md#exact-packaged-page-api) lists
+  the version-6 packaged-page protocol.
   The [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
   input surface: `Esc / Shift Home ↑ End PgUp` over
   `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` always owns phone detach. Android Back
@@ -917,7 +919,7 @@ strictly and treat a mismatch as a defect; its cleanup slice converts them.
   write. IME composition and non-composition Gboard input stay inside the
   terminal edge; both the page and native WebView enforce zero horizontal
   viewport movement.
-  One prevented, trusted DOM TouchEvent stream owns terminal tap, scroll, and
+  One prevented DOM TouchEvent stream owns terminal tap, scroll, and
   selection on the API-36 client. A primary one-finger vertical drag over the
   xterm screen becomes wheel units at the touched cell, routed from xterm's
   public state: one SGR wheel report when the application tracks the mouse,

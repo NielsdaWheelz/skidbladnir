@@ -69,7 +69,7 @@ is not a history subsystem.
 
 ### Direct manipulation
 
-- The current direct-touch owner and its trusted/cancelable TouchEvent admission,
+- The current direct-touch owner and its cancelable TouchEvent admission,
   single-contact drain, tap, long-press, and lifecycle rules live only in
   [`terminal-selection-copy.md`](terminal-selection-copy.md). The retired
   PointerEvent, pointer-capture, and compatibility-tail implementation described
@@ -116,7 +116,7 @@ is not a history subsystem.
   input, the existing input reducer consumes the modifiers without applying
   them to unproven data, exactly as it does for other xterm-generated input.
 
-The scoped screen rule remains `touch-action: none`; the page owns the trusted
+The scoped screen rule remains `touch-action: none`; the page owns the
 TouchEvent stream synchronously as defined by the selection-copy contract.
 Existing `PgUp` and `PgDn` stay raw terminal keys.
 
@@ -134,7 +134,7 @@ Existing `PgUp` and `PgDn` stay raw terminal keys.
 ## Architecture and API design
 
 ```text
-trusted touch TouchEvent ----> page gesture owner
+touch TouchEvent ----> page gesture owner
                                               |
                                               v
                               page sendWheel(rows, start cell)
@@ -179,17 +179,17 @@ one input-state owner:
 ResetInputState = {"kind":"ResetInputState"}
 ```
 
-The two packaged ends still ship atomically. The current protocol is exact
-version `3`; selection-copy owns its generation-correlated additions and the
-tap-to-IME correction owns its content-free intent. Unknown, missing, extra, or
-differently cased fields fail closed. There is no public HTTP/WSS schema, DTO,
-setting, persistence, gateway operation, or tmux command.
+The two packaged ends ship atomically. The current protocol is exact
+version `6`; [selection copy's exact API](terminal-selection-copy.md#exact-packaged-page-api)
+is its one complete list. Unknown, missing, extra, or differently cased fields
+fail closed. There is no public HTTP/WSS schema, DTO, setting, persistence,
+gateway operation, or tmux command.
 
-`LockedTerminalWebView` should consolidate its repeated Focus/Accessory/
-ResetInputState message-port send boilerplate into one private exact
-page-command sender. `failPage()` cancels the gesture, permanently
-rejects later native messages, then publishes failure. Do not expose a generic
-command API or production test seam.
+`LockedTerminalWebView` sends every command through one private sender.
+`failPage()` is reserved for an unusable DOM or port, a rejected native message
+and over-bound input: it cancels the gesture, permanently rejects later native
+messages, then publishes failure. Gesture anomalies block their stream
+instead. There is no generic command API or production test seam.
 
 ## Hard cut and final state
 

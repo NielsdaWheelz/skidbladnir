@@ -870,7 +870,6 @@ internal class SkidbladnirController(
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt || current.connection !is TerminalUiStatus.Connected) return
         attachment?.connection?.send(bytes)
-        attachment?.page?.focus()
     }
     fun sendTerminalAccessory(attempt: Int, accessory: TerminalAccessory) {
         val current = state as? SkidbladnirUiState.Terminal ?: return

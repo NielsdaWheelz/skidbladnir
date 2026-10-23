@@ -75,16 +75,12 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
 }
 
 // One geometry bound: the page publishes only fitted whole-cell grids inside it
-// (and ViewportTooSmall below it), and the resize transport carries nothing else.
+// (and ViewportTooSmall below it), and the page port admits nothing else.
 internal val TERMINAL_COLUMNS_RANGE = 20..1024
 internal val TERMINAL_ROWS_RANGE = 5..512
 
-internal fun encodeTerminalResize(columns: Int, rows: Int): String {
-    if (columns !in TERMINAL_COLUMNS_RANGE || rows !in TERMINAL_ROWS_RANGE) {
-        throw IllegalArgumentException("terminal geometry out of bounds")
-    }
-    return productJson.encodeToString(TerminalResize("Resize", columns, rows))
-}
+internal fun encodeTerminalResize(columns: Int, rows: Int): String =
+    productJson.encodeToString(TerminalResize("Resize", columns, rows))
 internal fun encodeTerminalDetach(): String = productJson.encodeToString(TerminalDetach("Detach"))
 
 // kotlinx's tree decoder coerces quoted digits into numbers; presence counts stay JSON numbers.
@@ -101,11 +97,6 @@ internal interface TerminalConnectionObserver {
     fun onFailure(code: ApiErrorCode)
 }
 
-private data class PendingResize(
-    val encoded: String,
-    val byteCount: Int,
-)
-
 internal class TerminalConnection(
     private val client: GatewayClient,
     private val credential: MachineCredential,
@@ -121,17 +112,11 @@ internal class TerminalConnection(
     private var started = false
     private var opened = false
     private var connected = false
-    private var queuedOutputBytes = 0L
-    private var pendingResize: PendingResize? = null
-    private var resizeDrainScheduled = false
-    private val resizeDrain = Runnable(::drainResize)
 
-    // The gateway creates no PTY until a valid Resize arrives, so a
-    // connection cannot exist without its measured geometry already queued as the
-    // first client frame the open-time flush will send.
-    init {
-        resize(initialViewport.columns, initialViewport.rows)
-    }
+    // The gateway creates no PTY until a valid Resize arrives, so the measured
+    // grid waits here for open and is the first client frame; a grid change
+    // before open replaces it.
+    private var openingResize = encodeTerminalResize(initialViewport.columns, initialViewport.rows)
 
     fun start() {
         synchronized(monitor) {
@@ -149,7 +134,7 @@ internal class TerminalConnection(
                 return
             }
             opened = true
-            flushResizeLocked()
+            if (!webSocket.send(openingResize)) fail(ApiErrorCode.ReconnectRequired)
         }
     }
 
@@ -187,16 +172,10 @@ internal class TerminalConnection(
                 throw ProtocolDecodeException("terminal binary frame violated ordering or size")
             }
             if (bytes.size == 0) return
-            if (queuedOutputBytes + bytes.size > MAXIMUM_TERMINAL_QUEUE_BYTES) {
-                fail(ApiErrorCode.ReconnectRequired)
-                return
-            }
+            // Unbounded until main runs it: the budget in LockedTerminalWebView.write
+            // counts a frame only then.
             val payload = bytes.toByteArray()
-            queuedOutputBytes += payload.size
-            main.post {
-                synchronized(monitor) { queuedOutputBytes -= payload.size }
-                if (!stopped.get()) page.write(payload)
-            }
+            main.post { if (!stopped.get()) page.write(payload) }
         }
     }
 
@@ -220,18 +199,17 @@ internal class TerminalConnection(
         fail(code)
     }
 
+    // After open each Resize goes out at once; OkHttp's queue keeps it ahead of
+    // later input.
     fun resize(columns: Int, rows: Int) {
-        val encoded = try {
-            encodeTerminalResize(columns, rows)
-        } catch (_: IllegalArgumentException) {
-            // justify-defect: the owned page emits only geometry inside the closed protocol bounds,
-            // and the reason stays a fixed literal so no terminal content can reach a log.
-            throw ProtocolDecodeException("terminal geometry left the closed protocol bounds")
-        }
+        val encoded = encodeTerminalResize(columns, rows)
         synchronized(monitor) {
             if (stopped.get()) return
-            pendingResize = PendingResize(encoded, encoded.toByteArray(Charsets.UTF_8).size)
-            flushResizeLocked()
+            if (!opened) {
+                openingResize = encoded
+            } else if (!checkNotNull(socket).send(encoded)) {
+                fail(ApiErrorCode.ReconnectRequired)
+            }
         }
     }
 
@@ -239,15 +217,10 @@ internal class TerminalConnection(
         synchronized(monitor) {
             val activeSocket = socket
             if (!connected || stopped.get() || activeSocket == null) return
-            val pendingResizeBytes = pendingResize?.byteCount ?: 0
-            if (bytes.size.toLong() + pendingResizeBytes + activeSocket.queueSize() >
-                MAXIMUM_TERMINAL_QUEUE_BYTES
-            ) {
+            if (bytes.size + activeSocket.queueSize() > MAXIMUM_TERMINAL_QUEUE_BYTES) {
                 fail(ApiErrorCode.ReconnectRequired)
                 return
             }
-            flushResizeBeforeInputLocked(activeSocket)
-            if (stopped.get()) return
             var offset = 0
             while (offset < bytes.size) {
                 val byteCount = minOf(MAXIMUM_TERMINAL_FRAME_BYTES, bytes.size - offset)
@@ -264,9 +237,6 @@ internal class TerminalConnection(
         if (!stopped.compareAndSet(false, true)) return
         synchronized(monitor) {
             connected = false
-            pendingResize = null
-            resizeDrainScheduled = false
-            main.removeCallbacks(resizeDrain)
             socket?.send(encodeTerminalDetach())
             socket?.close(1000, "Detach")
             socket = null
@@ -281,53 +251,10 @@ internal class TerminalConnection(
         if (!stopped.compareAndSet(false, true)) return
         synchronized(monitor) {
             connected = false
-            pendingResize = null
-            resizeDrainScheduled = false
-            main.removeCallbacks(resizeDrain)
             socket?.cancel()
             socket = null
         }
         main.post { observer.onFailure(code) }
-    }
-
-    private fun drainResize() {
-        synchronized(monitor) {
-            resizeDrainScheduled = false
-            if (!stopped.get()) flushResizeLocked()
-        }
-    }
-
-    private fun flushResizeLocked() {
-        val activeSocket = socket ?: return
-        val resize = pendingResize ?: return
-        if (!opened) return
-        val queueSize = activeSocket.queueSize()
-        if (queueSize + resize.byteCount > MAXIMUM_TERMINAL_QUEUE_BYTES) {
-            fail(ApiErrorCode.ReconnectRequired)
-            return
-        }
-        if (queueSize > 0) {
-            scheduleResizeDrainLocked()
-            return
-        }
-        pendingResize = null
-        if (!activeSocket.send(resize.encoded)) {
-            fail(ApiErrorCode.ReconnectRequired)
-        }
-    }
-
-    private fun scheduleResizeDrainLocked() {
-        if (resizeDrainScheduled) return
-        resizeDrainScheduled = true
-        main.postDelayed(resizeDrain, 25)
-    }
-
-    private fun flushResizeBeforeInputLocked(activeSocket: WebSocket) {
-        val resize = pendingResize ?: return
-        pendingResize = null
-        resizeDrainScheduled = false
-        main.removeCallbacks(resizeDrain)
-        if (!activeSocket.send(resize.encoded)) fail(ApiErrorCode.ReconnectRequired)
     }
 }
 
