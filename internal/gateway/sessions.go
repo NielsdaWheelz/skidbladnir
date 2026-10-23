@@ -132,7 +132,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorObjectiveInvalid)
 		return
 	}
-	label, err := group.Parse(valueOf(input.Group))
+	label, err := group.ParseDraft(valueOf(input.Group))
 	if err != nil || input.Group != nil && label.IsUnassigned() {
 		writeError(writer, errorGroupInvalid)
 		return
@@ -252,7 +252,7 @@ func (gateway *Gateway) setSessionGroup(writer http.ResponseWriter, request *htt
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	label, err := group.Parse(*input.Group)
+	label, err := group.ParseDraft(*input.Group)
 	if err != nil {
 		writeError(writer, errorGroupInvalid)
 		return

@@ -627,18 +627,18 @@ duplicate key.
    hosts by exact equality.
 2. canonical label: 1–64 scalars, at most 256 utf-8 bytes, NFC; no C0/C1, U+061C,
    U+200E–200F, U+2028–202E or U+2066–2069; no edge U+0020 and no other unicode
-   whitespace; interior spaces kept. human drafts normalize to NFC at submission;
-   wire and metadata accept only canonical text. order: ascii-case-folded bytes,
-   then exact bytes; unassigned last. `group.Parse` is the authority; the phone
-   still re-checks host labels with its own mirror
-   ([issue](issues/group-label-trusted-constructor.md)), and invisible code points
-   are admitted ([issue](issues/group-label-invisible-characters.md)).
+   whitespace; interior spaces kept. `group.Parse` is the only grammar, and
+   metadata and responses carry only canonical text. a write is a draft: the
+   gateway canonicalizes it to NFC, then parses (`group.ParseDraft`), so clients
+   send drafts as typed ([draft rule](rules.md#copy-and-drafts)).
+   order: ascii-case-folded bytes, then exact bytes; unassigned last. invisible
+   code points are admitted ([issue](issues/group-label-invisible-characters.md)).
 3. NFC is plain UAX #15: x/text's whole-string normalizer inserts CGJ after 30
    non-starters and composes across a blocking starter, so the label owner reuses
    only its per-scalar tables. those tables follow the go toolchain (unicode 15.0
    before go1.27, 17.0 from it); `scripts/build-host-binary` holds the go.mod
-   family and the phone pins `[:age=15.0:]`. a toolchain move changes equality for
-   newly assigned code points, and nothing checks it.
+   family. a toolchain move changes equality for newly assigned code points,
+   and nothing checks it.
 4. `PUT /v1/sessions/{tmuxId}/group` takes exactly `{identityToken, group}` (empty
    clears; absent or null is invalid): one guarded set or unset, `204`, last
    applied write wins, the same value and clearing an unassigned session succeed.
@@ -1665,10 +1665,10 @@ copy follows the [product language](#product-language).
    draft becomes a recovery held on the dashboard, and nothing is replayed.
 9. a directory or group draft is the one editable value. choices, highlights
    and replies never rewrite it; acceptance writes an exact domain value into
-   it; only the separate create or save action submits it, after the domain
-   re-validates it. a directory reply is admitted only for the draft revision
-   and machine that issued it. browsing never builds a path: it sends only
-   tokens the host returned.
+   it; only the separate create or save action submits it: a directory after
+   the domain re-validates it, a group as typed. a directory reply is admitted
+   only for the draft revision and machine that issued it. browsing never
+   builds a path: it sends only tokens the host returned.
 10. decoration is silent and subordinate. marks and seals carry no meaning and
     no action, every screen is complete with them deleted, and nothing
     ornaments an error, notice or destructive surface.
@@ -1690,7 +1690,7 @@ copy follows the [product language](#product-language).
 - owners: `Machines.kt` machine state, polling, mutation lanes and awaited
   reads; `SkidbladnirController.kt` the ui state machine (forge, recovery,
   confirmations, access loss); `ProductModel.kt` availability, notices, the
-  status overlay and copy; `Groups.kt` views, label rules and
+  status overlay and copy; `Groups.kt` views, group choices and
   `dashboardItems`; `DashboardEntryState.kt` the view, grid state and capsule;
   the screen files presentation; `Theme.kt` and `Ornament.kt` tokens and
   frozen art.
@@ -1794,21 +1794,24 @@ launch); a query offers the host's zoxide results 150 ms after the last edit;
 `browse home` is always offered. accepting a choice touches no filesystem.
 
 **group field.** choices are the observed labels of every retained snapshot,
-ranked exact canonical, ascii-case-insensitive equal, prefix, substring, then
-ordered subsequence, ties in label order; only ascii folds, and matching never
-rewrites the draft. a valid draft without an exact match also offers `use
-label: <text>`. an explicit `unassigned` choice (first when empty, last
-otherwise) means no membership and is distinct from a group named
+ranked against the typed text: exact, ascii-case-insensitive equal, prefix,
+substring, then ordered subsequence, ties in label order; only ascii folds, and
+matching never rewrites the draft. a nonempty draft without an exact match also
+offers `use label: <text>`. an explicit `unassigned` choice (first when empty,
+last otherwise) means no membership and is distinct from a group named
 `unassigned`. observations may be stale: a choice is typing help, and the
-target's admission still decides save. both clients share these ranking
-rules; the desktop's keys are in the desktop section.
+target's admission still decides save. an empty draft is unassigned. a `422
+GroupInvalid` puts the host's message under the field, failure-toned, until
+the next edit; accepting the unchanged draft is not one. every other failure
+keeps its slot. the desktop ranks the same way
+after normalizing its draft to nfc; its keys are in the desktop section.
 
 **both fields.** focusing one opens its bounded choices in the same sheet and
 closes the other's; an edit returns the list to its top; tapping a choice fills
-the draft and ends text entry; keyboard next accepts only a valid visible
-literal or default and never picks a result or submits. back first hides the
-keyboard, then closes the choices, then the sheet. autocorrect and
-capitalization are off; paths render left-to-right.
+the draft and ends text entry; keyboard next accepts the directory's valid
+literal or default, or any chosen group draft, and never picks a result or
+submits. back first hides the keyboard, then closes the choices, then the
+sheet. autocorrect and capitalization are off; paths render left-to-right.
 
 **browse home.** a secondary page of the forge sheet on the selected machine.
 it opens `~` and navigates only host-returned children and parent. a local
@@ -1905,6 +1908,8 @@ dashboard at the top of the same view with that machine's notice.
   show an entry's earlier kind ([fifo hang](issues/directory-listing-fifo-hang.md)).
 - label fingerprints leak equality and are dictionary-guessable. they keep raw
   labels out of the os-held bundle; they are not secrecy.
+- an invalid group label costs one round trip. a lone surrogate in a group
+  draft leaves `GatewayClient`'s utf-8 encoding as `?`, and the host stores that.
 - open: [sheet uniformity](issues/sheet-uniformity.md),
   [picker nullables](issues/picker-model-nullables.md),
   [interaction redesign](issues/phone-interaction-redesign.md),

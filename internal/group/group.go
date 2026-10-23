@@ -59,13 +59,12 @@ func ParseDraft(text string) (Label, error) {
 	return Parse(normalizeNFC(text))
 }
 
-// normalizeNFC implements plain UAX #15 NFC, which ICU (the phone) shares.
-// Whole-string x/text v0.41 normalization diverges twice: it composes across a
-// backward-combining starter (ccc 0, so it blocks), turning "s\u1b35\u0329\u0301"
-// into "\u015b\u1b35\u0329", and it inserts CGJ after 30 nonstarters for stream
-// safety. Either would change stored labels and break ICU parity. Scalar
-// decomposition and pair composition reuse its Unicode tables; ordering and
-// blocking follow UAX #15.
+// normalizeNFC implements plain UAX #15 NFC. Whole-string x/text v0.41
+// normalization diverges twice: it composes across a backward-combining starter
+// (ccc 0, so it blocks), turning "s\u1b35\u0329\u0301" into "\u015b\u1b35\u0329",
+// and it inserts CGJ after 30 nonstarters for stream safety. Either would change
+// stored labels. Scalar decomposition and pair composition reuse its Unicode
+// tables; ordering and blocking follow UAX #15.
 func normalizeNFC(text string) string {
 	type scalar struct {
 		value rune

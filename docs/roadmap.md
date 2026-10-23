@@ -46,8 +46,7 @@ prs.
 ## queued simplifications
 
 each removes a second owner or a needless hop:
-[group label constructor](issues/group-label-trusted-constructor.md) (owner
-decided), [phone ready eligibility](issues/phone-ready-eligibility.md),
+[phone ready eligibility](issues/phone-ready-eligibility.md),
 [notification member auth](issues/notification-member-auth.md),
 [hello identity](issues/terminal-hello-identity.md),
 [attention helpers](issues/attention-shared-helpers.md),

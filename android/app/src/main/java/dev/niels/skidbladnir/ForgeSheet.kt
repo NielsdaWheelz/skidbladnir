@@ -103,6 +103,7 @@ private fun ForgeFormContent(
     }
     val inventory = selected?.inventory?.lastSnapshot()?.inventory
     val fieldsEnabled = !forge.pending && selected?.canMutate == true
+    val rejection = (forge.failure as? ForgeFailure.Definite)?.rejection
 
     SheetForm(actions = {
         Button(
@@ -212,6 +213,7 @@ private fun ForgeFormContent(
         GroupField(
             draft = forge.form.group,
             labels = observedGroups(machines),
+            rejection = rejection?.takeIf { it.code == ApiErrorCode.GroupInvalid }?.message,
             enabled = !forge.pending,
             expanded = expandedField == ForgeEntryField.Group,
             onExpandedChange = { expanded ->
@@ -222,12 +224,8 @@ private fun ForgeFormContent(
             onChange = { text -> controller.updateForgeDraft { it.copy(group = GroupDraft.Chosen(text)) } },
             modifier = Modifier.focusRequester(groupFocus),
         )
-        when (val failure = forge.failure) {
-            ForgeFailure.None -> Unit
-            is ForgeFailure.Definite -> Text(
-                gatewayFailureMessage(failure.rejection),
-                color = noticeToneColor(NoticeTone.Failure),
-            )
+        rejection?.takeIf { it.code != ApiErrorCode.GroupInvalid }?.let {
+            Text(it.message, color = noticeToneColor(NoticeTone.Failure))
         }
     }
 }

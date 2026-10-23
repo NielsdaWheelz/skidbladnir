@@ -66,7 +66,7 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     val identityToken: String,
     val character: CharacterSummary,
     val objective: String? = null,
-    @Serializable(with = GroupLabelSerializer::class) val group: GroupLabel? = null,
+    val group: GroupLabel? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val agent: AgentRuntime? = null,
@@ -133,12 +133,4 @@ private object InstantSerializer : KSerializer<Instant> {
         throw SerializationException("instant is not ISO-8601")
     }
     override fun serialize(encoder: Encoder, value: Instant) = encoder.encodeString(value.toString())
-}
-
-// GroupLabel has no trusted constructor, so a label the phone cannot parse loses the response it came in.
-private object GroupLabelSerializer : KSerializer<GroupLabel> {
-    override val descriptor = PrimitiveSerialDescriptor("dev.niels.skidbladnir.GroupLabel", PrimitiveKind.STRING)
-    override fun deserialize(decoder: Decoder): GroupLabel =
-        GroupLabel.parse(decoder.decodeString()) ?: throw SerializationException("group label is not canonical")
-    override fun serialize(encoder: Encoder, value: GroupLabel) = encoder.encodeString(value.text)
 }

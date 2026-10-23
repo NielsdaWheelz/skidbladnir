@@ -110,8 +110,7 @@ internal data class ForgeForm(
             is WorkingDirectoryInput.Query, WorkingDirectoryInput.Invalid -> return null
         }
         val chosen = group as? GroupDraft.Chosen ?: return null
-        val label = if (chosen.text.isEmpty()) null else GroupLabel.fromDraft(chosen.text) ?: return null
-        return ForgeDraft(machineHandle, directory, launch, optionalTmuxName, objective, label)
+        return ForgeDraft(machineHandle, directory, launch, optionalTmuxName, objective, groupLabelOf(chosen.text))
     }
 }
 
@@ -321,7 +320,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.TerminalInputBlocked -> "send unavailable for this screen. open the terminal or use text/keys."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number."
-    ApiErrorCode.GroupInvalid -> GROUP_INVALID
+    ApiErrorCode.GroupInvalid -> "use 1–64 nfc characters; only interior ordinary spaces, without display controls."
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
     ApiErrorCode.SessionNameConflict -> "another session on this machine uses that name."
     ApiErrorCode.SessionNameChanged -> RENAME_STALE_EDIT
