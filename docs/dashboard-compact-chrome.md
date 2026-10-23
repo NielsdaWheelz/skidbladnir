@@ -86,7 +86,7 @@ and its `open notification settings` action unchanged.
 - retain selected-tab reveal on selection, resolved label or viewport geometry;
   ordinary polls must not reset manual strip scrolling. exact strip offset
   remains unpersisted. preserve the existing collection-only refresh boundary.
-- `DashboardMain` retains transient `machines | details(handle)` selection and
+- `DashboardScreen` retains transient `machines | details(handle)` selection and
   the existing settings callback. machines/details/back/dismiss/reconnect keep
   their current behavior. disclosure neither filters cards nor prefills forge.
 - the menu owns only a remembered expanded boolean; no saved state. dismissal

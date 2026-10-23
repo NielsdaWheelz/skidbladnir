@@ -33,9 +33,10 @@ Home is a navigation scope; the primary field accepts valid paths outside it.
 4. hidden means basename-leading-dot. return folders once, hide them locally
    by default and expose the toggle when hidden rows exist. filter is at most
    256 unicode scalars; history retains at most 32 decoded views, oldest evicted.
-5. Back restores listing, filter, hidden state and row/offset before enabling
-   actions. parent follows the returned structural parent independently of Back.
-   root Back and cancel return to the unchanged primary draft.
+5. Back restores listing, filter, hidden state and the exact first visible
+   row and offset, header rows included. parent follows
+   the returned structural parent independently of Back. root Back and cancel
+   return to the unchanged primary draft.
 6. loading retains the prior path/rows, separately labels its requested target,
    and disables parent/folder/use. Back from loading restores the retained
    snapshot as loaded; with none, it returns to the unchanged primary field.
@@ -69,7 +70,7 @@ existing typed failure copy and tones are retained.
 targets are at least 48dp. paths use an explicitly left-to-right region with
 horizontal scroll initially at the tail; machine and folder names render
 without bidi isolation, so an rtl name may reorder neighbouring punctuation. tree keys use row kind plus snapshot ordinal;
-exact paths remain transient action/viewport values, never saved-state keys.
+exact paths remain transient action values, never saved-state keys.
 
 ## decisions and tradeoffs
 
@@ -196,12 +197,12 @@ compatibility schema, fallback, or listing data in `GET /v1/sessions`.
 
 ## android ownership and qualification
 
-`WorkingDirectoryPicker.kt` owns the load-only state and pure browse transitions;
-`SkidbladnirController.kt` owns requests and exact reply admission.
-`WorkingDirectoryPickerScreen.kt` maps that state to browser content and keeps
-viewport restoration with the existing typed anchors. new listing snapshots and
-filter/hidden changes restore before scroll capture and actions resume; viewport
-updates retain their listing snapshot and do not restart restoration. explicit controller
+`WorkingDirectoryPicker.kt` owns the load-only state, pure browse transitions
+and each decoded view's list position (one `LazyListState`, carried with history
+and the forge); `SkidbladnirController.kt` owns requests and exact reply admission.
+`WorkingDirectoryPickerScreen.kt` maps that state to browser content. across a
+filter or hidden change it keeps the first visible folder if it stays visible,
+else returns to the top. the filter field drops input past 256 scalars. explicit controller
 return values tell the form when to focus directory; background changes emit
 no focus action. the primary field and inline request state have separate owners
 under [directory and group entry](directory-group-entry.md).

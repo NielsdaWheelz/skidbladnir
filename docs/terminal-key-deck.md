@@ -63,7 +63,7 @@ Android Back, and the session sheet's confirmed closures remain separate lifecyc
   combinations are valid; disabled modifiers render off.
 - Each enabled activation uses system `KEYBOARD_TAP` haptics. A disabled key
   dispatches nothing and produces no haptic.
-- Reuse `RaisedSurface`, `NidavellirShapes.Key`, `NidavellirType.Data`, `Bone`,
+- Reuse `RaisedSurface`, `NidavellirShapes.Chip`, `NidavellirType.Data`, `Bone`,
   `Muted`, `Gold`, and the existing disabled colors and button primitive.
 - Outer padding is `4dp`; row and column gaps are `2dp`; every equal-width cell
   is at least `48dp x 48dp`.

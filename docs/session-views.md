@@ -229,7 +229,7 @@ returns to the machine list, then back returns to the unchanged dashboard.
 `dismiss`, outside tap and swipe dismissal close the disclosure from either
 page. reconnect closes it before opening the existing fleet flow. use one
 transient `machines | details(machine handle)` selection, absent when closed, in
-`DashboardMain` and one modal sheet, reusing the current rail/details content.
+`DashboardScreen` and one modal sheet, reusing the current rail/details content.
 extract the existing details body from its modal wrapper only as needed; do not
 stack modal surfaces or add navigation history. no request is triggered by
 disclosure; existing polling supplies observations. no machine selection filters cards or

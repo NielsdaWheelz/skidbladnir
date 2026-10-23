@@ -51,21 +51,19 @@ process recreation, reinstall, and gateway restart.
 
 ## Capability contract
 
-### Trait derivation (owned pure code, new `SealSpec.kt`)
+### Trait derivation (pure code, private to `Ornament.kt`)
 
 ```text
-internal enum class SealMetal { Gold, Bronze }
-
-internal data class SealSpec(
+private data class SealSpec(
   mineral: Int,          // 0..7
   runes: List<Int>,      // 1..3 distinct values of 0..15, normally 2..3
   beardTeeth: Int,       // 3..6
   beardDepthStep: Int,   // 0..3
   facetMask: Int,        // 0..255, bit e = octagon edge e carries Gold
-  metal: SealMetal,
+  metal: Color,          // Gold or Bronze
 )
 
-internal fun sealSpec(characterKey: String): SealSpec
+private fun sealSpec(characterKey: String): SealSpec
 ```
 
 With `h = SHA-256(UTF-8(characterKey))` (bytes as unsigned):
@@ -96,7 +94,7 @@ already collision-free — every dwarf differs in field color or rune mark
 before beard and facets are considered.
 
 ### Mineral fields (fill-only tones; the full table is owned by
-`SealSpec.kt` in this delta — gem hexes match design language §5)
+`Ornament.kt` — gem hexes match design language §5)
 
 ```text
 0 Garnet #830E0D   1 Hematite #6D2114   2 BlueGlass #26619C   3 Basalt #2A2D33
@@ -109,11 +107,11 @@ The 16 Younger-Futhark (long-branch) glyphs are a frozen table of straight
 line segments in stave-relative coordinates (x in stave-widths from the
 shared vertical stave, y in 0..1 of stave height), drawn monoline in the
 seal's metal; `íss` contributes the bare stave. The reference segment table
-is the artifact seal forge's `RUNES` array, carried into `SealSpec.kt` as
+is the artifact seal forge's `RUNES` array, carried into `Ornament.kt` as
 constants; it is decorative reference interpretation, explicitly not a text
 encoding.
 
-### Rendering (replaces `DwarfPortrait` drawing in `DashboardScreen.kt`)
+### Rendering (`DwarfPortrait` in `Ornament.kt`)
 
 Draw order at any size, on a square canvas clipped by the `Octagon` shape
 (`CutCornerShape(29)` percent, added to `NidavellirShapes` in this delta as
@@ -160,8 +158,9 @@ Red (each observed failing first):
 Green: implement only enough to pass; routine `scripts/test verify` stays
 green and device-free.
 
-Refactor: keep derivation (`SealSpec.kt`) pure and rendering effectful;
-delete the retired drawing helpers; no seal caching layer.
+Refactor: keep derivation (`sealSpec`, beside its renderer in `Ornament.kt`)
+pure and rendering effectful; delete the retired drawing helpers; no seal
+caching layer.
 
 ## Acceptance and gates
 

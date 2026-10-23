@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -27,216 +25,146 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.distinctUntilChanged
 
-internal class WorkingDirectoryPickerActions(
-    val openChild: (HomeDirectory) -> Unit,
-    val openParent: () -> Unit,
-    val retry: () -> Unit,
-    val updateFilter: (String) -> Unit,
-    val setHidden: (Boolean) -> Unit,
-    val updateViewport: (DirectoryViewport) -> Unit,
-    val enterPath: () -> Boolean,
-    val useCurrent: () -> Boolean,
-    val back: () -> Boolean,
-    val cancel: () -> Boolean,
-)
+private const val MAXIMUM_FILTER_SCALARS = 256
 
-private data class BrowseContent(
-    val context: PickerBrowseContext,
-    val view: DirectoryView?,
-    val actionsEnabled: Boolean,
-)
+/** A folder row's key: its server ordinal, so a filter or hidden change keeps the row Compose anchors on. */
+private fun folderKey(ordinal: Int) = "folder:$ordinal"
 
-private class BrowseViewportScope(
-    val listing: DirectoryListing,
-    val filter: String,
-    val showHidden: Boolean,
-) {
-    override fun equals(other: Any?): Boolean = other is BrowseViewportScope &&
-        listing === other.listing && filter == other.filter && showHidden == other.showHidden
-
-    override fun hashCode(): Int =
-        31 * (31 * System.identityHashCode(listing) + filter.hashCode()) + showHidden.hashCode()
-}
-
-private sealed interface PickerAction {
-    data object EnterPath : PickerAction
-    data object Parent : PickerAction
-    data class Folder(val directory: HomeDirectory) : PickerAction
-}
-
-private sealed interface BrowseStatus {
-    data object Ready : BrowseStatus
-    data class Supporting(val text: String) : BrowseStatus
-    data class Failed(
-        val heading: String,
-        val body: String,
-        val tone: NoticeTone,
-        val retryLabel: String?,
-    ) : BrowseStatus
-}
-
-private data class PickerBrowseContext(
-    val locationLabel: String,
-    val directory: HomeDirectory,
-    val status: BrowseStatus,
-)
-
-private sealed interface PickerRow {
-    val key: PickerRowKey
-    data class Action(
-        override val key: PickerRowKey,
-        val label: String,
-        val action: PickerAction,
-    ) : PickerRow
-    data class Filter(val value: String) : PickerRow { override val key = PickerRowKey.Filter }
-    data class Hidden(val shown: Boolean) : PickerRow { override val key = PickerRowKey.Hidden }
-    data object Omission : PickerRow { override val key = PickerRowKey.Omission }
-}
-
-private sealed interface PickerRowKey {
-    data object EnterPath : PickerRowKey
-    data object Parent : PickerRowKey
-    data object Filter : PickerRowKey
-    data object Hidden : PickerRowKey
-    data object Omission : PickerRowKey
-    data class Folder(val directory: HomeDirectory, val ordinal: Int) : PickerRowKey
-}
-
-private fun PickerRowKey.saveableKey(): String = when (this) {
-    PickerRowKey.EnterPath -> "enter-path"
-    PickerRowKey.Parent -> "parent"
-    PickerRowKey.Filter -> "filter"
-    PickerRowKey.Hidden -> "hidden"
-    PickerRowKey.Omission -> "omission"
-    is PickerRowKey.Folder -> "folder:$ordinal"
-}
-
+/** The forge's folder browser; every way back to the form ends at the directory field. */
 @Composable
 internal fun WorkingDirectoryPickerScreen(
     picker: WorkingDirectoryPickerState,
-    actions: WorkingDirectoryPickerActions,
+    controller: SkidbladnirController,
     enabled: Boolean,
     onReturnToField: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val content = workingDirectoryBrowseContent(picker.load)
-    val view = content.view
-    val rows = workingDirectoryBrowseRows(view)
-    val listState = rememberLazyListState()
-    // A new reply snapshot or folder subset must restore before scroll capture resumes.
-    val viewportScope = view?.let { BrowseViewportScope(it.listing, it.filter, it.showHidden) }
-    var restoredScope by remember(picker.instance) { mutableStateOf<BrowseViewportScope?>(null) }
-    val restorationReady = view == null || restoredScope == viewportScope
-    RestoreWorkingDirectoryViewport(picker.instance, viewportScope, view, rows, listState) { restoredScope = it }
-    CaptureWorkingDirectoryViewport(picker.instance, view, rows, listState, restorationReady, actions.updateViewport)
-    val back = { if (actions.back()) onReturnToField() }
+    val load = picker.load
+    // The folder on screen, if any, and the folder last asked for.
+    val (view, candidate) = when (load) {
+        is DirectoryLoad.Loaded -> load.view to load.view.listing.directory
+        is DirectoryLoad.Loading -> load.retained to load.candidate
+        is DirectoryLoad.Failed -> load.retained to load.candidate
+    }
+    // Parent, folders and Use act on the folder on screen, so they wait while another loads.
+    val browse = enabled && load !is DirectoryLoad.Loading
+    val visible = view?.let(::visibleWorkingDirectoryEntries).orEmpty()
+    val scroll = view?.scroll ?: rememberLazyListState()
+    // Compose keeps the first visible row by key; return to the top unless that row is a folder that stays.
+    fun refine(next: DirectoryView) {
+        val first = scroll.layoutInfo.visibleItemsInfo.firstOrNull { it.index == scroll.firstVisibleItemIndex }?.key
+        if (visibleWorkingDirectoryEntries(next).none { folderKey(it.index) == first }) scroll.requestScrollToItem(0)
+    }
+    val back = { if (controller.workingDirectoryBack()) onReturnToField() }
+    val cancel = { if (controller.cancelWorkingDirectoryPicker()) onReturnToField() }
     ModalBackHandler(back)
-    Column(modifier.fillMaxSize().imePadding()) {
-        PickerHeader(picker.machine, back, { if (actions.cancel()) onReturnToField() })
-        BrowseContext(content.context, actions.retry, enabled)
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = back, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = cancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+            }
+            SheetTitle("Browse Home", Modifier.padding(horizontal = 8.dp))
+            Text("On ${picker.machine.label.text}", color = Muted, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(if (view == null) "Requested folder" else "Current folder", color = Muted,
+                style = MaterialTheme.typography.labelLarge)
+            WorkingDirectoryPathLine((view?.listing?.directory ?: candidate).encoded, Modifier.fillMaxWidth())
+            when (load) {
+                is DirectoryLoad.Loaded -> if (visible.isEmpty()) Text("No visible folders here.", color = Muted)
+                is DirectoryLoad.Loading -> Text("Opening “${load.candidate.displayName}”…", color = Muted)
+                is DirectoryLoad.Failed -> {
+                    Text("Could not open “${load.candidate.displayName}”.", color = Muted)
+                    val (body, retry) = when (load.failure) {
+                        DirectoryBrowseFailure.Transport -> "Could not reach this machine over your Tailnet." to true
+                        DirectoryBrowseFailure.Unavailable ->
+                            "This directory cannot be browsed. Enter the path instead." to false
+                        DirectoryBrowseFailure.TooLarge ->
+                            "This directory has too many folders to show. Enter the path instead." to false
+                        DirectoryBrowseFailure.Internal -> "Skíðblaðnir could not complete the request." to true
+                    }
+                    NoticePanel(tone = NoticeTone.Failure, body = body, actions = if (!retry) null else {
+                        {
+                            TextButton(onClick = controller::retryWorkingDirectory, enabled = enabled,
+                                modifier = Modifier.heightIn(min = 48.dp)) { Text("Try again") }
+                        }
+                    })
+                }
+            }
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f),
-            state = listState,
+            state = scroll,
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(rows, key = { it.key.saveableKey() }) { row ->
-                PickerRow(row, enabled && content.actionsEnabled && restorationReady, actions, onReturnToField)
+            if (view?.listing?.parent is ParentDirectory.Available) {
+                item(key = "parent") { PickerActionRow("Parent folder", browse, controller::openWorkingDirectoryParent) }
+            }
+            item(key = "enter-path") { PickerActionRow("Enter path", true, cancel) }
+            if (view == null) return@LazyColumn
+            item(key = "filter") {
+                OutlinedTextField(
+                    value = view.filter,
+                    onValueChange = { filter ->
+                        if (filter.codePointCount(0, filter.length) > MAXIMUM_FILTER_SCALARS) return@OutlinedTextField
+                        refine(view.copy(filter = filter))
+                        controller.updateWorkingDirectoryFilter(filter)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Filter folders") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                )
+            }
+            if (view.listing.children.any { it.directory.hidden }) {
+                item(key = "hidden") {
+                    FilterChip(
+                        selected = view.showHidden,
+                        onClick = {
+                            refine(view.copy(showHidden = !view.showHidden))
+                            controller.setWorkingDirectoryHidden(!view.showHidden)
+                        },
+                        label = { Text(if (view.showHidden) "Hide hidden folders" else "Show hidden folders") },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    )
+                }
+            }
+            if (view.listing.omissions == DirectoryOmissions.Present) {
+                item(key = "omission") { NoticePanel(tone = NoticeTone.Degraded, body = "Some folders cannot be shown.") }
+            }
+            items(visible, key = { folderKey(it.index) }) { entry ->
+                PickerActionRow(entry.value.directory.basename, browse) {
+                    controller.openWorkingDirectoryChild(entry.value.directory)
+                }
             }
         }
-        view?.listing?.directory?.let { directory ->
-            val home = directory == HomeDirectory.Home
+        if (view != null) {
             Button(
-                onClick = { if (actions.useCurrent()) onReturnToField() },
-                enabled = enabled && restorationReady && content.actionsEnabled,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth().heightIn(min = 48.dp).minimumInteractiveComponentSize(),
+                onClick = { if (controller.useCurrentWorkingDirectory()) onReturnToField() },
+                enabled = browse,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().heightIn(min = 48.dp),
                 shape = NidavellirShapes.Chip,
-            ) { Text(if (home) "Use Home" else "Use this folder") }
+            ) { Text(if (view.listing.directory == HomeDirectory.Home) "Use Home" else "Use this folder") }
         }
     }
 }
 
 @Composable
-private fun PickerHeader(machine: PairedMachine, onBack: () -> Unit, onCancel: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()) {
-                Text("Back")
-            }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()) {
-                Text("Cancel")
-            }
-        }
-        Text("Browse Home", style = MaterialTheme.typography.headlineSmall,
-            fontFamily = NidavellirType.Display, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 8.dp))
-        Text("On ${machine.label.text}", color = Muted,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-    }
-}
-
-@Composable
-private fun PickerRow(
-    row: PickerRow,
-    browseActionsEnabled: Boolean,
-    actions: WorkingDirectoryPickerActions,
-    onReturnToField: () -> Unit,
-) {
-    when (row) {
-        is PickerRow.Action -> PickerActionRow(
-            label = row.label,
-            enabled = when (row.action) {
-                PickerAction.EnterPath -> true
-                PickerAction.Parent, is PickerAction.Folder -> browseActionsEnabled
-            },
-            onClick = when (val action = row.action) {
-                PickerAction.EnterPath -> ({ if (actions.enterPath()) onReturnToField() })
-                PickerAction.Parent -> actions.openParent
-                is PickerAction.Folder -> ({ actions.openChild(action.directory) })
-            },
-        )
-        is PickerRow.Filter -> OutlinedTextField(
-            value = row.value, onValueChange = actions.updateFilter, modifier = Modifier.fillMaxWidth(),
-            label = { Text("Filter folders") }, singleLine = true,
-            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-        )
-        is PickerRow.Hidden -> FilterChip(
-            selected = row.shown, onClick = { actions.setHidden(!row.shown) },
-            label = { Text(if (row.shown) "Hide hidden folders" else "Show hidden folders") },
-            shape = NidavellirShapes.Chip,
-            modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
-        )
-        PickerRow.Omission -> NoticePanel(tone = NoticeTone.Degraded, body = "Some folders cannot be shown.")
-    }
-}
-
-@Composable
-private fun PickerActionRow(
-    label: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
+private fun PickerActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     Surface(
         color = RaisedSurface,
         border = BorderStroke(1.dp, Gold.copy(alpha = if (enabled) 0.40f else 0.18f)),
@@ -251,59 +179,13 @@ private fun PickerActionRow(
                 onClick = onClick,
             ),
     ) {
-        Box(
-            Modifier.fillMaxWidth().minimumInteractiveComponentSize()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) Bone else Muted)
+        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.CenterStart) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = if (enabled) Bone else Muted)
         }
     }
 }
 
-@Composable
-private fun BrowseContext(
-    content: PickerBrowseContext,
-    onRetry: () -> Unit,
-    enabled: Boolean,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            content.locationLabel,
-            color = Muted,
-            style = MaterialTheme.typography.labelLarge,
-        )
-        WorkingDirectoryPathLine(content.directory.encoded, Modifier.fillMaxWidth())
-        when (val status = content.status) {
-            BrowseStatus.Ready -> Unit
-            is BrowseStatus.Supporting -> Text(status.text, color = Muted)
-            is BrowseStatus.Failed -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(status.heading, color = Muted)
-                NoticePanel(
-                    tone = status.tone,
-                    body = status.body,
-                    actions = status.retryLabel?.let { label ->
-                        {
-                            TextButton(
-                                onClick = onRetry,
-                                enabled = enabled,
-                                modifier = Modifier.heightIn(min = 48.dp)
-                                    .minimumInteractiveComponentSize(),
-                            ) { Text(label) }
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
+/** One line of path, scrolled to its end so the deepest folder shows. */
 @Composable
 internal fun WorkingDirectoryPathLine(path: String, modifier: Modifier = Modifier) {
     val scrollState = rememberScrollState()
@@ -324,147 +206,6 @@ internal fun WorkingDirectoryPathLine(path: String, modifier: Modifier = Modifie
                 TextStyle(textDirection = TextDirection.Ltr),
             ),
         )
-    }
-}
-
-@Composable
-private fun RestoreWorkingDirectoryViewport(
-    pickerInstance: Long,
-    scope: BrowseViewportScope?,
-    view: DirectoryView?,
-    rows: List<PickerRow>,
-    state: LazyListState,
-    onRestored: (BrowseViewportScope?) -> Unit,
-) {
-    LaunchedEffect(pickerInstance, scope) {
-        onRestored(null)
-        if (view == null) {
-            state.scrollToItem(0)
-            return@LaunchedEffect
-        }
-        when (val viewport = view.viewport) {
-            DirectoryViewport.Top -> state.scrollToItem(0)
-            is DirectoryViewport.Anchor -> {
-                val index = rows.indexOfFirst { row ->
-                    (row.key as? PickerRowKey.Folder)?.directory == viewport.directory
-                }
-                if (index < 0) {
-                    state.scrollToItem(0)
-                } else {
-                    state.scrollToItem(index, viewport.offset)
-                }
-            }
-        }
-        withFrameNanos { }
-        onRestored(scope)
-    }
-}
-
-@Composable
-private fun CaptureWorkingDirectoryViewport(
-    pickerInstance: Long,
-    view: DirectoryView?,
-    rows: List<PickerRow>,
-    state: LazyListState,
-    enabled: Boolean,
-    onViewport: (DirectoryViewport) -> Unit,
-) {
-    val directory = view?.listing?.directory
-    val authoritativeViewport by rememberUpdatedState(view?.viewport)
-    LaunchedEffect(pickerInstance, directory, rows, enabled) {
-        if (view == null || !enabled) return@LaunchedEffect
-        val firstFolderIndex = rows.indexOfFirst { it.key is PickerRowKey.Folder }
-        snapshotFlow {
-            val visible = state.layoutInfo.visibleItemsInfo
-            val first = visible.firstOrNull() ?: return@snapshotFlow null
-            if (firstFolderIndex < 0 || first.index < firstFolderIndex) {
-                return@snapshotFlow DirectoryViewport.Top
-            }
-            val folder = visible.firstOrNull { item ->
-                rows.getOrNull(item.index)?.key is PickerRowKey.Folder
-            }
-                ?: return@snapshotFlow null
-            val key = rows[folder.index].key as PickerRowKey.Folder
-            DirectoryViewport.Anchor(key.directory, (-folder.offset).coerceAtLeast(0))
-        }.distinctUntilChanged().collect { viewport ->
-            if (viewport != null && viewport != authoritativeViewport) onViewport(viewport)
-        }
-    }
-}
-
-private fun workingDirectoryBrowseContent(load: DirectoryLoad): BrowseContent = when (load) {
-    is DirectoryLoad.Loaded -> browseContent(
-        locationIsCurrent = true, location = load.view.listing.directory, view = load.view,
-        actionsEnabled = true,
-        status = if (visibleWorkingDirectoryEntries(load.view).isEmpty()) {
-            BrowseStatus.Supporting("No visible folders here.")
-        } else BrowseStatus.Ready,
-    )
-    is DirectoryLoad.Loading -> when (val retained = load.retained) {
-        RetainedDirectoryView.None -> browseContent(false, load.candidate, null, false, openingStatus(load.candidate))
-        is RetainedDirectoryView.Present -> browseContent(true, retained.view.listing.directory,
-            retained.view, false, openingStatus(load.candidate))
-    }
-    is DirectoryLoad.Failed -> when (val retained = load.retained) {
-        RetainedDirectoryView.None -> browseContent(false, load.candidate, null, false,
-            browseFailureStatus(load.candidate, load.failure))
-        is RetainedDirectoryView.Present -> browseContent(true, retained.view.listing.directory,
-            retained.view, true, browseFailureStatus(load.candidate, load.failure))
-    }
-}
-
-private fun openingStatus(directory: HomeDirectory): BrowseStatus.Supporting =
-    BrowseStatus.Supporting("Opening “${directory.displayName}”…")
-
-private fun browseFailureStatus(
-    requested: HomeDirectory,
-    failure: DirectoryBrowseFailure,
-): BrowseStatus.Failed {
-    val bodyAndRetry = when (failure) {
-        DirectoryBrowseFailure.Transport ->
-            "Could not reach this machine over your Tailnet." to "Try again"
-        DirectoryBrowseFailure.Unavailable ->
-            "This directory cannot be browsed. Enter the path instead." to null
-        DirectoryBrowseFailure.TooLarge ->
-            "This directory has too many folders to show. Enter the path instead." to null
-        DirectoryBrowseFailure.Internal ->
-            "Skíðblaðnir could not complete the request." to "Try again"
-    }
-    return BrowseStatus.Failed(
-        heading = "Could not open “${requested.displayName}”.",
-        body = bodyAndRetry.first,
-        tone = NoticeTone.Failure,
-        retryLabel = bodyAndRetry.second,
-    )
-}
-
-private fun browseContent(
-    locationIsCurrent: Boolean,
-    location: HomeDirectory,
-    view: DirectoryView?,
-    actionsEnabled: Boolean,
-    status: BrowseStatus,
-): BrowseContent {
-    val label = if (locationIsCurrent) "Current folder" else "Requested folder"
-    return BrowseContent(PickerBrowseContext(label, location, status), view, actionsEnabled)
-}
-
-private fun workingDirectoryBrowseRows(view: DirectoryView?): List<PickerRow> = buildList {
-    if (view?.listing?.parent is ParentDirectory.Available) {
-        add(PickerRow.Action(PickerRowKey.Parent, "Parent folder", PickerAction.Parent))
-    }
-    add(PickerRow.Action(PickerRowKey.EnterPath, "Enter path", PickerAction.EnterPath))
-    if (view == null) return@buildList
-    add(PickerRow.Filter(view.filter))
-    if (workingDirectoryHasHiddenEntries(view)) add(PickerRow.Hidden(view.showHidden))
-    if (view.listing.omissions == DirectoryOmissions.Present) add(PickerRow.Omission)
-    val ordinals = view.listing.children.withIndex().associate { it.value.directory to it.index }
-    visibleWorkingDirectoryEntries(view).forEach { entry ->
-        add(PickerRow.Action(
-            PickerRowKey.Folder(entry.directory, checkNotNull(ordinals[entry.directory])),
-            entry.directory.basename,
-            PickerAction.Folder(entry.directory),
-        ))
     }
 }
 

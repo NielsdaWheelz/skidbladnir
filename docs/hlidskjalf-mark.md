@@ -92,16 +92,14 @@ above; `_valknut(gap: float = _VALKNUT_GAP)`. Nothing else in the pipeline
 changed, and `scripts/gen-ornament --check` gated the regenerated `Ornament.kt`
 for drift until both were deleted.
 
-### Drawing (`Theme.kt`)
+### Drawing (`Ornament.kt`)
 
 ```text
-internal const val ValknutStrokeRatio = 0.055f
-internal fun DrawScope.drawValknut(color: Color)                    // was (color, strokeWidth: Dp = 2.dp)
 internal fun HlidskjalfMark(color: Color, markSize: Dp, modifier: Modifier = Modifier)
 ```
 
-`drawValknut` reads `size.minDimension * ValknutStrokeRatio`; the `Dp` stroke
-parameter is hard-cut, and no call site passed it. `HlidskjalfMark` is the only
+`HlidskjalfMark` strokes the frozen `Valknut` segments at
+`size.minDimension * 0.055`; no `Dp` stroke parameter exists. It is the only
 renderer: it sizes the canvas and has no semantics of its own.
 
 ### Placement
@@ -188,9 +186,8 @@ Green: the derived gap and the proportional stroke, nothing more.
 
 Refactor: the render sites share `HlidskjalfMark`. the one remaining
 `Back to Dwarves` button, the terminal reconnect panel, composes the mark and
-label inline. `drawValknut` keeps
-its own drawing path rather than joining `drawOrnamentBand`, because the mark
-does not tile (ornament-pipeline.md's refactor note).
+label inline. the mark and the fret band now share one segment stroker,
+`drawSegments` in `Ornament.kt`; the valknut has no drawing path of its own.
 
 ## Acceptance and gates
 

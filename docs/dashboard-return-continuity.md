@@ -232,7 +232,7 @@ the accepted fleet is empty; reachability never changes the selected view.
   preserving the view; the controller exposes the affected machine's notice.
   `resetAll` selects all and clears pending restoration and viewport to top.
   these are semantic operations, not a boolean viewport policy.
-- `DashboardMain` uses the accepted fleet; `dashboardItems` consumes it with
+- `DashboardScreen` uses the accepted fleet; `dashboardItems` consumes it with
   the selected view and owns session order,
   grouping and filtering. inventory and manual refresh target the fleet's live
   pollers independently of that view; the machines disclosure owns pressure
@@ -249,7 +249,7 @@ the accepted fleet is empty; reachability never changes the selected view.
   `needsInputSettled` value for the effect key and initial checking presentation;
   it is recomputed from admitted outcomes, not maintained by the ui. the ui owns
   no restoration-readiness decision.
-- `DashboardScreen` and `DashboardDwarfCollection` receive the entry explicitly.
+- `DashboardScreen` and its private `DwarfCollection` receive the entry explicitly.
   The collection-local `rememberLazyGridState()` is removed.
 - While `restorationPending`, the collection renders the existing content-free
   centered progress treatment as a distinct branch; it never sends an empty
