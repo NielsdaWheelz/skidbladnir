@@ -360,6 +360,6 @@ func (writer *trackedResponseWriter) Flush() {
 	_ = http.NewResponseController(writer.ResponseWriter).Flush() // justify-ignore-error: the streaming write owns disconnect handling.
 }
 
-func (gateway *Gateway) logObservationFailure(tmuxID string, reason sessions.StatusReason, elapsed time.Duration) {
+func (gateway *Gateway) logObservationFailure(tmuxID string, reason api.StatusReason, elapsed time.Duration) {
 	gateway.logger.Info("Terminal.ObservationFailed", "skidbladnir.duration.ms", elapsed.Milliseconds(), "skidbladnir.observation.reason", string(reason), "skidbladnir.session.tmux_id", tmuxID)
 }

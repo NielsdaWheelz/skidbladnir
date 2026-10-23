@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
@@ -39,24 +40,24 @@ func (recipe checkpoint) workspace() tmuxclient.Workspace {
 func (manager *Manager) acquireRecoveryLock() (*os.File, *recoveryFailure) {
 	directory := filepath.Dir(manager.recovery.path)
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		return nil, osFailure(RecoveryPhaseOwnership, "mkdir", err, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseOwnership, "mkdir", err, api.RecoveryCauseIO)
 	}
 	if err := os.Chmod(directory, 0700); err != nil {
-		return nil, osFailure(RecoveryPhaseOwnership, "chmod", err, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseOwnership, "chmod", err, api.RecoveryCauseIO)
 	}
 	lock, err := os.OpenFile(filepath.Join(directory, "workspace.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return nil, osFailure(RecoveryPhaseOwnership, "open", err, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseOwnership, "open", err, api.RecoveryCauseIO)
 	}
 	if err := lock.Chmod(0600); err != nil {
 		_ = lock.Close() // justify-ignore-error: ownership was not acquired; that failure is authoritative.
-		return nil, osFailure(RecoveryPhaseOwnership, "chmod", err, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseOwnership, "chmod", err, api.RecoveryCauseIO)
 	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = lock.Close() // justify-ignore-error: ownership was not acquired; that failure is authoritative.
-		failure := osFailure(RecoveryPhaseOwnership, "lock", err, RecoveryCauseIO)
+		failure := osFailure(api.RecoveryPhaseOwnership, "lock", err, api.RecoveryCauseIO)
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			failure.cause = RecoveryCauseBusy
+			failure.cause = api.RecoveryCauseBusy
 		}
 		return nil, failure
 	}
@@ -83,19 +84,19 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, osFailure(RecoveryPhaseCheckpointRead, "open", err, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseCheckpointRead, "open", err, api.RecoveryCauseIO)
 	}
 	encoded, readErr := io.ReadAll(io.LimitReader(file, maximumCheckpointBytes+1))
 	closeErr := file.Close()
 	if readErr != nil {
-		return nil, osFailure(RecoveryPhaseCheckpointRead, "read", readErr, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseCheckpointRead, "read", readErr, api.RecoveryCauseIO)
 	}
 	if closeErr != nil {
-		return nil, osFailure(RecoveryPhaseCheckpointRead, "close", closeErr, RecoveryCauseIO)
+		return nil, osFailure(api.RecoveryPhaseCheckpointRead, "close", closeErr, api.RecoveryCauseIO)
 	}
-	invalid := &recoveryFailure{phase: RecoveryPhaseCheckpointRead, cause: RecoveryCauseInvalid, operation: "validate"}
+	invalid := &recoveryFailure{phase: api.RecoveryPhaseCheckpointRead, cause: api.RecoveryCauseInvalid, operation: "validate"}
 	if len(encoded) > maximumCheckpointBytes {
-		invalid.cause = RecoveryCauseLimit
+		invalid.cause = api.RecoveryCauseLimit
 		return nil, invalid
 	}
 	var recipe checkpoint
@@ -117,13 +118,13 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 func (manager *Manager) writeCheckpoint(recipe checkpoint) *recoveryFailure {
 	encoded, err := json.Marshal(recipe)
 	if err != nil {
-		return &recoveryFailure{phase: RecoveryPhaseCheckpointWrite, cause: RecoveryCauseIO, operation: "write"}
+		return &recoveryFailure{phase: api.RecoveryPhaseCheckpointWrite, cause: api.RecoveryCauseIO, operation: "write"}
 	}
 	if len(encoded) > maximumCheckpointBytes {
-		return &recoveryFailure{phase: RecoveryPhaseCheckpointWrite, cause: RecoveryCauseLimit, operation: "write"}
+		return &recoveryFailure{phase: api.RecoveryPhaseCheckpointWrite, cause: api.RecoveryCauseLimit, operation: "write"}
 	}
 	if err := privatefile.WriteFile(manager.recovery.path, encoded); err != nil {
-		return osFailure(RecoveryPhaseCheckpointWrite, "write", err, RecoveryCauseIO)
+		return osFailure(api.RecoveryPhaseCheckpointWrite, "write", err, api.RecoveryCauseIO)
 	}
 	return nil
 }

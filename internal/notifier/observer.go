@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fcmpush"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -66,7 +66,7 @@ type host struct {
 
 type seen struct {
 	slot, ref, name string
-	status          sessions.TerminalStatus
+	status          api.TerminalStatus
 	qualified       bool
 }
 

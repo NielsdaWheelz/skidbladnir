@@ -10,16 +10,17 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
 func encodeAutoName(name string) string { return base64.RawURLEncoding.EncodeToString([]byte(name)) }
-func effectiveNameMode(name, marker string) NameMode {
+func effectiveNameMode(name, marker string) api.NameMode {
 	decoded, err := base64.RawURLEncoding.Strict().DecodeString(marker)
 	if err == nil && marker != "" && string(decoded) == name && encodeAutoName(string(decoded)) == marker {
-		return NameAutomatic
+		return api.NameAutomatic
 	}
-	return NameManual
+	return api.NameManual
 }
 func titleName(title string) string {
 	if len(title) > 4096 || !utf8.ValidString(title) {
@@ -101,7 +102,7 @@ func (manager *Manager) normalizeNames(ctx context.Context, rows []tmuxclient.In
 	for i, row := range rows {
 		guard := tmuxclient.NamingGuard{ID: row.ID, Name: row.Name, Marker: row.Format.AutoName, Server: server}
 		desired, marker := row.Name, row.LocalSession.AutoName
-		if effectiveNameMode(row.Name, row.LocalSession.AutoName) == NameAutomatic {
+		if effectiveNameMode(row.Name, row.LocalSession.AutoName) == api.NameAutomatic {
 			if base := titleName(row.Title); base != "" {
 				desired = automaticName(base, row.ID, row.Name, names)
 				guard.PaneID, guard.Title = row.PaneID, row.Title
@@ -138,7 +139,7 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 		return err
 	}
 	defer manager.release()
-	if input.Naming.Mode == NameManual {
+	if input.Naming.Mode == api.NameManual {
 		if err := validateTmuxName(input.Naming.Name); err != nil {
 			return err
 		}
@@ -149,11 +150,11 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 	}
 	changed := newSessionError(ErrorSessionNameChanged, "the session name changed. review and save again.")
 	mode := effectiveNameMode(row.Name, row.LocalSession.AutoName)
-	if mode != input.ExpectedNaming.Mode || mode == NameManual && row.Name != input.ExpectedNaming.Name {
+	if mode != input.ExpectedNaming.Mode || mode == api.NameManual && row.Name != input.ExpectedNaming.Name {
 		return changed
 	}
 	desired, marker := input.Naming.Name, ""
-	if input.Naming.Mode == NameAutomatic {
+	if input.Naming.Mode == api.NameAutomatic {
 		desired, marker = row.Name, encodeAutoName(row.Name)
 	}
 	applied, err := manager.tmux.SetNamingIfUnchanged(ctx, tmuxclient.NamingGuard{ID: row.ID, Name: row.Name, Marker: row.Format.AutoName, Server: server}, desired, marker)

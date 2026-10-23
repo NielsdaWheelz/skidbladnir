@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 )
 
 // claudeComposer reads the composer surface (2.3): the input row
@@ -92,7 +92,7 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 	complete := ready && ordinary && footer.kind == claudeFooterOrdinary && !footer.extra && footer.proven &&
 		footer.classes&^claudeTolerated == 0 && (kind == claudeSlotNone || kind == claudeSlotOther) && !waiting
 
-	read := reading{activity: sessions.ActivityUnknown}
+	read := reading{activity: api.ActivityUnknown}
 	if ordinary && footer.kind == claudeFooterOrdinary {
 		read.usage, read.footer = claudeReadStatusline(screen, bottom, footer.mode)
 	}
@@ -101,42 +101,42 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 	// chevron and the slot, so they decide before any conflict.
 	switch {
 	case footer.work, kind == claudeSlotWait, footer.classes&(1<<claudeWork) != 0:
-		read.activity, activity = sessions.ActivityWorking, "claude.activity.background"
+		read.activity, activity = api.ActivityWorking, "claude.activity.background"
 	case corroborator && ready:
 		read.activityCause, activity = causeConflict, "claude.activity.conflict"
 	case loading && kind == claudeSlotSpinner:
-		read.activity, activity = sessions.ActivityWorking, "claude.activity.spinner"
+		read.activity, activity = api.ActivityWorking, "claude.activity.spinner"
 	case loading && kind == claudeSlotRetry:
-		read.activity, activity = sessions.ActivityWorking, "claude.activity.retry"
+		read.activity, activity = api.ActivityWorking, "claude.activity.retry"
 	case interrupt:
-		read.activity, activity = sessions.ActivityWorking, "claude.activity.hint"
+		read.activity, activity = api.ActivityWorking, "claude.activity.hint"
 	case corroborator:
 		// Spinner chrome under a chevron whose style says nothing: unknown.
 	case kind == claudeSlotClipped:
 		read.activityCause = causeClipped
 	case complete:
-		read.activity, activity = sessions.ActivityIdle, "claude.activity.idle"
+		read.activity, activity = api.ActivityIdle, "claude.activity.idle"
 	}
 
 	var family string
 	switch {
 	case waiting:
-		read.interaction, family = sessions.InteractionUnknown, "claude.limit.wait"
+		read.interaction, family = api.InteractionUnknown, "claude.limit.wait"
 	case !ordinary:
-		read.interaction = sessions.InteractionUnknown
+		read.interaction = api.InteractionUnknown
 	case footer.viewed:
-		read.interaction, family = sessions.InteractionMenu, "claude.menu.subagent"
+		read.interaction, family = api.InteractionMenu, "claude.menu.subagent"
 	case footer.kind == claudeFooterHelp:
-		read.interaction, family = sessions.InteractionMenu, "claude.menu.help"
+		read.interaction, family = api.InteractionMenu, "claude.menu.help"
 	default:
-		read.interaction = sessions.InteractionNone
+		read.interaction = api.InteractionNone
 	}
 
 	var composerRule string
 	switch {
-	case read.interaction == sessions.InteractionMenu:
+	case read.interaction == api.InteractionMenu:
 		read.composer = composerBlocked
-	case read.interaction == sessions.InteractionUnknown:
+	case read.interaction == api.InteractionUnknown:
 	case kind == claudeSlotOther && claudeBandLegend.MatchString(screen.lines[slot].plain):
 		composerRule = "claude.composer.band" // a band sets no composer
 	case bash:
@@ -190,14 +190,14 @@ func claudeMargin(screen *claudeScreen, top int) int {
 // text share one explicit colour; replies, tool calls and agent notices never
 // colour both alike. A later prompt or turn moves an older marker away from the
 // composer, so only the latest one counts. No notice is zero.
-func claudeNotice(screen *claudeScreen, top int) sessions.Notice {
+func claudeNotice(screen *claudeScreen, top int) api.Notice {
 	row := claudeMargin(screen, top)
 	line, ok := screen.line(row)
 	if !ok {
 		return ""
 	}
 	if line.col == 2 && strings.HasPrefix(line.plain, "  ⎿  Interrupted") {
-		return sessions.NoticeInterrupted
+		return api.NoticeInterrupted
 	}
 	if line.col == 0 && strings.HasPrefix(line.plain, "✻ ") && claudeCompletion(line.plain[len("✻ "):]) {
 		row--
@@ -221,7 +221,7 @@ func claudeNotice(screen *claudeScreen, top int) sessions.Notice {
 	}) {
 		return ""
 	}
-	return sessions.NoticeError
+	return api.NoticeError
 }
 
 // claudeInput reads the ordinary composer's input row and its continuation

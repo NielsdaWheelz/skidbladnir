@@ -59,13 +59,6 @@ func ObservedGroups(peers []Peer) []group.Label {
 	return labels
 }
 
-func GroupHeading(label group.Label) string {
-	if label.IsUnassigned() {
-		return "unassigned"
-	}
-	return label.String()
-}
-
 // CompareSessions orders sessions by numeric tmux id.
 func CompareSessions(a, b Session) int {
 	l := strings.TrimLeft(strings.TrimPrefix(a.Ref.TmuxID, "$"), "0")

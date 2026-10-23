@@ -24,11 +24,11 @@ func (err *TerminalInputBlockedError) Error() string { return "terminal input bl
 func unobserved(session sessions.Session) (detection, bool) {
 	switch {
 	case session.ForegroundFailed():
-		return detection{status: sessions.UnknownStatus(sessions.ReasonProcessFailed)}, true
+		return detection{status: api.UnknownStatus(api.ReasonProcessFailed)}, true
 	case session.Connection != nil:
-		return detection{status: sessions.UnknownStatus(sessions.ReasonRemoteContext)}, true
+		return detection{status: api.UnknownStatus(api.ReasonRemoteContext)}, true
 	case session.Agent == nil:
-		return detection{status: sessions.UnknownStatus(sessions.ReasonProviderUnrecognized)}, true
+		return detection{status: api.UnknownStatus(api.ReasonProviderUnrecognized)}, true
 	}
 	return detection{}, false
 }
@@ -36,16 +36,16 @@ func unobserved(session sessions.Session) (detection, bool) {
 // failedDetection is the unavailable status of a failed observation stage. An
 // expired ctx outranks the stage, whose error is then the deadline's doing.
 func failedDetection(ctx context.Context, err error) detection {
-	reason := sessions.ReasonCaptureFailed
+	reason := api.ReasonCaptureFailed
 	switch {
 	case ctx.Err() != nil:
-		reason = sessions.ReasonObservationTimeout
+		reason = api.ReasonObservationTimeout
 	case errors.Is(err, sessions.ErrTerminalObservationChanged):
-		reason = sessions.ReasonForegroundChanged
+		reason = api.ReasonForegroundChanged
 	case errors.Is(err, sessions.ErrTerminalProcessFailed):
-		reason = sessions.ReasonProcessFailed
+		reason = api.ReasonProcessFailed
 	}
-	return detection{status: sessions.UnknownStatus(reason)}
+	return detection{status: api.UnknownStatus(reason)}
 }
 
 // sample is the two-phase observation that inspect, guarded send and
@@ -70,16 +70,16 @@ func (service *Service) sample(ctx context.Context, session sessions.Session) (d
 // two-second deadline. Resolution admits the target: its errors, and a target
 // that changes during the capture, are errors. Every later failed stage is an
 // unavailable status. Its diagnostics name the rules of this same sample.
-func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (sessions.TerminalStatus, api.Diagnostics, error) {
+func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (api.TerminalStatus, api.Diagnostics, error) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	session, err := service.sessions.ResolveTerminal(ctx, target)
 	if err != nil {
-		return sessions.TerminalStatus{}, api.Diagnostics{}, err
+		return api.TerminalStatus{}, api.Diagnostics{}, err
 	}
 	read, err := service.sample(ctx, session)
 	if err != nil {
-		return sessions.TerminalStatus{}, api.Diagnostics{}, err
+		return api.TerminalStatus{}, api.Diagnostics{}, err
 	}
 	return read.status, api.Diagnostics{Rules: read.rules}, nil
 }
@@ -124,16 +124,16 @@ func (service *Service) TerminalSend(ctx context.Context, target sessions.Termin
 	// a profile of its own provider, whose exact foreground the paste requires.
 	status := read.status
 	switch {
-	case status.Source == sessions.SourceUnavailable:
+	case status.Source == api.SourceUnavailable:
 		return api.WriteResult{}, sessions.ErrTerminalUnavailable
 	case status.Interaction.Request():
 		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
 	case read.composer == composerDraft:
 		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
-	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
-		status.Interaction != sessions.InteractionNone || read.composer != composerEmpty:
+	case (status.Activity != api.ActivityWorking && status.Activity != api.ActivityIdle) ||
+		status.Interaction != api.InteractionNone || read.composer != composerEmpty:
 		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
-	case initialProfile != "" && (session.Agent.Profile != initialProfile || status.Activity != sessions.ActivityIdle || status.Notice != sessions.NoticeNone):
+	case initialProfile != "" && (session.Agent.Profile != initialProfile || status.Activity != api.ActivityIdle || status.Notice != api.NoticeNone):
 		return api.WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
 	}
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, session.Agent))

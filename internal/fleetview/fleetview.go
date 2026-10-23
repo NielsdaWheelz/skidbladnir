@@ -1,16 +1,69 @@
-package fleetclient
+// Package fleetview is the cli's and the tui's wording of fleetclient's decoded facts: a
+// row's status with the client's stale and ready overlays, recovery notices, failure and
+// receipt messages and group headings. Nothing here reaches the wire; the host's copy is api's.
+package fleetview
 
 import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
+
+// QueueCategory derives human collection membership and order, never control
+// admission. Only Ready and Action participate, in that order.
+type QueueCategory int
+
+const (
+	QueueExcluded QueueCategory = iota
+	QueueReady
+	QueueAction
+)
+
+// StatusView is the one terminal-status projection shared by the cli and the
+// desktop browser. It derives from observed facts only.
+type StatusView struct {
+	Label string
+	Tone  api.StatusTone
+	Queue QueueCategory
+	// Detail is the label with its secondary facts, for the existing detail space.
+	Detail string
+	// QueueDetail is the notice phrase a menu hides. Queue rows append it to
+	// their label and detail so their inclusion is visible without selection.
+	QueueDetail string
+	// Reason explains the observation without terminal content.
+	Reason string
+}
+
+// ProjectStatus renders the row's status with api.PresentStatus, the
+// function behind the wire's `status`, and overlays the client's facts: fresh
+// is inventory freshness; ready is the notification owner's pending attention.
+// A stale view names its last observation and is never ready.
+func ProjectStatus(session fleetclient.Session, fresh, ready bool) StatusView {
+	host := api.PresentStatus(session.TerminalStatus, session.Agent != nil && session.Connection == nil)
+	view := StatusView{Label: host.Label, Tone: host.Tone, Reason: host.Reason}
+	switch {
+	case !fresh:
+		view.Label, view.Tone = "last observed: "+host.Label, api.ToneMuted
+	case host.Queue == api.QueueAction:
+		view.Queue, view.QueueDetail = QueueAction, host.QueueNotice
+	case host.Queue == api.QueueReady && ready:
+		view.Label, view.Tone, view.Queue = "ready", api.ToneReady, QueueReady
+	}
+	view.Detail = view.Label
+	for _, fact := range []string{host.Detail, host.Evidence} {
+		if fact != "" {
+			view.Detail += " · " + fact
+		}
+	}
+	return view
+}
 
 // RecoveryNotice only projects fresh inventory; retained rows make no recovery
 // claim. The host words the notice; the client adds its label and the save
 // time in the local zone.
-func RecoveryNotice(peer Peer) (text string, failure bool) {
+func RecoveryNotice(peer fleetclient.Peer) (text string, failure bool) {
 	if !peer.OK || peer.Recovery == nil {
 		return "", false
 	}
@@ -26,11 +79,11 @@ func RecoveryNotice(peer Peer) (text string, failure bool) {
 		}
 		text += ". " + save + ". " + notice.Action
 	}
-	return text, peer.Recovery.State == sessions.RecoveryBroken
+	return text, peer.Recovery.State == api.RecoveryBroken
 }
 
 // ErrorMessage is shared by command output and the desktop browser.
-func ErrorMessage(failure Failure, request Request) string {
+func ErrorMessage(failure fleetclient.Failure, request fleetclient.Request) string {
 	if (request.Operation == "start" || request.Operation == "shell") && !failure.Target.IsZero() {
 		return "terminal was created (" + failure.Target.Handle() + "); creation follow-up failed. refresh to inspect it."
 	}
@@ -62,8 +115,8 @@ func ErrorMessage(failure Failure, request Request) string {
 	case "TerminalTargetChanged", "SessionIdentityMismatch", "SessionNotFound":
 		return "the terminal changed. refresh before trying again."
 	case "TerminalInputBlocked":
-		if failure.terminalInputMessage != "" {
-			return failure.terminalInputMessage
+		if failure.TerminalInputMessage != "" {
+			return failure.TerminalInputMessage
 		}
 		return "send unavailable for this screen. open the terminal or use text/keys."
 	case "TerminalUnavailable":
@@ -87,12 +140,9 @@ func WriteText(operation string, receipt api.WriteResult) string {
 	}
 }
 
-func CloseText(receipt api.CloseResult) string {
-	if receipt.Terminal == "closed" {
-		if receipt.Interrupt != "written" {
-			return "terminal closed; interruption unconfirmed."
-		}
-		return "interrupt key sent; terminal closed. work shared elsewhere or running remotely may continue."
+func GroupHeading(label group.Label) string {
+	if label.IsUnassigned() {
+		return "unassigned"
 	}
-	return "interruption: " + receipt.Interrupt + "; terminal: " + receipt.Terminal + ". work shared elsewhere or running remotely may continue."
+	return label.String()
 }

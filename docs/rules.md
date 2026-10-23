@@ -32,15 +32,16 @@ and trust each other's outputs:
   the consumer does not know, fails the decode of that response.
 - go declares each gateway json document once, for the gateway and go clients alike:
   `internal/api` holds the inventory, session, terminal, profile-usage and error
-  documents; pressure, workdir, notification and websocket documents stay with their
-  producers. go clients share those types with the gateway and decode same-release
-  documents with plain `encoding/json`: a missing key is its zero value, not a failed
-  decode. an unknown value of an enum a go client branches on or republishes (status,
-  name mode, recovery, provider, write and close outcomes, read state) fails the
-  decode; one it only prints (read source and scope, write method, transport) passes
-  through. an unknown error code is still the gateway's answer: the failure keeps the
-  code and the body's dispatch, else the call's default (`not_sent` for a read,
-  `unknown` for a sent write); an empty code or an unknown dispatch fails the decode.
+  documents and the vocabulary they carry; pressure, workdir, notification and
+  websocket documents stay with their producers. go clients share those types with the
+  gateway and decode same-release documents with plain `encoding/json`: a missing key
+  is its zero value, not a failed decode. an unknown value of an enum a go client
+  branches on or republishes (status, name mode, recovery, provider, write and close
+  outcomes, read state) fails the decode; one it only prints (read source and scope,
+  write method, transport) passes through. an unknown error code is still the
+  gateway's answer: the failure keeps the code and the body's dispatch, else the
+  call's default (`not_sent` for a read, `unknown` for a sent write); an empty code or
+  an unknown dispatch fails the decode.
 - an undecodable peer response is a lost response: observations show that peer
   unavailable, and a mutation that may have been dispatched is `unknown`. it is never
   a crash or panic.

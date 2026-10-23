@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -17,130 +18,10 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
-type RecoveryState string
-
-const (
-	RecoveryTracking  RecoveryState = "tracking"
-	RecoveryRecovered RecoveryState = "recovered"
-	RecoveryDelayed   RecoveryState = "delayed"
-	RecoveryBroken    RecoveryState = "broken"
-)
-
-type RecoveryPhase string
-
-const (
-	RecoveryPhaseOwnership       RecoveryPhase = "ownership"
-	RecoveryPhaseCheckpointRead  RecoveryPhase = "checkpoint_read"
-	RecoveryPhaseSource          RecoveryPhase = "source"
-	RecoveryPhaseCapture         RecoveryPhase = "capture"
-	RecoveryPhaseCheckpointWrite RecoveryPhase = "checkpoint_write"
-	RecoveryPhaseRestore         RecoveryPhase = "restore"
-)
-
-type RecoveryCause string
-
-const (
-	RecoveryCauseTimeout          RecoveryCause = "timeout"
-	RecoveryCauseChanged          RecoveryCause = "changed"
-	RecoveryCauseUnavailable      RecoveryCause = "unavailable"
-	RecoveryCauseInvalid          RecoveryCause = "invalid"
-	RecoveryCauseLimit            RecoveryCause = "limit"
-	RecoveryCauseBusy             RecoveryCause = "busy"
-	RecoveryCausePermission       RecoveryCause = "permission"
-	RecoveryCauseNoSpace          RecoveryCause = "no_space"
-	RecoveryCauseIO               RecoveryCause = "io"
-	RecoveryCauseAlreadyAttempted RecoveryCause = "already_attempted"
-	RecoveryCauseNotEmpty         RecoveryCause = "not_empty"
-)
-
-type RecoveryFailure struct {
-	At    time.Time     `json:"at"`
-	Phase RecoveryPhase `json:"phase"`
-	Cause RecoveryCause `json:"cause"`
-}
-
-// Recovery is a passive capability fact, never saved inventory or a control.
-// It is also the inventory's wire recovery document.
-type Recovery struct {
-	State   RecoveryState    `json:"state"`
-	SavedAt *time.Time       `json:"savedAt,omitempty"`
-	Failure *RecoveryFailure `json:"failure,omitempty"`
-}
-
-// RecoveryNotice is the owner-visible recovery copy without the machine label
-// and the save time, which each client renders in its own zone.
-type RecoveryNotice struct {
-	Summary string `json:"summary"`
-	Action  string `json:"action,omitempty"`
-}
-
-var recoveryPhaseText = map[RecoveryPhase]string{
-	RecoveryPhaseOwnership:       "writer lock",
-	RecoveryPhaseCheckpointRead:  "checkpoint read",
-	RecoveryPhaseSource:          "tmux server check",
-	RecoveryPhaseCapture:         "workspace capture",
-	RecoveryPhaseCheckpointWrite: "checkpoint save",
-	RecoveryPhaseRestore:         "workspace restore",
-}
-
-var recoveryCauseText = map[RecoveryCause]string{
-	RecoveryCauseTimeout:          "timed out",
-	RecoveryCauseChanged:          "workspace or server changed",
-	RecoveryCauseUnavailable:      "required resource unavailable",
-	RecoveryCauseInvalid:          "invalid data or configuration",
-	RecoveryCauseLimit:            "supported limit exceeded",
-	RecoveryCauseBusy:             "lock already held",
-	RecoveryCausePermission:       "access denied",
-	RecoveryCauseNoSpace:          "storage space exhausted",
-	RecoveryCauseIO:               "input/output error",
-	RecoveryCauseAlreadyAttempted: "prior restore may be incomplete",
-	RecoveryCauseNotEmpty:         "replacement server has sessions",
-}
-
-// Known reports that Notice can word the fact: a known state and, with a
-// failure, a known phase and cause. It is a consumer's check of a peer's
-// recovery; the producer also upholds which combinations occur.
-func (recovery Recovery) Known() bool {
-	switch recovery.State {
-	case RecoveryTracking, RecoveryRecovered, RecoveryDelayed, RecoveryBroken:
-	default:
-		return false
-	}
-	if recovery.Failure == nil {
-		return true
-	}
-	_, phase := recoveryPhaseText[recovery.Failure.Phase]
-	_, cause := recoveryCauseText[recovery.Failure.Cause]
-	return phase && cause
-}
-
-// Notice is nil while tracking. A delayed or broken recovery names its
-// failure's phase and cause; sessions always gives it one.
-func (recovery Recovery) Notice() *RecoveryNotice {
-	if !recovery.Known() {
-		panic("unknown recovery") // justify-defect: sessions publishes and fleetclient admits only Known recoveries.
-	}
-	var status, action string
-	switch recovery.State {
-	case RecoveryTracking:
-		return nil
-	case RecoveryRecovered:
-		return &RecoveryNotice{Summary: "terminals restored as shells. resume conversations using the same provider account."}
-	case RecoveryDelayed:
-		status, action = "workspace saving delayed", "retrying automatically; live terminals remain usable."
-	case RecoveryBroken:
-		status, action = "workspace recovery stopped", "manual repair required; live terminals remain usable."
-	}
-	if failure := recovery.Failure; failure != nil {
-		status += ". " + recoveryPhaseText[failure.Phase] + ": " + recoveryCauseText[failure.Cause]
-	}
-	return &RecoveryNotice{Summary: status, Action: action}
-}
-
 // RecoveryChange carries only content-free evidence; the observer must not reenter Manager.
 type RecoveryChange struct {
 	At        time.Time
-	Recovery  Recovery
+	Recovery  api.Recovery
 	Operation string
 	Errno     syscall.Errno
 }
@@ -148,8 +29,8 @@ type RecoveryChange struct {
 // recoveryFailure is one failed step: its wire pair, its content-free log
 // evidence, and whether native output was malformed (never retried).
 type recoveryFailure struct {
-	phase     RecoveryPhase
-	cause     RecoveryCause
+	phase     api.RecoveryPhase
+	cause     api.RecoveryCause
 	operation string
 	errno     syscall.Errno
 	malformed bool
@@ -158,16 +39,16 @@ type recoveryFailure struct {
 // osFailure classifies by errno: EACCES/EPERM permission; ENOSPC/EDQUOT
 // no_space where the phase admits it, else io; any other errno io. An error
 // without errno takes fallback.
-func osFailure(phase RecoveryPhase, operation string, err error, fallback RecoveryCause) *recoveryFailure {
+func osFailure(phase api.RecoveryPhase, operation string, err error, fallback api.RecoveryCause) *recoveryFailure {
 	failure := &recoveryFailure{phase: phase, cause: fallback, operation: operation}
 	if errors.As(err, &failure.errno) {
-		failure.cause = RecoveryCauseIO
+		failure.cause = api.RecoveryCauseIO
 		switch failure.errno {
 		case syscall.EACCES, syscall.EPERM:
-			failure.cause = RecoveryCausePermission
+			failure.cause = api.RecoveryCausePermission
 		case syscall.ENOSPC, syscall.EDQUOT:
-			if phase == RecoveryPhaseOwnership || phase == RecoveryPhaseCheckpointWrite || phase == RecoveryPhaseRestore {
-				failure.cause = RecoveryCauseNoSpace
+			if phase == api.RecoveryPhaseOwnership || phase == api.RecoveryPhaseCheckpointWrite || phase == api.RecoveryPhaseRestore {
+				failure.cause = api.RecoveryCauseNoSpace
 			}
 		}
 	}
@@ -179,31 +60,31 @@ func osFailure(phase RecoveryPhase, operation string, err error, fallback Recove
 // contradiction during capture is a source failure. An errno is an OS failure.
 // Otherwise an expired budget is timeout and anything else leaves tmux
 // unavailable. Positive evidence outranks the deadline.
-func tmuxFailure(ctx context.Context, phase RecoveryPhase, operation string, err error) *recoveryFailure {
+func tmuxFailure(ctx context.Context, phase api.RecoveryPhase, operation string, err error) *recoveryFailure {
 	var native tmuxclient.WorkspaceError
 	var errno syscall.Errno
-	failure := &recoveryFailure{phase: phase, cause: RecoveryCauseUnavailable, operation: operation}
+	failure := &recoveryFailure{phase: phase, cause: api.RecoveryCauseUnavailable, operation: operation}
 	switch {
 	case errors.As(err, &native):
 		switch native {
 		case tmuxclient.WorkspaceTopologyChanged:
-			failure.cause = RecoveryCauseChanged
+			failure.cause = api.RecoveryCauseChanged
 		case tmuxclient.WorkspaceSourceChanged:
-			failure.cause = RecoveryCauseChanged
-			if phase == RecoveryPhaseCapture {
-				failure.phase = RecoveryPhaseSource
+			failure.cause = api.RecoveryCauseChanged
+			if phase == api.RecoveryPhaseCapture {
+				failure.phase = api.RecoveryPhaseSource
 			}
 		case tmuxclient.WorkspaceUnsupported:
-			failure.cause = RecoveryCauseInvalid
+			failure.cause = api.RecoveryCauseInvalid
 		case tmuxclient.WorkspaceProtocolInvalid:
-			failure.cause, failure.malformed = RecoveryCauseInvalid, true
+			failure.cause, failure.malformed = api.RecoveryCauseInvalid, true
 		case tmuxclient.WorkspaceLimit:
-			failure.cause = RecoveryCauseLimit
+			failure.cause = api.RecoveryCauseLimit
 		}
 	case errors.As(err, &errno):
-		return osFailure(phase, operation, err, RecoveryCauseIO)
+		return osFailure(phase, operation, err, api.RecoveryCauseIO)
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		failure.cause = RecoveryCauseTimeout
+		failure.cause = api.RecoveryCauseTimeout
 	}
 	return failure
 }
@@ -214,7 +95,7 @@ type workspaceRecovery struct {
 	owner      context.Context
 	lock       *os.File
 	recipe     *checkpoint
-	fact       Recovery
+	fact       api.Recovery
 	observe    func(RecoveryChange)
 	lastChange RecoveryChange
 }
@@ -287,7 +168,7 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 	}
 }
 
-func (manager *Manager) publishRecovery(fact Recovery, operation string, errno syscall.Errno) {
+func (manager *Manager) publishRecovery(fact api.Recovery, operation string, errno syscall.Errno) {
 	previous := manager.recovery.lastChange
 	change := RecoveryChange{At: time.Now().UTC(), Recovery: fact, Operation: operation, Errno: errno}
 	manager.recovery.fact = fact
@@ -296,7 +177,7 @@ func (manager *Manager) publishRecovery(fact Recovery, operation string, errno s
 		changed = changed || previous.Recovery.Failure.Phase != fact.Failure.Phase || previous.Recovery.Failure.Cause != fact.Failure.Cause
 	}
 	manager.recovery.lastChange = change
-	if changed && !(previous.Recovery.State == "" && fact.State == RecoveryTracking) {
+	if changed && !(previous.Recovery.State == "" && fact.State == api.RecoveryTracking) {
 		manager.recovery.observe(change)
 	}
 }
@@ -309,16 +190,16 @@ func (manager *Manager) failRecovery(failure *recoveryFailure, latch bool) {
 	if manager.recovery.owner.Err() != nil {
 		return
 	}
-	state := RecoveryBroken
-	if !latch && !failure.malformed && (failure.phase == RecoveryPhaseCapture || failure.phase == RecoveryPhaseCheckpointWrite || failure.phase == RecoveryPhaseSource && failure.cause == RecoveryCauseTimeout) {
-		state = RecoveryDelayed
+	state := api.RecoveryBroken
+	if !latch && !failure.malformed && (failure.phase == api.RecoveryPhaseCapture || failure.phase == api.RecoveryPhaseCheckpointWrite || failure.phase == api.RecoveryPhaseSource && failure.cause == api.RecoveryCauseTimeout) {
+		state = api.RecoveryDelayed
 	}
-	manager.publishRecovery(Recovery{State: state, SavedAt: manager.recovery.fact.SavedAt, Failure: &RecoveryFailure{At: time.Now().UTC(), Phase: failure.phase, Cause: failure.cause}}, failure.operation, failure.errno)
+	manager.publishRecovery(api.Recovery{State: state, SavedAt: manager.recovery.fact.SavedAt, Failure: &api.RecoveryFailure{At: time.Now().UTC(), Phase: failure.phase, Cause: failure.cause}}, failure.operation, failure.errno)
 }
 
 // The mutation is already confirmed; checkpoint failure never changes its outcome.
 func (manager *Manager) checkpointAfterMutation(mutation context.Context, expected tmuxclient.ServerIdentity) {
-	if manager.recovery.lock == nil || manager.recovery.fact.State == RecoveryBroken || manager.recovery.owner.Err() != nil {
+	if manager.recovery.lock == nil || manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
 		return
 	}
 	deadline := time.Now().Add(10 * time.Second)
@@ -329,15 +210,15 @@ func (manager *Manager) checkpointAfterMutation(mutation context.Context, expect
 	defer cancel()
 	server, present, err := manager.tmux.InspectServer(ctx)
 	if err != nil {
-		manager.failRecovery(tmuxFailure(ctx, RecoveryPhaseSource, "server_inspect", err), false)
+		manager.failRecovery(tmuxFailure(ctx, api.RecoveryPhaseSource, "server_inspect", err), false)
 		return
 	}
 	if !present {
-		manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseUnavailable, operation: "server_inspect"}, false)
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseUnavailable, operation: "server_inspect"}, false)
 		return
 	}
 	if server.Identity != expected {
-		manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseChanged, operation: "server_identity"}, false)
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}, false)
 		return
 	}
 	if failure := manager.saveCurrentCheckpoint(ctx, expected); failure != nil {
@@ -347,12 +228,12 @@ func (manager *Manager) checkpointAfterMutation(mutation context.Context, expect
 
 // Called only under mutations. Native clients remain independent of this lock.
 func (manager *Manager) reconcileRecovery() {
-	if manager.recovery.fact.State == RecoveryBroken || manager.recovery.owner.Err() != nil {
+	if manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
 		return
 	}
 	recipe := manager.recovery.recipe
 	if recipe != nil && recipe.Attempted {
-		manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseCheckpointRead, cause: RecoveryCauseAlreadyAttempted, operation: "validate"}, true)
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCheckpointRead, cause: api.RecoveryCauseAlreadyAttempted, operation: "validate"}, true)
 		return
 	}
 	restore, cancelRestore := context.WithTimeout(manager.recovery.owner, 30*time.Second)
@@ -371,16 +252,16 @@ func (manager *Manager) reconcileRecovery() {
 	}
 	server, present, err := manager.tmux.InspectServer(ctx)
 	if err != nil {
-		manager.failRecovery(tmuxFailure(ctx, RecoveryPhaseSource, "server_inspect", err), false)
+		manager.failRecovery(tmuxFailure(ctx, api.RecoveryPhaseSource, "server_inspect", err), false)
 		return
 	}
 	if recipe != nil && !gone {
 		if !present {
-			manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseUnavailable, operation: "server_inspect"}, false)
+			manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseUnavailable, operation: "server_inspect"}, false)
 			return
 		}
 		if server.Identity != recipe.Source.Server {
-			manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseChanged, operation: "server_identity"}, false)
+			manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}, false)
 			return
 		}
 	}
@@ -395,19 +276,19 @@ func (manager *Manager) reconcileRecovery() {
 	}
 	// Preflight failures leave the file untouched, so a restart after repair retries.
 	if present && server.SessionCount != 0 {
-		manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseRestore, cause: RecoveryCauseNotEmpty, operation: "restore_preflight"}, true)
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseNotEmpty, operation: "restore_preflight"}, true)
 		return
 	}
 	for _, window := range recipe.Windows {
 		for _, pane := range window.Panes {
-			var cause RecoveryCause
+			var cause api.RecoveryCause
 			if parsed, err := manager.workdir.ParseStart(pane.CWD); err != nil || parsed != pane.CWD {
-				cause = RecoveryCauseInvalid
+				cause = api.RecoveryCauseInvalid
 			} else if workdir.CheckStart(parsed) != nil {
-				cause = RecoveryCauseUnavailable
+				cause = api.RecoveryCauseUnavailable
 			}
 			if cause != "" {
-				manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseRestore, cause: cause, operation: "restore_preflight"}, true)
+				manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: cause, operation: "restore_preflight"}, true)
 				return
 			}
 		}
@@ -423,7 +304,7 @@ func (manager *Manager) reconcileRecovery() {
 		}
 	}
 	if restore.Err() != nil {
-		manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseRestore, cause: RecoveryCauseTimeout, operation: "restore_preflight"}, true)
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseTimeout, operation: "restore_preflight"}, true)
 		return
 	}
 	claimed := *recipe
@@ -435,16 +316,16 @@ func (manager *Manager) reconcileRecovery() {
 	manager.recovery.recipe = &claimed
 	if started {
 		if err := manager.tmux.StartRecoveryServer(restore); err != nil {
-			manager.failRecovery(tmuxFailure(restore, RecoveryPhaseRestore, "restore_execute", err), true)
+			manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseRestore, "restore_execute", err), true)
 			return
 		}
 		server, present, err = manager.tmux.InspectServer(restore)
 		if err != nil {
-			manager.failRecovery(tmuxFailure(restore, RecoveryPhaseSource, "server_inspect", err), true)
+			manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseSource, "server_inspect", err), true)
 			return
 		}
 		if !present {
-			manager.failRecovery(&recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseUnavailable, operation: "server_inspect"}, true)
+			manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseUnavailable, operation: "server_inspect"}, true)
 			return
 		}
 	}
@@ -452,7 +333,7 @@ func (manager *Manager) reconcileRecovery() {
 	if destination.Epoch == "" {
 		destination, err = manager.tmux.EnsureServerIdentity(restore, destination, newServerEpoch())
 		if err != nil {
-			manager.failRecovery(tmuxFailure(restore, RecoveryPhaseSource, "server_identity", err), true)
+			manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseSource, "server_identity", err), true)
 			return
 		}
 	}
@@ -465,7 +346,7 @@ func (manager *Manager) reconcileRecovery() {
 		}
 	}
 	if err := manager.tmux.WithShell(manager.settings.Load().shellPath).RestoreWorkspace(restore, destination, shell, recipe.workspace()); err != nil {
-		manager.failRecovery(tmuxFailure(restore, RecoveryPhaseRestore, "restore_execute", err), true)
+		manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseRestore, "restore_execute", err), true)
 		return
 	}
 	saved, failure := manager.captureCheckpoint(restore, destination)
@@ -477,7 +358,7 @@ func (manager *Manager) reconcileRecovery() {
 		manager.failRecovery(failure, true)
 		return
 	}
-	manager.commitCheckpoint(saved, RecoveryRecovered)
+	manager.commitCheckpoint(saved, api.RecoveryRecovered)
 }
 
 // destinationShell admits an empty destination's configuration and returns its
@@ -485,9 +366,9 @@ func (manager *Manager) reconcileRecovery() {
 func (manager *Manager) destinationShell(ctx context.Context, destination tmuxclient.ServerIdentity) (string, *recoveryFailure) {
 	shell, err := manager.tmux.ValidateRecoveryServer(ctx, destination)
 	if err != nil {
-		failure := tmuxFailure(ctx, RecoveryPhaseRestore, "restore_preflight", err)
+		failure := tmuxFailure(ctx, api.RecoveryPhaseRestore, "restore_preflight", err)
 		if errors.Is(err, fs.ErrNotExist) {
-			failure.cause = RecoveryCauseUnavailable
+			failure.cause = api.RecoveryCauseUnavailable
 		}
 		return "", failure
 	}
@@ -500,7 +381,7 @@ func (manager *Manager) destinationShell(ctx context.Context, destination tmuxcl
 func sourceGone(source checkpointSource) (bool, *recoveryFailure) {
 	boot, err := processinfo.BootIdentity()
 	if err != nil {
-		return false, osFailure(RecoveryPhaseSource, "boot_identity", err, RecoveryCauseUnavailable)
+		return false, osFailure(api.RecoveryPhaseSource, "boot_identity", err, api.RecoveryCauseUnavailable)
 	}
 	if boot != source.BootID {
 		return true, nil
@@ -511,15 +392,15 @@ func sourceGone(source checkpointSource) (bool, *recoveryFailure) {
 		return true, nil
 	}
 	if err != nil {
-		return false, osFailure(RecoveryPhaseSource, "process_observe", err, RecoveryCauseUnavailable)
+		return false, osFailure(api.RecoveryPhaseSource, "process_observe", err, api.RecoveryCauseUnavailable)
 	}
 	return string(observed.StartIdentity) != source.ProcessStartIdentity, nil
 }
 
-func (manager *Manager) commitCheckpoint(recipe checkpoint, state RecoveryState) {
+func (manager *Manager) commitCheckpoint(recipe checkpoint, state api.RecoveryState) {
 	manager.recovery.recipe = &recipe
 	savedAt := recipe.SavedAt
-	manager.publishRecovery(Recovery{State: state, SavedAt: &savedAt}, "", 0)
+	manager.publishRecovery(api.Recovery{State: state, SavedAt: &savedAt}, "", 0)
 }
 
 // saveCurrentCheckpoint never replaces a nonempty recipe of another source, nor
@@ -531,23 +412,23 @@ func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmux
 	}
 	if previous := manager.recovery.recipe; previous != nil && previous.Source != saved.Source {
 		if len(previous.Sessions) != 0 {
-			return &recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseChanged, operation: "server_identity"}
+			return &recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}
 		}
 		gone, failure := sourceGone(previous.Source)
 		if failure != nil {
 			return failure
 		}
 		if !gone {
-			return &recoveryFailure{phase: RecoveryPhaseSource, cause: RecoveryCauseChanged, operation: "server_identity"}
+			return &recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}
 		}
 	}
 	if ctx.Err() != nil {
-		return &recoveryFailure{phase: RecoveryPhaseCapture, cause: RecoveryCauseTimeout, operation: "capture"}
+		return &recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseTimeout, operation: "capture"}
 	}
 	if failure := manager.writeCheckpoint(saved); failure != nil {
 		return failure
 	}
-	manager.commitCheckpoint(saved, RecoveryTracking)
+	manager.commitCheckpoint(saved, api.RecoveryTracking)
 	return nil
 }
 
@@ -560,17 +441,17 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, expected tmuxclie
 		var err error
 		server, err = manager.tmux.EnsureServerIdentity(ctx, expected, newServerEpoch())
 		if err != nil {
-			return checkpoint{}, tmuxFailure(ctx, RecoveryPhaseSource, "server_identity", err)
+			return checkpoint{}, tmuxFailure(ctx, api.RecoveryPhaseSource, "server_identity", err)
 		}
 	}
 	pid, _ := strconv.Atoi(server.PID)
 	process, err := processinfo.Observe(processinfo.PID(pid))
 	if err != nil {
-		return checkpoint{}, osFailure(RecoveryPhaseSource, "process_observe", err, RecoveryCauseUnavailable)
+		return checkpoint{}, osFailure(api.RecoveryPhaseSource, "process_observe", err, api.RecoveryCauseUnavailable)
 	}
 	capture, err := manager.tmux.ReadInventory(ctx, server)
 	if err != nil {
-		return checkpoint{}, tmuxFailure(ctx, RecoveryPhaseCapture, "normalize", err)
+		return checkpoint{}, tmuxFailure(ctx, api.RecoveryPhaseCapture, "normalize", err)
 	}
 	scan := manager.scanCapture(capture)
 	rows, err := manager.normalizeCharacters(ctx, scan, server)
@@ -578,7 +459,7 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, expected tmuxclie
 		rows, err = manager.normalizeNames(ctx, rows, scan.names, server)
 	}
 	if err != nil {
-		return checkpoint{}, tmuxFailure(ctx, RecoveryPhaseCapture, "normalize", err)
+		return checkpoint{}, tmuxFailure(ctx, api.RecoveryPhaseCapture, "normalize", err)
 	}
 	ids := make([]string, len(rows))
 	for index, row := range rows {
@@ -586,14 +467,14 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, expected tmuxclie
 	}
 	workspace, err := manager.tmux.CaptureWorkspace(ctx, server, ids)
 	if err != nil {
-		return checkpoint{}, tmuxFailure(ctx, RecoveryPhaseCapture, "capture", err)
+		return checkpoint{}, tmuxFailure(ctx, api.RecoveryPhaseCapture, "capture", err)
 	}
 	if !manager.restorable(workspace) {
-		return checkpoint{}, &recoveryFailure{phase: RecoveryPhaseCapture, cause: RecoveryCauseInvalid, operation: "validate"}
+		return checkpoint{}, &recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseInvalid, operation: "validate"}
 	}
 	boot, err := processinfo.BootIdentity()
 	if err != nil {
-		return checkpoint{}, osFailure(RecoveryPhaseSource, "boot_identity", err, RecoveryCauseUnavailable)
+		return checkpoint{}, osFailure(api.RecoveryPhaseSource, "boot_identity", err, api.RecoveryCauseUnavailable)
 	}
 	return checkpoint{
 		Schema: 1, Machine: manager.recovery.machine.String(), SavedAt: time.Now().UTC(),

@@ -693,13 +693,13 @@ duplicate key.
 | package | owns |
 | --- | --- |
 | `tmux` | every tmux invocation: guarded effects, inventory and capture batches, attachment, workspace capture and reconstruction, literal encoding |
-| `sessions` | lifetimes and token admission, inventory normalization and projection, creation, naming, dwarves, group writes, terminal targets and input, recovery policy, the status domain and its presentation |
+| `sessions` | lifetimes and token admission, inventory normalization and projection, creation, naming, dwarves, group writes, terminal targets and input, recovery policy |
 | `agentcontrol` | inventory enrichment and reuse, the pure classifier, inspect, read, guarded send and stop |
 | `agentruntime` | profile resolution, provider recognition, account attribution and scope |
 | `process` | kernel foreground, environment, cwd and boot identity: linux `/proc`; darwin `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo` and `proc_pidpath`, never parsed `ps` |
 | `group`, `catalog` | label grammar and order; the frozen dwarf catalogue |
 | `terminalcontext` | connection registrations |
-| `quota` | the codex quota read and its wire |
+| `quota` | the codex quota read (`api.QuotaReport`) |
 | `workdir`, `pressure` | directory admission, listing and search; pressure sampling, policy and history |
 
 sessions imports neither agentcontrol nor quota; the gateway composes them. log
@@ -748,7 +748,7 @@ grammars, send admission and wait states. around it:
    error for explicit operations and `capture_failed` in inventory.
 4. the classifier is pure; a classifier defect panics, confined to its request,
    and is never reported as unavailable.
-5. `sessions.PresentStatus` is the one presentation
+5. `api.PresentStatus` is the one presentation
    ([observation §6](terminal-observation.md#6-content-attention-and-filtering)):
    the gateway sends it as each row's `status` and go clients call it.
 6. from the same successful sample of a local agent only: `terminalUsage
@@ -948,7 +948,9 @@ own; `/v1/notifications/*` go to the hub's notifier.
    websocket frames, decoded with exact keys and exact error copy
    ([terminal connection](#terminal-connection)).
 2. each json document is declared once in go: `internal/api` holds the inventory,
-   session, terminal-operation, profile-usage and error documents; pressure,
+   session, terminal-operation, profile-usage and error documents and the vocabulary
+   they carry (terminal status, usage, footer, name mode, recovery, account quota)
+   with the host's status and recovery copy; pressure,
    directory, notification (`internal/attention`) and websocket
    (`internal/terminal`) documents belong to their producers. kotlin declares its
    own readers by hand; there is no codegen, digest or schema lock. optional
@@ -1011,7 +1013,8 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
 
 | owner | owns |
 | --- | --- |
-| `internal/fleetclient` | peer routing from `fleet.json`, one http/websocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution, the shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `CloseText`, `RecoveryNotice`) |
+| `internal/fleetclient` | peer routing from `fleet.json`, one http/websocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution |
+| `internal/fleetview` | the shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `RecoveryNotice`, `GroupHeading`) |
 | `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes |
 | `internal/sessionui` | the browser: one bubble tea model holding peers, one selected view, one cursor, one page and at most one pending operation |
 | `internal/terminalclient` | lending the local tty to one exact session over the terminal websocket, and acknowledging that visit |
@@ -1324,7 +1327,7 @@ visible. start failures prefix the chosen host.
   `output_limit`, `handle_not_found`, `handle_ambiguous`, `inventory_incomplete`,
   `terminal_unavailable`, `readiness_timeout`, `cancelled`, `configuration_invalid`,
   `invalid_input`, `input_unavailable`; gateway codes pass through
-  ([error codes](#error-codes)). `fleetclient.ErrorMessage` owns the wording both
+  ([error codes](#error-codes)). `fleetview.ErrorMessage` owns the wording both
   clients print.
 - a create whose follow-up failed after the host created it reports `created` with
   the new handle; uncertain creation reports `unknown`, to inspect, never relaunch.
@@ -1470,7 +1473,7 @@ gateways (5 s per machine) -> hub notifier: records -> projection
 
 content: the title is the session name with control, format and separator
 characters replaced (`attention.SingleLine`); the body is `ready`, the request
-phrase, the notice phrase or `request · notice` (`sessions/status.go`). no
+phrase, the notice phrase or `request · notice` (`api/status.go`). no
 machine, directory, profile, objective, question or transcript. alerts share one
 prominence and the platform's default sound and respect do-not-disturb.
 excluded: provider hooks, agent-exit detection, foreground suppression,

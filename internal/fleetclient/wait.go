@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 func (client *Client) wait(parent context.Context, request Request) Result {
@@ -55,18 +54,21 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		}
 		matched := false
 		status := sampled.Value.(api.Inspect).TerminalStatus
-		if status.Source == sessions.SourceUnavailable {
+		if status.Source == api.SourceUnavailable {
 			return Failed("TerminalUnavailable", "not_sent")
 		}
 		result.TerminalStatus = &status
 		// Each state tests its own dimensions; an unknown tested dimension never matches.
 		switch request.State {
 		case "idle":
-			matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone
+			matched = status.Activity == api.ActivityIdle && status.Interaction == api.InteractionNone
 		case "working":
-			matched = status.Activity == sessions.ActivityWorking
+			matched = status.Activity == api.ActivityWorking
 		case "needs-input":
-			matched = NeedsInput(status)
+			// A human request, whatever the activity, notice, source or reason; menus,
+			// notices and readiness never qualify (the producer only reports a request
+			// from a terminal source). The sample is fresh by construction.
+			matched = status.Interaction.Request()
 		default:
 			panic("terminal wait state was not validated") // justify-defect: skid parse admits only these three states.
 		}

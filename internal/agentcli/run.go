@@ -19,6 +19,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
@@ -530,11 +531,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 					}
 				}
 				// The cli keeps no notification store, so no row is ready.
-				label := group.Label.String()
-				if group.Label.IsUnassigned() {
-					label = "unassigned"
-				}
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, label, current.CWD)
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, provider, fleetview.ProjectStatus(row, entry.Available, false).Detail, fleetview.GroupHeading(group.Label), current.CWD)
 			}
 		}
 		if list.Partial {
@@ -544,7 +541,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 		table.Flush()
 		for _, peer := range list.Peers {
-			if text, _ := fleetclient.RecoveryNotice(peer); text != "" {
+			if text, _ := fleetview.RecoveryNotice(peer); text != "" {
 				fmt.Fprintln(stdout, text)
 			}
 		}
@@ -571,7 +568,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			if value.Failure.Code == "readiness_timeout" {
 				fmt.Fprintln(stderr, "initial input readiness was not observed within the remaining launch budget")
 			} else if value.Failure.Code == "TerminalInputBlocked" {
-				fmt.Fprintln(stderr, fleetclient.ErrorMessage(*value.Failure, command.request))
+				fmt.Fprintln(stderr, fleetview.ErrorMessage(*value.Failure, command.request))
 			}
 		}
 		if value.Failure != nil || value.Prompt == "unknown" {
@@ -592,11 +589,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		} else {
 			row := value.Session
 			current := row.Current(fleetclient.Peer{Label: value.Label, Machine: value.Machine})
-			label := row.Group.String()
-			if row.Group.IsUnassigned() {
-				label = "unassigned"
-			}
-			fmt.Fprintf(stdout, "session: %s\ngroup: %s\n", row.Name, label)
+			fmt.Fprintf(stdout, "session: %s\ngroup: %s\n", row.Name, fleetview.GroupHeading(row.Group))
 			if current.Kind == "remote" {
 				fmt.Fprintf(stdout, "running on: %s\n", current.Label)
 			}
@@ -620,7 +613,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 			// info resolves a complete inventory, so its status is fresh; the cli
 			// keeps no notification store, so it is never ready.
-			view := fleetclient.ProjectStatus(row, true, false)
+			view := fleetview.ProjectStatus(row, true, false)
 			fmt.Fprintln(stdout, "state: "+view.Detail)
 			if value.Diagnostics == nil {
 				fmt.Fprintln(stdout, "status reason: "+view.Reason)
@@ -684,7 +677,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	default:
 		value := result.Value.(api.WriteResult)
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
-		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, operation, value.Outcome, fleetclient.WriteText(operation, value))
+		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, operation, value.Outcome, fleetview.WriteText(operation, value))
 	}
 
 	if _, err := output.Write(human.Bytes()); err != nil {
@@ -729,7 +722,7 @@ func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetc
 	}
 	target := strings.TrimSpace(request.Operation + " " + targetText(request, machines))
 	fmt.Fprintf(writer, "%s: %s (%s)\n", target, failure.Code, failure.Dispatch)
-	message := fleetclient.ErrorMessage(failure, request)
+	message := fleetview.ErrorMessage(failure, request)
 	if message != failure.Code+" ("+failure.Dispatch+")" {
 		fmt.Fprintln(writer, message)
 	}

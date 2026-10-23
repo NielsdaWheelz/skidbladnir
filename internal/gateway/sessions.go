@@ -43,7 +43,7 @@ func (field namingRequest) valid() bool {
 }
 
 func (field namingRequest) naming() sessions.Naming {
-	return sessions.Naming{Mode: sessions.NameMode(field.Mode), Name: valueOf(field.Name)}
+	return sessions.Naming{Mode: api.NameMode(field.Mode), Name: valueOf(field.Name)}
 }
 
 type renameSessionRequest struct {
@@ -72,7 +72,7 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 	document := api.Inventory{
 		Machine:    gateway.apiMachine(),
 		ObservedAt: inventory.ObservedAt.UTC(),
-		Recovery:   api.Recovery{Recovery: inventory.Recovery, HostNotice: inventory.Recovery.Notice()},
+		Recovery:   api.InventoryRecovery{Recovery: inventory.Recovery, HostNotice: inventory.Recovery.Notice()},
 		Profiles:   make([]api.Profile, len(inventory.Profiles)),
 		Sessions:   make([]api.Session, len(inventory.Sessions)),
 	}
@@ -178,7 +178,7 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 	elapsed := time.Since(startedAt)
 	observing := time.Now()
 	created.Session = gateway.agents.EnrichCreated(ctx, created.Session)
-	if status := created.Session.TerminalStatus; status.Source == sessions.SourceUnavailable {
+	if status := created.Session.TerminalStatus; status.Source == api.SourceUnavailable {
 		gateway.logObservationFailure(created.Session.TmuxID, status.Reason, time.Since(observing))
 	}
 	attrs := []any{"skidbladnir.duration.ms", elapsed.Milliseconds(), "skidbladnir.session.tmux_id", created.Session.TmuxID}
@@ -300,7 +300,7 @@ func apiSession(session sessions.Session, profiles []agentruntime.Profile) api.S
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
-		Status:          sessions.PresentStatus(session.TerminalStatus, session.Agent != nil && session.Connection == nil),
+		Status:          api.PresentStatus(session.TerminalStatus, session.Agent != nil && session.Connection == nil),
 	}
 	if agent := session.Agent; agent != nil {
 		wire.Agent = &api.Agent{PaneID: session.ActivePaneID, StartIdentity: string(agent.StartIdentity), Provider: agent.Provider.String(), PID: int64(agent.PID), Profile: string(agent.Profile), Label: profileLabel(profiles, agent.Profile)}

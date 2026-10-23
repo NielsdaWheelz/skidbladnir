@@ -14,27 +14,16 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
 )
 
-// Window and Report are also the /v1/profile-usage wire shape.
-type Window struct {
-	UsedPercent float64    `json:"usedPercent"`
-	ResetsAt    *time.Time `json:"resetsAt,omitempty"`
-}
-
-type Report struct {
-	ReportedAt time.Time `json:"reportedAt"`
-	FiveHour   *Window   `json:"fiveHour,omitempty"`
-	SevenDay   *Window   `json:"sevenDay,omitempty"`
-}
-
 // Usage is one codex profile's report; a nil Report means unavailable.
 type Usage struct {
 	Profile agentruntime.Profile
-	Report  *Report
+	Report  *api.QuotaReport
 }
 
 type Observation struct {
@@ -74,7 +63,7 @@ func Observe(parent context.Context, manager *sessions.Manager) (Observation, er
 
 // read makes one observe-only exchange with the daemon at endpoint: initialize,
 // initialized, account/rateLimits/read. Any failure leaves the report nil.
-func read(ctx context.Context, endpoint string) *Report {
+func read(ctx context.Context, endpoint string) *api.QuotaReport {
 	// a throwaway transport must not pool the connection of a refused handshake.
 	transport := &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", endpoint)
@@ -121,12 +110,12 @@ func await(ctx context.Context, connection *websocket.Conn, id string) (json.Raw
 // normalize maps the default snapshot's 300- and 10080-minute windows. Maps keep
 // member names exact, and every number must be a JSON integer token that
 // strconv.ParseInt accepts: 42.0, "42", true and integers beyond int64 are malformed.
-func normalize(result json.RawMessage, reportedAt time.Time) *Report {
+func normalize(result json.RawMessage, reportedAt time.Time) *api.QuotaReport {
 	var response, snapshot map[string]json.RawMessage
 	if json.Unmarshal(result, &response) != nil || json.Unmarshal(response["rateLimits"], &snapshot) != nil || snapshot == nil {
 		return nil
 	}
-	report := &Report{ReportedAt: reportedAt}
+	report := &api.QuotaReport{ReportedAt: reportedAt}
 	for _, position := range []string{"primary", "secondary"} {
 		if absent(snapshot[position]) {
 			continue
@@ -139,7 +128,7 @@ func normalize(result json.RawMessage, reportedAt time.Time) *Report {
 			continue
 		}
 		duration, err := strconv.ParseInt(string(window["windowDurationMins"]), 10, 64)
-		var slot **Window
+		var slot **api.QuotaWindow
 		switch {
 		case err != nil:
 			return nil
@@ -154,7 +143,7 @@ func normalize(result json.RawMessage, reportedAt time.Time) *Report {
 		if err != nil || used < 0 || *slot != nil {
 			return nil
 		}
-		*slot = &Window{UsedPercent: float64(used)}
+		*slot = &api.QuotaWindow{UsedPercent: float64(used)}
 		if !absent(window["resetsAt"]) {
 			seconds, err := strconv.ParseInt(string(window["resetsAt"]), 10, 64)
 			// years 1 to 9999, what time.MarshalJSON can encode, excluding the zero instant clients refuse.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 )
 
 // The statusline readers read two displayed facts from a composer's already
@@ -36,17 +36,17 @@ const (
 // items: upstream renders remaining quota, and monthly, context and arbitrary
 // primary or secondary windows cannot supply either account window. The footer
 // is the one complete model/effort item.
-func codexReadStatusline(line row, width int) (*sessions.TerminalUsage, *sessions.TerminalFooter) {
+func codexReadStatusline(line row, width int) (*api.TerminalUsage, *api.TerminalFooter) {
 	text := strings.TrimRight(cellText(line.cells), " ")
 	items := strings.Split(strings.TrimLeft(text, " "), " · ")
-	usage, usageOK := &sessions.TerminalUsage{}, len(text) < width && !strings.Contains(text, "…")
-	var footer *sessions.TerminalFooter
+	usage, usageOK := &api.TerminalUsage{}, len(text) < width && !strings.Contains(text, "…")
+	var footer *api.TerminalFooter
 	footerOK := true
 	for index, item := range items {
 		if codexTerminalFooterPhrase.MatchString(item) {
 			// A separator closes an item. Without one, require room at the right
 			// edge; byte length conservatively bounds columns after authored text.
-			phrase := sessions.TerminalFooter(item)
+			phrase := api.TerminalFooter(item)
 			footerOK = footerOK && footer == nil && !(index == len(items)-1 && len(text) >= width) && phrase.Valid()
 			footer = &phrase
 		}
@@ -78,7 +78,7 @@ func codexReadStatusline(line row, width int) (*sessions.TerminalUsage, *session
 // the footer from a parsed row's cells, NBSP kept, as the phrase between its
 // first two separators. A candidate on an earlier opaque row refuses its fact,
 // as does, for the footer, an unparsed row that could hide one.
-func claudeReadStatusline(screen *claudeScreen, bottom, mode int) (*sessions.TerminalUsage, *sessions.TerminalFooter) {
+func claudeReadStatusline(screen *claudeScreen, bottom, mode int) (*api.TerminalUsage, *api.TerminalFooter) {
 	if mode == bottom+1 {
 		return nil, nil // no opaque footer row
 	}
@@ -91,7 +91,7 @@ func claudeReadStatusline(screen *claudeScreen, bottom, mode int) (*sessions.Ter
 	}
 	line := screen.lines[mode-1]
 
-	var usage *sessions.TerminalUsage
+	var usage *api.TerminalUsage
 	// Prefix bytes conservatively bound native columns after arbitrary Unicode;
 	// the known suffix is ASCII plus the single-cell │ and · separators.
 	if match := claudeUsageSuffix.FindStringSubmatch(line.plain); usageOK && match != nil &&
@@ -103,14 +103,14 @@ func claudeReadStatusline(screen *claudeScreen, bottom, mode int) (*sessions.Ter
 			value, _ := strconv.Atoi(text) // the grammar admits only canonical 0..100
 			return &value
 		}
-		usage = &sessions.TerminalUsage{FiveHourUsedPercent: percent(match[1]), SevenDayUsedPercent: percent(cmp.Or(match[2], match[3]))}
+		usage = &api.TerminalUsage{FiveHourUsedPercent: percent(match[1]), SevenDayUsedPercent: percent(cmp.Or(match[2], match[3]))}
 	}
 
-	var footer *sessions.TerminalFooter
+	var footer *api.TerminalFooter
 	text := strings.TrimRight(cellText(line.cells), " ")
 	phrase, suffix, matched := claudeTerminalFooterFields(text)
 	// Include every prefix and phrase byte in the conservative column bound.
-	if candidate := sessions.TerminalFooter(phrase); footerOK && line.presence == rowParsed && matched &&
+	if candidate := api.TerminalFooter(phrase); footerOK && line.presence == rowParsed && matched &&
 		suffix+utf8.RuneCountInString(text[suffix:]) < screen.width && candidate.Valid() {
 		footer = &candidate
 	}

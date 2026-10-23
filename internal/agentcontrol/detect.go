@@ -2,7 +2,7 @@ package agentcontrol
 
 import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
@@ -10,10 +10,10 @@ import (
 // composer's state for guarded send, and the content-free rules that decided
 // them, in grammar order.
 type detection struct {
-	status   sessions.TerminalStatus
+	status   api.TerminalStatus
 	composer composer
-	usage    *sessions.TerminalUsage
-	footer   *sessions.TerminalFooter
+	usage    *api.TerminalUsage
+	footer   *api.TerminalFooter
 	rules    []string
 }
 
@@ -34,20 +34,20 @@ const (
 // grammar order. A grammar returns a reading, never a status, so only detect
 // chooses the reason and every detection is a valid successful terminal status.
 type reading struct {
-	activity         sessions.Activity
+	activity         api.Activity
 	activityCause    unknownCause // given only when activity is unknown
-	interaction      sessions.Interaction
+	interaction      api.Interaction
 	interactionCause unknownCause // given only when interaction is unknown
 	composer         composer
-	notice           sessions.Notice // the latest turn's abnormal end; zero is none
-	usage            *sessions.TerminalUsage
-	footer           *sessions.TerminalFooter
+	notice           api.Notice // the latest turn's abnormal end; zero is none
+	usage            *api.TerminalUsage
+	footer           *api.TerminalFooter
 	rules            []string
 }
 
 // unknownReading is a reading that classified neither dimension, for cause.
 func unknownReading(cause unknownCause) reading {
-	return reading{activity: sessions.ActivityUnknown, activityCause: cause, interaction: sessions.InteractionUnknown, interactionCause: cause}
+	return reading{activity: api.ActivityUnknown, activityCause: cause, interaction: api.InteractionUnknown, interactionCause: cause}
 }
 
 // unknownCause says why a dimension stayed unknown.
@@ -75,31 +75,31 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	}
 
 	conflict, clipped, unknown := false, false, 0
-	if read.activity == sessions.ActivityUnknown {
+	if read.activity == api.ActivityUnknown {
 		unknown++
 		conflict, clipped = read.activityCause == causeConflict, read.activityCause == causeClipped
 	}
-	if read.interaction == sessions.InteractionUnknown {
+	if read.interaction == api.InteractionUnknown {
 		unknown++
 		conflict = conflict || read.interactionCause == causeConflict
 		clipped = clipped || read.interactionCause == causeClipped
 	}
-	reason := sessions.ReasonRecognized
+	reason := api.ReasonRecognized
 	switch {
 	case conflict:
-		reason = sessions.ReasonEvidenceConflict
+		reason = api.ReasonEvidenceConflict
 	case clipped:
-		reason = sessions.ReasonEvidenceClipped
+		reason = api.ReasonEvidenceClipped
 	case unknown == 1:
-		reason = sessions.ReasonPartial
+		reason = api.ReasonPartial
 	case unknown == 2:
-		reason = sessions.ReasonLayoutUnknown
+		reason = api.ReasonLayoutUnknown
 	}
 	notice := read.notice
 	if notice == "" {
-		notice = sessions.NoticeNone
+		notice = api.NoticeNone
 	}
-	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: notice, Source: sessions.SourceTerminal, Reason: reason}
+	status := api.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: notice, Source: api.SourceTerminal, Reason: reason}
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // recognition yields only the two providers, whose grammars set closed dimension values
 	}
