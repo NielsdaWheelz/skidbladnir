@@ -1,6 +1,6 @@
 # release cutover
 
-problem: the cleanup campaign changes wire and durable state without converters
+problem: the 2026-10 cleanup changed wire and durable state without converters
 or old-format readers. w2.1 (fleet-fixed-hub) replaces `identity.json`,
 `host-state.json`, `resolved.json` and `authority.json` with one `fleet.json` per
 host, drops signatures and the yaml `hub:` key, and gives the phone a new store.

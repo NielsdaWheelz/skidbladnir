@@ -23,15 +23,6 @@ reproduce: with a ready claude composer above a non-main panel row whose state t
 grammar cannot establish, run `skid info <handle> --explain`; expect unknown,
 reason partial. inspecting a live session needs current-turn approval.
 
-direction: an unmerged plan at
-[`dc43e3a`](https://github.com/NielsdaWheelz/skidbladnir/blob/dc43e3af23fedba4017dd1ad20d2287b159f06a7/docs/claude-panel-status.md)
-reads complete stock idle/waiting fields and `N idle agents` summaries as panel
-quiescence (working > unknown > quiescent); hidden rows, nonzero queues, pauses and
-unreadable status stay unknown. it also lets guarded send proceed under unknown
-activity when an empty, receptive composer is proven, while initial prompt delivery
-still requires idle. its explain detail and row-region diagnostic do not fit the
-current `info --explain`, which prints reason and rule ids only.
-
 resolved when: the panel evidence for running, waiting and idle is qualified
 against real claude and ordinary inventory, ambiguous background work stays
 unknown, and any fixture holds authored dummy content.
