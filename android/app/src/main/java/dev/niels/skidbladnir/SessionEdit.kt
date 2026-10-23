@@ -63,6 +63,8 @@ internal data class SessionEdit(
     val draft: String,
     val phase: EditPhase = EditPhase.Editing,
     val error: String? = null,
+    /** The host's GroupInvalid message for the current group draft; shown in the field, never in [error]'s slot. */
+    val labelRejection: String? = null,
 )
 
 internal fun beginRename(target: SessionTarget) =
@@ -79,7 +81,7 @@ internal fun SessionEdit.sendingRename(naming: SessionNaming): SessionEdit =
     copy(kind = EditKind.Rename(expectedNaming, naming), phase = EditPhase.Sending, error = null)
 
 internal fun SessionEdit.withDraft(draft: String): SessionEdit =
-    if (phase == EditPhase.Editing) copy(draft = draft, error = null) else this
+    if (phase == EditPhase.Editing) copy(draft = draft, error = null, labelRejection = null) else this
 
 /** Null closes. A sending edit refuses. A checking rename hides until its read lands. */
 internal fun SessionEdit.dismissed(): SessionEdit? = when {
@@ -112,10 +114,13 @@ internal fun SessionEdit.afterReply(result: GatewayResult<Unit>): EditReply {
         }
         EditKind.Group -> {
             val notSent = api?.dispatch == MutationDispatch.NotSent
-            if (notSent && api.code in setOf(ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge, ApiErrorCode.GroupInvalid)) {
-                EditReply(copy(phase = EditPhase.Editing, error = message), needsRead = false)
-            } else {
-                EditReply(copy(phase = EditPhase.Checking(acknowledged = false), error = if (notSent) message else GROUP_OUTCOME_UNKNOWN), needsRead = true)
+            when {
+                notSent && api.code == ApiErrorCode.GroupInvalid ->
+                    EditReply(copy(phase = EditPhase.Editing, labelRejection = message), needsRead = false)
+                notSent && api.code in setOf(ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge) ->
+                    EditReply(copy(phase = EditPhase.Editing, error = message), needsRead = false)
+                else -> EditReply(copy(phase = EditPhase.Checking(acknowledged = false),
+                    error = if (notSent) message else GROUP_OUTCOME_UNKNOWN), needsRead = true)
             }
         }
     }
@@ -152,14 +157,14 @@ internal fun SessionEdit.renameAdmits(naming: SessionNaming, terminalTarget: Ses
 internal fun SessionEdit.groupAdmits(machine: MachineState): Boolean {
     if (phase != EditPhase.Editing || !machine.canMutate || machine.machine.handle != target.machineHandle) return false
     val current = machine.inventory.observedSession(target.session) ?: return false
-    val label = if (draft.isEmpty()) null else GroupLabel.fromDraft(draft) ?: return false
-    return label != current.group
+    return groupLabelOf(draft) != current.group
 }
 
 @Composable
 internal fun GroupField(
     draft: GroupDraft,
     labels: List<GroupLabel>,
+    rejection: String?,
     enabled: Boolean,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
@@ -171,9 +176,7 @@ internal fun GroupField(
         GroupDraft.Unresolved -> ""
         is GroupDraft.Chosen -> draft.text
     }
-    val canonical = GroupLabel.fromDraft(text)
-    val invalid = text.isNotEmpty() && canonical == null
-    val candidates = groupCandidates(text, labels)
+    val observed = groupCandidates(text, labels)
     SuggestionField(
         text = text,
         label = "group",
@@ -183,34 +186,29 @@ internal fun GroupField(
         expanded = expanded,
         onExpandedChange = onExpandedChange,
         onChange = onChange,
-        literal = if (draft is GroupDraft.Chosen && !invalid) canonical?.text.orEmpty() else null,
-        onAccept = { onChange(it); true },
+        literal = if (draft is GroupDraft.Chosen) text else null,
+        // Accepting the unchanged draft writes nothing, so the host's rejection stays until a real edit.
+        onAccept = { if (GroupDraft.Chosen(it) != draft) onChange(it); true },
         onNext = {},
         onFocus = {},
         maxSuggestionsHeight = maxSuggestionsHeight,
-        message = when {
-            invalid -> GROUP_INVALID
-            draft == GroupDraft.Unresolved -> "choose a group for this new session"
-            else -> null
-        },
-        invalid = invalid,
+        message = rejection ?: if (draft == GroupDraft.Unresolved) "choose a group for this new session" else null,
+        invalid = rejection != null,
         modifier = modifier,
     ) { choose ->
         if (text.isEmpty()) {
             item(key = "unassigned") { SuggestionTextChoice("unassigned", { choose("") }) }
         }
         item(key = "heading") { Text("observed groups", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
-        if (candidates.observed.isEmpty()) {
+        if (observed.isEmpty()) {
             item(key = "empty") { Text("no observed matches", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
         }
         // Saveable viewport keys contain no labels; acceptance uses the exact domain value.
-        itemsIndexed(candidates.observed, key = { ordinal, _ -> "observed:$ordinal" }) { _, label ->
+        itemsIndexed(observed, key = { ordinal, _ -> "observed:$ordinal" }) { _, label ->
             SuggestionTextChoice(if (label.text == "unassigned") "group: unassigned" else label.text, { choose(label.text) })
         }
-        candidates.literal?.let { label ->
-            item(key = "literal") {
-                SuggestionTextChoice("use label: ${label.text}", { choose(label.text) })
-            }
+        if (text.isNotEmpty() && GroupLabel(text) !in labels) {
+            item(key = "literal") { SuggestionTextChoice("use label: $text", { choose(text) }) }
         }
         if (text.isNotEmpty()) {
             item(key = "unassigned") { SuggestionTextChoice("unassigned", { choose("") }) }
@@ -244,6 +242,7 @@ internal fun GroupSheet(edit: SessionEdit, machine: MachineState, labels: List<G
             GroupField(
                 draft = GroupDraft.Chosen(edit.draft),
                 labels = labels,
+                rejection = edit.labelRejection,
                 enabled = edit.phase == EditPhase.Editing,
                 expanded = expanded,
                 onExpandedChange = { expanded = it },

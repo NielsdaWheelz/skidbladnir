@@ -7,15 +7,16 @@ UAX #15 nfc: it composes across a backward-combining starter and treats more
 than 30 nonstarters as unnormalized (its stream-safe form inserts u+034f). group
 labels avoid both through `group.normalizeNFC`; these two validators do not.
 
-impact: an objective or profile label that is already plain nfc, and that the
-phone's icu normalization leaves unchanged, is rejected: `ObjectiveInvalid` on
-create, or a host configuration error. rare text only (balinese/javanese vowel
-signs before combining marks, long mark stacks); no data is lost.
+impact: an objective or profile label that is already plain nfc is rejected:
+`ObjectiveInvalid` on create, or a host configuration error. rare text only
+(balinese/javanese vowel signs before combining marks, long mark stacks); no data
+is lost.
 
 evidence: `norm.NFC.IsNormalString("sᬵ̩́")` is false and
 `norm.NFC.String` turns it into `"śᬵ̩"`, while plain nfc leaves
 it unchanged (`group.ParseDraft` stores it as sent); u+00e1 followed by 30
-u+0301, also plain nfc, is likewise rejected.
+u+0301, also plain nfc, is likewise rejected. a scratch gateway at 8772799 stored
+the group label `"sᬵ̩́"` unchanged (`PUT …/group` 204, 2026-10-22).
 
 repro: `POST /v1/sessions` with `{"kind":"terminal","cwd":"~","objective":"sᬵ̩́"}`
 answers 422 `ObjectiveInvalid`.

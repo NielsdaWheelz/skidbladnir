@@ -13,9 +13,8 @@ headings, details and phone pickers.
 evidence: 2026-09-29, `group.Parse` returned `"a​b"`, `"​all"`,
 `"⁠all"`, `"​"` and `"agents­"` unchanged; the desktop strip drew
 `a b` for both `a b` and `"a​b"`, and a bare `all` for `"all͏"` and
-`"all️"`. the parse loop is unchanged at ba60841.
+`"all️"`. the parse loop is unchanged at ba60841. 2026-10-22, a scratch
+gateway at 8772799 answered `PUT …/group` with 204 for `"a​b"` and `"a͏b"`.
 
-resolved when: the host's label rule rejects invisible code points, or defines how
-they print, and parse, the gateway and the phone agree. once the phone stops
-re-checking labels ([trusted constructor](group-label-trusted-constructor.md)),
-the host's rule alone decides.
+resolved when: `group.Parse` rejects invisible code points, or the host defines
+how they print and every label display (desktop strip, phone pickers) follows it.

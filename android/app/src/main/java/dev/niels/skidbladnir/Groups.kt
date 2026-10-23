@@ -1,48 +1,14 @@
 package dev.niels.skidbladnir
 
-import android.icu.text.Normalizer2
-import android.icu.text.UnicodeSet
 import java.security.MessageDigest
 import java.util.Locale
+import kotlinx.serialization.Serializable
 
-internal const val GROUP_INVALID = "use 1–64 nfc characters; only interior ordinary spaces, without display controls."
+/** A group label as the host sent it or the owner typed it; the host's group.Parse is the only check. */
+@JvmInline @Serializable internal value class GroupLabel(val text: String)
 
-internal class GroupLabel private constructor(val text: String) {
-    companion object {
-        private val normalizer = Normalizer2.getNFCInstance()
-        private val repertoire = UnicodeSet("[:age=15.0:]").freeze()
-
-        // Later-assigned scalars remain inert boundaries, matching the host's Unicode 15 tables.
-        private fun normalize(candidate: String): String = buildString {
-            var start = 0
-            while (start < candidate.length) {
-                val knownEnd = repertoire.span(candidate, start, UnicodeSet.SpanCondition.CONTAINED)
-                append(normalizer.normalize(candidate.subSequence(start, knownEnd)))
-                val end = repertoire.span(candidate, knownEnd, UnicodeSet.SpanCondition.NOT_CONTAINED)
-                append(candidate, knownEnd, end)
-                start = end
-            }
-        }
-
-        fun parse(candidate: String): GroupLabel? {
-            if (candidate.isEmpty() || candidate.codePointCount(0, candidate.length) > 64 ||
-                candidate.utf8ByteCountWithin(256) == null ||
-                normalize(candidate) != candidate ||
-                candidate.hasDisplayUnsafeCodePoint() || candidate.first() == ' ' || candidate.last() == ' ' ||
-                candidate.codePoints().anyMatch {
-                    it == 0x00a0 || it == 0x1680 || it in 0x2000..0x200a ||
-                        it == 0x202f || it == 0x205f || it == 0x3000
-                }
-            ) return null
-            return GroupLabel(candidate)
-        }
-
-        fun fromDraft(candidate: String): GroupLabel? = parse(normalize(candidate))
-    }
-
-    override fun equals(other: Any?): Boolean = other is GroupLabel && text == other.text
-    override fun hashCode(): Int = text.hashCode()
-}
+/** Empty is unassigned; any other draft goes to the host as typed. */
+internal fun groupLabelOf(draft: String): GroupLabel? = if (draft.isEmpty()) null else GroupLabel(draft)
 
 internal fun groupFingerprint(label: GroupLabel): String {
     val bytes = label.text.encodeToByteArray()
@@ -133,18 +99,15 @@ internal fun dashboardViews(machines: List<MachineState>, selected: DashboardVie
     }
 }
 
-internal data class GroupCandidates(val observed: List<GroupLabel>, val literal: GroupLabel?)
-
-internal fun groupCandidates(text: String, labels: List<GroupLabel>): GroupCandidates {
-    if (text.isEmpty()) return GroupCandidates(labels, null)
-    val canonical = GroupLabel.fromDraft(text)
-    val query = canonical?.text ?: text
-    val foldedQuery = foldGroupAscii(query)
+/** Observed labels ranked against the typed text (exact, ascii-folded equal, prefix, substring, subsequence). */
+internal fun groupCandidates(text: String, labels: List<GroupLabel>): List<GroupLabel> {
+    if (text.isEmpty()) return labels
+    val foldedQuery = foldGroupAscii(text)
     // Stable sorting retains the observed label order for equal ranks.
-    val observed = labels.mapNotNull { label ->
+    return labels.mapNotNull { label ->
         val foldedLabel = foldGroupAscii(label.text)
         val rank = when {
-            label.text == query -> 0
+            label.text == text -> 0
             foldedLabel == foldedQuery -> 1
             foldedLabel.startsWith(foldedQuery) -> 2
             foldedLabel.contains(foldedQuery) -> 3
@@ -162,7 +125,6 @@ internal fun groupCandidates(text: String, labels: List<GroupLabel>): GroupCandi
         }
         rank to label
     }.sortedBy { it.first }.map { it.second }
-    return GroupCandidates(observed, canonical?.takeUnless { it in labels })
 }
 
 private fun foldGroupAscii(text: String): String = buildString(text.length) {

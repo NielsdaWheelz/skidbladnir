@@ -722,8 +722,8 @@ internal class SkidbladnirController(
         val handle = editor.target.machineHandle
         val machine = machines[handle] ?: return
         if (!editor.groupAdmits(machine) || !machines.canMutate(handle)) return
-        val label = if (editor.draft.isEmpty()) null else checkNotNull(GroupLabel.fromDraft(editor.draft))
-        val sending = editor.copy(phase = EditPhase.Sending, error = null)
+        val label = groupLabelOf(editor.draft)
+        val sending = editor.copy(phase = EditPhase.Sending, error = null, labelRejection = null)
         state = dashboard.copy(groupEditor = sending)
         machines.mutate(handle, Reservation.Metadata, { GatewayClient.setSessionGroup(it, editor.target, label) }) { fence, result ->
             val reply = sending.afterReply(result)

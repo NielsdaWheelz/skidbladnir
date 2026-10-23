@@ -67,7 +67,6 @@ internal fun DashboardScreen(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
     controller: SkidbladnirController,
-    onOpenTerminal: (SessionTarget) -> Unit,
     onNotificationSetup: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -111,7 +110,7 @@ internal fun DashboardScreen(
                 )
             }
 
-            DwarfCollection(state, entry, controller, onOpenTerminal)
+            DwarfCollection(state, entry, controller)
         }
 
         // The margin is the wrapper's, so the seal's semantics bounds stay the 56dp the grid's clearance measures.
@@ -151,7 +150,6 @@ private fun DwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
     controller: SkidbladnirController,
-    onOpenTerminal: (SessionTarget) -> Unit,
 ) {
     val machines = state.machines
     val items = dashboardItems(machines, entry.view)
@@ -289,7 +287,7 @@ private fun DwarfCollection(
                                         onTerminalClose = { controller.requestTerminalClose(target) },
                                         onClose = { controller.requestClose(target) },
                                     ),
-                                    onOpen = { onOpenTerminal(target) },
+                                    onOpen = { controller.openTerminal(target) },
                                 )
                             }
                         }

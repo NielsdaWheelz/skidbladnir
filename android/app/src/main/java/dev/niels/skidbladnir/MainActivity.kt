@@ -176,7 +176,6 @@ internal fun SkidbladnirApp(
             state = state,
             entry = dashboardEntry,
             controller = controller,
-            onOpenTerminal = controller::openTerminal,
             onNotificationSetup = onNotificationSetup,
         )
         is SkidbladnirUiState.Terminal -> TerminalScreen(
