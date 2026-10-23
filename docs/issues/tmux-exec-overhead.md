@@ -1,36 +1,21 @@
 # inventory and observation spawn a tmux process per step
 
-problem: one session list spawns 6+2K tmux clients: inspection, epoch
-admission, two inventory batches, two identity re-checks, and two per agent
-pane (screen read, then a per-row capture). the hub's closed-client attention
-lane lists every machine every 5 s, even with no client in the foreground, so
-the cost is continuous. this lane is by design (`internal/notifier/observer.go:267`).
-the per-step spawning is not.
+problem: the hub's attention lane lists every machine every 5 s whether or not a
+client is in the foreground (`internal/notifier/observer.go:265-268`), so
+inventory's tmux exec cost is continuous, and it grows with each foreground phone
+or browser and with agent panes.
 
-impact:
-- serve, its tmux children and the tmux server use about a third of one core
-  around the clock on the macbook.
-- the cost grows with each foreground phone or browser and with the number of
-  agent panes.
-- the metadata existence guard is O(N²) in sessions.
+evidence: 2026-10-21, macbook, v0.20.0, 18-20 agent sessions: serve used 13.6% of
+one core, its reaped children 17.5% and the tmux server 5.0% (`proc_pid_rusage`,
+30 s); serve woke 770 times per second; at least 7.1 tmux execs/s. a steady list
+then cost 6+2K execs for K agent panes.
 
-evidence: 2026-10-21, macbook, v0.20.0 (go sources identical at origin/main
-`35de077`), 18-20 agent sessions, at most one attached terminal:
-- `proc_pid_rusage` 30 s deltas: serve 13.6% of one core, its reaped children
-  17.5%, the tmux server 5.0%.
-- serve woke 770 times per second.
-- 4 hz child sampling caught at least 7.1 tmux execs/s; the accounting in
-  [the spec](../tmux-exec-budget.md#current-exec-accounting-originmain)
-  predicts ~9.1/s.
+progress: a1 shipped in v0.21.0 (a steady list is 2+2K execs). a2 and a3 (#156,
+`fda4d11`, unreleased) make a steady list 2 execs at any K: an isolated
+counting-shim run on 2026-10-22 measured K = 0, 1, 18, 19 at 2, 4, 38, 40 execs
+before and 2 after, capturing only the animated pane's rows.
 
-resolved when [the exec budget spec](../tmux-exec-budget.md) option a is
-implemented and its targets are measured on the macbook at N ≥ 18: at most
-1.5 tmux execs/s, and under 5% of one core for serve, its children and the tmux
-server, with inventory and status results unchanged.
-
-progress: W2.7 landed a1, released in `v0.21.0`: a steady list is 2+2K execs. W4.8 landed a2
-and a3, unreleased: a steady list is 2 execs (inventory and capture batch) at any
-K. isolated counting-shim run, 2026-10-22: steady lists at K = 0, 1, 18 took
-2, 4, 38 execs before and 2, 2, 2 after; at K = 19 (25 rows) 40 before and 2
-after, capturing only the animated pane's 12 rows. the macbook measurement
-remains.
+resolved when: after the release carrying #156, measured on the macbook at
+N >= 18: at most 1.5 tmux execs/s and under 5% of one core for serve, its children
+and the tmux server, with inventory and status results unchanged
+([exec budget](../tmux-exec-budget.md)).

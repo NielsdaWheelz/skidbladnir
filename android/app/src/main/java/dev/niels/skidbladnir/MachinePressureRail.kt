@@ -125,7 +125,7 @@ internal fun MachinePressureRail(
     }
 }
 
-// Frozen pixel contract (machine-pressure-rail.md): geometry, heights and colours.
+// Frozen pixel contract: geometry and heights in design-language.md §13 (pressure rail), colours in §5.
 @Composable
 private fun PressureHistoryBand(history: List<PressureLevel>) {
     Canvas(

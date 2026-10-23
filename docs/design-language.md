@@ -1,31 +1,16 @@
 # Niðavellir: the Skíðblaðnir design language
 
-Status: reviewed design reference, updated 2026-08-31. This document owns visual
-identity: color, shape, ornament, typography, iconography, motion, and the
-terminal theme. [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering)
-owns status copy and tone.
-[`architecture.md`](architecture.md) owns product behavior and
-acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
-order. §17 links the implemented component contracts. changes follow the
-current [testing policy](rules.md#testing).
-
-2026-09-15 accepted [groups](groups.md) target reuses these visual primitives for
-one compact dashboard selector, quiet full-span group headings, a literal card
-action (since 2026-10-02 the first row of the card's
-[overflow](session-card.md#actions)), and a shared editor/forge field. no new palette, icon family, ornament,
-animation, or terminal chrome. group labels retain authored case and use the
-existing body/data typography, never display-face capitalisation. this target's
-source is implemented; [hands-on acceptance](issues/unrun-acceptance.md)
-remains `NOT_RUN`. historical design
-proofs do not establish it. groups owns its interaction and accessibility
-acceptance, with current delivery evidence in the roadmap.
+This document owns visual identity: color, shape, ornament, typography,
+iconography, motion, the terminal theme and the dwarf catalogue's curation. the
+[architecture](architecture.md) owns behavior and wins on any conflict; status
+copy and tone come from [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering).
 
 The name: *Vǫluspá* 37 places a hall of gold of Sindri's line on Niðavellir,
 the "dark fields" — the same poem whose stanzas 10–16 supply the Dvergatal
 ([Vǫluspá, literal text](https://www.voluspa.org/literal/voluspa.htm)). A hall
 of gold on dark fields is this app's entire visual thesis: warm metal accents
-on near-black stone. The name appears in docs only; UI text stays literal per
-architecture §2.
+on near-black stone. The name appears in docs only; UI text stays literal
+([product language](architecture.md#product-language)).
 
 ## 1. Philosophy
 
@@ -42,24 +27,23 @@ architecture §2.
    ([Tolkien Gateway](https://tolkiengateway.net/wiki/Doors_of_Durin)).
    Dwarf-owned chrome — frames, corners, borders, dividers, chips — is
    straight-edged and faceted. A curve is a marked guest, allowed only in
-   large-scale interlace art (§7) and in glyphs of text faces. Rounded corners
-   do not exist in this language; corners are cut.
+   glyphs of text faces. Rounded corners do not exist in this language; corners
+   are cut.
 4. **Engineering over magic.** The angular Key to Erebor was designed to
    suggest a race relying on engineering and mechanical skill rather than magic
-   (same source). Visual honesty is the app's existing law — chips name their
-   sampled facts and freshness, absence is displayed rather than guessed — and the
-   aesthetic must reinforce it: sampled status is named literally, freshness stays
-   separate, absence is displayed rather than guessed, no glow or motion implies
-   unsampled work, no ornament reads as an
-   affordance, and errors or destructive copy receive no decoration.
+   (same source). Visual honesty is the app's law and the aesthetic reinforces
+   it: sampled status is named literally, freshness stays separate, absence is
+   displayed rather than guessed, no glow or motion implies unsampled work, no
+   ornament reads as an affordance, and errors or destructive copy receive no
+   decoration.
 5. **Carved, not printed.** Surfaces are rock strata: elevation is a tonal
    step computed from one formula (§5), never a drop shadow. Ornament reads as
    cut into or out of the surface. Motion has mass: stone does not bounce (§12).
 6. **One style per component, provenance for every motif.** Blending Viking art
    styles, faking runes onto Latin letters, or sourcing clip-art is exactly
    what separates kitsch from a considered style. Every motif in this language
-   has a primary-source anchor in §2, matching the Dvergatal's curation bar.
-   A motif without provenance does not ship.
+   has a primary-source anchor in §2, matching the Dvergatal's curation bar
+   (§18). A motif without provenance does not ship.
 
 ## 2. Provenance ledger
 
@@ -67,31 +51,27 @@ architecture §2.
 | --- | --- | --- |
 | Gold-on-dark ground | *Vǫluspá* 37, Sindri's hall on Niðavellir | Palette thesis |
 | Gold-and-garnet cloisonné | Sutton Hoo shoulder-clasps / Staffordshire Hoard ([British Museum](https://www.britishmuseum.org/collection/object/H_1939-1010-2-a-l)) | Gem fill colors; gold-line-on-dark card grammar |
-| Angular key/fret (meander) | Pictish stones, Class II–III edges ([overview](https://en.wikipedia.org/wiki/Pictish_stone)); Greek-key corner methods ([Edkins](https://www.theedkins.co.uk/jo/greekkey/corners.htm)) | The default repeating border family (§7) |
+| Angular key/fret (meander) | Pictish stones, Class II–III edges ([overview](https://en.wikipedia.org/wiki/Pictish_stone)); Greek-key corner methods ([Edkins](https://www.theedkins.co.uk/jo/greekkey/corners.htm)) | The repeating border family (§7) |
 | Chevron / V-motif banding | Film-dwarven Art Deco borrowing (Culture on Call, above) | Simplest member of the fret family; dividers |
 | Faceted planar surfaces | Iron Hills armor, planar like a cut gemstone ([Nick Keller](https://www.nickkellerart.com/projects/1N6G82)) | Cut-corner shape grammar (§6) |
-| Interlace with breaks | Insular plaitwork, Book of Durrow onward; Bain grid-and-dot construction ([method restatement](http://www.zuggsoft.com/sca/celtic/celtic.htm)); Mercat scaffold ([jamis/celtic_knot, public domain](https://github.com/jamis/celtic_knot)) | Large-scale art only (§7) |
 | Valknut, tricursal | Tängelgårda / Stora Hammars I stones, beside Odin figures ([Valknut](https://en.wikipedia.org/wiki/Valknut)) | Hlíðskjálf mark: Odin's seat overlooking all sessions |
 | Ship under one square sail | Gotland picture stones, same corpus as the valknut row: the Viking-age slabs carry a ship under one large sail (Tjängvide I, Alskog — [Gotlands Museum catalogue](https://www.gotlandicpicturestones.se/s/index/item/2052)); the sail itself is unbroken vertical lengths of cloth sewn together ([Viking Ship Museum, Roskilde](https://www.vikingeskibsmuseet.dk/en/professions/boatyard/experimental-archaeological-research/maritime-crafts/maritime-technology/wool-sailcloth)) | Launcher mark: hull, mast, yard, and the sail's three gores (§8) |
 | Shield row along the gunwale | Gokstad ship burial, c. 890: 32 round shields to each side, painted alternately yellow and black ([Museum of the Viking Age](https://www.vikingtidsmuseet.no/english/the-collection/the-gokstad-ship/the-gokstad-ship.html)) | Launcher mark: the Garnet row at the sheer (§8). §6 overrides the round shape with its lozenge and §5 the alternating paint with one fill, so the row renders uniform |
 | Ship vane | Söderala vane, gilt bronze, c. 1050: worn from use on a ship before it was reused as a church weathervane ([Söderala vane](https://en.wikipedia.org/wiki/S%C3%B6derala_vane)) | Launcher mark: the vane at the masthead, the mark's one asymmetry (§8) |
-| Bind-runes on a shared stave | Runestone/coin monograms ([Bind rune](https://en.wikipedia.org/wiki/Bind_rune)) | Dwarf-seal maker's mark in portraits (§11) |
+| Bind-runes on a shared stave | Runestone/coin monograms ([Bind rune](https://en.wikipedia.org/wiki/Bind_rune)) | Dwarf-seal maker's mark (§11) |
 | Younger Futhark | Viking-age script, c. 800–1100, Unicode U+16A0–16FF ([Runic block](https://en.wikipedia.org/wiki/Runic_(Unicode_block))) | The only runes that appear, ornament-only (§8) |
-| Forge-heat sequence | Black-red → red → orange → gold → yellow tempering ramp ([red heat](https://en.wikipedia.org/wiki/Red_heat)) | Ordinal intensity ramp (§5) |
 | Diminuendo | Insular initial-to-text size decay, Kells/Lindisfarne (Nordenfalk 1947) | Typographic hierarchy rule (§9) |
 
-Rulings on the research contradictions, decided here once:
+Rulings, decided once:
 
-- **Default border grammar is the angular fret/meander family.** Chevron and
-  key-fret are one family and it owns all small chrome. Borre ring-chain,
-  though the most geometric Viking style, keeps circles; it is demoted to
-  optional large-scale single-use art. Curvilinear interlace is reserved for
-  large art. Rationale: below roughly 24dp of band height, woven curves turn
-  to mush; frets have no curves to lose.
+- **The border grammar is the angular fret/meander family.** Chevron and
+  key-fret are one family and it owns all small chrome. Borre ring-chain keeps
+  circles and curvilinear interlace weaves curves; below roughly 24dp of band
+  height woven curves turn to mush, while frets have no curves to lose. Neither
+  ships; either would need large single-use art and its own provenance review.
 - **No zoomorphic terminals anywhere in chrome.** Beast-headed interlace
   (Borre/Urnes vocabulary) is illegible at chip scale and is the highest
-  kitsch-risk motif. Zoomorphic work is permitted only as future large hero
-  art, explicitly marked, never as a repeating element.
+  kitsch-risk motif.
 - **Younger Futhark only.** Elder Futhark ends c. 800 and predates every
   Viking art style above; pairing it with this grammar is an anachronism. The
   16-rune Younger row is the set contemporary with the Dvergatal's poem.
@@ -103,26 +83,23 @@ Rulings on the research contradictions, decided here once:
   scripts with an enforcement history (fan fonts pulled ~2014). Real Futhark
   is the legally clean, historically superior substitute.
 
-## 3. What already exists and is kept
+## 3. Palette basis
 
 Ink `#0C0D0F`, DeepSurface `#15171A`, RaisedSurface `#202329`, Bone `#F3F0E8`,
-Muted `#AAA69D`, Gold `#D6A85F`, Ember `#E46C55`, Moss `#76B082`, Frost
-`#78A9C6` (`MainActivity.kt`). These are validated, not replaced: Ink sits
-correctly above the ~`#050505` OLED black-smear floor; DeepSurface and
-RaisedSurface fall on the Material dark-elevation overlay curve computed from
-Ink (5% and ~9% white; verified `#18191B` / `#222325` against actuals); the
-four accents fill the 2–4 accent-hue budget a small app can carry. The Nord
-palette's near-identical structure (dark ladder + cool accents) confirms this
-is the established Nordic-terminal convention. What was missing is the system
-around them. sampled status uses the existing palette; freshness remains a
-separate fact. the terminal uses the derived ansi table below.
+Muted `#AAA69D`, Gold `#D6A85F`, Ember `#E46C55`, Moss `#76B082` and Frost
+`#78A9C6` are defined in `Theme.kt`. Ink sits above the ~`#050505` OLED
+black-smear floor; DeepSurface and RaisedSurface fall on Material's
+dark-elevation overlay curve from Ink (5% and ~9% white); the four accents fill
+the 2–4 accent-hue budget a small app can carry. The Nord palette's
+near-identical structure (dark ladder + cool accents) confirms this is the
+established Nordic-terminal convention.
 
 ## 4. Voice
 
-Labels, domain, error, and destructive copy stay literal (architecture §2).
-The dwarven voice lives entirely in geometry, material, and type — never in
-wording. No "ye olde" register, no rune-transliterated labels, no themed
-error messages. "Kill skidbladnir-work-1 on Devbox?" stays exactly that.
+Labels, domain, error, and destructive copy stay literal. The dwarven voice
+lives entirely in geometry, material, and type — never in wording. No "ye
+olde" register, no rune-transliterated labels, no themed error messages.
+Destructive and error copy names the tmux session and its machine.
 
 ## 5. Color
 
@@ -135,14 +112,13 @@ darker than Ink; never use `#000000` anywhere (OLED smear).
 | Token | Hex | Tier |
 | --- | --- | --- |
 | Ink | `#0C0D0F` | 0dp; app background, terminal background |
-| DeepSurface | `#15171A` | ~1dp; cards at rest, dialogs |
+| DeepSurface | `#15171A` | ~1dp; cards at rest, dialogs, sheets |
 | RaisedSurface | `#202329` | ~4–6dp; raised card elements, chips ground |
-| Overlook | `#2E2F31` | 12dp (14% white); reserved for a future topmost sheet |
-| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; The Forge sheet and the lit Forge seal (§13) — the app's only firelit surfaces |
+| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; the Forge sheet and the lit Forge seal (§8) — the app's only firelit surfaces |
 
 ### Text and accents
 
-All ratios are WCAG 2.1 against Ink, computed and verified locally.
+All ratios are WCAG 2.1 against Ink.
 
 | Token | Hex | Ratio | Use |
 | --- | --- | ---: | --- |
@@ -154,20 +130,18 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Frost | `#78A9C6` | 7.67 | working; informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-terminal status tones are
-[observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
-blue, green, ember and muted, drawn in Frost, Moss, Ember and Muted.
-[terminal attention](reply-notifications.md) owns `ready` and its green
-suppression during stale/uncertain samples and visits. Pressure history
-and detail rows keep Normal Moss · Warm Gold · Hot Ember · Unknown/missing Muted ·
-Informational Frost. The collapsed pressure rail is deliberately quieter: labels
-and `i/N` marks are Muted, informational/normal values are Bone, and only
-Warm/Hot values and marks spend Gold/Ember.
+Status tones draw `working` in Frost, `attention` in Ember and `muted` in
+Muted; only ready is Moss, and only while the hub's pending ready holds and the
+row is fresh. Pressure history and detail rows keep Normal Moss · Warm Gold ·
+Hot Ember · Unknown/missing Muted · Informational Frost. The collapsed pressure
+rail is deliberately quieter: labels and `i/N` marks are Muted,
+informational/normal values are Bone, and only Warm/Hot values and marks spend
+Gold/Ember.
 
 ### Severity tones
 
-Severity has exactly one owner (`noticeToneColor`, D6). Ember is not a colour
-a surface may reach for; it is what one tone resolves to.
+Severity has exactly one owner (`noticeToneColor` in `Theme.kt`). Ember is not
+a colour a surface may reach for; it is what one tone resolves to.
 
 | Tone | Colour | Means |
 | --- | --- | --- |
@@ -177,19 +151,17 @@ a surface may reach for; it is what one tone resolves to.
 
 Two rules follow, and both are load-bearing:
 
-- **Staleness is absence, not failure.** degraded machine-freshness notices use
-  Muted; stale cards retain their last observed status with motion/actions off,
-  but never retain green readiness styling.
-  freshness remains separate from status under the honesty
-  law (§1.4): absence is displayed, not alarmed.
-  Ember spent on routine staleness is Ember spent on nothing — in a federation
-  one host is out often enough that the alarm becomes the resting state.
+- **Staleness is absence, not failure.** Machine-freshness notices are
+  Degraded; stale cards retain their last observed status with motion and
+  actions off, but never green readiness. Ember spent on routine staleness is
+  Ember spent on nothing — in a federation one host is out often enough that
+  the alarm becomes the resting state.
 - **Trust events are the loud ones.** A broken bearer or a changed identity is
   Failure even when that machine's inventory is perfectly current, because
   what failed is knowing who we are talking to.
 
-notice severity, sampled agent status and host pressure have separate semantic
-color owners. surfaces consume those owners rather than assigning raw colors.
+Notice severity, sampled agent status and host pressure have separate semantic
+colour owners; surfaces consume those owners rather than assigning raw colours.
 
 ### Gem fills (cloisonné)
 
@@ -204,14 +176,6 @@ never text/icon foreground:
 | Hematite | `#6D2114` | 9.82 | Iron-ore red-brown |
 | BlueGlass | `#26619C` | 5.64 | Sutton Hoo boar-tusk glass |
 
-### Forge-heat ramp (ordinal only)
-
-`#400B0B → #A12424 → #EE7B06 → #FFA904 → #FFDB00` follows the physical
-tempering sequence; contrast against Ink rises monotonically (1.18 → >10), so
-the ramp encodes "intensifying" for free. Use only for a future continuous
-meter, never categorical pressure history or chips. Interpolate between stops
-in Oklab, not sRGB, to avoid muddy midpoints.
-
 ### Budget
 
 Hard cap: four accent hue families in UI chrome (Gold+Bronze are one
@@ -222,23 +186,23 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 ## 6. Shape grammar
 
 - **Corners are cut, not rounded.** `CutCornerShape` everywhere a radius
-  exists today. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
+  would exist. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
   the top corners only. All cuts are 45°.
 - **One shape is allowed to disagree with itself.** `Cleft` keeps the 4dp
   chip facet on three corners and cuts 14dp on the fourth (top-start). It is
   the only asymmetric shape in the product and it is reserved to the commit
   button of a destructive confirmation, which is what makes it legible as
-  meaning rather than as a mistake: architecture's guarantee that detach and
-  close are visibly different actions has to survive greyscale, and §15
-  forbids the icon that would otherwise carry it. A second asymmetric shape
-  would spend the distinction, so adding one reopens this clause.
+  meaning rather than as a mistake: detach and close must stay visibly
+  different in greyscale, and §15 forbids the icon that would otherwise carry
+  it. A second asymmetric shape would spend the distinction, so adding one
+  reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
   the side is an octagon; circles are elvish in this grammar. The exactly
   regular cut is (2−√2)/2 ≈ 29.29%; 29% is the shipped round number, which puts
   each vertex 0.16dp from its regular position on a 56dp frame and leaves the
   axis edges 2.4% longer than the diagonals (23.52dp against 22.97dp). Both are
   below the perceptual floor for a hairline outline, and not worth re-cutting
-  every seal already struck. Whatever draws the octagon reads the same shipped constant
+  every seal already struck. Whatever draws the octagon reads the same constant
   the clip does, so a frame and its clip can never disagree.
 - **Activity facets are cut, never badged.** The card's status line leads with
   a 12dp facet in the cut-corner chip geometry. Activity has no unread marker
@@ -246,110 +210,98 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
   into 2–3 flat planes differing by one elevation step — the faceted-gemstone
   armor rule — never a smooth gradient or soft shadow.
-- **Strata edges.** A card may carry a single 1dp inner hairline in
-  Gold at 25% opacity along its top edge — light catching the carved lip —
-  and nothing else. No outer glows, no multi-edge strokes.
-- Implementation: `CutCornerShape(dp)` for the standard cuts; the octagon
-  is `CutCornerShape(29%)` on a square and the lozenge a rotated square, so
-  no geometry dependency is needed. `androidx.graphics:graphics-shapes`
-  (Apache-2.0) is adopted only if a genuinely irregular silhouette ever
-  outgrows `CutCornerShape`.
+- **Strata edges.** A card may carry a single 1dp inner hairline in Gold at 25%
+  opacity along its top edge — light catching the carved lip — and nothing
+  else. No outer glows, no multi-edge strokes.
+- The octagon is `CutCornerShape(29%)` on a square and the lozenge a rotated
+  square; no geometry dependency ships.
 
 ## 7. Ornament system
 
-Two families, split by scale, never blended:
+The fret band — chevron bands, key patterns, step patterns — is the only
+repeating ornament. Rules: monoline stroke, 45°/90° turns only; band height ≤
+16dp; drawn in Muted or Gold at ≤ 40% opacity so it never competes with text;
+corners resolve by the reversal-at-midpoint method, which requires an even
+count of pattern units per side. It ships once: under the Forge sheet's title,
+Gold 40%, whole units centred.
 
-- **Fret (angular meander): the default.** Chevron bands, key patterns, step
-  patterns. Owns all repeating chrome: dividers, sheet headers, the terminal
-  key-deck bezel, card frames if ever framed. Rules: monoline stroke, 45°/90°
-  turns only; band height ≤ 16dp in chrome; drawn in Muted or Gold at ≤ 40%
-  opacity so it never competes with text; corners resolve by the
-  reversal-at-midpoint method, which requires an even count of pattern units
-  per side — sizing to that count is part of the component spec, not optional.
-- **Interlace (woven ribbon): large art only.** Permitted where stroke ≥ 3dp
-  and loop radius ≥ 8dp: empty states or a future About/Dvergatal catalogue
-  view. Constructed, never drawn freehand: Bain
-  grid-and-dot — dot grid at ribbon-width spacing, breaks as uncrossable
-  barriers, diagonal strands, strict alternating over/under (parity rule).
-  Breaks are first-class: model real layout edges (safe areas, text bounds)
-  as breaks so ornament weaves around content instead of colliding with it.
-  Geometric interlace only; no beast heads (§2 ruling).
-
-Both families were computed once by a deterministic script, since deleted, and
-ship as frozen checked-in path constants ([ornament-pipeline.md](ornament-pipeline.md)
-records the pipeline; an SVG → [Valkyrie](https://github.com/ComposeGears/Valkyrie)
-route is an acceptable alternative), drawn by stroking the
-checked-in segments from cached geometry (a `ShaderBrush` image tile is the
-fallback if profiling ever demands it).
-Knot topology is never computed on-device at runtime. License notes for
-reference implementations: jamis/celtic_knot public domain (concept source),
-bezborodow/celtic-knot BSD-3 (usable), rspencer01/celtic MIT (readable);
-codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
+The fret, valknut and seal tables are frozen constants in `Ornament.kt`, and
+the launcher is frozen in `res/`. They were computed once by
+`scripts/gen-ornament` (last present at `12b1516`); a change is a hand edit or a
+regeneration from git history. No gate checks legibility, mask envelope or
+drift, so the invariants in §8 and §11 are checked by hand. Topology is never
+computed on the phone, and no third-party knot code is vendored.
 
 ## 8. Iconography and runes
 
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
-  triangles, Borromean topology — the seat that overlooks every world. It marks
-  the Dwarves surface wherever that surface is named — the dashboard title
-  lockup, every affordance that returns to it, and the empty grid — and it is
-  never the launcher, which carries its own mark below. Pure straight lines. Its
-  stroke is a fraction of the mark's own size, never a fixed dp: a fixed stroke
-  is a larger share of a smaller mark, so it closes the baked crossings as the
-  mark shrinks. Legibility is therefore an invariant and not a size — every
-  strand is at least as long as its own stroke is wide, and every baked break at
-  least twice as wide — and it is proved on the geometry rather than eyeballed.
-  [hlidskjalf-mark.md](hlidskjalf-mark.md) owns the constants and the proofs.
-- **The launcher mark** is Skíðblaðnir under sail: cut stems, a square sail in
-  three gores, a Garnet shield row at the sheer, a vane at the masthead.
-  Straight segments only, authored as constants and never traced. Its
-  legibility floor is stated in dp at the smallest launcher size — 2dp of
-  daylight at 48dp — rather than as a stroke ratio, because the icon has no
-  stroke and a known size range, while the valknut is drawn at arbitrary sizes
-  against a stroke that scales with it.
-  [`launcher-mark.md`](launcher-mark.md) owns its constants and proofs.
-- **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
-  rune *glyphs* — at most one inert divider glyph per screen — render as
-  real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
-  Latin-substitution novelty font; no delta currently ships one, and the
-  font bundles only when one does. The dwarf seal's bind-rune (§11) is not
-  text at all: a *drawn* monogram, strokes merged on one shared stave per
-  the historical construction — a merged bind-rune cannot be produced by
-  placing sequential font glyphs — and [dwarf-seals.md](dwarf-seals.md)
-  owns its geometry. Never transliterate labels, never rune-encode meaning
-  a user must read.
-- **The unstruck seal** is the create mark: the §11 seal with every trait at
-  zero — an octagon frame around a bare stave crossed by one horizontal bar,
-  and nothing else. No mineral, no beard, no facet mask, no initial. It is the
-  blank a dwarf is struck from, and it is honest: the catalogue identity is
-  assigned after creation, so the client cannot draw the seal it is about to
-  make. Its crossbar is perpendicular to the stave, which no Younger Futhark
-  branch ever is, so the mark cannot be read as a rune — that is enforced as a
-  proof, not asserted. [forge-seal.md](forge-seal.md) owns its geometry.
+  triangles, Borromean topology — the seat that overlooks every world —
+  drawn as twelve frozen straight segments with its six crossings baked as
+  breaks, three of them interior. Its stroke is 0.055 of the mark's size,
+  never a fixed dp, because a fixed stroke is a larger share of a smaller mark
+  and closes the crossings as the mark shrinks. Legibility is therefore a
+  property of the geometry at every size: every strand (shortest 0.084) is at
+  least one stroke long and every break (0.1997) at least two strokes wide. It
+  leads `Dwarves` (24dp Gold), leads `Back to Dwarves` on the terminal's
+  reconnect panel (18dp in the button's content colour, so it dims with the
+  button) and marks the empty hall (48dp, Muted at 40%). One composable draws
+  it. It never marks detach, which names what happens to the session, not
+  where the button goes, and never the launcher.
+- **The launcher mark** is Skíðblaðnir under sail, the ship that takes a fair
+  wind once its sail is raised (*Gylfaginning* 43), not a dragon-prowed
+  longship. Cut stems are integral to the hull polygon (separate hooks read as
+  a face); a square sail in three gores; a Garnet shield row at the sheer; a
+  masthead vane is the one asymmetry. Straight polygons on the 108-unit
+  adaptive canvas, authored in the launcher resources and never traced. Its
+  floor is stated in units because it has no stroke and a known size range:
+  every gap and mass width is at least 3 units (2dp at the smallest 48dp
+  launcher; tapering apexes exempt), and every point lies within 34 units of
+  centre (the circular mask clips at 36; the yard's top corners sit at 33.97).
+  The monochrome layer is its own drawable whose separations are geometric
+  (the shields become notches cut into the sheer), because one flat tint
+  erases colour. The foreground's 1.7-unit gap between shields is knowingly
+  below the floor; colour (Gold under Garnet, 4.73:1) carries it. There is no
+  `roundIcon` and no density mipmap; the label is `Skíðblaðnir`.
+- **Runes are ornament, never text.** The dwarf seal's bind-rune (§11) is a
+  *drawn* monogram, strokes merged on one shared stave per the historical
+  construction — a merged bind-rune cannot be produced by placing sequential
+  font glyphs. No rune font ships. Never transliterate labels, never
+  rune-encode meaning a user must read.
+- **The unstruck seal** is the create mark, on the Forge seal: a 56dp octagon
+  around a bare stave crossed by one centred horizontal bar, and nothing else.
+  It is honest: a dwarf is assigned after creation, so the client cannot draw
+  the seal it is about to make, and the blank is the only true picture. It
+  cannot read as a rune: no segment of the Younger Futhark table is
+  horizontal, and since íss is the bare stave, the crossbar is the whole
+  argument. Lit (some machine can act): ForgeGlow field, Gold frame and mark.
+  Cold: DeepSurface field, Muted mark at §12's disabled content alpha; field
+  and hue change, never opacity alone, and the flip does not animate. The cold
+  mark's 2.13:1 over its field is intended for an inactive control. Strokes are
+  fixed dp (frame 1.5, mark 3), so the control is not reused below about 40dp;
+  its frame is stroked unclipped because no mineral ground hides a clipped
+  half. Icon-only, described `New dwarf`.
 - **No horned helmets, drinking horns, axes, or hammer clip-art.** The horned
   helmet is a 19th-century invention with zero archaeological support; the
-  rest is tourist-shop register. The app's dwarvenness is structural, not
-  propped. Reconsidered once, for the create action (D5), and re-rejected:
-  provenance was never the objection — Skíðblaðnir and Mjölnir come from one
-  wager (*Skáldskaparmál* 35) — but Skíðblaðnir loses that wager, Mjölnir marks
-  the wielder rather than the smith, and the silhouette dies at 24dp monoline.
-  The register is the objection, and it does not improve.
+  rest is tourist-shop register. The create action takes no hammer either:
+  provenance is not the objection — Skíðblaðnir and Mjölnir come from one
+  wager (*Skáldskaparmál* 35) — but Skíðblaðnir loses that wager, Mjölnir
+  marks the wielder rather than the smith, and the silhouette dies at 24dp
+  monoline. The register is the objection.
 
 ## 9. Typography
 
-Four roles, all SIL OFL 1.1, bundled as single variable files (~0.9 MB
-total). Every face guarantees ð/þ (Google Fonts Latin Core); only Junicode
-covers ǫ, which appears solely in verbatim Old Norse.
+Two bundled faces, both SIL OFL 1.1 (`res/font/`), plus the system face.
+Every face guarantees ð/þ.
 
 | Role | Face | Use | Never |
 | --- | --- | --- | --- |
 | Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf signatures on cards | Body copy, sentences |
-| UI body | System Roboto (deliberate: quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
-| Data | JetBrains Mono (~293 KB variable) | Status lines, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
-| Scholarly | Junicode 2 (subset to the quotation repertoire) | Verbatim Old Norse only: Dvergatal stanza epigraphs in a future About/catalogue view | UI chrome, dynamic text |
+| UI body | System Roboto (quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
+| Data | JetBrains Mono | Status lines, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
 
 The Display role's caps direction applies only where the source is caps, such
 as the wordmark and applicable headings. Dwarf signatures preserve exact
-catalogue casing.
+catalogue casing; group labels keep their authored case in body or data type.
 
 - The choice *against* Cinzel/Trajan-likes is deliberate: lapidary Roman caps
   are the fantasy-app default and read imperial Rome, not the forge. Big
@@ -359,273 +311,184 @@ catalogue casing.
 - **Machine facts speak mono.** The dashboard borrows the terminal's own
   voice for everything tmux/proc reported — a quiet, honest bridge between
   the two surfaces.
-- **work-first hierarchy** under the accepted
-  [compact roster](dashboard-compact-roster.md): tmux name (data, largest and
-  highest contrast), literal status with a quieter display-face dwarf signature,
+- **Work-first hierarchy** on the card: tmux name (data, largest and highest
+  contrast), literal status with a quieter display-face dwarf signature,
   conditional notices/objective, then profile/host/directory (data, ≥11sp).
-  readable status and full dwarf names may wrap.
+  Readable status and full dwarf names may wrap.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
   apps). Norse by Joël Carrouché is unusable (embedding rights ambiguous).
 
 ## 10. Terminal theme
 
-the implemented `terminal.js` theme uses a derived ansi table: **bright slots are
-the four brand accents verbatim** (bold=bright is the emphasis signal
-git/pytest/ripgrep rely on — the reason Nord's bright=base collapse is
-rejected); **base slots are the same hues systematically darkened** (S−6pp,
-L≈44%, with red/blue/magenta lifted to L52/50/54 because those hues fail
-4.5:1 on true near-black at the flat recipe); magenta and cyan are new hues
-(H322, H174) that exist only here — git's `--color-moved` load-bears them.
-All ratios verified against Ink; all base slots ≥ 4.5:1, all brights ≥ 6:1.
+`terminal.js` uses a derived ansi table: **bright slots are the four brand
+accents verbatim** (bold=bright is the emphasis signal git/pytest/ripgrep rely
+on — the reason Nord's bright=base collapse is rejected); **base slots are the
+same hues systematically darkened** (S−6pp, L≈44%, with red/blue/magenta lifted
+to L52/50/54 because those hues fail 4.5:1 on true near-black at the flat
+recipe); magenta and cyan are hues that exist only here — git's
+`--color-moved` load-bears them. All base slots ≥ 4.5:1 and all brights ≥ 6:1
+against Ink. `brightBlack` is intentionally recessive and `black` is the
+DeepSurface fill slot.
 
-```js
-theme: {
-  background: "#0c0d0f",            // Ink
-  foreground: "#f3f0e8",            // Bone
-  cursor: "#d6a85f",                // Gold — default is hardcoded white
-  cursorAccent: "#0c0d0f",          // Ink  — default is hardcoded black
-  selectionBackground: "#f3f0e84d", // Bone 30%
-  selectionInactiveBackground: "#f3f0e826", // Bone 15%
-  // selectionForeground unset: glyph SGR colors stay visible when selected
-  // scrollbarSlider*: unset — auto-derive from foreground correctly
-  overviewRulerBorder: "#aaa69d",   // Muted — default is hardcoded white
-  black: "#15171a",                 // DeepSurface (fill-only slot)
-  red: "#d74e33",     green: "#4f925c",  yellow: "#ac7e35",
-  blue: "#538bac",    magenta: "#bb5897", cyan: "#459c93",
-  white: "#aaa69d",                 // Muted
-  brightBlack: "#5c6370",           // de-emphasis; intentionally recessive
-  brightRed: "#e46c55",             // Ember
-  brightGreen: "#76b082",           // Moss
-  brightYellow: "#d6a85f",          // Gold
-  brightBlue: "#78a9c6",            // Frost
-  brightMagenta: "#cd70ab", brightCyan: "#64c4ba",
-  brightWhite: "#f3f0e8",           // Bone
-}
-```
-
-- `cursor`, `cursorAccent`, `selectionBackground`, `overviewRulerBorder` must
-  be set explicitly: xterm.js `ThemeService.ts` falls back to hardcoded
-  `#ffffff`/`#000000` for them, not to the theme's own colors.
-- Supply `extendedAnsi` for indices 232–255: the 24-step grayscale remapped
-  as a linear Ink→Bone interpolation, so 256-color tools (bat, delta,
-  rich-based TUIs) stay on-palette. The 6×6×6 cube (16–231) stays library
-  default; remapping 216 cells buys nothing for one user. Mechanics: xterm
-  consumes `extendedAnsi` as one contiguous array anchored at index 16, so
-  this ships as a sparse 240-slot array with entries only at offsets
-  216–239 ([terminal-theme.md](terminal-theme.md) owns the exact contract).
-- Set `minimumContrastRatio: 3` as a safety net for arbitrary truecolor agent
-  output; the designed table already exceeds it, so it never mutates
-  designed colors. xterm.js halves the requirement for SGR-dim cells by
-  design.
-- `fontFamily` uses vendored JetBrains Mono (the WebView CSP must admit
-  the bundled font asset; scripts stay bundle-only).
-- Spot-check on the physical S22+ panel: WCAG's formula has a documented bias
-  near black (APCA critique), so ratios here are floors, not proof of
-  comfort.
+- `cursor` (Gold), `cursorAccent` (Ink), `selectionBackground` (Bone 30%) and
+  `overviewRulerBorder` (Muted) must be set explicitly: xterm.js falls back to
+  hardcoded `#ffffff`/`#000000` for them, not to the theme's own colors.
+  `selectionForeground` stays unset so glyph SGR colors stay visible when
+  selected.
+- `extendedAnsi` remaps the 24-step grayscale (232–255) as a linear Ink→Bone
+  interpolation, so 256-color tools (bat, delta, rich-based TUIs) stay
+  on-palette. xterm consumes `extendedAnsi` as one contiguous array anchored at
+  index 16, so it ships as a sparse 240-slot array with entries only at offsets
+  216–239; the 6×6×6 cube stays library default.
+- `minimumContrastRatio: 3` is a safety net for arbitrary truecolor agent
+  output; the designed table already exceeds it, so it never mutates designed
+  colors. xterm.js halves the requirement for SGR-dim cells by design.
+- `fontFamily` is the vendored JetBrains Mono.
+- WCAG's formula has a documented bias near black (APCA critique), so these
+  ratios are floors, not proof of comfort; spot-check on a physical panel.
 
 ## 11. Dwarf seals (procedural portraits)
 
-the portrait is a **seal**: the octagonal frame (§6), a mineral field, a
-bind-rune maker's mark and angular figure geometry. Deterministic, pure function of the catalogue key, per the
-[automatic dwarf identity](automatic-dwarf-identity.md) contract (no color
-fields on the wire; Android derives everything from `character.key`).
+A seal is a pure function of `character.key`: the octagonal frame (§6), a
+mineral field, a bind-rune maker's mark and angular figure geometry. No colour
+travels on the wire. With `h = SHA-256(UTF-8(key))` as unsigned bytes:
 
-Generator model (jdenticon-style channel slicing):
+- mineral `h[0] mod 8` (one of 8 fill-only tones: Garnet, Hematite, BlueGlass
+  and 5 desaturated stones);
+- rune count `2 + (h[4] and 1)`; runes the first distinct `h[5+i] mod 16` for
+  `i` in 0..7, stopping at the count (a shorter list is defined, not an error);
+- beard teeth `3 + h[8] mod 4`; beard depth `h[9] mod 4`;
+- facet mask `h[12]` (bit `e` gilds octagon edge `e`);
+- metal Gold when `h[14]` is odd, else Bronze.
 
-```text
-h = SHA-256(character.key)
-traits: field mineral (one of 8 fill-only tones: Garnet, Hematite,
-        BlueGlass, and 5 desaturated stone variants);
-        bind-rune (normally 2–3 Younger Futhark runes merged on one shared
-        vertical stave per the historical monogram construction; a rarer
-        shorter draw is defined, not an error);
-        beard/figure geometry (angular, straight segments and 45° facets);
-        frame accent (which octagon facets carry the metal hairline);
-        metal (Gold | Bronze).
-Every trait is a pure function of the digest. The exact byte slices are
-frozen in dwarf-seals.md; changing them re-rolls every visible identity
-and is a design event, never a silent tweak.
-```
+Changing a slice re-rolls every visible identity: a design event, never a
+tweak. Check values (mineral, runes, teeth, depth, mask, metal):
+`norse.modsognir` 6, [12, 9], 6, 1, 229, Bronze; `norse.durinn` 4, [9, 10], 3,
+0, 24, Bronze; `tolkien.gimli` 4, [5, 10], 3, 0, 239, Gold. Over the 101
+catalogue entries every seal is distinct and (mineral, runes) alone never
+collides; nothing checks a new entry.
 
-rules: metal linework in Gold or Bronze on the mineral field; Bone initial
-retained as decorative lettering; no curves. the accepted
-[compact roster](dashboard-compact-roster.md) uses a 36dp seal and recognition
-from crest plus dwarf/work names. it replaces the unverified requirement that
-all 101 crests be distinguishable alone at 48dp. derivation/traits stay frozen;
-the initial has fixed artwork dimensions while meaningful text scales.
+Draw order is frozen: mineral, two facet planes, beard, the bind-rune on one
+shared stave, the frame (grey, then Gold on masked edges), the Bone initial. A
+card's seal is 36dp, clipped to the octagon; the initial is fixed decorative
+lettering (12dp glyph, 16dp line, 6dp inset) while the neighbouring name
+scales. Seals at 36dp are not individually distinguishable: recognition is
+seal plus names. A seal has no state, cache or meaning; the name beside it is
+the text. No raster portrait, manifest or rights claim ships.
 
 ## 12. Motion and interaction states
 
-- **Stone has mass.** Spatial motion (sheet expand, grid reorder) uses
-  damped springs: `dampingRatio` 0.85–1.0, `stiffness` 400–1500 — never
-  Material 3 Expressive's bouncy defaults. Effects motion (color, opacity,
-  state layers) never bounces: `tween(100ms, EasingStandard)` or a
-  no-bounce spring. Nothing overshoots; nothing wobbles.
-- **State layers** use Material's exact constants — hover 8%, focus 10%,
-  pressed 10%, dragged 16% — as Bone over the component's surface. Disabled:
-  38% content / 12% container, plus one non-opacity cue (drop the chip
-  hairline; desaturate the seal).
-- **The press flash is angular.** The circular ripple is off-grammar; the
-  standard ripple only clips to a circle. Implement one shared
-  `IndicationNodeFactory` that flashes an inset copy of the component's own
-  cut-corner outline at pressed-state alpha (the documented custom-indication
-  path since `rememberRipple` deprecation). One implementation, used
-  everywhere.
-- **status motion is literal and bounded.** only a fresh working observation
-  may run the restrained angular spinner. retained stale cards, other states
-  and reduced-motion mode are static. the named label stays fixed; no pulse,
-  glow, countdown or unread-result motion exists.
+- **Stone has mass.** Nothing overshoots; nothing wobbles. Effects motion
+  (color, opacity, state layers) uses `tween(100ms, EasingStandard)`.
+- **State layers.** Pressed is Bone at 10% over the component's surface.
+  Disabled is 38% content / 12% container, plus one non-opacity cue (drop the
+  chip hairline; desaturate the seal).
+- **The press flash is angular.** The circular ripple is off-grammar. One
+  shared `IndicationNodeFactory` flashes an inset copy of the component's own
+  cut-corner outline at the pressed alpha, used everywhere skid draws its own
+  control. Material buttons, text fields and filter chips keep their platform
+  ripple.
+- **Status motion is literal and bounded.** Only a fresh working local agent
+  may turn the status facet's notch. Stale cards, other states and
+  reduced-motion mode are static. The label stays fixed; no pulse, glow,
+  countdown or unread-result motion exists.
 - **The forge breathes once.** Exactly one ambient decorative animation is
-  budgeted in the whole app: the Forge sheet's ForgeGlow surface may warm from
-  DeepSurface to ForgeGlow over 400ms when opened. the functional status
-  spinner above is state-bound, not ambient ornament. Everything else moves
-  only when state moves.
+  budgeted in the whole app: the Forge sheet warms from DeepSurface to
+  ForgeGlow over 400ms when opened. The status facet is state-bound, not
+  ambient ornament. Everything else moves only when state moves.
 
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  accepted 36dp seal and compact wrapping composition under
-  [compact roster](dashboard-compact-roster.md). machine
-  context appears in every view. its verbs sit behind a drawn three-stud overflow whose menu is
-  RaisedSurface, Card cut, shadowless, with Ember destructive rows after a
-  hairline rule. [session card](session-card.md) retains actions.
-  Global grid order is architecture-owned.
-- **status line**: unboxed; a leading status facet, then the literal sampled
-  status label, bold in the status tone, and an optional Muted detail, Data
-  face ≥ 11sp. no transition age or unread signal. the terminal-inference
-  qualifier is not drawn on cards. a plain pane reads `terminal`.
-- **status facet**: 12dp `Chip` shape, solid status color, no border, text or
-  semantics, inline as the status line's first glyph. the §12 spinner requires
-  fresh working status; the named label owns meaning.
-- **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
-  ends, transparent track, horizontally inset 12dp at the collection's top
-  edge. Determinate while pulling and indeterminate while checking; absent at
-  rest. It has no surface, elevation, glow, ornament, or reserved stratum.
-- **The Forge sheet**: ForgeGlow surface, 12dp top cuts, single fret band
-  under the title (Gold 40%, even unit count), Display-face title, mono cwd
-  field (autocorrect off is architecture-owned). Invalid drafts preserved;
-  error text plain Ember body — no ornament near errors (§1.4).
-- **The Hlíðskjálf mark**: 24dp Gold leading the `Dwarves` title, 18dp at the
-  button's own content colour leading each affordance that returns there, 48dp
-  Muted at 40% on the empty grid. One composable, semantics-silent everywhere.
-  The detach control carries no mark: it names what happens to the session, not
-  where the button goes.
-- **The Forge seal**: the create control. A 56dp octagon anchored at the
-  dashboard's bottom trailing corner over the grid, carrying the unstruck
-  seal (§8). Lit = ForgeGlow field, Gold frame and mark; cold = DeepSurface
-  field, mark in Muted at §12's disabled content alpha — field and hue both
-  change, never opacity alone. Icon-only, spoken `New dwarf`, no ornament,
-  and the lit/cold flip does not animate. [forge-seal.md](forge-seal.md) owns
-  its geometry.
+  36dp seal. Its verbs sit behind a drawn three-stud overflow whose menu is
+  RaisedSurface, card cut, shadowless, with Ember destructive rows after a
+  hairline rule.
+- **Status line**: unboxed; the status facet, then the literal status label,
+  bold in its tone, and an optional Muted detail, Data face ≥ 11sp. No
+  transition age or unread signal; the evidence qualifier is not drawn on
+  cards. A plain pane reads `terminal`.
+- **Status facet**: 12dp chip shape, solid status colour, no border, text or
+  semantics, inline as the status line's first glyph.
+- **View strip**: each tab is a 48dp-minimum target centring a 32dp-minimum
+  field; selected is RaisedSurface with a 1dp Gold border and Gold text,
+  inactive is transparent with Bone text, both in the same weight so selection
+  never changes width.
+- **Refresh line**: transient feedback spends no resting space, so the refresh
+  mark is an active-only 2dp Gold line with butt ends, inset 12dp at the
+  collection's top edge, with no track, surface, elevation, glow, ornament or
+  reserved height: determinate while pulling, indeterminate while the pulled read
+  runs, and a complete static band when motion is off. It
+  is less conspicuous than Material's circle, an accepted cost.
+- **The Forge sheet**: ForgeGlow surface, 12dp top cuts, the fret band under
+  the Display-face title `Create dwarf`, mono cwd field. Error text is plain
+  Ember body — no ornament near errors (§1.4).
 - **Terminal rail**: the terminal's only top chrome. One DeepSurface stratum
   carried under the status bar, one row of at least 48dp: Gold body-face
   `Detach`, then the Data-face tmux name over a Muted `place · presence` line
   (Ember only for frozen input) and a trailing Gold `⋯`, all one disclosure
-  control.
-  No chips, hairlines or ornament; the tonal step alone separates it from the
-  terminal. [terminal chrome](terminal-chrome.md) owns its contract.
+  control. No chips, hairlines or ornament; the tonal step alone separates it
+  from the terminal.
 - **Session sheet**: the standard 12dp top-cut DeepSurface sheet. Data-face
   facts, then the session card menu's rows; the two closures are Ember text
-  without ornament and commit only through the existing Cleft confirmation.
-- **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
-  (unscheduled — no delta ships it; adopting it later is its own small
-  slice), keys 4dp cut, mono labels, equal 48dp-minimum cells with 2dp grid
-  gaps, and Ctrl/Alt behaviour owned by
-  [terminal-key-deck.md](terminal-key-deck.md). Each armed modifier uses Gold
-  18% fill + Gold label.
-- **Pressure rail**: RaisedSurface card, 10dp cuts, one split-colour header, one
-  horizontally scrolling non-wrapping flat Data-face metric row, then the
-  unchanged 16dp categorical history band with no title. The machine name is
-  Bone; normal/absent header status is Muted; reading/warm is Gold; hot is
-  Ember. Metric labels and `i/N` marks are Muted, informational/normal values
-  are Bone, Warm values/marks are Gold, and Hot values/marks are Ember. Metrics
-  have no fill, border, shape, separator, or nested action. The whole rail is
-  one disclosure control. The machine-bound details sheet keeps the existing
-  12dp top-cut sheet and panel language, with no second history band.
+  without ornament and commit only through the Cleft confirmation.
+- **Terminal key deck**: RaisedSurface bezel, keys 4dp cut, mono labels, equal
+  48dp-minimum cells with 2dp grid gaps. An armed modifier uses Gold 18% fill
+  and a Gold label. A RaisedSurface band continues the bezel through the
+  navigation-bar or keyboard inset; the terminal between rail and deck is Ink.
+- **Pressure rail**: RaisedSurface card, 10dp cuts, one split-colour header,
+  one horizontally scrolling non-wrapping flat Data-face metric row, then the
+  categorical history band with no title. The machine name is Bone; the
+  header state is Muted for normal, unknown, stale and unavailable, Gold for
+  reading and warm, Ember for hot; recovering takes its level's colour.
+  Metrics have no fill, border, shape, separator, or nested action; the whole
+  rail is one disclosure control. The history band is frozen: 16dp tall, 5dp top
+  pad, bar heights normal .25, warm .58, hot 1, unknown .42. The details sheet
+  keeps the 12dp top-cut sheet and panel language, with no second band.
 
 ## 14. Accessibility floor
 
-48dp targets and 8dp spacing where architecture specs demand; the terminal key
-deck's dense aligned grid uses its reviewed 2dp gaps without shrinking targets;
+48dp targets and 8dp spacing where the architecture demands; the terminal key
+deck's dense aligned grid uses its 2dp gaps without shrinking targets;
 `minimumInteractiveComponentSize()` where a drawn control is smaller. Text ≥
-11sp. Every text/surface pair in this document ≥ 4.5:1 except the two
-declared fill/de-emphasis slots (ANSI black, brightBlack), which never carry
-prose. Reduced-motion fallbacks per §12. Ornament is always
+11sp. Every text/surface pair in this document ≥ 4.5:1 except the two declared
+fill/de-emphasis slots (ANSI black, brightBlack), which never carry prose, and
+the cold Forge seal (§8). Reduced-motion fallbacks per §12. Ornament is always
 `contentDescription`-silent decoration.
 
-The phone has no screen-reader support (owner cut, 2026-10-21). It ships no
-curated narration, custom actions, roles, headings, live regions, traversal
-order, state descriptions or terminal wheel actions; TalkBack gets only
-Compose's merged visible text. xterm's `screenReaderMode` stays on only
-because it selects the ime input path the phone qualified; with it off, Gboard
-lost the first letter after the keyboard opened in 4 of 72 emulator runs.
-Labels carry no bidi isolates,
-so an rtl machine, group or folder name may reorder neighbouring punctuation;
-paths keep their explicit left-to-right direction. Drawn
-controls with no text keep a `contentDescription`: the overflow studs and the
-Forge seal. Spoken, TalkBack and Switch Access requirements in other specs no
-longer bind; their recorded verification is history.
+The phone has no screen-reader support (owner cut). It ships no curated
+narration, custom actions, roles, headings, live regions, traversal order,
+state descriptions or terminal wheel actions; TalkBack gets only Compose's
+merged visible text. xterm's `screenReaderMode` stays on only because it
+selects the ime input path the phone relies on; with it off, Gboard lost the
+first letter after the keyboard opened in 4 of 72 emulator runs. Labels carry
+no bidi isolates, so an rtl machine, group or folder name may reorder
+neighbouring punctuation; paths keep their explicit left-to-right direction.
+Drawn controls with no text keep a `contentDescription`: the overflow studs and
+the Forge seal.
 
 ## 15. The forbidden list
 
-Never: rounded corners; circular ripples; drop shadows; smooth decorative
-gradients (Oklab ordinal ramps excepted); `#000000`; zoomorphic chrome;
-Elder Futhark; rune-transliterated UI text; blackletter; Tolkien scripts;
-horned-helmet/axe/horn/hammer clip-art (reconsidered for the create
-action and re-rejected, §8); Cinzel-register imperial caps; more than one
-ambient animation; ornament on error or destructive surfaces; unlicensed or
-GPL knot code; fonts outside §9's table without a license entry here.
+Never: rounded corners; circular ripples on skid-drawn controls; drop shadows;
+smooth decorative gradients; `#000000`; zoomorphic chrome; Elder Futhark;
+rune-transliterated UI text; blackletter; Tolkien scripts;
+horned-helmet/axe/horn/hammer clip-art (§8); Cinzel-register imperial caps; more than one ambient
+animation; ornament on error or destructive surfaces; unlicensed or GPL knot
+code; fonts outside §9's table without a license entry here.
 
 ## 16. Asset licenses
 
 | Asset | License | Status |
 | --- | --- | --- |
-| Big Shoulders, JetBrains Mono, Junicode 2, Noto Sans Runic | SIL OFL 1.1 | Bundle freely; Junicode and Noto Sans Runic only once a consumer ships |
-| androidx.graphics:graphics-shapes, Valkyrie | Apache-2.0 | Optional — only if a need outgrows `CutCornerShape`/direct generation |
-| jamis/celtic_knot (Mercat method) | Public domain | Reimplement concept |
-| bezborodow/celtic-knot | BSD-3-Clause | Build-time use OK |
-| jdenticon (channel-slicing model) | MIT (LICENSE verified) | Model only; own implementation |
+| Big Shoulders, JetBrains Mono | SIL OFL 1.1 | Bundled; the apk carries their license texts in `assets/licenses/`, as the OFL requires |
+| jdenticon (channel-slicing model) | MIT (LICENSE verified) | Model only; own implementation (§11) |
 | Berkeley Mono, Norse (Carrouché), Cirth fonts, Book of Kells facsimile imagery, WETA/film artwork | Restricted or unusable | Never embed |
 
-## 17. component contracts
+## 17. Terminal browser
 
-the implemented component contracts are [terminal theme](terminal-theme.md),
-[chrome tokens](chrome-tokens.md), [session card](session-card.md),
-[dwarf seals](dwarf-seals.md),
-[ornament](ornament-pipeline.md), [forge seal](forge-seal.md),
-[destructive and notice chrome](destructive-chrome.md),
-[launcher mark](launcher-mark.md), [hlíðskjálf mark](hlidskjalf-mark.md),
-[terminal chrome](terminal-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
-[compact dashboard chrome](dashboard-compact-chrome.md) owns header/tab
-presentation and menu reuse.
-[compact roster](dashboard-compact-roster.md) owns the accepted card, heading and
-vertical-spacing contract and qualification.
-this document owns their common visual values. historical delivery recipes in
-those plans do not override current testing policy or claim human acceptance.
-
-## 18. Open questions
-
-- On-panel comfort of `brightBlack #5c6370` for agent dim-text on the S22+
-  at night brightness; WCAG bias near black is documented.
-- Whether Junicode's subset ships in v0 at all, or waits for the About/
-  catalogue view that would use it.
-
-## 19. terminal browser
-
-[single-line desktop rows](desktop-single-line-rows.md) owns row geometry and
-hierarchy: one line, faint metadata/location and ordered whole-field omission.
-
-the [desktop browser](desktop-browser.md) is this language with every ornament
-deleted (§1.2), drawn in the operator's own terminal. the operator's theme supplies
-the ground and default ink; the browser paints no background. navigation/error
-accents use bright slots. status tones use explicit frost/moss/muted RGB values
-and bright-red ember. NO_COLOR strips styling and preserves every label.
-[browser simplification](desktop-browser-simplification.md) owns fleet/footer
-and creation behavior; [session rows](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md)
-records the preceding readability revision. installed usability remains separate. prior source `6974851` is
-[qualified](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/desktop-session-rows.md#qualification) only for its preceding layout. observed footer
-text uses the existing faint metadata register, with full text and source meaning
-in info. earlier row qualification applies only to its recorded source.
+the desktop browser is this language with every ornament deleted (§1.2), drawn
+in the operator's own terminal. the operator's theme supplies the ground and
+default ink; the browser paints no background. its behavior is the
+[architecture's](architecture.md#browser).
 
 | intensity | sgr | carries |
 | --- | --- | --- |
@@ -642,29 +505,88 @@ in info. earlier row qualification applies only to its recorded source.
 | Moss | RGB `#76B082` | ready |
 | Muted | RGB `#AAA69D` | every other status |
 
-status colour follows the projected tone (§5 above), never the printed word. a
-stale row's status cell reads muted `last observed: <label>` and is never ready,
-even while its failed host is re-read; a row of any other host being re-read
-reads faint `checking`; both names recede faint
-([desktop browser §5](desktop-browser.md#5-presentation)). ember never appears in
-hints, so requests and shown errors stay the table's only red statuses and are
-found at a glance. colour never carries meaning alone: every status is a word;
-the cursor is a glyph plus bold; the current view is bold, between gold `‹ ›` at
-the table; form chevrons stay faint because the `▌` gutter marks focus. faint
-varies by terminal and disappears under mosh. section/session hierarchy and
-omission must survive complete style stripping; one content line identifies each
-session, with gaps only at group boundaries. one rule separates content from
-controls. no boxes,
-fret, runes, icons or motion.
+status colour follows the projected tone (§5), never the printed word. a stale
+row's status cell reads muted `last observed: <label>` and is never ready, even
+while its failed host is re-read; a row of any other host being re-read reads
+faint `checking`; both names recede faint. ember never appears in hints, so
+requests and shown errors stay the table's only red statuses and are found at a
+glance. colour never carries meaning alone: every status is a word; the cursor
+is a glyph plus bold; the current view is bold, between gold `‹ ›` at the table;
+form chevrons stay faint because the `▌` gutter marks focus. `NO_COLOR` strips
+styling and preserves every label. faint varies by terminal and disappears
+under mosh. section and session hierarchy and omission survive complete style
+stripping; one content line identifies each session, with gaps only at group
+boundaries. one rule separates content from controls. no boxes, fret, runes,
+icons or motion.
 
-## 20. session naming content
+## 18. Dvergatal curation
 
-[automatic naming](automatic-session-names.md#names-and-content) owns exact copy.
-one actual tmux name occupies the existing card and terminal rail; rename preserves draft,
-focus and attachment. automatic ticks add no toast, icon or announcement. manual
-mode offers `use automatic title`; saving selects manual ownership. desktop
-handles identify control targets in cli output/details, with no added phone row.
-the terminal rail gives the name its weighted space beside `Detach`; rename and
-every other session action live in the session sheet, so no label competes with
-the name and large text grows the rail rather than adding a row
-([terminal chrome](terminal-chrome.md)).
+`internal/catalog/characters.json` is itself the inventory: every entry carries
+its key, display name, tradition, and source work and locus. These are the
+admission rules behind it.
+
+### Acceptance for good content
+
+An entry is admissible only when a primary text names the individual and either
+calls the individual a dwarf/Nibelung or places the individual in an explicitly
+dwarven company. The source citation is the shortest stable work plus chapter,
+scene, or stanza that proves that fact. A name is not admitted from a fan wiki,
+adaptation-only list, generic race label, disputed attribution, or an inferred
+translation.
+
+The Old Norse set uses the named individuals in the `Dvergatal` of *Vǫluspá*
+stanzas 10–16. The repeated `Eikinskjaldi` in stanzas 13 and 16 is one figure
+and ships once. Lofarr ships once because stanza 14 places him at the end of
+Dvalinn's dwarven kindred and stanza 16 names that lineage as Lofarr's. The
+Tolkien set uses distinct textual characters from *The Hobbit*, *The Lord of
+the Rings* Appendix A, *The Silmarillion*, and *The Children of Húrin*. Display
+suffixes such as `of Erebor` and `Ironfoot` are curatorial disambiguators, not
+additional figures. Tolkien's `Mîm` and Wagner's `Mime` are separate authored
+characters and are retained under their separate works; neither is a
+spelling-variant duplicate of the other.
+
+The Germanic-operatic set is limited to named Nibelung dwarfs in Wagner's own
+*Der Ring des Nibelungen* libretti: Alberich and Mime. Other Nibelungs are an
+unnamed collective, and giants, humans, gods, dragons, and stage-only names are
+excluded.
+
+Keys use the catalogue's ASCII asset-safe grammar. Display names preserve a
+single normalized source spelling or an explicit primary-text epithet and are
+globally unique. `internal/catalog` embeds the file and panics at process start
+on an invalid or duplicate key; nothing checks the file before release. The
+other rules here (unique NFC display names, no `FairyTale` or `ModernMedia`
+tradition, one primary-text locus per entry) are applied by review; no gate
+re-checks them.
+
+### Primary sources
+
+- *Vǫluspá*, Codex Regius text, sts. 10–16. For a convenient transcription and
+  translation see [Vǫluspá, literal text](https://www.voluspa.org/literal/voluspa.htm);
+  the controlling scholarly editions are Ursula Dronke, *Poetic Edda II:
+  Mythological Poems* (Oxford, 1997), and Edward Pettit, *The Poetic Edda: A
+  Dual-Language Edition* (Oxford, 2023).
+- J. R. R. Tolkien, *The Hobbit* (1937), ch. 1; *The Lord of the Rings*
+  (1954–55), Appendix A III, “Durin's Folk”; *The Silmarillion* (1977), ed.
+  Christopher Tolkien, chs. 16 and 20; and *The Children of Húrin* (2007), ch.
+  11, “Of Mîm the Dwarf”. These are the primary authored texts, not adaptation
+  guides.
+- Richard Wagner, *Der Ring des Nibelungen* libretti (1848–74), *Das
+  Rheingold*, Scene 3, and *Siegfried*, Act I. The [Naxos Siegfried
+  libretto](https://www.naxos.com/libretti/660175.htm) is a convenient
+  publisher-hosted text; the German libretto is authoritative for the
+  character classification.
+
+### Dedupe and exclusion record
+
+- `Eikinskjaldi` appears twice in *Vǫluspá* but is one shipped Old Norse entry.
+- `Lofarr` is named through the lineage clauses in stanzas 14 and 16 and is
+  retained as the terminal member of the explicitly dwarven company.
+- Diacritics are normalized, not multiplied into variants: each Old Norse
+  source spelling appears once.
+- Tolkien entries with names cognate with Old Norse names are separate authored
+  characters only where the Tolkien text identifies a distinct individual;
+  their display suffixes make the global display-name set unambiguous.
+- `Mîm` and Wagner's `Mime` are separate characters in separate primary works;
+  their source/locus and display forms remain distinct.
+- No `FairyTale`, `ModernMedia`, generic Nibelung, unnamed dwarf, disputed dwarf,
+  giant, dragon, human, god, elf, or invented catalogue filler is included.

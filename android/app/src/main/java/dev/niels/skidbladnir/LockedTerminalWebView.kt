@@ -328,7 +328,7 @@ internal class LockedTerminalWebView(
         }
     }
 
-    // The packaged page port (version 6; docs/terminal-selection-copy.md lists
+    // The packaged page port (version 6; docs/architecture.md, page port, lists
     // every message). Commands and output go out through postToPage; page
     // messages are decoded here.
     private fun attachPagePort(view: WebView) {

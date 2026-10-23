@@ -279,7 +279,8 @@ internal fun TerminalScreen(
 // The whole top chrome: one stratum, one row. Detach leads; the rest of the
 // row is the session's identity and opens the session sheet, which holds
 // every rarer fact and action. Nothing here may grow a second row: the
-// terminal takes every pixel the rail and the deck leave (terminal-chrome.md).
+// terminal takes every pixel the rail and the deck leave (architecture.md, phone
+// terminal invariant 7).
 @Composable
 private fun TerminalRail(
     name: String,

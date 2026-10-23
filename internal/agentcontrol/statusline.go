@@ -11,12 +11,12 @@ import (
 )
 
 // The statusline readers read two displayed facts from a composer's already
-// anchored footer: quota usage (docs/terminal-usage.md) and the model/effort
-// phrase (docs/terminal-model-effort.md). Both are literal text, not account
-// reports or execution settings: an unrelated item can imitate either grammar,
-// and aliases stay unsupported. Each fact keeps its own admission, so refusing
-// one never costs the other, and neither read changes the classifier's
-// clipping or rule state.
+// anchored footer: quota usage and the model/effort phrase (each grammar's
+// statusline section, docs/terminal-observation-{codex,claude}.md). Both are
+// literal text, not account reports or execution settings: an unrelated item
+// can imitate either grammar, and aliases stay unsupported. Each fact keeps its
+// own admission, so refusing one never costs the other, and neither read
+// changes the classifier's clipping or rule state.
 
 var (
 	codexUsageItem             = regexp.MustCompile(`^(5h|weekly) (0|[1-9][0-9]?|100)% left$`)

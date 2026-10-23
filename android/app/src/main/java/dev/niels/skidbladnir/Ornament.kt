@@ -147,7 +147,7 @@ private data class SealSpec(
     val metal: Color, // Gold or Bronze
 )
 
-// Frozen formulas over SHA-256(UTF-8(key)), bytes unsigned (dwarf-seals.md): changing any re-rolls
+// Frozen formulas over SHA-256(UTF-8(key)), bytes unsigned (design-language.md §11): changing any re-rolls
 // every identity. A draw with fewer distinct runes than runeCount is defined, not an error.
 private fun sealSpec(characterKey: String): SealSpec {
     val digest = MessageDigest.getInstance("SHA-256").digest(characterKey.toByteArray(StandardCharsets.UTF_8))

@@ -43,7 +43,7 @@ commands run exactly once in the configured bash/zsh after its normal startup.
 aliases, functions, environment and provider settings remain effective. skid adds
 no provider flags and starts no provider daemon. optional `provider` and `home`
 metadata enable attributable account observation; commands without them still run.
-see the [configuration contract](docs/generalization-plan.md#2-configuration-and-durable-state)
+see the [configuration contract](docs/architecture.md#5-configuration)
 for every field; all hosts share them. opening skid on any enrolled computer asks the hub
 to apply pending edits; `skid apply` does so without opening the browser. invalid
 edits retain the accepted settings.
@@ -55,7 +55,7 @@ edits retain the accepted settings.
 3. run `skid connect` on an installed computer; scan its single-use five-minute qr.
 
 session management needs no firebase setup. android background notifications are
-an [optional integration](docs/android-push-setup.md): you own its firebase project
+an [optional integration](docs/architecture.md#android-push-setup): you own its firebase project
 and private sending credentials; your hub sends directly to google. mac
 notifications work independently. skid operates no notification backend.
 
@@ -75,7 +75,8 @@ local terminal remains available for other machines.
 
 ## use
 
-press enter to attach; `N` creates an agent and `n` creates a shell. `ctrl-]`, then
+press enter to attach; `n` opens a home terminal on a chosen machine and `N` opens
+new-terminal options (a terminal or an agent profile). `ctrl-]`, then
 `d`, detaches to the browser. the phone opens the same sessions and supports its
 usual typing, pasting, dictation, scrolling and copy controls. the latest active
 client determines terminal size.
@@ -92,8 +93,8 @@ ordinary controls use tmux and exact terminal identities. read returns rendered
 terminal text; guarded send checks the current screen. stop sends an interrupt.
 receipts prove neither provider acceptance nor completion. quota prefers a fresh
 account report from an already-running native daemon, then
-attributable terminal observations. [agent control](docs/agent-control.md) describes
-the boundaries. readiness is a cue to inspect, not proof of successful work.
+attributable terminal observations. [agent control](docs/architecture.md#7-observation-and-agent-control)
+describes the boundaries. readiness is a cue to inspect, not proof of successful work.
 
 uninstall removes skid's fixed runtime paths and shell blocks. settings, private
 state, provider history, tmux sessions and shared dependencies remain.

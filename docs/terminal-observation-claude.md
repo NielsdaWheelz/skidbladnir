@@ -1,26 +1,19 @@
 # claude screen grammar
 
-status: implemented in `internal/agentcontrol/claude.go` (2.0-2.2),
-`claude_composer.go` (2.3, 2.4, 2.8) and `claude_families.go` (2.6), whose
-comments cite the sections below. qualified live for claude 2.1.286 on darwin
-and claude 2.1.284 on linux as §1 records; §2.6 rule 24 (theme setup) is
-qualified on both versions, except the narrow widths §5 c18 accepts. the
-[qualification](https://github.com/NielsdaWheelz/skidbladnir/blob/12b15163d9faf529416d486e0156b8b83821fa4a/docs/terminal-agent-control-qualification.md#terminal-observation-qualification)
-holds the evidence and its limits, and [the spec](terminal-observation.md) owns
-the status contract this grammar feeds.
+implemented in `internal/agentcontrol/claude.go` (2.0-2.2), `claude_composer.go`
+(2.3, 2.4, 2.8) and `claude_families.go` (2.6), whose comments cite the sections
+below. [the spec](terminal-observation.md) owns the status contract this grammar
+feeds. qualified live for claude 2.1.286 on darwin (tmux 3.7c; fullscreen and
+classic) and claude 2.1.284 on linux (devbox tmux 3.4, arch tmux 3.7c; fullscreen,
+and classic for idle, draft, work, a single question, bash permission and tall
+panes), as §1 records; §2.6 rule 24 (theme setup) is qualified on both versions,
+except the narrow widths §5 c18 accepts.
 
 sources: `S`, string and code inspection of the bundled javascript in the
 executable's `__BUN` segment (minified identifiers are build-specific and serve
 only as orientation); `D`, the public statusline and accessibility docs; live
 runs of the stock tui against a local deterministic mock of the messages api. no
 real screen, prompt, path, title or account datum was kept.
-
-installed versions qualified:
-
-| platform | tmux | claude | renderers run |
-| --- | --- | --- | --- |
-| darwin 25.4.0 arm64 | 3.7c | 2.1.286 (`~/.local/bin/claude` → `versions/2.1.286`) | fullscreen, classic |
-| linux: devbox (ubuntu, kernel 6.8, x86_64), arch (kernel 7.2.6, x86_64) | 3.4 (devbox), 3.7c (arch) | 2.1.284 (same layout) | fullscreen (the default without a `tui` setting); classic for idle, draft, work, a single question, Bash permission and tall panes |
 
 ## 1. frozen capability table
 
@@ -33,7 +26,7 @@ versions above, with a renderer or width in parentheses when only that part ran.
 classified with the evidence dropped from the real capture (on darwin also by a
 real byte cap): capture and parser mechanics only. `source-only` means `S`/`D`
 and authored rows only. an `R` row is `NOT_RUN` on every platform it does not
-name, and each such `NOT_RUN` is a blocker under spec §8
+name, and each such `NOT_RUN` is a blocker under spec §7
 ([unrun acceptance](issues/unrun-acceptance.md),
 [unruled dialogs](issues/claude-unruled-request-dialogs.md)). a `P` row's
 `NOT_RUN` is informative.
@@ -148,7 +141,7 @@ among the footer's opaque rows it is tolerated like any opaque row.
 
 **rows are self-contained.** raw `capture-pane -e` carries style across rows; the
 capture takes each row on its own, so every row parses from the default style
-([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)).
+([spec §3](terminal-observation.md#3-composition-and-observation-boundary)).
 
 **columns.** a column is a cell index. every glyph used here is one cell in
 claude's layout and in tmux (`⏸ ⏵ ← ↓ ✔ ☐` measured).
@@ -857,7 +850,7 @@ display configuration is retained; skid overrides nothing.
 
 ## 5. accepted costs and residual ambiguity
 
-accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
+accepted costs ([spec §8](terminal-observation.md#8-accepted-costs)),
 each unknown or none, never a false claim unless the item says otherwise:
 
 - **c1** activity under every request/menu pane is unknown: the dialog hides panel,
@@ -944,12 +937,10 @@ each unknown or none, never a false claim unless the item says otherwise:
   columns and unknown at 56 and narrower; at 40 columns it reads from 50 rows
   (unknown at 45), so a phone-sized pane of about 40×29 never shows it as a menu.
 
-no residual ambiguity remains: CQ20, the last, is c18.
-
 ## 6. requalification
 
 run this after a claude upgrade, before claiming the new version, with the
-current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
+current-turn approval [spec §7](terminal-observation.md#7-requalification)
 requires for isolated tmux and live runs. the authored frames are retained as
 fixtures ([testing](rules.md#testing)): `internal/agentcontrol/testdata/frames/`
 holds `claude.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
@@ -997,42 +988,38 @@ every record is content-free.
 6. update §1's qualified column and versions; [unrun acceptance](issues/unrun-acceptance.md)
    tracks every required row that column leaves unqualified.
 
-## 7. displayed footer extension
+## 7. displayed statusline suffix
 
-2026-10-15: implemented at `6974851`; [scoped qualification](terminal-model-effort.md#qualification)
-passes. this display-only extension
-feeds [terminal model and effort](terminal-model-effort.md), without changing
-the status/composer grammar or its existing qualification.
-
-use only the ordinary composer's established `bottom` and `footer.mode` anchors,
-as the usage read in `claudeReadStatusline` does. the final physical row before
-the mode row must have exactly three or four ` │ `-separated fields:
+`claudeReadStatusline` reads the managed formatter's final opaque row, the one
+immediately above the ordinary composer's mode row, using only the composer's
+established `bottom` and `footer.mode` anchors. picker and other non-ordinary
+branches omit. both facts are displayed text, not account reports or execution
+settings; each keeps its own admission, and neither changes status, composer,
+rules or clipping.
 
 ```text
-<prefix> │ <native model/effort phrase> │ ctx <integer%|-->
-<prefix> │ <native model/effort phrase> │ ctx <integer%|--> │ <quota>
+<prefix> │ <model/effort phrase> │ ctx <integer%|-->
+<prefix> │ <model/effort phrase> │ ctx <integer%|--> │ <quota>
+quota = 5h P% | 7d P% | 5h P% · 7d P%
 ```
 
-`integer` is `0|[1-9][0-9]*`; quota reuses the existing `claudeUsageSuffix`
-production: `5h P%`, `7d P%`, or `5h P% · 7d P%`, with canonical `P` in 0–100.
-preserve the phrase exactly between delimiters, including native aliases and
-effort/tier wording. do not split on its last word. prefix is opaque, not evidence.
-quota may be absent; a footer value does not require `TerminalUsage`.
+`integer` is `0|[1-9][0-9]*`; `P` is canonical 0–100.
 
-require both phrase boundaries and the whole recognized suffix, no extra fields,
-and no second matching candidate anywhere in the anchored footer. reuse the
-conservative bound from the usage read:
-`utf8ByteLength(all text before " │ ctx ") + runeCount(complete recognized suffix starting " │ ctx ") < paneWidth`.
-this counts the model phrase as well as the prefix; it works without quota.
-a row touching the bound omits. missing/unparseable
-rows, wrapped fields, incomplete boundaries and unsupported custom layouts omit.
-do not join fragments or infer missing text from an ellipsis. picker and other
-nonordinary branches omit. these rules do not change quota admission; reuse
-parsing primitives without making one capability depend on the other.
+- **usage** (`terminalUsage`): the whole ` │ ctx … │ <quota>` suffix ends the row's
+  plain text; used percentages are `P` as written, a real `0%` included. the prefix
+  bytes plus the suffix's runes must stay below the pane width; a candidate on an
+  earlier opaque row refuses usage.
+- **footer phrase** (`terminalFooter`): the row's parsed cells, nbsp kept, split on
+  ` │ ` into exactly three or four fields; the phrase is the second field, kept
+  exactly (native aliases and effort or tier wording included, never split on its
+  last word), and the text after it must be the ctx suffix with optional quota. the
+  bound counts every prefix and phrase byte plus the suffix's runes, below the pane
+  width. an unparsed row, or a candidate on an earlier opaque row, refuses it; so do
+  missing or wrapped fields, incomplete boundaries and custom layouts. fragments are
+  never joined and nothing is inferred from an ellipsis. quota may be absent.
 
-source: the managed [formatter](https://github.com/NielsdaWheelz/dev-server/blob/6339edc3a923e3f926e855e60a0f07c7814b2ede/assets/claude/statusline.sh)
-joins native display name and effort into this delimited clause; no formatter
-change is required. a custom formatter reproducing exactly this grammar is
-indistinguishable; this is displayed text, never provider-authenticated settings.
-retained authored frames and scoped installed-provider checks must qualify this
-new field separately.
+the delimited clause comes from the owner's
+[managed formatter](https://github.com/NielsdaWheelz/dev-server/blob/6339edc3a923e3f926e855e60a0f07c7814b2ede/assets/claude/statusline.sh),
+which joins native display name and effort. a custom formatter reproducing exactly
+this grammar is indistinguishable, an accepted limit. the retained frames qualify
+these readers separately from status behaviour.

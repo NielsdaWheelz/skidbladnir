@@ -1,19 +1,14 @@
-# visual redesign deferred
+# visual redesign
 
-problem: the owner requested a separate visual redesign; surfaces, goals and
-reference direction remain undecided. the [latency cutover](../session-latency.md)
-retains current desktop/phone geometry, typography, color, icons and controls.
+problem: the owner wants a visual redesign (2026-10-20); surfaces, goals and
+reference direction are undecided.
 
-impact: latency acceptance cannot establish readability, recognition, hierarchy
-or aesthetic acceptance. existing row/card/chrome qualification issues remain
-separate; this issue does not duplicate their unfinished checks.
+impact: readability, recognition, hierarchy and aesthetics have no acceptance
+beyond the row, card and chrome checks in [unrun acceptance](unrun-acceptance.md).
 
-evidence: explicit owner request on 2026-10-20 to record phone and visual redesign
-as issues. no visual implementation is authorized by this record.
-
-resolved when: agree affected surfaces and visual goals, have a designer define
-content/hierarchy and representative narrow/large-text states, approve a bounded
-design-language amendment and implementation plan, then qualify the implemented
-visuals and obtain owner acceptance; or record explicit retirement. interaction
-changes belong to the [phone issue](phone-interaction-redesign.md). preserve exact
-targets, accessibility meaning and operational feedback throughout.
+resolved when: the owner agrees surfaces and goals, a designer defines content,
+hierarchy and narrow and large-text states, the owner approves a bounded change to
+the [design language](../design-language.md) and a plan, and accepts the
+implemented visuals; or retires the redesign. interaction changes belong to the
+[phone redesign](phone-interaction-redesign.md). keep exact targets and
+operational feedback throughout.
