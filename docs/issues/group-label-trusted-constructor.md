@@ -13,8 +13,8 @@ inventory a lost response, so its cards go stale.
 evidence: android-core cleanup, design §2.3 and §11.2. host-rendered-copy kept
 the mirror because removing it was then unapproved. on 2026-10-22 the owner
 decided to drop the phone's icu mirror so the host's 422 `GroupInvalid` is the
-only check. the cut is a follow-up pr after wave 4, and it gives up the phone's
-instant inline validity.
+only check. the cut is [W4.11](../cleanup.md#prs) group-label-mirror, and it
+gives up the phone's instant inline validity.
 
 resolved when: `GroupLabel` is plain host text decoded without validation, the
 phone submits the typed draft and shows the host's 422, `GroupLabelSerializer`

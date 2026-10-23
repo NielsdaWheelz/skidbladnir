@@ -2,7 +2,7 @@
 
 problem: `default_machine` is admitted case-insensitively but matched exactly.
 `hostconfig.Config.ValidateMachines` (`internal/hostconfig/config.go:184`) and
-fleet's apply (`internal/fleet/service.go:192`) accept it when any machine name
+fleet's resolve (`internal/fleet/service.go:181`) accept it when any machine name
 equals it under `strings.EqualFold`; `fleetclient.Adopt`
 (`internal/fleetclient/config.go:44`) selects the default with `==`. a config
 naming `default_machine: Arch` for the machine `arch` is applied, then ignored.

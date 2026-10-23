@@ -1,7 +1,7 @@
 # x/text nfc validation
 
 problem: session objectives (`sessions/validation.go` `validateObjective`) and
-profile labels (`agentruntime/profile.go` `safeProfileLabel`) require
+profile labels (`agentruntime/profile.go` `ResolveProfiles`) require
 `norm.NFC.IsNormalString` from `golang.org/x/text` v0.41. that is not plain
 UAX #15 nfc: it composes across a backward-combining starter and treats more
 than 30 nonstarters as unnormalized (its stream-safe form inserts u+034f). group
