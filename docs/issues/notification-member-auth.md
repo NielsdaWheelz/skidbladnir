@@ -10,7 +10,7 @@ impact: one extra fleet lock and bearer digest per notification request, a
 second failure path (401 `Unauthenticated` when a member is removed between the
 two checks).
 
-evidence: `internal/gateway/gateway.go:156` stores `member.DeviceID` under the
+evidence: `internal/gateway/gateway.go:189` stores `member.DeviceID` under the
 unexported `deviceContextKey{}`; `internal/notifier/http.go` begins `ServeHTTP`
 with `fleet.Authenticate(r)`. `internal/gateway` belongs to the gateway-http
 cleanup, so hub-attention left it unchanged.

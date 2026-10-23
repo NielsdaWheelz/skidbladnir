@@ -33,6 +33,9 @@ measured over every tracked non-binary file (fixtures, json and docs included), 
 | after wave 1 `9e7da6e` | 91,926 | -9,266 (-9.2%) |
 | after #129-#139 `623280a` | 87,753 | -13,439 (-13.3%) |
 | wave 2 done `a00bd7a` | 85,115 | -16,077 (-15.9%) |
+| after wave 3 `c4399a3` | 79,543 | -21,649 (-21.4%) |
+| wave 4 phase 2 `6782385` | 73,125 | -28,067 (-27.7%) |
+| wave 4 done `defbf3f` | 70,855 | -30,337 (-30.0%) |
 
 ## decisions
 
@@ -56,10 +59,17 @@ also accepted 2026-10-21:
 - the [tmux exec budget](tmux-exec-budget.md) option a and its priority change, including a3's amendments to architecture's agent-observation paragraph and session latency's no-cache scope.
 - the mac serve event log goes to a bounded file, `~/.local/state/skidbladnir/serve.log`, rotating at 8 MiB with one previous file; linux keeps the journal.
 - w2.7's amendment to a1 (the global probe reads `-s`, `-g` and `-g -w`), its window/pane-local residual and its status changes (an absent id answers 404, an id on an epochless server 409).
-- the lockstep [cutover release](issues/release-cutover.md) ships after wave 2, so the fixed-hub fleet is qualified live before w3.1's hub-owned attention builds on it. wave-3 prs finish but merge only after that tag.
+- the lockstep [cutover release](issues/release-cutover.md) is v0.21.0 (`2c7cbe0`), tagged after wave 2; the wave-3 prs merged after it.
 - the coordinator cuts v0.20.1 from main once w1.7 and w1.8 merge; w2.1 and w2.2 (hard cutovers) merge only after that tag. dev-server's pin bump and the macbook maintenance window stay with the owner.
 
 kept (owner, 2026-10-22): xterm `screenReaderMode` stays on. it also selects xterm's keydown and `insertText` input path; with it off, stock xterm lost the first Gboard letter in 4 of 72 emulator runs against 0 of 87 with it on.
+
+decided 2026-10-22:
+
+- merge #144 now (owner): it merged as `3ef8c2e`. its install is a second lockstep window after v0.21.0, in [attention cutover](issues/attention-cutover.md).
+- android-core's verify-before-attach cut stands (owner), reversing the 2026-10-20 deferral: reconnect uses the last poll's session and a created terminal attaches on the create response. only the [notification-click read](issues/phone-entry-metadata-latency.md) remains.
+- drop the phone's icu group-label mirror (owner, W4.11): the host's 422 `GroupInvalid` is the only check, and the phone loses instant inline validity.
+- [rules](rules.md#trust-boundaries) amended in #157 (coordinator): go clients decode same-release documents with plain `encoding/json`, a missing key is its zero value, and an unknown error code is still the gateway's answer.
 
 kept: runtime firebase configuration, the tui `N` create form, the usage selector, workspace restore verification, classifier precision, the identity-token format.
 
@@ -77,7 +87,7 @@ process:
 - [ ] phone dashboard: restore scroll by index, not card identity, after process death (-200)?
 - [ ] forge: drop the forced refresh after an uncertain create (-110)? a second tap could double-create.
 - [ ] phone saved state: drop the sha-256 label fingerprints that keep labels out of the saved-state bundle (-150)?
-- [ ] housekeeping: close draft pr #102 and remove the ten merged `fix/*` worktrees? local main has 2 unpushed commits and uncommitted doc edits, left alone.
+- [ ] housekeeping: close draft pr #102 and remove the ten merged `fix/*` worktrees? (local main's drafts were triaged by #160 at the owner's request; the checkout matches main, the originals are on the local `backup/local-docs-2026-10-22` and `backup/stash-2026-10-02` branches.)
 
 ## slices
 
@@ -100,7 +110,7 @@ cross-cutting: the session row is modelled four times, the error envelope is pin
 
 ## prs
 
-waves run in parallel on disjoint paths and merge in order. status: planned, running, review, merged, dropped. estimates are the mappers' and overlap where findings share code; merged rows record measured net lines.
+waves run in parallel on disjoint paths and merge in order. status: planned, running, review, merged, partial, dropped. estimates are the mappers' and overlap where findings share code; merged rows record measured net lines.
 
 | pr | findings | est. lines | status | merged as |
 | --- | --- | --- | --- | --- |
@@ -121,21 +131,26 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W2.6 host-resources + startup-composition rest | 5 | -390 | merged | #147, -715 |
 | W2.7 sessions-read-path + exec budget a1 | 8 | -745 | merged | #139, -183 |
 | W2.8 recovery-simplify | 8 | -575 | merged | #148, -494 |
-| W3.1 hub-attention | 22 | -4,875 | held for the cutover tag | #144 (draft), -3,837 |
-| W3.2 quota-go-client | 3 | -165 | held for the cutover tag | #145 (draft), -160 |
+| W3.1 hub-attention | 22 | -4,875 | merged | #144, -3,809 |
+| W3.2 quota-go-client | 3 | -165 | merged | #145, -160 |
 | W3.3 talkback-removal | 3 | -340 | merged | #135, -580 |
 | W3.4 observation-cuts | 3 | -540 | merged | #133, -610 |
-| W3.5 stock-xterm | 1 | ~-1,300 after w1.3 | held for the cutover tag | #143 (draft), -5,432 |
-| W4.1 tolerant-reader | 10 | -1,950 | planned |  |
-| W4.2 go-wire-package | 4 | -540 | planned |  |
-| W4.3 host-rendered-copy | 9 | -930 | planned |  |
-| W4.4 desktop-core | 8 | -650 | planned |  |
-| W4.5 android-controller | 13 | -1,945 | planned |  |
-| W4.6 android-ui-structure | 9 | -943 | planned |  |
-| W4.7 terminal-page | 6 | -420 | planned |  |
-| W4.8 observation-refactors + exec budget a2, a3 | 9 | -384 | planned |  |
-| W4.9 private-file-primitive | 1 | -150 | planned |  |
+| W3.5 stock-xterm | 1 | ~-1,300 after w1.3 | merged | #143, -5,432 |
+| W4.1 tolerant-reader | 10 | -1,950 | partial | kotlin decoders in #154, go in #157, counted there; terminal frames and the page protocol move to W4.12, W4.13 |
+| W4.2 go-wire-package | 4 | -540 | merged | #157, -600 |
+| W4.3 host-rendered-copy | 9 | -930 | merged | #152, -535 |
+| W4.4 desktop-core | 8 | -650 | merged | #155, -191 |
+| W4.5 android-controller | 13 | -1,945 | merged | #154, -1,851 |
+| W4.6 android-ui-structure | 9 | -943 | merged | #158, -1,017 |
+| W4.7 terminal-page | 6 | -420 | merged | #159, -633 |
+| W4.8 observation-refactors + exec budget a2, a3 | 9 | -384 | merged | #156, -20 |
+| W4.9 private-file-primitive | 1 | -150 | merged | #151, -33 |
 | W4.10 release-pipeline | 2 | -872 | merged | #136, -389 |
+| W4.11 group-label-mirror | 1 | -120 | planned |  |
+| W4.12 terminal-connection-decode | 1 | -50 | planned |  |
+| W4.13 page-protocol-validation | 1 | -250 | planned |  |
+| W4.14 api-vocabulary | 1 | -10 | planned |  |
+| W4.15 fleetclient-split | 1 | -40 | planned |  |
 | W5 docs-consolidation | 11 | ~-20,000 (mapper docs estimates overlap) | planned |  |
 
 ## spec items
@@ -150,6 +165,8 @@ non-mapper work folded into the waves.
 | `ProcessType=Interactive` and the install priority check | [exec budget](tmux-exec-budget.md#priority-macbook-capacity-d7) | W1.7 |
 | zsh tty probe noise | terminal-context-tty-noise issue, resolved by #129 | W1.8 |
 | bounded mac serve log | [codebase map](codebase-map.md) | W2.5 |
+| inline `DashboardScreen.onOpenTerminal`, always `controller::openTerminal` | #158 | W4.11 |
+| delete `Json.kt`'s `ProtocolDecodeException` residue and `ProductModel.parseApiErrorCode`; the terminal upgrade shows the gateway's message, not the phone copy table | #154 | W4.12 |
 
 ## findings
 
@@ -274,17 +291,17 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `android-core:wire-revalidation` | phone re-derives and re-validates gateway-owned invariants, and any drift crashes the app | -380 | refactor | W4.1 |
 | `android-core:error-decoding` | nine per-route closed error decoders plus phone-side copies of the gateway's status and message tables | -250 | refactor | W4.1 |
 | `android-core:unused-wire-fields` | decoded and validated fields that nothing on the phone reads | -60 | refactor | W4.1 |
-| `android-terminal-notify:terminal-connection-decode` | phone re-validates gateway frames and even compares error message wording | -50 | refactor | W4.1 |
-| `android-terminal-notify:page-protocol-validation` | both ends of a same-APK message port validate each other exhaustively | -250 | refactor | W4.1 |
+| `android-terminal-notify:terminal-connection-decode` | phone re-validates gateway frames and even compares error message wording | -50 | refactor | W4.1; moves to W4.12 |
+| `android-terminal-notify:page-protocol-validation` | both ends of a same-APK message port validate each other exhaustively | -250 | refactor | W4.1; moves to W4.13 |
 | `gateway:error-envelope-pinned-four-ways` | error code->status->message table is duplicated and byte-pinned in gateway, fleetclient, android and the te... | -280 | refactor | W4.1 |
 | `desktop-clients:mutation-failure-auth-misclassified` | decodeMutationFailure turns real auth rejections on start/shell/group into protocol_error with dispatch unk... | -80 | refactor | W4.1 |
 | `cross:go-wire-package` | No shared wire package: the session row is modeled 4 times and clients import host implementation packages... | -60 | refactor | W4.2 |
 | `gateway:session-dto-mirrors` | session inventory DTO is copied in gateway, mirrored in fleetclient, and its invariants validated by produc... | -200 | refactor | W4.2 |
 | `desktop-clients:wire-dto-duplication` | fleetclient mirrors the gateway wire schema and re-validates every invariant the gateway already enforces o... | -270 | refactor | W4.2 |
-| `sessions-tmux:wire-vocabulary-misplaced` | client/server wire vocabulary parked in the host session manager | -10 | refactor | W4.2 |
+| `sessions-tmux:wire-vocabulary-misplaced` | client/server wire vocabulary parked in the host session manager | -10 | refactor | W4.2; moves to W4.14 (status, usage, footer, name-mode, recovery and presentation types into `internal/api`) |
 | `cross:host-rendered-copy` | Prose derived from closed host enums is duplicated byte-for-byte in Go and Kotlin; render it once on the pr... | -330 | refactor | W4.3 |
-| `cross:host-canonicalizes-identifiers` | Clients re-implement host canonicalization (Unicode-15 NFC mirror, id regexes) because the gateway rejects... | -120 | cut | W4.3 |
-| `sessions-tmux:group-custom-nfc` | hand-rolled plain NFC to dodge stream-safe CGJ insertion | -45 | cut | W4.3 |
+| `cross:host-canonicalizes-identifiers` | Clients re-implement host canonicalization (Unicode-15 NFC mirror, id regexes) because the gateway rejects... | -120 | cut | W4.3, kept by #152; the phone's icu mirror moves to W4.11 |
+| `sessions-tmux:group-custom-nfc` | hand-rolled plain NFC to dodge stream-safe CGJ insertion | -45 | cut | W4.3, kept by #152 |
 | `android-ui:availability-prose-tables` | five separate `when (machineAvailability)` prose tables; empty state repeats the strip above it | -65 | cut | W4.3 |
 | `android-core:availability-copy` | five producers of per-machine availability prose with drifted wording | -40 | cut | W4.3 |
 | `android-ui:profile-label-duplicate` | local and remote agent labels are two functions; execution-context prose is re-derived in six `when`s | -35 | refactor | W4.3 |
@@ -298,7 +315,7 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `desktop-clients:sessionui-update-god-function` | model.Update is cyclo 159 / 420 lines mixing routing, action adoption, search adoption, paste and per-page... | -60 | refactor | W4.4 |
 | `desktop-clients:context-enrichment-overbuilt` | remote-context enrichment uses a sync.Map/sync.Once cache that cannot hit, a semaphore that cannot bind, an... | -45 | refactor | W4.4 |
 | `desktop-clients:client-duplicates` | small duplicated primitives across the client packages | -45 | refactor | W4.4 |
-| `desktop-clients:fleetclient-grab-bag` | fleetclient mixes routing/transport with cli+tui presentation copy and tui palette roles | -40 | refactor | W4.4 |
+| `desktop-clients:fleetclient-grab-bag` | fleetclient mixes routing/transport with cli+tui presentation copy and tui palette roles | -40 | refactor | W4.4; deferred by #155 to W4.15 |
 | `android-core:hand-rolled-concurrency` | three executors, generation, credential and identity fences, and bespoke poll lanes instead of structured c... | -600 | refactor | W4.5 |
 | `android-core:controller-god-file` | 2438-line controller: single-use test-era helpers, misplaced terminal predicates, repeated state assembly | -180 | refactor | W4.5 |
 | `android-core:remote-context` | remote execution-context resolution uses flights, global admission, generations and CompletableFuture fan-out | -90 | refactor | W4.5 |
@@ -330,26 +347,26 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 | `agent-observation:process-argv-legacy` | Observation.Argv is a legacy field read only by equality, costing a 1 MiB PROCARGS2 sysctl per sample | -63 | refactor | W4.8 |
 | `agent-observation:process-coherence-loop` | Observe's two-identical-samples loop duplicates the before/after brackets every caller already performs | -21 | refactor | W4.8 |
 | `agent-observation:agentruntime-vestigial-types` | Foreground vs AgentRuntime split, Project copier and ValidateAgentRuntime are registration-era vestiges | -45 | refactor | W4.8 |
-| `agent-observation:profiles-validated-thrice` | ValidateProfiles runs at resolve, at manager New/ApplySettings, and on every gateway response | -40 | refactor | W4.8 |
+| `agent-observation:profiles-validated-thrice` | ValidateProfiles runs at resolve, at manager New/ApplySettings, and on every gateway response | -40 | refactor | W4.8; the hostconfig overlap stays ([issue](issues/member-settings-validation.md)) |
 | `agent-observation:launch-json-envelope` | Launch wraps one command string in JSON+base64 with caps and re-encode checks, decoded twice | -35 | refactor | W4.8 |
 | `agent-observation:mirrored-enums-and-closed-panics` | private turnNotice/run-state/composer enums mirror public ones, and closed-switch panics guard them | -70 | refactor | W4.8 |
 | `agent-observation:statusline-readers-duplicated` | usage and footer readers scan the same statusline rows twice per provider | -55 | refactor | W4.8 |
 | `agent-observation:terminal-ops-revalidate` | agentcontrol terminal ops repeat gateway and tmux input validation and nest no-op 10 s timeouts | -45 | refactor | W4.8 |
 | `agent-observation:grammar-god-functions` | codexComposer (cyclo 110) and claude.go (1867 lines) are blobs mixing every dimension | -10 | refactor | W4.8 |
-| `cross:one-private-file-primitive` | Atomic durable write reimplemented ~9 times and flock in 7 packages | -150 | refactor | W4.9 |
+| `cross:one-private-file-primitive` | Atomic durable write reimplemented ~9 times and flock in 7 packages | -150 | refactor | W4.9; #151 kept the four flock lease copies |
 | `ops-docs:release-pipeline-collapse` | release path is 11 scripts that each re-validate and re-verify the same facts | -787 | refactor | W4.10 |
 | `followup:directory-entry-kind` | the phone's domain `DirectoryEntry.kind` lost its only reader in #135; the strict wire decode stays | -15 | deletion | W4.1 |
-| `followup:pressure-detail-metric` | `PressureDetailRow.metric` has no reader | -5 | deletion | W4.6 |
+| `followup:pressure-detail-metric` | `PressureDetailRow.metric` has no reader | -5 | deletion | W4.6; resolved by #152 |
 | `followup:sessionui-device-removed` | dead `DeviceRemoved` checks in sessionui (session.go, usage.go) and a stale 'verified roster' comment after #137 | -15 | deletion | W4.4 |
 | `followup:startup-composition-rest` | `platform.Current`'s three build-tagged files and single-caller `runtimeenv.WithoutLaunchContext`, left by #137 | -40 | refactor | W2.6 |
-| `followup:touch-scroll-protocol-doc` | terminal-touch-scroll.md says page protocol 3; the code sends 5 | 0 | docs | W5 |
+| `followup:touch-scroll-protocol-doc` | terminal-touch-scroll.md says page protocol 3; the code sends 5 | 0 | docs | W5; resolved by #159 |
 | `followup:gateway-dispatch-predicate` | #141 kept a coarse dispatch predicate beside the route table for `dispatch:not_sent` on unmatched and admission answers; derive it from routed mutations only | -20 | refactor | W4.2 |
-| `followup:gateway-no-store-bound` | #141's writeJSON ties the 64 KiB response bound to `Cache-Control: no-store` | -5 | refactor | W4.2 |
-| `followup:fleetclient-input-bounds` | fleetclient still duplicates the text/keys/maxBytes bounds agentcontrol owns after #141 | -20 | deletion | W4.4 |
+| `followup:gateway-no-store-bound` | #141's writeJSON ties the 64 KiB response bound to `Cache-Control: no-store` | -5 | refactor | W4.2, kept by #157: decoupling adds surface and changes no bytes |
+| `followup:fleetclient-input-bounds` | fleetclient still duplicates the text/keys/maxBytes bounds agentcontrol owns after #141 | -20 | deletion | W4.4; #155 moved the copy to agentcli ([issue](issues/cli-terminal-input-bounds.md)) |
 | `followup:session-handlers-move` | move the session handlers from gateway.go to sessions.go as a pure move | 0 | refactor | W4.2 |
 | `followup:id-grammar-copies` | %digits/$digits predicates remain in gateway digitsAfter and terminal validPaneID beside tmux.ValidID after #148 | -15 | refactor | W4.2 |
 | `followup:tolerant-consumers` | desktop `ParseServerText` stays strict (#141) and fleetclient's usage-report checks are half a contract (#145); convert with the other same-release consumers | -30 | refactor | W4.1 |
-| `followup:config-revalidation` | after #142: default_machine check could live in fleet; profiles are re-validated by agentruntime; sessions.New re-checks the tmux path | -25 | deletion | W4.4 |
+| `followup:config-revalidation` | after #142: default_machine check could live in fleet; profiles are re-validated by agentruntime; sessions.New re-checks the tmux path | -25 | deletion | W4.4, partly by #155; the rest in [default machine](issues/default-machine-case.md) and [member settings](issues/member-settings-validation.md) |
 | `ops-docs:render-release-notes-legacy` | release notes duplicate README prose, re-validate inputs and carry a legacy migration pointer | -85 | cut | W4.10 |
 | `ops-docs:feature-spec-consolidation` | ~45 feature specs (17k lines) amend each other via preambles; merge into ~7 current-state docs | -14,700 | refactor | W5 |
 | `ops-docs:design-deltas-fold` | design deltas D1-D8 are implementation diaries; geometry numbers duplicated between doc and generator | -2,458 | refactor | W5 |
@@ -400,9 +417,20 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 - #139 sessions: an absent id with a valid token answers 404 `SessionNotFound` (was 500, or 409 `TerminalUnavailable` for terminal ops); an id on an epochless server answers 409 everywhere; a failed CreateShell source read answers 500 (was 422); a window- or pane-local `@skid_` option shadows the format value undetected. a steady list is 2+2K execs (was 6+2K); the M1-M14 mutation pass was not rerun on the final code.
 - #141 gateway: null request members read as absent; a stalled reader closes 5 s after the stall instead of at a 1 MiB backlog, and a slow reader stays connected while tmux paces output; revocation is CloseDevice only; `.`/`..` session ids answer 400 instead of 404; desktop terminal frames still decode strictly until w4.1.
 - #142 config: `machines:` is an unknown key (dev-server yaml edit in the cutover); yaml errors carry yaml.v3's wording; a vanished shell keeps serve up with `invalid_host` and creates answer 500 instead of crash-looping serve; a malformed push key now loads and fails at the first send.
+- #143 terminal: stock xterm.js 6.0.0 is vendored byte for byte, with no build step. wheel and tap reports are always SGR; page-owned word bounds differ from xterm's at soft-wrap edges; a held word whose row leaves the buffer clears with no Copy, and a lower split pane's scroll region moves neither anchor nor highlight; an attached mouse wheel goes through stock xterm, a second router. `settleFonts` still reaches a private xterm measure, so an upgrade is a file swap plus a check of that reach. the full stock suite ran with `screenReaderMode` off and was not rerun with the shipped setting, on; the physical phone, Gboard dictation, real multi-touch and cjk ime are `NOT_RUN` ([acceptance](issues/stock-xterm-phone-acceptance.md)).
+- #144 notifications: the hub holds acknowledgement, so dismissing, clicking or visiting on any device clears the notice everywhere, and a watched session banners. the cutover discards device memory (ready sessions stay quiet until they work and idle again; current requests alert once more per device) and needs a lockstep install ([attention cutover](issues/attention-cutover.md)). a notice removed without a callback re-alerts once at the next process start; clients no longer check the hub's enums, so a skewed hub's unknown delivery is inert on the mac and unavailable on android; with no minute pulse, a failed fetch while the stream stays up waits for the next hint; the observer file has no write cap, so about 2,500 records fail the next start's 1 MiB read. `skid notifications reset` is a usage error. every mac and android device journey is `NOT_RUN`, and the mutation run was not repeated after the finalizer.
+- #145 quota: skid owns the codex app-server protocol, so a codex change to it breaks skid directly. releases drop about 146 MB of managed python per host (archives 56.9 to 6.9 MB on darwin, 66.8 to 4.6 MB on linux). a hung daemon holds the route about 5 s; a socket path over 104 bytes (darwin) or 108 (linux) fails; a pre-cutover `skid update` refuses this release, and the installer refuses any archive symlink, so a downgrade goes through the old release's bootstrap. a read against a real codex 0.163+ daemon is `NOT_RUN` (release-cutover step 6).
 - #146 logging: every event line starts with `time` (the coordinator kept it so the mac file can place faults); Sessions.Observed is cut, so inventory latency is Request.Completed alone; two overlapping serve processes can push serve.log toward twice its bound; mac serve stderr is still discarded ([issue](issues/macos-serve-stderr-discarded.md)).
 - #147 host resources: a listing under concurrent mutation may show an entry's earlier kind; close errors after a successful read are ignored; pressure owns its wire, so a producer bug ships wrong data instead of a 500; a fifo token still hangs a listing ([issue](issues/directory-listing-fifo-hang.md)).
 - #148 recovery: failures are built at each call site, so an unlisted phase/cause pair now reaches the client instead of panicking the gateway; the reader admits decodable hand edits and drops the old count and length caps; the catalogue is compiled in (editing it needs a rebuild); terminal context records change format, so a rollback binary cannot read the new ones.
+- #151 private files: every private-state write and remove goes through `internal/privatefile`. the recovery write log's `operation` is always `write`; a deleted state directory is recreated at the next save instead of raising a saving-delayed notice; terminal-context register is now durable, about 7 ms more per inbound ssh or mosh shell; crash debris is `.skid-*` everywhere. the four flock lease copies, install's public-file writer and the fcmpush credential read stay hand-rolled; the new-fleet remove path is untested.
+- #152 copy: the host renders status, recovery and agent-label copy and sends it as `status`, `recovery.notice` and `agent.label`, so wording ships with host releases and hosts and phone install in lockstep. while a destination's catalogue is unreachable, a remote agent shows its configured label instead of `profile unknown`, and `info --json`'s remote `execution.agent.label` changes from key to label. the phone no longer re-validates host facts, so a host bug renders literally instead of marking the machine stale; the gateway renders while serving, so a sessions bug publishing an invalid status panics the inventory handler (#157 narrowed this to unknown values). the phone keeps its icu group-label mirror until W4.11. delayed recovery, the tui and the phone were not run live.
+- #154 android core: decoding is tolerant: a producer bug renders or becomes a lost response, never a crash, and an unknown error code reads as InternalError with the gateway's message and dispatch, which fixes the crash on the hub's 401. verify-before-attach is cut (owner): a gone or replaced session shows the gateway's copy, and a reattach within one poll of a pane change adopts the old pane, so an interrupt answers 409 `TerminalTargetChanged`, not dispatched ([pane retarget](issues/terminal-pane-retarget.md)). reads cancel on background while mutations finish; a notification click's transport failure disables that machine's actions until the next poll; the phone drops its global cap on remote-context passes; the fleet store has no read-back after save. emulator journeys ran base and new, with the stale-pane 409 window their one difference.
+- #155 desktop: one route table, typed refs, one observation lane type and per-message update handlers; cli and `--json` output are byte-identical. a gateway reply listing one lifetime twice now fails `handle_ambiguous` instead of resolving; invalid programmatic requests reach the gateway and fail `InvalidRequest`; neither client caps remote-context passes globally; agentcli keeps a verbatim copy of the terminal input bounds ([issue](issues/cli-terminal-input-bounds.md)). a start whose readiness deadline expires during an inspect now reports `readiness_timeout`, a base race the live run found. the fleetclient split is deferred to W4.15.
+- #156 observation: a2 and a3 land. the coordinator accepted a steady list of 2 execs (was 2+2K), not 1, because the capture batch's bracket is the lifetime proof that replaced the post-enrichment inspect. a batch overrunning the shared 2 s times out every pending agent pane for that list; one over 8 MiB falls back for every pane with no reuse; a server replaced between inventory and captures answers 500. a3 keeps a cached detection after `send-keys -R` with no later output (list shows idle while inspect sees layout_unknown and send refuses 409), and after a resize away and back with no redraw; keying on the cursor would change a1's frozen row, so the coordinator kept that residual. a list racing `skid apply` answers the pre-apply profiles and labels; process observation is one sample with no retry. the macbook exec-rate measurement at N ≥ 18 is `NOT_RUN` ([exec overhead](issues/tmux-exec-overhead.md)).
+- #157 wire: gateway and go clients share `internal/api`, decoded with plain `encoding/json`. the coordinator accepted two rules: a missing key is its zero value (a document without `observedAt` would print year 1; no same-release gateway sends one), and dispatch comes from the matched route, so error answers to unrouted requests lose `"dispatch":"not_sent"` (12 http cases, 1 websocket). the gateway no longer re-checks producer invariants, so a producer bug renders wrong data instead of a 500. a fleet 401 on start, shell or group reads `Unauthenticated` (`not_sent`), not `protocol_error`. peer `--json` echoes `savedAt` and `failure.at` in the host's offset; `api` imports sessions and quota until W4.14. android, the phone and macos notifications are `NOT_RUN`; the tui create form, group editor and attach were not run live.
+- #158 android ui: one sheet scaffold, theme-owned defaults, a plain picker and one `SessionEdit`; the pixel-preserving drift is kept ([sheet uniformity](issues/sheet-uniformity.md)). by the coordinator's classification, a rename answered with another route's error code reads `checking` with the gateway's message instead of an error, which resolves rename-route-foreign-error. the picker restores its exact first row and offset; the grid no longer remounts when some machine turns Ready, so an open card menu and the pull distance persist, and a release after the last Ready machine left no longer refreshes; the theme fills M3's surfaceContainer slots, recolouring future components at a distance. phone Back semantics on android 16 are `NOT_RUN`.
+- #159 terminal page: the page owns selection, and touch anomalies block the stream until every finger lifts instead of failing the page. one 1 MiB output budget counts bytes xterm has not written (coordinator): bursts xterm keeps up with survive where base always failed, and a main-thread stall backlogs frames without bound until ANR. the page requires `WEB_MESSAGE_ARRAY_BUFFER`, with no base64 fallback; page-sent input no longer refocuses the textarea, so DECSET 1004 apps lose that ESC[I; every Resize after open is sent uncoalesced; a delayed ClearSelection can clear a newer selection's highlight. the single rAF ime pass and everything on the physical S22+ are `NOT_RUN` ([acceptance](issues/stock-xterm-phone-acceptance.md)).
 
 ## cross-repo cutover
 
