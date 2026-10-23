@@ -33,5 +33,5 @@ resolved when: one owner publishes geometry. size the terminal box from the ime
 animation's end state (or hold publication while an inset animation runs) and
 publish one `Resize` per settled grid, keeping the initial resize immediate.
 verify by counting `Resize` frames per keyboard toggle at the gateway: exactly
-one per settled change, none for an unchanged grid. device and live-gateway
-checks require current-turn approval.
+one per settled change, none for an unchanged grid. checks on the phone or the
+installed gateway require current-turn approval.

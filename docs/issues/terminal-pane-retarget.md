@@ -33,4 +33,3 @@ active pane.
 resolved when: the controller adopts the target in one place, its comment states
 what it does, and an emulator journey that switches panes under an attached
 terminal and stops it after the next poll interrupts the pane on screen.
-emulator work needs current-turn approval.

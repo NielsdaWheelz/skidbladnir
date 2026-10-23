@@ -282,10 +282,10 @@ each run updates the grammar's §1 `qualified` column, and every required row it
 leaves unqualified is tracked in [unrun acceptance](issues/unrun-acceptance.md). a
 provider or tmux upgrade is claimed only after the grammar's requalification
 ([codex §7](terminal-observation-codex.md#7-requalification),
-[claude §6](terminal-observation-claude.md#6-requalification)). isolated tmux,
-integration and live runs need current-turn approval; physical android and adb need
-their own under [`AGENTS.md`](../AGENTS.md). use only the sessions on the isolated
-socket the probes created.
+[claude §6](terminal-observation-claude.md#6-requalification)). runs that start
+real providers on the owner's accounts need current-turn approval under
+[`AGENTS.md`](../AGENTS.md); isolated tmux, loopback gateways and emulators need
+none. use only the sessions on the isolated socket the probes created.
 
 a requalification covers, beside the grammar's provider screens:
 

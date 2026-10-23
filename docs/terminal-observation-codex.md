@@ -1029,7 +1029,7 @@ under the conditions it names; spec §8 lists those. the costs:
 
 run this after a codex upgrade, before claiming the new version, with the
 current-turn approval [spec §7](terminal-observation.md#7-requalification)
-requires for isolated tmux and live runs. the authored frames are retained as
+requires for runs on real provider accounts. the authored frames are retained as
 fixtures ([testing](rules.md#testing)): `internal/agentcontrol/testdata/frames/`
 holds `codex.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
 replays their captures. other probes are temporary and deleted before commit, and

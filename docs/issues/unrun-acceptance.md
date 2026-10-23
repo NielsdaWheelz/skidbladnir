@@ -64,5 +64,5 @@ notifications and push:
 
 resolved when: each line passes, recorded content-free where its feature spec
 keeps qualification, or the owner retires it. delete its line then, and this
-file when no line remains. device, reboot and default-server work each require
+file when no line remains. phone, reboot and default-server work each require
 current-turn approval.
