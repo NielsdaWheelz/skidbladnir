@@ -17,6 +17,6 @@ display/control model (2026-10-20).
 resolved when: an approved contract separates the transport lifetime from the
 display/control model, this read goes without fabricating a session or
 reattributing old pane facts, and cold notification clicks, pane or process
-replacement, controls and return are verified on the real phone. device work needs
+replacement, controls and return are verified on the real phone. phone work needs
 current-turn approval. the [interaction redesign](phone-interaction-redesign.md)
 is separate.

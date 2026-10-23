@@ -941,7 +941,7 @@ each unknown or none, never a false claim unless the item says otherwise:
 
 run this after a claude upgrade, before claiming the new version, with the
 current-turn approval [spec §7](terminal-observation.md#7-requalification)
-requires for isolated tmux and live runs. the authored frames are retained as
+requires for runs on real provider accounts. the authored frames are retained as
 fixtures ([testing](rules.md#testing)): `internal/agentcontrol/testdata/frames/`
 holds `claude.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
 replays their captures; add a frame for every new or changed layout and rerun

@@ -21,7 +21,7 @@ without the row read idle. the row's real background state is unverified.
 
 reproduce: with a ready claude composer above a non-main panel row whose state the
 grammar cannot establish, run `skid info <handle> --explain`; expect unknown,
-reason partial. live inspection needs current-turn tmux approval.
+reason partial. inspecting a live session needs current-turn approval.
 
 direction: an unmerged plan at
 [`dc43e3a`](https://github.com/NielsdaWheelz/skidbladnir/blob/dc43e3af23fedba4017dd1ad20d2287b159f06a7/docs/claude-panel-status.md)

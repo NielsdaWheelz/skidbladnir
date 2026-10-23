@@ -19,5 +19,6 @@ resolved when: the owner records the required ordinary-terminal escape hatch,
 manual-session discovery, output and retention meaning, shared geometry and input
 policy and process-survival guarantees, then chooses an approach from the unmet
 requirements, or explicitly defers replacement. any implementation needs the
-[scope](../architecture.md#1-scope) decision first. experiments need current-turn
-approval and content-free evidence; this record authorizes no runtime change.
+[scope](../architecture.md#1-scope) decision first. experiments outside an isolated
+run ([AGENTS.md](../../AGENTS.md)) need current-turn approval, and all need
+content-free evidence; this record authorizes no runtime change.

@@ -180,8 +180,8 @@ is recorded, and temporary tests do not close it.
 - deletions of unreachable code or docs are proved by caller, build and link checks.
 - builds and static checks do not prove product behavior. historical results apply
   only to their recorded source; removed, unavailable or unexecuted checks are never
-  passes. tmux and phone operations need current-turn approval under
-  [AGENTS.md](../AGENTS.md).
+  passes. isolated runs need no approval; anything that reaches live state
+  needs current-turn approval under [AGENTS.md](../AGENTS.md).
 
 commands:
 

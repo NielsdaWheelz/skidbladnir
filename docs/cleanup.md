@@ -77,7 +77,7 @@ process:
 
 - one finding cluster per pr, branch `cleanup/<slug>`, merged to main only; no release, re-pin or deploy without a separate request.
 - temporary boundary tests run against the original and the rewrite, then are deleted before commit ([testing](rules.md#testing)).
-- tests use isolated `tmux -L` sockets and loopback gateways with temporary state; never the production gateway, the owner's tmux server or other hosts. every tmux or integration run needs the owner's approval in the current turn, per pr.
+- tests use isolated `tmux -L` sockets and loopback gateways with temporary state; never the production gateway, the owner's tmux server or other hosts. isolated runs need no approval; anything that reaches live state needs the owner's approval in the current turn ([AGENTS.md](../AGENTS.md)).
 - android end-to-end tests use the emulator only, never the phone.
 
 ## open questions
