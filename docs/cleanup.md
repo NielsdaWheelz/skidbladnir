@@ -36,6 +36,12 @@ measured over every tracked non-binary file (fixtures, json and docs included), 
 | after wave 3 `c4399a3` | 79,543 | -21,649 (-21.4%) |
 | wave 4 phase 2 `6782385` | 73,125 | -28,067 (-27.7%) |
 | wave 4 done `defbf3f` | 70,855 | -30,337 (-30.0%) |
+| one contract `8772799` | 52,594 | -48,598 (-48.0%) |
+| follow-ups done `8dbb295` | 52,309 | -48,883 (-48.3%) |
+
+at `8dbb295`: go 24,559, kotlin 9,685, markdown 8,276, frame fixtures 5,033, scripts/deployment/json 3,373, terminal page 963, vendored xterm 420.
+
+the 1/5 target (~20.2k) is out of reach on the decided scope. reaching every mapper ideal would leave about 31k: go ~14k, kotlin ~7k, docs ~3k, the kept frame fixtures 5k, the rest ~2.5k. below that, the cuts are the kept list (grammar precision, workspace recovery, the directory picker, pressure detail, the tui `N` form, runtime firebase) and the fixture corpus. the 2026-10-21 map is stale after a 48% cut; the next wave starts with a fresh one.
 
 ## decisions
 
@@ -70,6 +76,10 @@ decided 2026-10-22:
 - android-core's verify-before-attach cut stands (owner), reversing the 2026-10-20 deferral: reconnect uses the last poll's session and a created terminal attaches on the create response. only the [notification-click read](issues/phone-entry-metadata-latency.md) remains.
 - drop the phone's icu group-label mirror (owner, W4.11): the host's 422 `GroupInvalid` is the only check, and the phone loses instant inline validity.
 - [rules](rules.md#trust-boundaries) amended in #157 (coordinator): go clients decode same-release documents with plain `encoding/json`, a missing key is its zero value, and an unknown error code is still the gateway's answer.
+- docs are one contract plus issues (owner, W5, #162): [architecture](architecture.md) holds concepts, invariants and interfaces; specs stay only where the invariants are not in the code (the observation grammars, recovery, the exec budget, the design language); per-feature delta docs are deleted.
+- isolated runs need no approval (owner, #163): a private `tmux -L` socket, a worktree-built loopback gateway off 7341 with scratch state, emulators by serial and jvm tests. the owner's tmux server, the installed gateway, tailscale, the phone, other hosts, real provider accounts, real-device notifications and releases still need current-turn approval ([AGENTS.md](../AGENTS.md)).
+- the gateway canonicalizes group drafts (coordinator, #164): its group writes call `group.ParseDraft`, as the [draft rule](rules.md#copy-and-drafts) says, so an nfd label from the phone saves as nfc instead of failing once the phone's mirror is gone.
+- the guarded send's refusal copy is declared once in `internal/api` (coordinator, #165), shared by the gateway and `skid start`'s local readiness refusal.
 
 kept: runtime firebase configuration, the tui `N` create form, the usage selector, workspace restore verification, classifier precision, the identity-token format.
 
@@ -87,6 +97,8 @@ process:
 - [ ] phone dashboard: restore scroll by index, not card identity, after process death (-200)?
 - [ ] forge: drop the forced refresh after an uncertain create (-110)? a second tap could double-create.
 - [ ] phone saved state: drop the sha-256 label fingerprints that keep labels out of the saved-state bundle (-150)?
+- [ ] terminal runtime: retire the [decision record](issues/terminal-runtime-decision.md) or keep it deferred? #162 restored it as open, since it was never retired.
+- [ ] claude panel: is the unmerged 2026-10-21 plan (`dc43e3a`, local branch `docs/claude-panel-status`) still wanted? if not, the [issue](issues/claude-panel-status-unknown.md) drops its direction paragraph and the branch goes.
 - [ ] housekeeping: close draft pr #102 and remove the ten merged `fix/*` worktrees? (local main's drafts were triaged by #160 at the owner's request; the checkout matches main, the originals are on the local `backup/local-docs-2026-10-22` and `backup/stash-2026-10-02` branches.)
 
 ## slices
@@ -146,12 +158,13 @@ waves run in parallel on disjoint paths and merge in order. status: planned, run
 | W4.8 observation-refactors + exec budget a2, a3 | 9 | -384 | merged | #156, -20 |
 | W4.9 private-file-primitive | 1 | -150 | merged | #151, -33 |
 | W4.10 release-pipeline | 2 | -872 | merged | #136, -389 |
-| W4.11 group-label-mirror | 1 | -120 | planned |  |
-| W4.12 terminal-connection-decode | 1 | -50 | planned |  |
-| W4.13 page-protocol-validation | 1 | -250 | planned |  |
-| W4.14 api-vocabulary | 1 | -10 | planned |  |
-| W4.15 fleetclient-split | 1 | -40 | planned |  |
-| W5 docs-consolidation | 11 | ~-20,000 (mapper docs estimates overlap) | planned |  |
+| W4.11 group-label-mirror | 1 | -120 | merged | #164, -69 |
+| W4.12 terminal-connection-decode | 1 | -50 | merged | #166 with W4.13, -232 |
+| W4.13 page-protocol-validation | 1 | -250 | merged | counted in #166 |
+| W4.14 api-vocabulary | 1 | -10 | merged | #165 with W4.15, +7 (a move; go -6) |
+| W4.15 fleetclient-split | 1 | -40 | merged | counted in #165 |
+| W5 docs-consolidation | 11 | ~-20,000 (mapper docs estimates overlap) | merged | #162, -18,457 |
+| P1 isolated-runs rule | 0 | 0 | merged | #163, +9 |
 
 ## spec items
 
@@ -165,8 +178,8 @@ non-mapper work folded into the waves.
 | `ProcessType=Interactive` and the install priority check | [exec budget](tmux-exec-budget.md#priority-macbook-capacity-d7) | W1.7 |
 | zsh tty probe noise | terminal-context-tty-noise issue, resolved by #129 | W1.8 |
 | bounded mac serve log | [codebase map](codebase-map.md) | W2.5 |
-| inline `DashboardScreen.onOpenTerminal`, always `controller::openTerminal` | #158 | W4.11 |
-| delete `Json.kt`'s `ProtocolDecodeException` residue and `ProductModel.parseApiErrorCode`; the terminal upgrade shows the gateway's message, not the phone copy table | #154 | W4.12 |
+| inline `DashboardScreen.onOpenTerminal`, always `controller::openTerminal` | #158 | W4.11, done in #164 |
+| delete `Json.kt`'s `ProtocolDecodeException` residue and `ProductModel.parseApiErrorCode`; the terminal upgrade shows the gateway's message, not the phone copy table | #154 | W4.12: deletions done in #166; the message is [open](issues/terminal-error-copy.md) |
 
 ## findings
 
@@ -431,6 +444,11 @@ every mapper finding, by pr. est. is the mapper's estimate; class is refactor, d
 - #157 wire: gateway and go clients share `internal/api`, decoded with plain `encoding/json`. the coordinator accepted two rules: a missing key is its zero value (a document without `observedAt` would print year 1; no same-release gateway sends one), and dispatch comes from the matched route, so error answers to unrouted requests lose `"dispatch":"not_sent"` (12 http cases, 1 websocket). the gateway no longer re-checks producer invariants, so a producer bug renders wrong data instead of a 500. a fleet 401 on start, shell or group reads `Unauthenticated` (`not_sent`), not `protocol_error`. peer `--json` echoes `savedAt` and `failure.at` in the host's offset; `api` imports sessions and quota until W4.14. android, the phone and macos notifications are `NOT_RUN`; the tui create form, group editor and attach were not run live.
 - #158 android ui: one sheet scaffold, theme-owned defaults, a plain picker and one `SessionEdit`; the pixel-preserving drift is kept ([sheet uniformity](issues/sheet-uniformity.md)). by the coordinator's classification, a rename answered with another route's error code reads `checking` with the gateway's message instead of an error, which resolves rename-route-foreign-error. the picker restores its exact first row and offset; the grid no longer remounts when some machine turns Ready, so an open card menu and the pull distance persist, and a release after the last Ready machine left no longer refreshes; the theme fills M3's surfaceContainer slots, recolouring future components at a distance. phone Back semantics on android 16 are `NOT_RUN`.
 - #159 terminal page: the page owns selection, and touch anomalies block the stream until every finger lifts instead of failing the page. one 1 MiB output budget counts bytes xterm has not written (coordinator): bursts xterm keeps up with survive where base always failed, and a main-thread stall backlogs frames without bound until ANR. the page requires `WEB_MESSAGE_ARRAY_BUFFER`, with no base64 fallback; page-sent input no longer refocuses the textarea, so DECSET 1004 apps lose that ESC[I; every Resize after open is sent uncoalesced; a delayed ClearSelection can clear a newer selection's highlight. the single rAF ime pass and everything on the physical S22+ are `NOT_RUN` ([acceptance](issues/stock-xterm-phone-acceptance.md)).
+- #162 docs: architecture.md is the one contract (2,484 lines) and grows by every fact the deleted docs held; the two grammar specs stay nearly whole. jarvis adr 0044/0045 name deleted docs ([release cutover](issues/release-cutover.md) step 9). requalification drops the attention and accessibility rows. code citations in the contract name files without line numbers. `skid --help` drops "signed", and AGENTS.md drops a bel notifier that exists nowhere.
+- #163 runs: isolated runs go unasked, so a misconfigured run (bare `tmux`, port 7341, the real `HOME`) reaches live state with no human in the loop; the isolation definition is the guard. real provider accounts stay gated.
+- #164 group labels: an invalid label costs one round trip; a paste over 64 KiB gets 413 in the general slot; a pasted lone surrogate is sent as `?` by okhttp's utf-8 encoding and stored (an accepted limit in architecture). keyboard next on an unchanged draft keeps the host's message. the full device journey and controller-level slot routing are `NOT_RUN`.
+- #165 api: `internal/api` imports nothing internal; the quota report type moved there to break a cycle, away from the code that produces it. fleetclient exports `Failure.TerminalInputMessage` (`json:"-"`) for fleetview. `fleetclient.ProfileUsage` still duplicates `api.ProfileUsage`. wire, cli and tui bytes are identical to main on isolated servers.
+- #166 terminal: a page or gateway bug now renders or reaches the other end's bounds instead of failing the page (extra keys, changed wording, a second Ready, out-of-range anchors or geometry, oversized selection); undecodable frames and real port loss still fail exactly once. Hello's `paneId` and `foreground` are not decoded, and the observer no longer tells Hello from Presence. terminal errors still show the phone's own copy ([issue](issues/terminal-error-copy.md)). the physical phone and the full compose path are `NOT_RUN`.
 
 ## cross-repo cutover
 
