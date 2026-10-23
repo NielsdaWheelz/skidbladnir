@@ -7,11 +7,18 @@ replaced pane or agent.
 
 impact: every terminal entry pays for identity nothing reads. `Greeting` samples
 the pane twice and inspects its foreground process twice
-(`internal/sessions/attachment.go:67-85`), the gateway encodes the result
-(`internal/gateway/terminal.go:105-110`), and both clients decode it: the desktop
-matches `terminal.HelloFrame` and ignores it (`internal/terminalclient/terminal.go:139`),
-the phone validates `paneId`/`foreground` (`TerminalConnection.kt:35-52`) and
-`onHello` ignores both (`SkidbladnirController.kt:825-826`).
+(`internal/sessions/attachment.go:67-84`), the gateway encodes the result
+(`internal/gateway/terminal.go:105-110`), and the desktop decodes it
+(`internal/terminal/protocol.go:145-146`) only to match `terminal.HelloFrame` and
+ignore it (`internal/terminalclient/terminal.go:139`). the phone reads only
+`attachedClients` (`TerminalConnection.kt`).
 
-resolved when: the hello frame carries only `attachedClients`, and the greeting
-performs one pane read with no foreground inspection.
+cutover: an apk older than terminal-trust requires `paneId` and fails every attach
+on a hello without it. dropping the members in the release that first ships
+terminal-trust's apk makes that release a
+[lockstep cutover](../architecture.md#lockstep-cutovers); in any later release it
+needs no install order.
+
+resolved when: the hello frame carries only `attachedClients`, the greeting
+performs one pane read with no foreground inspection, and `terminal.HelloFrame`
+holds neither member.

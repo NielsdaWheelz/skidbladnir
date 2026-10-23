@@ -33,7 +33,7 @@ while output streams, a drag extends it including past the bottom edge, and
 release offers `Copy` whose clip equals the highlight; Back closes that toolbar
 first; a second finger or a touch starting on the 4 px padding never shows
 "Reconnect required"; Gboard composition at the right edge never shifts the page;
-the phone WebView supports ArrayBuffer web messages (page port version 6 requires
-them, `terminal.js:819,862`). at the release that ships it, if still unobserved,
+the phone WebView supports ArrayBuffer web messages (the page port's output frames
+require them, `terminal.js:809`). at the release that ships it, if still unobserved,
 this becomes one phone line in [unrun acceptance](unrun-acceptance.md) and this
 file goes.

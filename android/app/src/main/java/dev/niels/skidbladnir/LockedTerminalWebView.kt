@@ -33,8 +33,6 @@ import org.json.JSONObject
 private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
 private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024
-private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
-private const val MAXIMUM_SELECTION_BYTES = 256 * 1024
 private const val TERMINAL_PAGE_READY_TIMEOUT_MILLIS = 10_000L
 
 internal interface TerminalPage {
@@ -328,9 +326,9 @@ internal class LockedTerminalWebView(
         }
     }
 
-    // The packaged page port (version 6; docs/architecture.md, page port, lists
-    // every message). Commands and output go out through postToPage; page
-    // messages are decoded here.
+    // The packaged page port (docs/architecture.md, page port, lists every
+    // message). Commands and output go out through postToPage; page messages
+    // are decoded here.
     private fun attachPagePort(view: WebView) {
         if (unavailable || pagePort != null) return
         val ports = WebViewCompat.createWebMessageChannel(view)
@@ -338,120 +336,64 @@ internal class LockedTerminalWebView(
         nativePort.setWebMessageCallback(
             main,
             object : WebMessagePortCompat.WebMessageCallbackCompat() {
+                // Same-APK messages, read only for what native uses. A missing or mistyped field, an
+                // unknown kind or phase, or a message native cannot parse (left to throw, it would
+                // crash the app) ends the page.
                 override fun onMessage(
                     port: WebMessagePortCompat,
                     message: WebMessageCompat?,
                 ) {
                     if (unavailable) return
-                    val payload = message?.data
-                    if (payload == null) {
-                        markUnavailable()
-                        return
-                    }
-                    val objectValue = try {
-                        JSONObject(payload)
+                    val data = message?.takeIf { it.type == WebMessageCompat.TYPE_STRING }?.data
+                        ?: return markUnavailable()
+                    val decoded = try {
+                        JSONObject(data)
                     } catch (_: JSONException) {
-                        markUnavailable()
-                        return
+                        return markUnavailable()
                     }
-                    when (objectValue.stringField("kind")) {
-                        "Ready" -> if (objectValue.hasExactKeys("kind") && !ready) {
+                    when (decoded.opt("kind")) {
+                        "Ready" -> {
                             ready = true
                             main.removeCallbacks(pageReadinessDeadline)
                             listener.onReady(this@LockedTerminalWebView)
-                        } else {
-                            markUnavailable()
                         }
-                        "Input" -> if (objectValue.hasExactKeys("kind", "value")) {
-                            val value = objectValue.stringField("value")
-                            val byteCount = value?.utf8ByteCountWithin(MAXIMUM_PAGE_INPUT_BYTES)
-                            if (value == null || byteCount == null) {
-                                markUnavailable()
-                            } else {
-                                listener.onInput(value.toByteArray(Charsets.UTF_8))
-                            }
-                        } else {
-                            markUnavailable()
+                        "Input" -> {
+                            val value = decoded.opt("value") as? String ?: return markUnavailable()
+                            listener.onInput(value.toByteArray(Charsets.UTF_8))
                         }
-                        "Resize" -> if (objectValue.hasExactKeys("kind", "columns", "rows")) {
-                            val columns = objectValue.intField("columns")
-                            val rows = objectValue.intField("rows")
-                            if (columns == null || rows == null ||
-                                columns !in TERMINAL_COLUMNS_RANGE ||
-                                rows !in TERMINAL_ROWS_RANGE
-                            ) {
-                                markUnavailable()
-                            } else {
-                                listener.onResize(columns, rows)
-                            }
-                        } else {
-                            markUnavailable()
+                        "Resize" -> {
+                            val columns = decoded.opt("columns") as? Int ?: return markUnavailable()
+                            val rows = decoded.opt("rows") as? Int ?: return markUnavailable()
+                            listener.onResize(columns, rows)
                         }
-                        "ViewportTooSmall" -> if (objectValue.hasExactKeys("kind")) {
-                            listener.onViewportTooSmall()
-                        } else {
-                            markUnavailable()
-                        }
+                        "ViewportTooSmall" -> listener.onViewportTooSmall()
                         "OutputApplied" -> {
-                            val bytes = objectValue.intField("bytes")
-                            if (objectValue.hasExactKeys("kind", "bytes") && bytes != null) {
-                                unappliedOutputBytes -= bytes
-                                listener.onOutputApplied(this@LockedTerminalWebView)
-                            } else {
-                                markUnavailable()
-                            }
+                            val bytes = decoded.opt("bytes") as? Int ?: return markUnavailable()
+                            unappliedOutputBytes -= bytes
+                            listener.onOutputApplied(this@LockedTerminalWebView)
                         }
-                        "ModifierState" -> if (objectValue.hasExactKeys("kind", "control", "alt", "shift")) {
-                            val control = objectValue.modifierPhase("control")
-                            val alt = objectValue.modifierPhase("alt")
-                            val shift = objectValue.modifierPhase("shift")
-                            if (control == null || alt == null || shift == null) {
-                                markUnavailable()
-                            } else {
-                                listener.onModifiersChanged(TerminalModifiers(control = control, alt = alt, shift = shift))
-                            }
-                        } else {
-                            markUnavailable()
-                        }
-                        "ImeRequested" -> if (objectValue.hasExactKeys("kind")) {
-                            requestTerminalIme()
-                        } else {
-                            markUnavailable()
-                        }
-                        "SelectionStarted" -> if (objectValue.hasExactKeys("kind")) {
-                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        } else {
-                            markUnavailable()
-                        }
-                        "SelectionAvailable" -> if (objectValue.hasExactKeys("kind", "anchorX", "anchorY", "text")) {
-                            val anchorX = objectValue.doubleField("anchorX")
-                            val anchorY = objectValue.doubleField("anchorY")
-                            val text = objectValue.stringField("text")
-                            if (anchorX == null || anchorY == null ||
-                                !anchorX.isFinite() || !anchorY.isFinite() ||
-                                anchorX !in 0.0..1.0 || anchorY !in 0.0..1.0 ||
-                                text.isNullOrEmpty() ||
-                                text.utf8ByteCountWithin(MAXIMUM_SELECTION_BYTES) == null
-                            ) {
-                                markUnavailable()
-                            } else if (isEnabled && hasWindowFocus()) {
+                        "ModifierState" -> listener.onModifiersChanged(
+                            TerminalModifiers(
+                                control = decoded.modifierPhase("control") ?: return markUnavailable(),
+                                alt = decoded.modifierPhase("alt") ?: return markUnavailable(),
+                                shift = decoded.modifierPhase("shift") ?: return markUnavailable(),
+                            ),
+                        )
+                        "ImeRequested" -> requestTerminalIme()
+                        "SelectionStarted" -> performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        "SelectionAvailable" -> {
+                            val anchorX = (decoded.opt("anchorX") as? Number)?.toDouble() ?: return markUnavailable()
+                            val anchorY = (decoded.opt("anchorY") as? Number)?.toDouble() ?: return markUnavailable()
+                            val text = decoded.opt("text") as? String ?: return markUnavailable()
+                            if (isEnabled && hasWindowFocus()) {
                                 selectionToolbar.show(text, anchorX, anchorY)
                             } else {
                                 postCommand(JSONObject().put("kind", "ClearSelection"))
                             }
-                        } else {
-                            markUnavailable()
                         }
-                        "SelectionCleared" -> if (objectValue.hasExactKeys("kind")) {
-                            selectionToolbar.hide()
-                        } else {
-                            markUnavailable()
-                        }
-                        "SelectionTooLarge" -> if (objectValue.hasExactKeys("kind")) {
+                        "SelectionCleared" -> selectionToolbar.hide()
+                        "SelectionTooLarge" ->
                             Toast.makeText(context, R.string.terminal_selection_too_large, Toast.LENGTH_SHORT).show()
-                        } else {
-                            markUnavailable()
-                        }
                         else -> markUnavailable() // PageFailure and anything unknown
                     }
                 }
@@ -462,8 +404,6 @@ internal class LockedTerminalWebView(
             view,
             WebMessageCompat(
                 JSONObject()
-                    .put("kind", "PagePort")
-                    .put("version", 6)
                     .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
                     .put("fontSizeCssPx", fontSizeCssPx())
                     .toString(),
@@ -531,22 +471,8 @@ internal class LockedTerminalWebView(
         pagePort = null
     }
 
-    private fun JSONObject.hasExactKeys(vararg expected: String): Boolean {
-        val actual = buildSet {
-            val iterator = keys()
-            while (iterator.hasNext()) add(iterator.next())
-        }
-        return actual == expected.toSet()
-    }
-
-    private fun JSONObject.stringField(name: String): String? = opt(name) as? String
-
     private fun JSONObject.modifierPhase(name: String): TerminalModifierPhase? =
-        stringField(name)?.let { value -> TerminalModifierPhase.entries.singleOrNull { it.name == value } }
-
-    private fun JSONObject.intField(name: String): Int? = opt(name) as? Int
-
-    private fun JSONObject.doubleField(name: String): Double? = (opt(name) as? Number)?.toDouble()
+        TerminalModifierPhase.entries.firstOrNull { it.name == opt(name) }
 
     private fun WebResourceRequest.isTerminalAsset(): Boolean =
         url.scheme == "https" && url.host == LOCAL_ASSET_HOST && url.path?.startsWith("/assets/terminal/") == true

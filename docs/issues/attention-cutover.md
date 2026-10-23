@@ -55,8 +55,8 @@ follows that record first):
    `notifications-v3.json` and `push-v2.json` stay as inert app data.
 
 from this release on, phone and desktop decode gateway documents tolerantly
-(`Json.kt:10`), so additive members stop needing lockstep; the phone's terminal
-frames still decode exact keys (`TerminalConnection.kt:36`).
+(`Json.kt:6`), the phone's terminal frames included, so additive members stop
+needing lockstep.
 
 resolved when: the release runs on all three hosts and the phone, step 3 passes
 and step 5's residue is deleted. the macbook measurement in

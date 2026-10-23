@@ -49,6 +49,7 @@ each removes a second owner or a needless hop:
 [phone ready eligibility](issues/phone-ready-eligibility.md),
 [notification member auth](issues/notification-member-auth.md),
 [hello identity](issues/terminal-hello-identity.md),
+[terminal error copy](issues/terminal-error-copy.md),
 [attention helpers](issues/attention-shared-helpers.md),
 [inventory snapshot](issues/inventory-snapshot-wrapper.md),
 [picker nullables](issues/picker-model-nullables.md),
