@@ -39,8 +39,14 @@ evidence, 2026-10-23:
   arch; local checkpoint schema 1, unclaimed. configured profiles have no resume
   command. the already-open [release cutover](release-cutover.md) and
   [attention cutover](attention-cutover.md) precede deploying this branch.
-- real provider accounts, fleet installation, phone/desktop notice acceptance,
-  actual macos/linux reboot and mid-turn loss are `NOT_RUN`.
+- 2026-10-24, v0.22.0: on devbox, macbook and arch the gateway was stopped with
+  tmux live, the schema-1 `workspace.json` moved to the state directory's
+  `cutover-20261024/`, and the new release saved a schema-2 baseline (devbox 4
+  sessions, macbook 11, arch none). dev-server #202 added the four proposed
+  `resume_command` entries to the hub's yaml. steps 1 and 2 below are done apart
+  from the phone.
+- real provider accounts, phone/desktop notice acceptance, actual macos/linux
+  reboot and mid-turn loss are `NOT_RUN`.
 
 to resolve, after explicit current-turn authority:
 
