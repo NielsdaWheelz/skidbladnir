@@ -57,6 +57,7 @@ notifications and push:
 - v0.14.0: delivery to a locked phone in proved deep idle; android rejected forced idle at `inactive` (native-notifications-doze).
 - v0.14.0: audible default notification sound on the phone, which stayed muted (native-notifications-phone-sound).
 - v0.14.0: mac popup, sound and exact-session click from the current signed app at its installed path (native-notifications, generalization-installed-cutover).
+- v0.22.0: the desktop usage page shows `ok` for each codex profile whose daemon runs; the go quota client was proven only against a fake app-server (attention-cutover, at `b9c9806`).
 - v0.13.1: sustained idle/offline/setup energy of the mac notification helper; only short captures exist and the original heat report is unattributed (native-notifications-mac-energy).
 - v0.19.0: optional push installed round trip: ordinary apk and user hub credential, pairing confirmation, background current-attention delivery, offline and process-death recovery, project change, rotation/removal, delayed hints (android-optional-push-qualification).
 - v0.19.0: two physical phones: independent pairing, discovery, rotation and removal, and shared acknowledgement; owner-deferred for lack of a second phone (android-two-phone-push-acceptance).

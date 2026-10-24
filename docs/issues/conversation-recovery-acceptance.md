@@ -49,20 +49,19 @@ evidence, 2026-10-23:
   their profiles' `resume_command` and came back (owner confirmed). two codex
   `personal` sessions then showed `needs setup`. the one claude pane skid had not
   recognized came back as a shell. two codex agents were mid-turn at the loss.
+  the owner judged the recovery complete and chose to leave the unrecognized
+  claude pane unless it recurs.
 - real provider accounts, phone/desktop notice acceptance, actual macos/linux
   reboot and mid-turn loss are `NOT_RUN`.
 
 to resolve:
 
-1. explain the two codex `personal` sessions that showed `needs setup` after the
-   macbook recovery, and why skid did not recognize the claude pane (a direct
-   `claude` launch with the work home), or record each as an accepted limit.
-2. linux: exercise a proven loss on devbox or arch with real conversations,
+1. linux: exercise a proven loss on devbox or arch with real conversations,
    reopen them, and verify history and a subsequent response in the same
    transcripts.
-3. verify fresh recovered notices on desktop and phone, then an actual reboot on
+2. verify fresh recovered notices on desktop and phone, then an actual reboot on
    both platforms. mid-turn checks prove history and no skid input replay only.
-4. retain only credential- and content-free evidence; remove this issue once
+3. retain only credential- and content-free evidence; remove this issue once
    these pass.
 
 disruptive loss, reboots, real accounts and the phone need owner approval in the
