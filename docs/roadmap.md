@@ -6,21 +6,17 @@ contract; each item's evidence and resolution criteria live in its
 
 ## next
 
-1. install v0.21.0 as a fresh fleet on devbox, macbook, arch and the phone
-   ([release cutover](issues/release-cutover.md)), then run the macbook's
-   maintenance window ([launchd priority](issues/launchd-standard-priority.md)).
-2. cut the next release, which carries hub-owned attention, host-rendered copy,
-   the go quota client, stock xterm and exec budget a2/a3, and install it in
-   lockstep ([attention cutover](issues/attention-cutover.md)).
-3. after that install, measure the macbook's tmux exec cost
+1. verify hub attention's notices on the installed v0.22.0 fleet
+   ([attention cutover](issues/attention-cutover.md)).
+2. measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-4. observe the shipped but unobserved journeys
+3. observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
    recovery, and explain linux claude's guarded start
    ([linux claude turn](issues/terminal-only-live-qualification.md)).
-5. qualify conversation recovery on deployed hosts and clients, with explicit
-   resume commands and a fresh schema-2 checkpoint
+4. finish qualifying conversation recovery on deployed hosts and clients:
+   linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
 ## open defects
