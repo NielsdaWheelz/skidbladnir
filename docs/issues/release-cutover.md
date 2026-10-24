@@ -28,6 +28,14 @@ evidence:
   prunes nothing; after the receipt is gone, a pre-cutover installer refuses the
   host ("existing path is not installer-owned") until `skid uninstall`. an
   observer file that names another fleet is replaced with a fresh epoch.
+- v0.20.x hosts already hold a `fleet.json`: a signed `{payload, signature}`
+  document. the new reader decodes it, finds no matching `machine`, and serve
+  exits at every start with "stored fleet identity does not match installation"
+  (`internal/fleet/service.go`). on 2026-10-24 devbox looped on this until the file
+  was moved aside.
+- 2026-10-24: v0.22.0 installed on devbox, macbook and arch with steps 1-4 and the
+  `fleet.json` move. one fleet, devbox hub, all three `applied`. the phone, the
+  rest of step 6, step 8 and step 9 remain.
 - dev-server `origin/main` 4630064 still pins v0.20.1, and its
   `assets/skidbladnir/config.yaml` still carries `hub: devbox` and
   `machines: {macbook: {terminal: ghostty}}`.
@@ -48,7 +56,8 @@ steps:
    this also discharges w2.3's `machines:` obligation.
 2. every host, before installing: `~/.config/skidbladnir/config.yaml` must parse
    under the new schema: no `hub:`, no `machines:` or `default_machine` naming
-   another host. on devbox make step 1's edit in the live file by hand. otherwise
+   another host, and the v0.20.x `fleet.json` must be out of the state directory
+   (keep it with the rollback files). on devbox make step 1's edit in the live file by hand. otherwise
    serve exits at every start until dev-server's rewrite lands, and dev-server's
    `skid apply` can fail in that window. macbook and arch hold their own pre-join
    yaml (join never rewrote it); the installed default parses.
@@ -57,8 +66,8 @@ steps:
    bootstraps a fresh fleet with devbox as hub: machine handle kept, old files
    untouched, `notification-observer-v1.json` reset,
    `android-push-credentials.json` reused. `skid status` shows one member, a new
-   `fleetId` and an application named `devbox` (the bootstrap name is the
-   hostname minus `.local`; there is no rename).
+   `fleetId` and an application named `dev-server`, devbox's hostname (the
+   bootstrap name is the hostname minus `.local`; there is no rename).
 4. macbook, then arch: install the release the same way; each first bootstraps a private
    fleet. on devbox run `skid connect` (one invite per host, single-use, five
    minutes). on the host run `skid join --name macbook` (resp. `--name arch`) and
