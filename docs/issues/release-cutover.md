@@ -6,7 +6,7 @@ or old-format readers. w2.1 (fleet-fixed-hub) replaces `identity.json`,
 host, drops signatures and the yaml `hub:` key, and gives the phone a new store.
 w2.2-w2.8 add the installer receipt, the `machines:` cut, the mac serve log, the
 compiled-in catalogue and a new terminal-context record format. v0.21.0
-(`2c7cbe0`, pinned in `release-pin.json`) is therefore a fresh fleet, installed in
+(`2c7cbe0`), and any later release reaching a v0.20.x host, is therefore a fresh fleet, installed in
 lockstep across dev-server, three hosts and the phone. the
 [attention cutover](attention-cutover.md) holds the next release's obligations.
 
