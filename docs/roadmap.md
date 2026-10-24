@@ -6,16 +6,14 @@ contract; each item's evidence and resolution criteria live in its
 
 ## next
 
-1. verify hub attention's notices on the installed v0.22.0 fleet
-   ([attention cutover](issues/attention-cutover.md)).
-2. measure the macbook's tmux exec cost
+1. measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-3. observe the shipped but unobserved journeys
+2. observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
    recovery, and explain linux claude's guarded start
    ([linux claude turn](issues/terminal-only-live-qualification.md)).
-4. finish qualifying conversation recovery on deployed hosts and clients:
+3. finish qualifying conversation recovery on deployed hosts and clients:
    linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
