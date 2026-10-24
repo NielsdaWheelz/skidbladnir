@@ -30,14 +30,18 @@ profiles: []
 #     command: codex-work
 #     provider: codex
 #     home: ~/.codex-work
+#     resume_command: 'codex-work resume "$1"'
+# resume_command is used only for recovery. $1 is the saved conversation id;
+# quote it as "$1" and use the same provider home as command.
 `
 
 type Profile struct {
-	Name     string `yaml:"name" json:"name"`
-	Label    string `yaml:"label,omitempty" json:"label"`
-	Command  string `yaml:"command" json:"command"`
-	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
-	Home     string `yaml:"home,omitempty" json:"home,omitempty"`
+	Name          string `yaml:"name" json:"name"`
+	Label         string `yaml:"label,omitempty" json:"label"`
+	Command       string `yaml:"command" json:"command"`
+	ResumeCommand string `yaml:"resume_command,omitempty" json:"resume_command,omitempty"`
+	Provider      string `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Home          string `yaml:"home,omitempty" json:"home,omitempty"`
 }
 
 // AndroidPush contains public Firebase client options, never sender credentials.
@@ -161,6 +165,12 @@ func validate(c *Config) error {
 		}
 		if p.Provider != "" && p.Provider != "codex" && p.Provider != "claude" {
 			return fmt.Errorf("%s.provider: expected codex or claude", prefix)
+		}
+		if p.ResumeCommand != "" && (strings.TrimSpace(p.ResumeCommand) == "" || !utf8.ValidString(p.ResumeCommand) || strings.ContainsRune(p.ResumeCommand, 0)) {
+			return fmt.Errorf("%s.resume_command: expected nonblank command without nul bytes", prefix)
+		}
+		if p.ResumeCommand != "" && p.Provider == "" {
+			return fmt.Errorf("%s.resume_command: requires provider", prefix)
 		}
 		if p.Home != "" && p.Provider == "" {
 			return fmt.Errorf("%s.home: requires provider", prefix)

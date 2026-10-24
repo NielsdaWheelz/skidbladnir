@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	charm.land/bubbletea/v2 v2.0.9
+	github.com/apparentlymart/go-textseg/v16 v16.0.2
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24

@@ -51,7 +51,9 @@ terminal beside an existing session; attach the same tmux client view the laptop
 sees; type, paste and dictate through gboard; select and copy terminal text on the
 phone; detach without stopping anything; interrupt or close an exact, confirmed
 session; read, write and wait on terminals from the cli, which is how jarvis drives
-workers; and be notified when an agent needs input or is ready again.
+workers; be notified when an agent needs input or is ready again; and rebuild a
+lost tmux workspace with exact-id native conversation resume requests from its
+private checkpoint, using current configured commands.
 
 ### guarantees
 
@@ -62,11 +64,14 @@ workers; and be notified when an agent needs input or is ready again.
   configured profile command.
 - provider credentials stay on their host. they never enter clients, push
   messages or skid state.
-- a gateway or client restart re-lists tmux; it never replays input or guesses.
+- a gateway or client restart re-lists surviving tmux; it never replays input.
+- after proven tmux loss, recovery may use an inferred conversation id. ties stay
+  unresolved; unusable targets become explained shells. native resume success is
+  never inferred from dispatch ([recovery](#8-workspace-recovery)).
 
 ### non-goals
 
-provider conversation search, history, inboxes, targeting or hooks; chat ui;
+provider conversation search, history, inboxes, live targeting or hooks; chat ui;
 copied provider history; transcript-derived semantic state; task-completion
 claims; durable command receipts and replay; scheduling, autonomous orchestration
 or a task protocol; execution proxying; cross-machine move, broadcast, failover or
@@ -131,8 +136,9 @@ carries one catalogue key; the key seeds its seal and never its tmux name.
   unassigned ([views](#views-and-the-needs-input-queue)).
 - **attention**: the hub's record per session lifetime of ready and action causes
   and of the owner's acknowledgement ([notifications](#12-notifications)).
-- **workspace recipe**: the private checkpoint from which recovery rebuilds a lost
-  server as fresh shells ([recovery](#8-workspace-recovery)).
+- **workspace recipe**: the private graph and selected conversation ids from which
+  recovery rebuilds a lost server and requests native resumes
+  ([recovery](#8-workspace-recovery)); never live inventory or provider history.
 
 ## 3. topology and trust
 
@@ -336,6 +342,7 @@ profiles:                    # ordered; [] is valid and the installed default
     command: codex-work      # opaque shell text, run once in the destination shell
     provider: codex          # optional observation metadata: codex | claude
     home: ~/.codex-work      # optional; requires provider
+    resume_command: 'codex-work resume "$1"' # optional; recovery only
 # shell: /bin/zsh            # absolute bash or zsh; default: each host's login shell
 # terminal: apple-terminal   # mac notification clicks: apple-terminal | ghostty
 # default_machine: laptop    # desktop creation default, by machine name
@@ -347,8 +354,9 @@ profiles:                    # ordered; [] is valid and the installed default
 1. strict human ingress: at most 64 KiB, one document, unknown or duplicate keys
    and wrong types refused, then field rules with path-named errors. there is no
    `hub` or `machines` key, no per-machine override, include, interpolation,
-   credential, endpoint override or provider preflight; `command` alone gets shell
-   expansion. every host reads the same `shell`, `terminal` and `default_machine`.
+   credential, endpoint override or provider preflight. `command` and
+   `resume_command` are ordinary shell text. every host reads the same `shell`,
+   `terminal` and `default_machine`.
 2. the installer writes the commented default once and never rewrites it; skid
    never edits human yaml.
 3. the hub accepts its file at serve start, on `skid apply`, and in the background
@@ -420,8 +428,9 @@ version counts as qualified only after observation's
 2. one tmux client talks to one server for its life, so a script bracketed by
    equal server-identity records, printed first (`B`) and last (`E`), ran on that
    server; unequal records are `WorkspaceSourceChanged`.
-3. names, titles, launch profiles, dwarves and groups never select or authorize an
-   effect. rename, cwd change and agent replacement keep every lifetime-addressed
+3. names, titles, launch profiles, dwarves and groups never select or authorize a
+   live terminal effect. recovery alone uses title inference as private restart
+   intent after proven loss. rename, cwd change and agent replacement keep every lifetime-addressed
    operation valid; a new server or a reused id never matches an old token.
 4. skid metadata are session-local tmux user options. a server, global or
    global-window `@skid_*` definition makes format values unattributable, so the
@@ -431,8 +440,10 @@ version counts as qualified only after observation's
    key.
 5. one capacity-one, context-aware manager gate serializes inventory
    normalization, creation, rename, group, kill and recovery; an expired waiter
-   starts no tmux work. terminal reads, input and attachment take no gate: they
-   read immutable settings and are guarded in tmux.
+   starts no tmux work. checkpoint metadata discovery releases the gate, then
+   validates its immutable recipe anchor, settings and final observations before
+   committing. terminal reads, input and attachment take no gate: they read
+   immutable settings and are guarded in tmux.
 6. a mutation is attempted once. lost completion is `unknown` and never replayed,
    rolled back or compensated; clients reconcile from a later inventory.
 7. terminal status describes only the current screen of a freshly recognized local
@@ -445,9 +456,11 @@ version counts as qualified only after observation's
 9. one pane's failure or refusal never fails another pane or the inventory. only
    required facts (the tmux snapshot, normalization, the lifetime proof, the
    budget) fail a host's inventory.
-10. no provider history, conversation identity or provider api enters inventory,
-    control or any skid store, and no conversation route exists. the one native
-    call is the read-only codex quota read.
+10. no provider history or conversation id enters inventory or live control; no
+    conversation route exists. recovery alone stores selected ids, profile/home
+    scope and evidence source privately. it reads bounded native metadata and
+    invokes the owner's exact-id shell command; it stores no titles or history.
+    the only provider api call remains the read-only codex quota read.
 
 ### inventory
 
@@ -825,20 +838,30 @@ failure vocabulary. the contract:
    or reused (kernel start identity). a missing socket or a failed observation
    proves nothing.
 3. restoration targets only an absent or empty server, after durably claiming the
-   confirmed recipe (`attempted=true`), and rebuilds fresh shells at their saved
-   local cwds. it runs at most once per claim and is never merged, rolled back or
-   replayed; the user resumes agents and conversations.
+   confirmed schema-2 recipe (`attempted=true`), and rebuilds final panes at their
+   saved local cwds. recognized local agents use native-id then title discovery;
+   unusable targets become explained shells. each usable conversation launches
+   once through the current profile's `resume_command`, in the lowest numeric
+   eligible saved pane. reconstruction is never merged, rolled back or replayed.
 4. one writer holds a flock on `workspace.lock`. recovery starts after the listener
    and reconciles every 30 s and after each confirmed create, shell, rename, group
-   and kill, under the manager gate. a checkpoint failure never changes a confirmed
-   mutation's outcome.
+   and kill. provider reads run outside the manager gate within a 2 s sub-budget
+   of the existing checkpoint deadline. final source/graph/process/settings
+   validation and durable publication run under it. a checkpoint failure never
+   changes a confirmed mutation's outcome.
 5. every inventory carries `recovery {state:"tracking"|"recovered"|"delayed"|"broken",
-   savedAt?, failure?{at,phase,cause}, notice?{summary,action?}}`. `savedAt` is the
+   savedAt?, failure?{at,phase,cause}, resume?{requestedPanes,inferredPanes,
+   skippedAgentPanes}, notice?{summary,action?}}`. counts occur only in recovered
+   and mean startup dispatch, never provider success. `savedAt` is the
    capture time of the last confirmed recipe; delayed retries on the tick; broken
    latches for the process lifetime; the host renders `notice`, clients add the
    host and the local save time. failed recovery leaves live inventory
    authoritative, and clients never use a recipe as inventory or revive old
    terminal authority from it.
+6. the first restored checkpoint seeds only dispatched targets as recipe intent;
+   the next ordinary capture replaces them. schema 1 is rejected. cutover retains
+   the old recipe separately and arms a fresh schema-2 baseline while tmux lives;
+   no migration or compatibility reader exists.
 
 ## 9. quota, pressure and directories
 

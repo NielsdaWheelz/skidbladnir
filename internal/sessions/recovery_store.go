@@ -1,14 +1,18 @@
 package sessions
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -25,6 +29,20 @@ type checkpoint struct {
 	Attempted bool                          `json:"attempted"`
 	Sessions  []tmuxclient.WorkspaceSession `json:"sessions"`
 	Windows   []tmuxclient.WorkspaceWindow  `json:"windows"`
+	Agents    map[string]checkpointAgent    `json:"agents"`
+}
+
+type checkpointAgent struct {
+	Provider agentruntime.Provider           `json:"provider"`
+	Resume   *checkpointResume               `json:"resume,omitempty"`
+	Reason   agentruntime.ConversationReason `json:"reason,omitempty"`
+}
+
+type checkpointResume struct {
+	Profile      agentruntime.ProfileKey         `json:"profile"`
+	AccountScope string                          `json:"accountScope"`
+	ID           string                          `json:"id"`
+	Source       agentruntime.ConversationSource `json:"source"`
 }
 
 type checkpointSource struct {
@@ -100,8 +118,8 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 		return nil, invalid
 	}
 	var recipe checkpoint
-	if strictjson.Decode(encoded, &recipe) != nil || recipe.Schema != 1 ||
-		recipe.Machine != manager.recovery.machine.String() || !validSavedAt(recipe.SavedAt) {
+	if strictjson.Decode(encoded, &recipe) != nil || recipe.Schema != 2 ||
+		recipe.Machine != manager.recovery.machine.String() || !validSavedAt(recipe.SavedAt) || !validCheckpointAgents(recipe) {
 		return nil, invalid
 	}
 	// sourceGone reads the pid as a number, so only the canonical grammar keeps
@@ -111,6 +129,42 @@ func (manager *Manager) readCheckpoint() (*checkpoint, *recoveryFailure) {
 		return nil, invalid
 	}
 	return &recipe, nil
+}
+
+func validCheckpointAgents(recipe checkpoint) bool {
+	if recipe.Agents == nil {
+		return false
+	}
+	panes := make(map[string]bool)
+	for _, window := range recipe.Windows {
+		for _, pane := range window.Panes {
+			panes[pane.Key] = true
+		}
+	}
+	profileKey := regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+	for key, agent := range recipe.Agents {
+		if !panes[key] || (agent.Provider != agentruntime.ProviderCodex && agent.Provider != agentruntime.ProviderClaude) {
+			return false
+		}
+		if target := agent.Resume; target != nil {
+			if agent.Reason != "" || !profileKey.MatchString(string(target.Profile)) || !agentruntime.ValidConversationID(target.ID) || len(target.AccountScope) != 64 || strings.ToLower(target.AccountScope) != target.AccountScope {
+				return false
+			}
+			if _, err := hex.DecodeString(target.AccountScope); err != nil {
+				return false
+			}
+			if target.Source != agentruntime.ConversationProcessRecord && target.Source != agentruntime.ConversationTitleMatch {
+				return false
+			}
+		} else {
+			switch agent.Reason {
+			case agentruntime.ConversationProfileUnavailable, agentruntime.ConversationMetadataUnavailable, agentruntime.ConversationNoMatch, agentruntime.ConversationTiedMatches, agentruntime.ConversationObservationChanged:
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // writeCheckpoint returns success only after the replacement is durable. The

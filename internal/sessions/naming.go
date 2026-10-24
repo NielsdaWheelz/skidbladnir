@@ -138,7 +138,12 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 	if err := manager.acquire(ctx); err != nil {
 		return err
 	}
-	defer manager.release()
+	locked := true
+	defer func() {
+		if locked {
+			manager.release()
+		}
+	}()
 	if input.Naming.Mode == api.NameManual {
 		if err := validateTmuxName(input.Naming.Name); err != nil {
 			return err
@@ -174,6 +179,8 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 		}
 		return changed
 	}
+	manager.release()
+	locked = false
 	manager.checkpointAfterMutation(ctx, server)
 	return nil
 }

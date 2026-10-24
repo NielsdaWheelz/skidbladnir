@@ -23,9 +23,12 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	if err := manager.acquire(ctx); err != nil {
 		return ObservedSession{}, err
 	}
-	defer manager.release()
-
-	return manager.create(ctx, input, "", tmuxclient.ServerIdentity{})
+	observed, server, err := manager.create(ctx, input, "", tmuxclient.ServerIdentity{})
+	manager.release()
+	if err == nil {
+		manager.checkpointAfterMutation(ctx, server)
+	}
+	return observed, err
 }
 
 // CreateShell starts a terminal at the source's selected-pane directory and in
@@ -35,7 +38,12 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 	if err := manager.acquire(ctx); err != nil {
 		return ObservedSession{}, err
 	}
-	defer manager.release()
+	locked := true
+	defer func() {
+		if locked {
+			manager.release()
+		}
+	}()
 
 	server, row, err := manager.resolve(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
@@ -55,13 +63,19 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 	if row.CWD == "" {
 		return ObservedSession{}, unavailable
 	}
-	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: row.CWD, Group: group.DecodeMetadata(row.LocalSession.Group)}, input.TmuxID, server)
+	observed, createdServer, err := manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: row.CWD, Group: group.DecodeMetadata(row.LocalSession.Group)}, input.TmuxID, server)
+	manager.release()
+	locked = false
+	if err == nil {
+		manager.checkpointAfterMutation(ctx, createdServer)
+	}
+	return observed, err
 }
 
-func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (_ ObservedSession, resultErr error) {
+func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (_ ObservedSession, _ tmuxclient.ServerIdentity, resultErr error) {
 	cwd, profile, err := manager.validateCreate(input)
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
 	epochCandidate := newServerEpoch()
 	// Names and character use are advisory samples of whichever server runs:
@@ -69,7 +83,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	// no lifetime is held.
 	current, err := manager.tmux.ReadCurrentInventory(ctx, tmuxclient.ServerIdentity{})
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
 	scan := manager.scanCapture(current)
 	name := input.OptionalTmuxName
@@ -80,7 +94,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		}
 		name = generatedTmuxName(scan.names, prefix)
 	} else if _, occupied := scan.names[name]; occupied {
-		return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
 	character := selectCharacter(scan.characterUse, epochCandidate)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
@@ -93,7 +107,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd, launch)
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
 	commandArgs = append(commandArgs, terminal...)
 	exactName := "=" + name + ":"
@@ -123,11 +137,11 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		if err != nil {
 			var pathError *os.PathError
 			if errors.As(err, &pathError) && pathError.Op == "chdir" {
-				return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "That directory is unavailable.")
+				return ObservedSession{}, tmuxclient.ServerIdentity{}, newSessionError(ErrorWorkingDirectoryUnavailable, "That directory is unavailable.")
 			}
-			return ObservedSession{}, err
+			return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 		}
-		return ObservedSession{}, sessionIdentityMismatch()
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
 	defer func() {
 		if resultErr != nil {
@@ -135,43 +149,42 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		}
 	}()
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
 	firstLine, identityLine, separated := strings.Cut(output, "\n")
 	if !separated || strings.ContainsRune(identityLine, '\n') {
-		return ObservedSession{}, errors.New("tmux create returned an invalid identity transcript")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid identity transcript")
 	}
 	id := firstLine
 	if !tmuxclient.ValidID(id, '$') {
-		return ObservedSession{}, errors.New("tmux create returned an invalid session id")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid session id")
 	}
 	identityFields := strings.Split(identityLine, "|")
 	if len(identityFields) != 4 || identityFields[3] != id {
-		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid server identity")
 	}
 	server, err := tmuxclient.ParseServerIdentity(identityFields[0], identityFields[1], identityFields[2])
 	if err != nil || server.Epoch == "" {
-		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid server identity")
 	}
 	created, err := manager.tmux.ReadSession(ctx, id)
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
 	if len(created.Rows) == 0 {
-		return ObservedSession{}, errors.New("created tmux session is absent from inventory")
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("created tmux session is absent from inventory")
 	}
 	if created.Server != server {
-		return ObservedSession{}, tmuxclient.WorkspaceSourceChanged
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, tmuxclient.WorkspaceSourceChanged
 	}
 	// Under the mutation lock, this is the snapshot validateCreate admitted
 	// the profile from.
 	observed := ObservedSession{ObservedAt: time.Now().UTC(), Session: enrichSession(server, created.Rows[0], manager.settings.Load())}
 	// The target is captured; a later failure retains it for the caller.
 	if err := manager.RequireServer(ctx, server); err != nil {
-		return observed, err
+		return observed, server, err
 	}
-	manager.checkpointAfterMutation(ctx, server)
-	return observed, nil
+	return observed, server, nil
 }
 
 func mapWorkingDirectoryError(err error) error {

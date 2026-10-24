@@ -2,13 +2,19 @@ package sessions
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
@@ -125,10 +131,11 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 	}
 	if failure != nil {
 		manager.failRecovery(failure, true)
-	} else {
-		manager.reconcileRecovery()
 	}
 	manager.release()
+	if failure == nil {
+		manager.reconcileRecovery()
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -144,11 +151,7 @@ func (manager *Manager) StartRecovery(parent context.Context, observe func(Recov
 				return
 			case <-ticker.C:
 			}
-			if manager.acquire(ctx) != nil {
-				return
-			}
 			manager.reconcileRecovery()
-			manager.release()
 		}
 	}()
 	return func() error {
@@ -199,35 +202,26 @@ func (manager *Manager) failRecovery(failure *recoveryFailure, latch bool) {
 
 // The mutation is already confirmed; checkpoint failure never changes its outcome.
 func (manager *Manager) checkpointAfterMutation(mutation context.Context, expected tmuxclient.ServerIdentity) {
-	if manager.recovery.lock == nil || manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
-		return
-	}
 	deadline := time.Now().Add(10 * time.Second)
 	if original, ok := mutation.Deadline(); ok && original.Before(deadline) {
 		deadline = original
 	}
 	ctx, cancel := context.WithDeadline(manager.recovery.owner, deadline)
 	defer cancel()
-	server, present, err := manager.tmux.InspectServer(ctx)
-	if err != nil {
-		manager.failRecovery(tmuxFailure(ctx, api.RecoveryPhaseSource, "server_inspect", err), false)
-		return
-	}
-	if !present {
-		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseUnavailable, operation: "server_inspect"}, false)
-		return
-	}
-	if server.Identity != expected {
-		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}, false)
-		return
-	}
-	if failure := manager.saveCurrentCheckpoint(ctx, expected); failure != nil {
-		manager.failRecovery(failure, false)
-	}
+	manager.saveCurrentCheckpoint(ctx, expected)
 }
 
-// Called only under mutations. Native clients remain independent of this lock.
+// Native clients remain independent of the manager gate.
 func (manager *Manager) reconcileRecovery() {
+	if manager.acquire(manager.recovery.owner) != nil {
+		return
+	}
+	locked := true
+	defer func() {
+		if locked {
+			manager.release()
+		}
+	}()
 	if manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
 		return
 	}
@@ -269,9 +263,9 @@ func (manager *Manager) reconcileRecovery() {
 		if !present {
 			return
 		}
-		if failure := manager.saveCurrentCheckpoint(ctx, server.Identity); failure != nil {
-			manager.failRecovery(failure, false)
-		}
+		manager.release()
+		locked = false
+		manager.saveCurrentCheckpoint(ctx, server.Identity)
 		return
 	}
 	// Preflight failures leave the file untouched, so a restart after repair retries.
@@ -303,6 +297,12 @@ func (manager *Manager) reconcileRecovery() {
 			return
 		}
 	}
+	if restore.Err() != nil {
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseTimeout, operation: "restore_preflight"}, true)
+		return
+	}
+	settings := manager.settings.Load()
+	startup, dispatched, counts := planRecoveryStartups(recipe, settings)
 	if restore.Err() != nil {
 		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseTimeout, operation: "restore_preflight"}, true)
 		return
@@ -345,7 +345,8 @@ func (manager *Manager) reconcileRecovery() {
 			return
 		}
 	}
-	if err := manager.tmux.WithShell(manager.settings.Load().shellPath).RestoreWorkspace(restore, destination, shell, recipe.workspace()); err != nil {
+	paneMap, err := manager.tmux.WithShell(settings.shellPath).RestoreWorkspace(restore, destination, shell, recipe.workspace(), startup)
+	if err != nil {
 		manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseRestore, "restore_execute", err), true)
 		return
 	}
@@ -354,11 +355,18 @@ func (manager *Manager) reconcileRecovery() {
 		manager.failRecovery(failure, true)
 		return
 	}
+	for oldKey, agent := range dispatched {
+		saved.Agents[paneMap[oldKey]] = agent
+	}
+	if restore.Err() != nil {
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseTimeout, operation: "restore_execute"}, true)
+		return
+	}
 	if failure := manager.writeCheckpoint(saved); failure != nil {
 		manager.failRecovery(failure, true)
 		return
 	}
-	manager.commitCheckpoint(saved, api.RecoveryRecovered)
+	manager.commitCheckpoint(saved, api.RecoveryRecovered, &counts)
 }
 
 // destinationShell admits an empty destination's configuration and returns its
@@ -397,39 +405,123 @@ func sourceGone(source checkpointSource) (bool, *recoveryFailure) {
 	return string(observed.StartIdentity) != source.ProcessStartIdentity, nil
 }
 
-func (manager *Manager) commitCheckpoint(recipe checkpoint, state api.RecoveryState) {
+func (manager *Manager) commitCheckpoint(recipe checkpoint, state api.RecoveryState, resume *api.RecoveryResume) {
 	manager.recovery.recipe = &recipe
 	savedAt := recipe.SavedAt
-	manager.publishRecovery(api.Recovery{State: state, SavedAt: &savedAt}, "", 0)
+	manager.publishRecovery(api.Recovery{State: state, SavedAt: &savedAt, Resume: resume}, "", 0)
 }
 
-// saveCurrentCheckpoint never replaces a nonempty recipe of another source, nor
-// an empty one whose source still runs.
-func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmuxclient.ServerIdentity) *recoveryFailure {
+// saveCurrentCheckpoint owns the gate, releasing it only for provider metadata.
+func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmuxclient.ServerIdentity) {
+	if manager.acquire(ctx) != nil {
+		return
+	}
+	locked := true
+	defer func() {
+		if locked {
+			manager.release()
+		}
+	}()
+	if manager.recovery.lock == nil || manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
+		return
+	}
+	anchor, settings := manager.recovery.recipe, manager.settings.Load()
 	saved, failure := manager.captureCheckpoint(ctx, expected)
 	if failure != nil {
-		return failure
+		manager.failRecovery(failure, false)
+		return
 	}
-	if previous := manager.recovery.recipe; previous != nil && previous.Source != saved.Source {
-		if len(previous.Sessions) != 0 {
-			return &recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}
+	if anchor != nil && anchor.Source != saved.Source {
+		if len(anchor.Sessions) != 0 {
+			manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}, false)
+			return
 		}
-		gone, failure := sourceGone(previous.Source)
+		gone, failure := sourceGone(anchor.Source)
 		if failure != nil {
-			return failure
+			manager.failRecovery(failure, false)
+			return
 		}
 		if !gone {
-			return &recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}
+			manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseSource, cause: api.RecoveryCauseChanged, operation: "server_identity"}, false)
+			return
 		}
 	}
-	if ctx.Err() != nil {
-		return &recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseTimeout, operation: "capture"}
+	observations := observeRecoveryAgents(ctx, saved.workspace(), settings)
+	manager.release()
+	locked = false
+	discovery, cancel := context.WithTimeout(ctx, 2*time.Second)
+	results := make(map[string]agentruntime.ConversationResult)
+	for _, profile := range settings.profiles {
+		var queries []agentruntime.ConversationQuery
+		for key, observation := range observations {
+			if observation.profile == profile.Key && observation.scope != "" && observation.reason == "" {
+				queries = append(queries, agentruntime.ConversationQuery{PaneKey: key, ForegroundPID: observation.foreground.PID, RawTitle: observation.pane.Title, CWD: observation.pane.CWD})
+			}
+		}
+		if len(queries) == 0 {
+			continue
+		}
+		found := agentruntime.DiscoverConversations(discovery, profile, queries)
+		found = agentruntime.CloseConversationObservations(discovery, profile, queries, found)
+		for _, result := range found {
+			results[result.PaneKey] = result
+		}
 	}
-	if failure := manager.writeCheckpoint(saved); failure != nil {
-		return failure
+	cancel()
+	if manager.acquire(ctx) != nil {
+		return
 	}
-	manager.commitCheckpoint(saved, api.RecoveryTracking)
-	return nil
+	locked = true
+	if manager.recovery.recipe != anchor || manager.recovery.fact.State == api.RecoveryBroken || manager.recovery.owner.Err() != nil {
+		return
+	}
+	if manager.settings.Load() != settings {
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseChanged, operation: "capture"}, false)
+		return
+	}
+	fresh, failure := manager.captureCheckpoint(ctx, saved.Source.Server)
+	if failure != nil {
+		manager.failRecovery(failure, false)
+		return
+	}
+	if fresh.Source != saved.Source || !sameRecoveryGraph(saved.workspace(), fresh.workspace()) {
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseChanged, operation: "capture"}, false)
+		return
+	}
+	current := observeRecoveryAgents(ctx, fresh.workspace(), settings)
+	for key, observation := range observations {
+		agent := checkpointAgent{Provider: observation.provider, Reason: observation.reason}
+		after, found := current[key]
+		result, resolved := results[key]
+		switch {
+		case !found || after.reason == agentruntime.ConversationObservationChanged || observation.pane.PID != after.pane.PID || observation.pane.CWD != after.pane.CWD || observation.foreground != after.foreground || observation.profile != after.profile || observation.scope != after.scope || !maps.Equal(observation.environment, after.environment):
+			agent.Reason = agentruntime.ConversationObservationChanged
+		case agent.Reason != "":
+		case !resolved:
+			agent.Reason = agentruntime.ConversationMetadataUnavailable
+		case result.Reason != "":
+			agent.Reason = result.Reason
+		case result.Source == agentruntime.ConversationTitleMatch && !agentruntime.ConversationTitleMatches(observation.provider, result, after.pane.Title):
+			agent.Reason = agentruntime.ConversationObservationChanged
+		default:
+			agent.Resume = &checkpointResume{Profile: observation.profile, AccountScope: observation.scope, ID: result.ID, Source: result.Source}
+		}
+		fresh.Agents[key] = agent
+	}
+	for key, observation := range current {
+		if _, found := observations[key]; !found {
+			fresh.Agents[key] = checkpointAgent{Provider: observation.provider, Reason: agentruntime.ConversationObservationChanged}
+		}
+	}
+	if ctx.Err() != nil || manager.recovery.owner.Err() != nil {
+		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseTimeout, operation: "capture"}, false)
+		return
+	}
+	if failure := manager.writeCheckpoint(fresh); failure != nil {
+		manager.failRecovery(failure, false)
+		return
+	}
+	manager.commitCheckpoint(fresh, api.RecoveryTracking, nil)
 }
 
 // captureCheckpoint captures expected's normalized workspace. B == E == server
@@ -477,9 +569,9 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, expected tmuxclie
 		return checkpoint{}, osFailure(api.RecoveryPhaseSource, "boot_identity", err, api.RecoveryCauseUnavailable)
 	}
 	return checkpoint{
-		Schema: 1, Machine: manager.recovery.machine.String(), SavedAt: time.Now().UTC(),
+		Schema: 2, Machine: manager.recovery.machine.String(), SavedAt: time.Now().UTC(),
 		Source:   checkpointSource{BootID: boot, ProcessStartIdentity: string(process.StartIdentity), Server: server},
-		Sessions: workspace.Sessions, Windows: workspace.Windows,
+		Sessions: workspace.Sessions, Windows: workspace.Windows, Agents: make(map[string]checkpointAgent),
 	}, nil
 }
 
@@ -504,4 +596,163 @@ func (manager *Manager) restorable(workspace tmuxclient.Workspace) bool {
 		}
 	}
 	return true
+}
+
+// Recovery observations retain only enough evidence to close this checkpoint's
+// process and profile bracket. Nothing here is persisted except the result.
+type recoveryAgentObservation struct {
+	pane        tmuxclient.WorkspacePane
+	provider    agentruntime.Provider
+	foreground  processinfo.Observation
+	environment map[string]string
+	profile     agentruntime.ProfileKey
+	scope       string
+	reason      agentruntime.ConversationReason
+}
+
+func observeRecoveryAgents(ctx context.Context, workspace tmuxclient.Workspace, settings *runtimeSettings) map[string]recoveryAgentObservation {
+	observations := make(map[string]recoveryAgentObservation)
+	for _, window := range workspace.Windows {
+		for _, pane := range window.Panes {
+			if ctx.Err() != nil {
+				return observations
+			}
+			if _, found := observations[pane.Key]; found || pane.PID == 0 {
+				continue
+			}
+			foreground, err := processinfo.ObserveForeground(processinfo.PID(pane.PID))
+			if err != nil {
+				continue
+			}
+			agent, recognized := agentruntime.Classify(foreground)
+			if !recognized {
+				continue
+			}
+			observation := recoveryAgentObservation{pane: pane, provider: agent.Provider, foreground: foreground}
+			observation.environment, err = processinfo.ObserveForegroundEnvironment(processinfo.PID(pane.PID), foreground)
+			if errors.Is(err, processinfo.ErrForegroundMismatch) {
+				observation.reason = agentruntime.ConversationObservationChanged
+			} else if err != nil {
+				observation.reason = agentruntime.ConversationProfileUnavailable
+			} else {
+				observation.profile = agentruntime.MatchProfile(settings.profiles, agent.Provider, observation.environment)
+				if profile, found := settings.byKey[observation.profile]; found {
+					observation.scope, err = agentruntime.AccountScope(profile)
+					if err != nil {
+						observation.reason = agentruntime.ConversationProfileUnavailable
+					}
+				} else {
+					observation.reason = agentruntime.ConversationProfileUnavailable
+				}
+			}
+			observations[pane.Key] = observation
+		}
+	}
+	return observations
+}
+
+// Captured names, labels, cwd and raw process/title facts may advance during
+// discovery. Membership, links, layout and selection must remain unchanged.
+func sameRecoveryGraph(before, after tmuxclient.Workspace) bool {
+	if len(before.Sessions) != len(after.Sessions) || len(before.Windows) != len(after.Windows) {
+		return false
+	}
+	for i, left := range before.Sessions {
+		right := after.Sessions[i]
+		if left.Key != right.Key || left.Character != right.Character || left.NativeGroup != right.NativeGroup || left.ActiveWindowIndex != right.ActiveWindowIndex || !slices.Equal(left.Links, right.Links) {
+			return false
+		}
+	}
+	for i, left := range before.Windows {
+		right := after.Windows[i]
+		if left.Key != right.Key || left.Width != right.Width || left.Height != right.Height || left.Layout != right.Layout || left.ActivePaneKey != right.ActivePaneKey || left.Zoomed != right.Zoomed || len(left.Panes) != len(right.Panes) {
+			return false
+		}
+		for j, pane := range left.Panes {
+			if pane.Key != right.Panes[j].Key {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func planRecoveryStartups(recipe *checkpoint, settings *runtimeSettings) (map[string]tmuxclient.WorkspaceStartup, map[string]checkpointAgent, api.RecoveryResume) {
+	startup := make(map[string]tmuxclient.WorkspaceStartup)
+	dispatched := make(map[string]checkpointAgent)
+	var counts api.RecoveryResume
+	keys := make([]string, 0, len(recipe.Agents))
+	for key := range recipe.Agents {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		// tmux admits unbounded digit strings; numeric ordering needs no integer conversion.
+		left, right := strings.TrimLeft(keys[i][1:], "0"), strings.TrimLeft(keys[j][1:], "0")
+		if len(left) != len(right) {
+			return len(left) < len(right)
+		}
+		if left != right {
+			return left < right
+		}
+		return keys[i] < keys[j]
+	})
+	used := make(map[string]bool)
+	for _, key := range keys {
+		agent := recipe.Agents[key]
+		target := agent.Resume
+		reason, duplicate := "", false
+		var profile agentruntime.Profile
+		if target == nil {
+			reason = "no id saved"
+		} else {
+			var found bool
+			profile, found = settings.byKey[target.Profile]
+			switch {
+			case !found:
+				reason = "profile removed"
+			case profile.Provider != agent.Provider:
+				reason = "provider/home changed"
+			default:
+				scope, err := agentruntime.AccountScope(profile)
+				info, statErr := os.Stat(profile.Home)
+				switch {
+				case err != nil || statErr != nil || !info.IsDir() || syscall.Access(profile.Home, 5) != nil:
+					reason = "home unavailable"
+				case scope != target.AccountScope:
+					reason = "provider/home changed"
+				case profile.ResumeCommand == "":
+					reason = "no resume command"
+				}
+			}
+			if reason == "" {
+				identity := string(agent.Provider) + "\x00" + target.AccountScope + "\x00" + target.ID
+				if used[identity] {
+					reason, duplicate = "conversation assigned to another restored pane", true
+				} else {
+					used[identity] = true
+				}
+			}
+		}
+		var command string
+		if reason == "" {
+			command = "set -- '" + target.ID + "'\n" + profile.ResumeCommand
+			dispatched[key] = agent
+			counts.RequestedPanes++
+			if target.Source == agentruntime.ConversationTitleMatch {
+				counts.InferredPanes++
+			}
+		} else {
+			message := "skidbladnir: conversation resume skipped: " + reason + "."
+			if !duplicate {
+				if target != nil {
+					message += "\nsaved conversation id: " + target.ID + "."
+				}
+				message += "\nresume manually in this shell using the original provider profile."
+			}
+			command = "printf '%s\\n' '" + strings.ReplaceAll(message, "'", "'\\''") + "'"
+			counts.SkippedAgentPanes++
+		}
+		startup[key] = tmuxclient.WorkspaceStartup{Launch: base64.RawURLEncoding.EncodeToString([]byte(command)), MayChangeCwd: reason == ""}
+	}
+	return startup, dispatched, counts
 }

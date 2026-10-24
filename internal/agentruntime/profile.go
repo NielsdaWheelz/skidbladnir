@@ -26,11 +26,12 @@ func (provider Provider) String() string { return string(provider) }
 type ProfileKey string
 
 type Profile struct {
-	Key      ProfileKey
-	Label    string
-	Command  string
-	Provider Provider
-	Home     string // canonical; set exactly when Provider is
+	Key           ProfileKey
+	Label         string
+	ResumeCommand string
+	Command       string
+	Provider      Provider
+	Home          string // canonical; set exactly when Provider is
 }
 
 // ResolveProfiles is the one constructor and the one validation of profiles.
@@ -43,7 +44,7 @@ func ResolveProfiles(configured []hostconfig.Profile) ([]Profile, error) {
 	profiles := make([]Profile, 0, len(configured))
 	keys := make(map[ProfileKey]bool, len(configured))
 	for _, item := range configured {
-		profile := Profile{Key: ProfileKey(item.Name), Label: item.Label, Command: item.Command}
+		profile := Profile{Key: ProfileKey(item.Name), Label: item.Label, Command: item.Command, ResumeCommand: item.ResumeCommand}
 		switch item.Provider {
 		case "":
 		case "codex":
@@ -72,6 +73,9 @@ func ResolveProfiles(configured []hostconfig.Profile) ([]Profile, error) {
 		}
 		if strings.TrimSpace(profile.Command) == "" || !utf8.ValidString(profile.Command) || strings.ContainsRune(profile.Command, 0) {
 			return nil, fmt.Errorf("profile %s command is invalid", profile.Key)
+		}
+		if profile.ResumeCommand != "" && (strings.TrimSpace(profile.ResumeCommand) == "" || !utf8.ValidString(profile.ResumeCommand) || strings.ContainsRune(profile.ResumeCommand, 0) || profile.Provider == "") {
+			return nil, fmt.Errorf("profile %s resume command is invalid or lacks provider", profile.Key)
 		}
 		if profile.Provider == "" && item.Home != "" {
 			return nil, fmt.Errorf("profile %s home requires provider", profile.Key)
