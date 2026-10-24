@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type RecoveryState string
 
@@ -50,6 +53,13 @@ type Recovery struct {
 	State   RecoveryState    `json:"state"`
 	SavedAt *time.Time       `json:"savedAt,omitempty"`
 	Failure *RecoveryFailure `json:"failure,omitempty"`
+	Resume  *RecoveryResume  `json:"resume,omitempty"`
+}
+
+type RecoveryResume struct {
+	RequestedPanes    int `json:"requestedPanes"`
+	InferredPanes     int `json:"inferredPanes"`
+	SkippedAgentPanes int `json:"skippedAgentPanes"`
 }
 
 // RecoveryNotice is the owner-visible recovery copy without the machine label
@@ -110,7 +120,35 @@ func (recovery Recovery) Notice() *RecoveryNotice {
 	case RecoveryTracking:
 		return nil
 	case RecoveryRecovered:
-		return &RecoveryNotice{Summary: "terminals restored as shells. resume conversations using the same provider account."}
+		notice := &RecoveryNotice{Summary: "terminals restored."}
+		if counts := recovery.Resume; counts != nil {
+			if counts.RequestedPanes > 0 {
+				pane := "panes"
+				if counts.RequestedPanes == 1 {
+					pane = "pane"
+				}
+				notice.Summary += fmt.Sprintf(" conversation resume requested in %d %s.", counts.RequestedPanes, pane)
+			}
+			if counts.InferredPanes > 0 {
+				request := "requests"
+				if counts.InferredPanes == 1 {
+					request = "request"
+				}
+				notice.Summary += fmt.Sprintf(" %d %s used title inference.", counts.InferredPanes, request)
+			}
+			if counts.SkippedAgentPanes > 0 {
+				phrase := "agent panes restored as shells"
+				if counts.SkippedAgentPanes == 1 {
+					phrase = "agent pane restored as a shell"
+				}
+				notice.Summary += fmt.Sprintf(" %d %s.", counts.SkippedAgentPanes, phrase)
+				notice.Action = "open those terminals for details."
+				if counts.SkippedAgentPanes == 1 {
+					notice.Action = "open that terminal for details."
+				}
+			}
+		}
+		return notice
 	case RecoveryDelayed:
 		status, action = "workspace saving delayed", "retrying automatically; live terminals remain usable."
 	case RecoveryBroken:

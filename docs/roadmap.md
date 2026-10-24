@@ -19,6 +19,9 @@ contract; each item's evidence and resolution criteria live in its
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
    recovery, and explain linux claude's guarded start
    ([linux claude turn](issues/terminal-only-live-qualification.md)).
+5. qualify conversation recovery on deployed hosts and clients, with explicit
+   resume commands and a fresh schema-2 checkpoint
+   ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
 ## open defects
 

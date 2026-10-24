@@ -184,7 +184,12 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	if err := manager.acquire(ctx); err != nil {
 		return err
 	}
-	defer manager.release()
+	locked := true
+	defer func() {
+		if locked {
+			manager.release()
+		}
+	}()
 
 	server, err := parseLifetime(input.TmuxID, input.IdentityToken)
 	if err != nil {
@@ -200,6 +205,8 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	if !killed {
 		return manager.refused(ctx, input.TmuxID)
 	}
+	manager.release()
+	locked = false
 	manager.checkpointAfterMutation(ctx, server)
 	return nil
 }
