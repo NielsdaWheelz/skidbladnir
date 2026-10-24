@@ -1,9 +1,9 @@
 # conversation recovery acceptance
 
-problem: conversation recovery is implemented on `codex/conversation-recovery`,
-but deployed acceptance and schema-2 cutover have not run. the
+problem: conversation recovery ships in v0.22.0 and its schema-2 cutover ran on
+every host, but deployed acceptance is partial. the
 [contract](../session-recovery.md#cutover-and-qualification) remains unfulfilled
-at those boundaries. isolated evidence is not fleet acceptance.
+at the boundaries below. isolated evidence is not fleet acceptance.
 
 impact: exact native conversation reopening, startup/profile behavior, fresh
 client notices and actual reboot recovery remain unverified on the installed
@@ -37,48 +37,33 @@ evidence, 2026-10-23:
   removed before committing; no permanent harness or new gate is introduced.
 - read-only preparation found installed v0.20.0 gateways on macbook, devbox and
   arch; local checkpoint schema 1, unclaimed. configured profiles have no resume
-  command. the already-open [release cutover](release-cutover.md) and
-  [attention cutover](attention-cutover.md) precede deploying this branch.
+  command.
 - 2026-10-24, v0.22.0: on devbox, macbook and arch the gateway was stopped with
   tmux live, the schema-1 `workspace.json` moved to the state directory's
   `cutover-20261024/`, and the new release saved a schema-2 baseline (devbox 4
   sessions, macbook 11, arch none). dev-server #202 added the four proposed
-  `resume_command` entries to the hub's yaml. steps 1 and 2 below are done apart
-  from the phone.
+  `resume_command` entries to the hub's yaml. the phone joined the same day.
+- 2026-10-24 13:04 local, macbook same-boot loss with real conversations: serve
+  stopped, `tmux kill-server`, serve started. recovery reported `recovered` and
+  rebuilt all 11 saved sessions; the 10 recognized agents were requested through
+  their profiles' `resume_command` and came back (owner confirmed). two codex
+  `personal` sessions then showed `needs setup`. the one claude pane skid had not
+  recognized came back as a shell. two codex agents were mid-turn at the loss.
 - real provider accounts, phone/desktop notice acceptance, actual macos/linux
   reboot and mid-turn loss are `NOT_RUN`.
 
-to resolve, after explicit current-turn authority:
+to resolve:
 
-1. complete the existing fleet cutover with a matching host/client release.
-   keep live tmux and the old recipes until each
-   new gateway has durably saved schema 2. do not discard a sole old recipe.
-2. add owner-approved `resume_command` entries using each existing configured
-   launcher and quoted `"$1"`; validate ordinary account/home behavior. no stock
-   command substitution or injected permission policy.
-3. create disposable real-provider conversations on macos/linux; record private
-   native-id oracles, checkpoint, exercise proven loss and reopen those ids.
-   verify history and a subsequent response in the same transcripts. report
-   requests separately from native success and any skipped panes.
-4. verify fresh recovered notices on desktop and phone, then actual reboot on
-   both platforms. mid-turn checks prove history/no skid input replay only.
-5. delete temporary qualification tests; retain only credential/content-free
-   evidence. remove this issue after these boundaries pass, not after builds.
+1. explain the two codex `personal` sessions that showed `needs setup` after the
+   macbook recovery, and why skid did not recognize the claude pane (a direct
+   `claude` launch with the work home), or record each as an accepted limit.
+2. linux: exercise a proven loss on devbox or arch with real conversations,
+   reopen them, and verify history and a subsequent response in the same
+   transcripts.
+3. verify fresh recovered notices on desktop and phone, then an actual reboot on
+   both platforms. mid-turn checks prove history and no skid input replay only.
+4. retain only credential- and content-free evidence; remove this issue once
+   these pass.
 
-the fleet upgrade, real accounts, phone and disruptive loss/reboots still need
-owner approval. read-only preparation, task-owned linux containers and isolated
-arch checks were authorized; none authorizes these effects.
-
-proposed entries from the currently applied profile commands; add these fields
-to the existing profiles, preserving every other setting:
-
-| profile | `resume_command` |
-| --- | --- |
-| `personal` | `codex resume "$1"` |
-| `work` | `codex-work resume "$1"` |
-| `work2` | `codex-work2 resume "$1"` |
-| `claude-work` | `claude-work --resume "$1"` |
-
-do not apply these to v0.20.0: that release rejects the new field. install/accept
-configuration in the coordinated cutover. use the `dev-server` ssh alias for
-devbox and `arch` for arch; read-only preparation confirmed both routes.
+disruptive loss, reboots, real accounts and the phone need owner approval in the
+current turn.

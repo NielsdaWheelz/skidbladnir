@@ -2416,9 +2416,8 @@ host, desktop and phone ship from one release and consumers decode tolerantly,
 so an additive wire change needs no install order. removing or retyping a field
 a consumer reads, adding an enum value it branches on, or changing a durable
 format is a lockstep cutover with no converter or old reader. each such release
-records its cross-repo operator steps as an issue
-([release cutover](issues/release-cutover.md),
-[attention cutover](issues/attention-cutover.md)).
+records its cross-repo operator steps as an issue, deleted once the fleet runs
+it.
 
 ### fleet operations
 

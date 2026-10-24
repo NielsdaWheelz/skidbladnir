@@ -4,9 +4,8 @@ every tmux command skid runs is a process spawn, and the hub lists every machine
 every five seconds whether or not anyone is looking, so inventory's exec count is
 a standing cost. this spec bounds it to two execs per steady list and
 sets serve's launchd priority. dev-server's `docs/macbook-capacity-plan.md`
-(decisions d6, d7, d10) supplies the targets; the open measurements are
-[exec overhead](issues/tmux-exec-overhead.md) and
-[priority](issues/launchd-standard-priority.md).
+(decisions d6, d7, d10) supplies the targets; the open measurement is
+[exec overhead](issues/tmux-exec-overhead.md).
 
 ## invariants
 
@@ -184,9 +183,10 @@ owner-approved.
 - linux is unchanged: `KillMode=process` keeps tmux and the agents in
   `skidbladnir.service`'s cgroup, so a weight or nice value there would throttle the
   agents too.
-- running processes keep their priority: the current tmux server and its panes stay
-  at 20 until the server restarts. the [priority issue](issues/launchd-standard-priority.md)
-  holds the maintenance-window steps.
+- running processes keep their priority: after an install that changes serve's,
+  the tmux server and its panes keep the old one until the server restarts. stop
+  serve, `kill-server`, start serve; [recovery](session-recovery.md) rebuilds the
+  workspace under a server serve starts.
 
 ## targets and measurement (macbook-capacity d10)
 

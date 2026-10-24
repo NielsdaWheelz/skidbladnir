@@ -216,9 +216,6 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 			return fmt.Errorf("release installed; pruning failed: %w", err)
 		}
 	}
-	if err = os.Remove(filepath.Join(dirs.State, "install-owned.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("release installed; pruning failed: %w", err)
-	}
 	fmt.Fprintf(stdout, "installed %s; settings and private state preserved\n", manifest.Version)
 	fmt.Fprintln(stdout, "local shells need no provider or tailscale login; open a new login shell to use skid")
 	return nil
@@ -270,7 +267,7 @@ func (i *installer) uninstall(ctx context.Context) error {
 	if err = removeShellBlocks(i.dirs.Home, zdir); err != nil {
 		return err
 	}
-	paths := []string{filepath.Join(i.dirs.Bin, "skid"), filepath.Join(i.dirs.Data, "current"), filepath.Join(i.dirs.State, "install-owned.json")}
+	paths := []string{filepath.Join(i.dirs.Bin, "skid"), filepath.Join(i.dirs.Data, "current")}
 	for _, s := range i.services() {
 		paths = append(paths, s.path)
 	}
