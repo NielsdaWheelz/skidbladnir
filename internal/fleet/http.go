@@ -71,6 +71,10 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && r.URL.Path == "/v1/fleet/events":
 		s.events(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/fleet/apply":
+		if member.Kind != "computer" {
+			writeError(w, errNotComputer)
+			return
+		}
 		if err := emptyBody(r); err != nil {
 			writeError(w, err)
 			return
@@ -78,6 +82,10 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		status, err := s.apply()
 		respond(w, status, err)
 	case r.Method == "POST" && r.URL.Path == "/v1/fleet/invites":
+		if member.Kind != "computer" {
+			writeError(w, errNotComputer)
+			return
+		}
 		if err := emptyBody(r); err != nil {
 			writeError(w, err)
 			return
@@ -85,6 +93,10 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		invitation, err := s.invite(time.Now())
 		respond(w, invitation, err)
 	case r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/v1/fleet/members/"):
+		if member.Kind != "computer" {
+			writeError(w, errNotComputer)
+			return
+		}
 		if err := emptyBody(r); err != nil {
 			writeError(w, err)
 			return
