@@ -2321,7 +2321,8 @@ older than the test phone's.
 `bash install [vX.Y.Z]` (the release's bootstrap; latest stable when omitted)
 verifies and hands off to the archive's own `skid install`. installed commands:
 `skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]` and
-`skid uninstall`; one installation operation runs at a time (`install.lock`).
+`skid uninstall`, each printing its help to stdout on `-h` or `--help`; one
+installation operation runs at a time (`install.lock`).
 
 1. trust starts at the bootstrap. `scripts/install` embeds the ed25519 release
    public key; a key fetched beside an archive would authenticate nothing.
@@ -2345,27 +2346,37 @@ verifies and hands off to the archive's own `skid install`. installed commands:
 4. skid owns fixed paths by name and records nothing: `releases/`, `current`,
    `bin/skid`, its service files and two marked shell blocks. install overwrites
    them; hand edits inside them are lost.
-5. shell blocks: a guarded `managed shell` block, sourcing
-   `current/providers/shell-init` only when `SKIDBLADNIR_SHELL=1`, goes last in
-   `.bashrc`, the bash login file (first of `.bash_profile`, `.bash_login`,
-   `.profile`), `$ZDOTDIR/.zlogin` and `$ZDOTDIR/.zshrc`, with `ZDOTDIR` as zsh
-   itself resolves it. `.zshrc` also starts with a `managed zsh prompt` block
+5. shell blocks: a `managed shell` block goes last in `.bashrc`, the bash login
+   file (first of `.bash_profile`, `.bash_login`, `.profile`),
+   `$ZDOTDIR/.zlogin` and `$ZDOTDIR/.zshrc`, with `ZDOTDIR` as zsh itself
+   resolves it. its first line runs in every shell that reads it and prepends
+   `~/.local/bin` to `PATH` only when absent, so new login and interactive
+   shells find `skid`, while sourcing it again or an order the user chose
+   changes nothing; install's last line names `export PATH` when the invoking
+   shell's `PATH` lacks `~/.local/bin`. the rest sources
+   `current/providers/shell-init` only when `SKIDBLADNIR_SHELL=1`.
+   `.zshrc` also starts with a `managed zsh prompt` block
    that turns off powerlevel10k's instant prompt only in the exact shell skid
    started, because its cached preamble can redirect the first command's
    terminal. symlinks are followed, modes kept, files replaced atomically; an
    incomplete or duplicated block stops installation. dev-server's dotfiles rely
    on this placement (`internal/install/shell.go`).
 6. services: on linux one user unit `skidbladnir.service` (`Restart=on-failure`,
-   `RestartSec=3`, `KillMode=process`); startup before login needs
-   `sudo loginctl enable-linger USER`. on mac the launch agents
+   `RestartSec=3`, `KillMode=process`). without linger the gateway and its
+   sessions run only while the user is logged in: unless `loginctl` reports
+   linger, install says so and names `sudo loginctl enable-linger UID`; when
+   `tailscaled` is inactive it names `sudo systemctl enable --now tailscaled`.
+   it runs neither, since both are host policy. on mac the launch agents
    `dev.niels.skidbladnir` (serve: `KeepAlive`, `AbandonProcessGroup`,
    `ProcessType=Interactive`) and `dev.niels.skidbladnir.notifications`; install
    fails when the new serve runs below scheduling priority 31, since tmux and
    every agent inherit serve's priority (`services.go`).
 7. missing tmux or tailscale install through homebrew (`tmux`, cask
    `tailscale-app`; homebrew is a prerequisite), apt plus tailscale's official
-   installer, or pacman; privilege prompts are the user's. providers, zoxide,
-   ssh and mosh are never installed.
+   installer, or pacman; privilege prompts are the user's. pacman confirms on
+   the controlling terminal, because under `curl | bash` stdin is the spent
+   script; with no terminal, install stops and names the command. providers,
+   zoxide, ssh and mosh are never installed.
 8. `skid update` runs the installed binary's installer, so a release's installer
    changes apply from the following update, or at once through its own
    `bash install TAG`. running desktop browsers keep their loaded binary until
