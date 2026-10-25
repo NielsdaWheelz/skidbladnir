@@ -114,6 +114,7 @@ case "$gate" in
       .isDraft == false and .isPrerelease == false and .isImmutable == true and
       ([.assets[].name] | sort) == [
         "SHA256SUMS",
+        "SHA256SUMS.sig",
         "android-signing-cert.sha256",
         "install",
         "skidbladnir-android.apk",
@@ -123,7 +124,7 @@ case "$gate" in
         "skidbladnir-linux-amd64.tar.gz.sig"
       ]
     ' <<<"$published_metadata" >/dev/null || {
-      printf 'Public release is not immutable, final, exact-SHA, and exact-eight-assets.\n' >&2
+      printf 'Public release is not immutable, final, exact-SHA, and exact-nine-assets.\n' >&2
       exit 1
     }
     remote_tags="$(git ls-remote --tags "https://github.com/$published_repo.git" \
