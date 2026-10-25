@@ -46,10 +46,11 @@ var help = map[string]string{
 
 install a signed skid release on this computer: the latest stable release, the
 --version given, or a local --archive with its detached --signature. missing
-tmux and tailscale are installed with homebrew, apt or pacman. skid links
-~/.local/bin/skid, adds its marked blocks to your shell startup files, which put
-~/.local/bin on PATH, and starts its services. settings and private state are
-kept; a release older than the installed one is refused.
+tmux and tailscale are installed with homebrew (required on macos), apt and
+tailscale's installer, or pacman. skid links ~/.local/bin/skid, adds its marked
+blocks to your shell startup files, which put ~/.local/bin on PATH, and starts
+its services. settings and private state are kept; a release older than the
+installed one is refused.
 `,
 	"update": `usage: skid update [--version vX.Y.Z] [--archive PATH --signature PATH]
 
@@ -85,7 +86,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 		return err
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("%w; see skid %s --help", err, action)
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected installation argument")

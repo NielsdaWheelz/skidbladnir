@@ -121,9 +121,10 @@ func (i *installer) startServices(ctx context.Context) error {
 		}
 		// Linger and tailscaled are host policy: skid names the command and never
 		// runs it. A failed probe reads as off, costing at most a needless line.
-		user := os.Getenv("USER")
-		if linger, _ := exec.CommandContext(ctx, "loginctl", "show-user", user, "--property=Linger", "--value").Output(); strings.TrimSpace(string(linger)) != "yes" {
-			fmt.Fprintln(i.stdout, "linger is off, so logging out stops the skid gateway and its sessions; to keep them running, run: sudo loginctl enable-linger "+shellQuote(user))
+		// loginctl takes a uid, which unlike $USER is always set.
+		uid := strconv.Itoa(os.Getuid())
+		if linger, _ := exec.CommandContext(ctx, "loginctl", "show-user", uid, "--property=Linger", "--value").Output(); strings.TrimSpace(string(linger)) != "yes" {
+			fmt.Fprintln(i.stdout, "linger is off, so logging out stops the skid gateway and its sessions; to keep them running, run: sudo loginctl enable-linger "+uid)
 		}
 		if exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "tailscaled").Run() != nil {
 			fmt.Fprintln(i.stdout, "tailscaled is not running, so other devices cannot reach this computer; run: sudo systemctl enable --now tailscaled")
