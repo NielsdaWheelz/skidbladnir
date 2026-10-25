@@ -113,3 +113,11 @@ scripts/check verify
 [rules](docs/rules.md), [roadmap](docs/roadmap.md), and
 [open issues](docs/issues) describe ownership and remaining work. engineering
 checks and builds do not establish live behavior or release/deployment acceptance.
+
+## License
+
+Copyright 2026 Niels-Erik Nandal. Licensed under the [Apache License, Version
+2.0](LICENSE). The bundled fonts (SIL Open Font License 1.1) and xterm.js (MIT)
+keep their own licenses, which ship beside them in
+[`android/app/src/main/assets/licenses`](android/app/src/main/assets/licenses) and
+[`android/app/src/main/assets/terminal/vendor`](android/app/src/main/assets/terminal/vendor).
