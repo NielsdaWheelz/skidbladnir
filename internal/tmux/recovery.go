@@ -140,18 +140,27 @@ func (client Client) ValidateRecoveryServer(ctx context.Context, expected Server
 	if err != nil {
 		return "", err
 	}
-	fields, rest, err := parseInventoryFields([]byte(output+"\n"), 8)
-	if err != nil || len(rest) != 0 {
-		return "", WorkspaceProtocolInvalid
+	fields, rest, err := parseInventoryFields([]byte(output+"\n"), 8, "server_preflight")
+	if err != nil {
+		return "", err
+	}
+	if len(rest) != 0 {
+		return "", &ProtocolError{Record: "server_preflight", Reason: "framing"}
 	}
 	// Preflight can precede epoch admission on an empty external server.
 	identity, err := ParseServerIdentity(fields[0], fields[1], fields[2])
 	if err != nil {
-		return "", err
+		return "", &ProtocolError{Record: "server_preflight", Reason: "invalid_value"}
 	}
 	count, countErr := strconv.Atoi(fields[3])
-	if countErr != nil || count < 0 || fields[6] != "0" && fields[6] != "1" || fields[7] != "0" && fields[7] != "1" {
-		return "", WorkspaceProtocolInvalid
+	if countErr != nil || count < 0 {
+		return "", &ProtocolError{Record: "server_preflight", Field: 4, Reason: "invalid_value"}
+	}
+	if fields[6] != "0" && fields[6] != "1" {
+		return "", &ProtocolError{Record: "server_preflight", Field: 7, Reason: "invalid_value"}
+	}
+	if fields[7] != "0" && fields[7] != "1" {
+		return "", &ProtocolError{Record: "server_preflight", Field: 8, Reason: "invalid_value"}
 	}
 	if identity != expected {
 		return "", WorkspaceSourceChanged
@@ -646,12 +655,15 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 	for len(input) > 0 && (input[0] == 'S' || input[0] == 'W' || input[0] == 'P') {
 		kind := input[0]
 		count := 4
+		record := "workspace_session"
 		if kind == 'W' {
 			count = 9
+			record = "workspace_window"
 		} else if kind == 'P' {
 			count = 6
+			record = "workspace_pane"
 		}
-		fields, rest, err := parseInventoryFields(input[1:], count)
+		fields, rest, err := parseInventoryFields(input[1:], count, record)
 		if err != nil {
 			return Workspace{}, err
 		}
@@ -659,30 +671,41 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 		switch kind {
 		case 'S':
 			if _, exists := sessions[fields[0]]; exists {
-				return Workspace{}, WorkspaceProtocolInvalid
+				return Workspace{}, &ProtocolError{Record: "workspace_session", Field: 1, Reason: "duplicate"}
 			}
 			active, err := strconv.Atoi(fields[3])
 			if err != nil {
-				return Workspace{}, WorkspaceProtocolInvalid
+				return Workspace{}, &ProtocolError{Record: "workspace_session", Field: 4, Reason: "invalid_value"}
 			}
 			sessions[fields[0]] = len(workspace.Sessions)
 			workspace.Sessions = append(workspace.Sessions, WorkspaceSession{Key: fields[0], Name: fields[1], NativeGroup: fields[2], ActiveWindowIndex: active, Links: []WorkspaceLink{}})
 		case 'W':
 			session, exists := sessions[fields[0]]
 			if !exists {
-				return Workspace{}, WorkspaceProtocolInvalid
+				return Workspace{}, &ProtocolError{Record: "workspace_window", Field: 1, Reason: "inconsistent"}
 			}
 			index, indexErr := strconv.Atoi(fields[1])
 			width, widthErr := strconv.Atoi(fields[4])
 			height, heightErr := strconv.Atoi(fields[5])
-			if indexErr != nil || widthErr != nil || heightErr != nil || fields[8] != "0" && fields[8] != "1" {
-				return Workspace{}, WorkspaceProtocolInvalid
+			if indexErr != nil {
+				return Workspace{}, &ProtocolError{Record: "workspace_window", Field: 2, Reason: "invalid_value"}
+			}
+			if widthErr != nil {
+				return Workspace{}, &ProtocolError{Record: "workspace_window", Field: 5, Reason: "invalid_value"}
+			}
+			if heightErr != nil {
+				return Workspace{}, &ProtocolError{Record: "workspace_window", Field: 6, Reason: "invalid_value"}
+			}
+			if fields[8] != "0" && fields[8] != "1" {
+				return Workspace{}, &ProtocolError{Record: "workspace_window", Field: 9, Reason: "invalid_value"}
 			}
 			window := WorkspaceWindow{Key: fields[2], Name: fields[3], Width: width, Height: height, Layout: fields[6], ActivePaneKey: fields[7], Zoomed: fields[8] == "1", Panes: []WorkspacePane{}}
 			if previous, found := windows[window.Key]; found {
 				prior := workspace.Windows[previous]
-				if window.Name != prior.Name || window.Width != prior.Width || window.Height != prior.Height || window.Layout != prior.Layout || window.ActivePaneKey != prior.ActivePaneKey || window.Zoomed != prior.Zoomed {
-					return Workspace{}, WorkspaceProtocolInvalid
+				for index, inconsistent := range []bool{window.Name != prior.Name, window.Width != prior.Width, window.Height != prior.Height, window.Layout != prior.Layout, window.ActivePaneKey != prior.ActivePaneKey, window.Zoomed != prior.Zoomed} {
+					if inconsistent {
+						return Workspace{}, &ProtocolError{Record: "workspace_window", Field: index + 4, Reason: "inconsistent"}
+					}
 				}
 			} else {
 				windows[window.Key] = len(workspace.Windows)
@@ -693,15 +716,21 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 			window, exists := windows[fields[0]]
 			index, err := strconv.Atoi(fields[2])
 			pid, pidErr := strconv.Atoi(fields[4])
-			if !exists || err != nil || index < 0 || pidErr != nil || pid < 0 {
-				return Workspace{}, WorkspaceProtocolInvalid
+			if !exists {
+				return Workspace{}, &ProtocolError{Record: "workspace_pane", Field: 1, Reason: "inconsistent"}
+			}
+			if err != nil || index < 0 {
+				return Workspace{}, &ProtocolError{Record: "workspace_pane", Field: 3, Reason: "invalid_value"}
+			}
+			if pidErr != nil || pid < 0 {
+				return Workspace{}, &ProtocolError{Record: "workspace_pane", Field: 5, Reason: "invalid_value"}
 			}
 			if paneIndices[fields[0]] == nil {
 				paneIndices[fields[0]] = make(map[int]string)
 			}
 			if previous, duplicate := paneIndices[fields[0]][index]; duplicate {
 				if previous != fields[1] {
-					return Workspace{}, WorkspaceProtocolInvalid
+					return Workspace{}, &ProtocolError{Record: "workspace_pane", Field: 3, Reason: "duplicate"}
 				}
 				// Linked windows repeat pane rows. Keep the first complete sample;
 				// the process may change cwd or title between native reads.
@@ -727,7 +756,7 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 		workspace.Sessions[session].Group = group.DecodeMetadata(metadata.Group).String()
 	}
 	if len(input) != 0 {
-		return Workspace{}, WorkspaceProtocolInvalid
+		return Workspace{}, &ProtocolError{Record: "workspace_graph", Reason: "unexpected_marker"}
 	}
 	if changed {
 		return Workspace{}, WorkspaceTopologyChanged
@@ -740,6 +769,9 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 		slices.SortFunc(workspace.Windows[i].Panes, func(a, b WorkspacePane) int { return indices[a.Key] - indices[b.Key] })
 	}
 	if err := ValidateWorkspace(workspace); err != nil {
+		if errors.Is(err, WorkspaceProtocolInvalid) {
+			return Workspace{}, &ProtocolError{Record: "workspace_graph", Reason: "inconsistent"}
+		}
 		return Workspace{}, err
 	}
 	return workspace, nil

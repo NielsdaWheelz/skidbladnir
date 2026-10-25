@@ -45,6 +45,15 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (resu
 		if change.Errno != 0 {
 			attrs = append(attrs, "skidbladnir.recovery.errno", uint64(change.Errno)) // slog writes an Errno as its text
 		}
+		if protocol := change.Protocol; protocol != nil {
+			attrs = append(attrs, "skidbladnir.recovery.protocol_record", protocol.Record, "skidbladnir.recovery.protocol_reason", protocol.Reason)
+			if protocol.Field > 0 {
+				attrs = append(attrs, "skidbladnir.recovery.protocol_field", protocol.Field)
+			}
+		}
+		if change.DispatchUnknown {
+			attrs = append(attrs, "skidbladnir.recovery.dispatch_unknown", true)
+		}
 		gateway.logger.Info("Workspace.RecoveryChanged", attrs...)
 	})
 	defer func() {

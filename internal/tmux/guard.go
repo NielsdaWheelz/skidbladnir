@@ -23,7 +23,7 @@ const appliedMarker = "SKIDBLADNIR_APPLIED_V1"
 //	             client could not connect);
 //	a raw start error: nothing ran;
 //	any later failure wraps ErrDispatchUnknown; unexpected output is
-//	errors.Join(ErrDispatchUnknown, WorkspaceProtocolInvalid).
+//	errors.Join(ErrDispatchUnknown, *ProtocolError).
 //
 // The guard is the only authority: it pins the server lifetime and session id
 // in the same queue as the effect, and an absent id refuses
@@ -49,7 +49,7 @@ func (client Client) guarded(ctx context.Context, id string, server ServerIdenti
 	case identityMismatchMarker:
 		return false, nil
 	default:
-		return false, errors.Join(ErrDispatchUnknown, WorkspaceProtocolInvalid)
+		return false, errors.Join(ErrDispatchUnknown, &ProtocolError{Record: "guard_completion", Reason: "unexpected_marker"})
 	}
 }
 

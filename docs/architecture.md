@@ -845,17 +845,22 @@ failure vocabulary. the contract:
    eligible saved pane. reconstruction is never merged, rolled back or replayed.
 4. one writer holds a flock on `workspace.lock`. recovery starts after the listener
    and reconciles every 30 s and after each confirmed create, shell, rename, group
-   and kill. provider reads run outside the manager gate within a 2 s sub-budget
-   of the existing checkpoint deadline. final source/graph/process/settings
+   and kill. source admission precedes required epoch/character preparation;
+   checkpoint captures then read without mutations and preserve actual tmux names.
+   automatic naming belongs to inventory. provider reads run outside the manager
+   gate within a 2 s sub-budget of the existing checkpoint deadline. final source/graph/process/settings
    validation and durable publication run under it. a checkpoint failure never
    changes a confirmed mutation's outcome.
 5. every inventory carries `recovery {state:"tracking"|"recovered"|"delayed"|"broken",
    savedAt?, failure?{at,phase,cause}, resume?{requestedPanes,inferredPanes,
    skippedAgentPanes}, notice?{summary,action?}}`. counts occur only in recovered
    and mean startup dispatch, never provider success. `savedAt` is the
-   capture time of the last confirmed recipe; delayed retries on the tick; broken
-   latches for the process lifetime; the host renders `notice`, clients add the
-   host and the local save time. failed recovery leaves live inventory
+   capture time of the last confirmed recipe. ordinary observation/preparation/save
+   failures delay until a fresh attempt on the tick; failure never proves loss.
+   broken latches startup ownership/admission failures, positive source conflicts,
+   failed restoration preflight/claim and any post-claim failure for the process
+   lifetime. the host renders `notice`, clients add the host and the local save
+   time. failed recovery leaves live inventory
    authoritative, and clients never use a recipe as inventory or revive old
    terminal authority from it.
 6. the first restored checkpoint seeds only dispatched targets as recipe intent;

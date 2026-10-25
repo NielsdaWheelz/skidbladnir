@@ -61,7 +61,7 @@ func (client Client) ReadCurrentInventory(ctx context.Context, admitted ServerId
 		if transcript[0] == '@' {
 			_, rest, found := bytes.Cut(transcript, []byte{'\n'})
 			if !found {
-				return InventoryCapture{}, WorkspaceProtocolInvalid
+				return InventoryCapture{}, &ProtocolError{Record: "session_metadata", Reason: "framing"}
 			}
 			shadowed = true
 			transcript = rest
@@ -72,7 +72,7 @@ func (client Client) ReadCurrentInventory(ctx context.Context, admitted ServerId
 			return InventoryCapture{}, err
 		}
 		if seen[row.ID] {
-			return InventoryCapture{}, WorkspaceProtocolInvalid
+			return InventoryCapture{}, &ProtocolError{Record: "inventory_row", Field: 1, Reason: "duplicate"}
 		}
 		seen[row.ID] = true
 		transcript = rest
@@ -109,7 +109,7 @@ func (client Client) ReadCurrentInventory(ctx context.Context, admitted ServerId
 		kept = append(kept, row)
 	}
 	if len(transcript) != 0 {
-		return InventoryCapture{}, WorkspaceProtocolInvalid
+		return InventoryCapture{}, &ProtocolError{Record: "session_metadata", Reason: "unexpected_marker"}
 	}
 	return InventoryCapture{Server: server, Rows: kept}, nil
 }
@@ -153,8 +153,17 @@ func (client Client) ReadSession(ctx context.Context, id string) (InventoryCaptu
 		return InventoryCapture{}, err
 	}
 	metadata, found, rest, err := parseMetadata(rest, id)
-	if err != nil || !found || len(rest) != 0 || row.ID != id {
-		return InventoryCapture{}, WorkspaceProtocolInvalid
+	if err != nil {
+		return InventoryCapture{}, err
+	}
+	if !found {
+		return InventoryCapture{}, &ProtocolError{Record: "session_metadata", Reason: "inconsistent"}
+	}
+	if len(rest) != 0 {
+		return InventoryCapture{}, &ProtocolError{Record: "session_metadata", Reason: "unexpected_marker"}
+	}
+	if row.ID != id {
+		return InventoryCapture{}, &ProtocolError{Record: "inventory_row", Field: 1, Reason: "inconsistent"}
 	}
 	row.LocalSession = metadata
 	return InventoryCapture{Server: server, Rows: []InventoryRow{row}}, nil
@@ -162,9 +171,9 @@ func (client Client) ReadSession(ctx context.Context, id string) (InventoryCaptu
 
 func parseRow(input []byte) (InventoryRow, []byte, error) {
 	if len(input) == 0 || input[0] != 'S' {
-		return InventoryRow{}, nil, WorkspaceProtocolInvalid
+		return InventoryRow{}, nil, &ProtocolError{Record: "inventory_row", Reason: "unexpected_marker"}
 	}
-	fields, rest, err := parseInventoryFields(input[1:], 17)
+	fields, rest, err := parseInventoryFields(input[1:], 17, "inventory_row")
 	if err != nil {
 		return InventoryRow{}, nil, err
 	}
@@ -173,10 +182,29 @@ func parseRow(input []byte) (InventoryRow, []byte, error) {
 	width, widthErr := strconv.Atoi(fields[13])
 	height, heightErr := strconv.Atoi(fields[14])
 	activity, activityErr := strconv.ParseInt(fields[16], 10, 64)
-	if !ValidID(fields[0], '$') || fields[1] == "" || !ValidID(fields[2], '%') ||
-		pidErr != nil || pid < 0 || attachedErr != nil || attached < 0 || widthErr != nil || width < 0 || heightErr != nil || height < 0 ||
-		fields[15] != "0" && fields[15] != "1" || activityErr != nil || activity < 0 {
-		return InventoryRow{}, nil, WorkspaceProtocolInvalid
+	invalidField := 0
+	switch {
+	case !ValidID(fields[0], '$'):
+		invalidField = 1
+	case fields[1] == "":
+		invalidField = 2
+	case !ValidID(fields[2], '%'):
+		invalidField = 3
+	case pidErr != nil || pid < 0:
+		invalidField = 4
+	case attachedErr != nil || attached < 0:
+		invalidField = 5
+	case widthErr != nil || width < 0:
+		invalidField = 14
+	case heightErr != nil || height < 0:
+		invalidField = 15
+	case fields[15] != "0" && fields[15] != "1":
+		invalidField = 16
+	case activityErr != nil || activity < 0:
+		invalidField = 17
+	}
+	if invalidField != 0 {
+		return InventoryRow{}, nil, &ProtocolError{Record: "inventory_row", Field: invalidField, Reason: "invalid_value"}
 	}
 	return InventoryRow{
 		ID: fields[0], Name: fields[1], PaneID: fields[2], PanePID: pid, AttachedClients: attached,
@@ -213,26 +241,33 @@ func sessionScript(id, rowCommand string) string {
 func parseMetadata(input []byte, id string) (SessionMetadata, bool, []byte, error) {
 	line, input, found := bytes.Cut(input, []byte{'\n'})
 	if !found {
-		return SessionMetadata{}, false, nil, WorkspaceProtocolInvalid
+		return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Reason: "framing"}
 	}
 	if string(line) == "D"+id {
 		return SessionMetadata{}, false, input, nil
 	}
 	if string(line) != "M"+id {
-		return SessionMetadata{}, false, nil, WorkspaceProtocolInvalid
+		return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Reason: "unexpected_marker"}
 	}
 	options := make(map[string]string)
 	for {
 		line, input, found = bytes.Cut(input, []byte{'\n'})
 		if !found {
-			return SessionMetadata{}, false, nil, WorkspaceProtocolInvalid
+			return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Reason: "framing"}
 		}
 		if string(line) == "N" {
 			break
 		}
 		option, value, separated := strings.Cut(string(line), " ")
-		if _, duplicate := options[option]; !separated || duplicate || !slices.Contains(metadataOptions[:], option) {
-			return SessionMetadata{}, false, nil, WorkspaceProtocolInvalid
+		field := slices.Index(metadataOptions[:], option) + 1
+		if !separated {
+			return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Field: field, Reason: "framing"}
+		}
+		if field == 0 {
+			return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Reason: "invalid_value"}
+		}
+		if _, duplicate := options[option]; duplicate {
+			return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Field: field, Reason: "duplicate"}
 		}
 		options[option] = token(value)
 	}
@@ -302,12 +337,15 @@ func (client Client) batch(ctx context.Context, body string) (ServerIdentity, []
 	// Identity records contain only canonical single-line tokens. The final
 	// record can be found from the end without splitting any builtin field.
 	if len(rest) == 0 || rest[len(rest)-1] != '\n' {
-		return ServerIdentity{}, nil, WorkspaceProtocolInvalid
+		return ServerIdentity{}, nil, &ProtocolError{Record: "batch_end", Reason: "framing"}
 	}
 	endStart := bytes.LastIndexByte(rest[:len(rest)-1], '\n') + 1
 	end, tail, err := parseIdentityRecord(rest[endStart:], 'E')
-	if err != nil || len(tail) != 0 {
-		return ServerIdentity{}, nil, WorkspaceProtocolInvalid
+	if err != nil {
+		return ServerIdentity{}, nil, err
+	}
+	if len(tail) != 0 {
+		return ServerIdentity{}, nil, &ProtocolError{Record: "batch_end", Reason: "framing"}
 	}
 	if end != server {
 		return ServerIdentity{}, nil, WorkspaceSourceChanged
@@ -316,24 +354,28 @@ func (client Client) batch(ctx context.Context, body string) (ServerIdentity, []
 }
 
 func parseIdentityRecord(input []byte, kind byte) (ServerIdentity, []byte, error) {
-	if len(input) == 0 || input[0] != kind {
-		return ServerIdentity{}, nil, WorkspaceProtocolInvalid
+	record := "batch_begin"
+	if kind == 'E' {
+		record = "batch_end"
 	}
-	fields, rest, err := parseInventoryFields(input[1:], 3)
+	if len(input) == 0 || input[0] != kind {
+		return ServerIdentity{}, nil, &ProtocolError{Record: record, Reason: "unexpected_marker"}
+	}
+	fields, rest, err := parseInventoryFields(input[1:], 3, record)
 	if err != nil {
 		return ServerIdentity{}, nil, err
 	}
 	server, err := ParseServerIdentity(fields[0], fields[1], fields[2])
 	if err != nil {
-		return ServerIdentity{}, nil, err
+		return ServerIdentity{}, nil, &ProtocolError{Record: record, Reason: "invalid_value"}
 	}
 	return server, rest, nil
 }
 
-// lost reclassifies a failed read of the admitted server expected. A server may
+// lost adds source evidence to a failed read of the admitted server expected. A server may
 // disappear after connecting: native shutdown can produce either a child error
 // or a successful but unfinished transcript. Only a positive observation of
-// loss replaces that provisional classification.
+// loss establishes a source change; the provisional failure remains available.
 func (client Client) lost(ctx context.Context, expected ServerIdentity, err error) error {
 	if errors.Is(err, WorkspaceLimit) || errors.Is(err, WorkspaceSourceChanged) {
 		return err
@@ -349,9 +391,6 @@ func (client Client) lost(ctx context.Context, expected ServerIdentity, err erro
 		return errors.Join(ctx.Err(), err, inspectErr)
 	}
 	if !present || observed.Identity != expected {
-		if errors.Is(err, WorkspaceProtocolInvalid) {
-			return WorkspaceSourceChanged
-		}
 		return errors.Join(WorkspaceSourceChanged, err)
 	}
 	return err
@@ -367,7 +406,7 @@ func inventoryFields(names ...string) string {
 
 // Decode quoted bytes before recognizing record boundaries. Newlines inside a
 // field are data; only an unescaped pipe closes that field.
-func parseInventoryFields(input []byte, count int) ([]string, []byte, error) {
+func parseInventoryFields(input []byte, count int, record string) ([]string, []byte, error) {
 	fields := make([]string, 0, count)
 	for range count {
 		var field strings.Builder
@@ -377,7 +416,7 @@ func parseInventoryFields(input []byte, count int) ([]string, []byte, error) {
 			input = input[1:]
 			if value == '\\' {
 				if len(input) == 0 {
-					return nil, nil, WorkspaceProtocolInvalid
+					return nil, nil, &ProtocolError{Record: record, Field: len(fields) + 1, Reason: "framing"}
 				}
 				field.WriteByte(input[0])
 				input = input[1:]
@@ -390,12 +429,12 @@ func parseInventoryFields(input []byte, count int) ([]string, []byte, error) {
 			field.WriteByte(value)
 		}
 		if !closed {
-			return nil, nil, WorkspaceProtocolInvalid
+			return nil, nil, &ProtocolError{Record: record, Field: len(fields) + 1, Reason: "framing"}
 		}
 		fields = append(fields, field.String())
 	}
 	if len(input) == 0 || input[0] != '\n' {
-		return nil, nil, WorkspaceProtocolInvalid
+		return nil, nil, &ProtocolError{Record: record, Reason: "framing"}
 	}
 	return fields, input[1:], nil
 }
