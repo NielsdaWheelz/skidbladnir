@@ -167,7 +167,12 @@ checkpoint = {
   bracket. an agent that becomes a shell keeps `observation_changed` for that
   pass; the next stable-shell capture removes it. the first restored checkpoint
   carries the dispatched intent described below.
-- capture takes the session ids from the normalized inventory, then reads every
+- before capture, source admission precedes guarded epoch/character preparation,
+  including on mutation-triggered saves. an uncertain metadata write ends that
+  pass; the next attempt reads current state before deriving a new conditional
+  correction. checkpointing never renames sessions: inventory owns automatic
+  naming, and the recipe preserves actual tmux names.
+- both graph captures take the prepared session ids and read every
   required fact in one synchronous `source-file -` stdin queue bracketed by the
   source's identity records, reusing inventory's `#{q:…}|` fields and decoder, each
   field evaluated once (cwd can change between reads, so a separate length read
@@ -177,6 +182,8 @@ checkpoint = {
   window, index and pane identity is required and the first cwd/pid/title sample kept.
   captured sessions that differ from those ids are a topology change. the full graph
   and an unchanged source lifetime are validated before publication.
+- graph capture performs no metadata writes. after restoration, obtain the final
+  session ids by native inventory and use the same read-only capture path.
 - capture never uses enriched inventory: its remote projection hides the local cwd.
   pid and raw title are capture-only (`json:"-"`); graph admission never requires
   them. native process/environment evidence is transient and never serialized.
@@ -272,8 +279,9 @@ that mutation's confirmed result. no second lock or asynchronous worker is neede
 
 checkpoint phases:
 
-1. under the manager gate, admit the source, capture graph/raw pane facts and pin
-   immutable settings and the current immutable recipe pointer as a commit anchor.
+1. under the manager gate, pin immutable settings and the current immutable recipe
+   pointer as a commit anchor. admit the source before required metadata preparation,
+   then capture graph/raw pane facts without mutations.
    observe foreground identity/environment through existing `process` primitives;
    use the observed profile, never the launch label.
 2. release that gate for provider metadata reads. share a 2 s discovery sub-budget
@@ -293,7 +301,8 @@ checkpoint phases:
    an old retained id. publish the final recaptured graph, including fresh
    cwd/name/group facts. retain source admission: never replace a nonempty recipe
    with another source; replace an empty source only after proving its death.
-   commit only after durable `privatefile.WriteFile` completion.
+   commit only after durable `privatefile.WriteFile` completion. recapture never
+   performs preparation or automatic naming.
 
 published recipes, including nested maps/slices, are immutable. graph comparison
 excludes captured-only pid/title fields; per-pane freshness is checked separately.
@@ -331,14 +340,16 @@ durable recovery state; every state below lives in memory.
 | no recipe and a live server | attempt a complete baseline; a failed save is `delayed` without `savedAt` |
 | the saved source survives | capture its complete current graph, a genuinely empty one included |
 | ordinary checkpoint deadline with gate held | `delayed`; a deadline is not evidence of changed identity; gate-reentry timeout abandons without a status write |
-| capture race, native capture unavailability, a supported-limit rejection or an unsupported live value | `delayed`; publish nothing; keep the recipe |
+| capture race, malformed/unavailable native observation, a supported-limit rejection or an unsupported live value | `delayed`; publish nothing; keep the recipe |
+| inconclusive boot/process/socket observation, or source disappearance/change during capture | `delayed`; next tick repeats source-loss proof and target checks |
+| uncertain ordinary preparation write | `delayed`; end the pass; fresh observation precedes any later correction, never replay the failed invocation |
 | ordinary publication failure, before or after rename | `delayed`; keep the recipe; repeat full source checks before another attempt |
-| malformed native protocol, contradiction of a pinned live source, missing socket with a known-live source, non-timeout boot, process or source observation failure | `broken` |
+| saved source positively alive but another server observed; ordinary save would replace a nonempty recipe from another source | `broken`; no preparation, overwrite or reconstruction |
 | source proven dead; recipe empty | reconstruct nothing; baseline a new live server when present |
 | source proven dead; recipe nonempty | regardless of age, run the target and preflight checks and durably claim the exact recipe; never select an unconfirmed candidate from the pathname |
 | populated replacement, failed preflight or failed claim | `broken`; no automatic repair or retry |
 | durable claim succeeds | in-memory `attempted=true` before native effects; guarded construction and full verification follow |
-| any later restoration failure, final capture or publication included | `broken`; construction is never replayed |
+| any later restoration failure, final capture or publication included | `broken`; construction is never replayed by this owner; failed final publication retains the confirmed claim in memory, while restart admits the actual file under the source fences |
 | complete ordinary publication | `tracking`, new `savedAt`, no failure |
 | verified restoration and final publication | `recovered`, new `savedAt`; the next ordinary success becomes `tracking` |
 | gateway cancellation | stop and join before releasing the lock; no failure fact or event |
@@ -473,9 +484,11 @@ permission `access denied`; no_space `storage space exhausted`; io `input/output
 error`; already_attempted `prior restore may be incomplete`; not_empty
 `replacement server has sessions`.
 
-delayed is published only for source/timeout, every listed capture pair and every
-listed checkpoint_write pair; broken may carry any listed pair. boot, process and
-identity checks belong to `source` even inside capture; restoration preflight,
+disposition belongs to the lifecycle callsite, independently of failure cause.
+ordinary source, preparation, capture and publication failures are delayed;
+positive source conflicts and startup ownership/admission failures are broken.
+restoration preflight/claim and every post-claim failure are broken. boot, process
+and identity checks belong to `source` even inside capture; restoration preflight,
 execution and verification use `restore`; final recapture keeps its source or
 capture label but always breaks; claim and final storage failures are
 checkpoint_write and broken.
@@ -486,10 +499,10 @@ classification happens where the evidence is, never from error text:
   deadline, read from the context because a killed subprocess loses the cause;
   owner cancellation is separate. positive identity or admission evidence and real
   filesystem errors win even when the deadline also expired.
-- changed: a positively detected workspace or server race (topology churn is
-  capture/changed/delayed; a lifetime contradiction source/changed/broken). limit:
+- changed: a positively detected workspace or server race (capture loss is
+  source/changed/delayed; a positively live conflicting source is broken). limit:
   the 8 MiB bound. invalid: rejected external data or configuration (unsupported
-  live values capture/invalid/delayed; malformed output invalid/broken).
+  live values and malformed ordinary observations are delayed).
 - permission `EACCES`/`EPERM`; no_space `ENOSPC`/`EDQUOT`; busy: writer-lock
   contention; io: any other filesystem or kernel error, `io.ErrShortWrite`
   included.
@@ -498,13 +511,24 @@ classification happens where the evidence is, never from error text:
 - a failure no detector names is unavailable on tmux and kernel paths and io on
   storage paths; classification never panics.
 
-every state or signature change (state, phase, cause, operation, errno) logs one
+every state or signature change (state, phase, cause, operation, errno, protocol
+record/field/reason and dispatch uncertainty) logs one
 `Workspace.RecoveryChanged` with `skidbladnir.recovery.at`, `.state`, and when
 present `.saved_at`, `.failure_at`, `.phase`, `.cause`, `.operation` and `.errno`.
 operation is a source-written literal (`mkdir`, `chmod`, `open`, `lock`, `read`,
 `close`, `write`, `boot_identity`, `process_observe`, `server_inspect`,
-`server_identity`, `normalize`, `capture`, `validate`, `restore_preflight`,
-`restore_execute`); errno appears only when extracted from a real syscall error.
+`server_identity`, `inventory_read`, `character_assign`, `graph_capture`, `capture`,
+`validate`, `restore_preflight`, `restore_execute`); errno appears only when
+extracted from a real syscall error.
+native protocol diagnostics add optional `.protocol_record`, `.protocol_field`
+(1-based; omitted when no particular field), `.protocol_reason` and
+`.dispatch_unknown` (true only). record labels identify batch begin/end, inventory
+row, session metadata, workspace session/window/pane/graph, server preflight or
+guard completion. reasons are `framing`, `invalid_value`, `duplicate`,
+`inconsistent` or `unexpected_marker`. these are closed source literals; no raw
+values or response hashes. diagnostics preserve joined protocol/source/dispatch
+facts without entering the public recovery document. absent dispatch evidence
+never means not sent. successful publication clears diagnostics.
 repeated identical failures update `failure.at` without logging; unchanged
 tracking is silent. the callback runs under the gate, after the fact changes, and
 only writes the event; a failed log write is dropped and changes nothing. events
@@ -564,6 +588,9 @@ not completed shell startup or provider readiness.
 - the 30 s sampling gap and failed-save intervals remain: recovery can omit recent
   work or resurrect a recently closed session and its saved conversation request.
 - full-graph admission lets one unsupported value block saving the whole workspace.
+- persistent ordinary faults keep a visible delayed notice and bounded attempts
+  on the existing tick. no checkpoint naming means title-derived names may lag
+  until inventory runs.
 - re-claiming the confirmed recipe can replace a newer unacknowledged candidate.
 - a crash after the claim but before creation needs manual repair; broken recovery
   leaves new live work uncheckpointed.
