@@ -43,11 +43,18 @@ git fetch --quiet origin main --tags
 sha="$(git rev-parse HEAD)"
 [[ "$sha" == "$(git rev-parse origin/main)" ]] || refuse 'Release HEAD is not exact origin/main'
 # the fetch imported every origin tag (or failed), so this loop also refuses $tag
-# itself, local or on origin. a draft has no tag yet; only github knows it.
+# itself, local or on origin. a draft has no tag yet; only github knows it. the
+# highest existing code is the previous release, where the notes' changes start.
+previous_tag=''
+previous_code=0
 while IFS= read -r existing_tag; do
   existing_version="$("$repo_dir/scripts/check-release" --android-version "$existing_tag" 2>/dev/null)" || continue
   ((${existing_version#* } < version_code)) ||
     refuse "Release tag $tag does not increase the Android version code beyond $existing_tag"
+  if ((${existing_version#* } > previous_code)); then
+    previous_tag="$existing_tag"
+    previous_code="${existing_version#* }"
+  fi
 done < <(git tag --list 'v*')
 if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   refuse "Release already exists and will not be replaced: $tag"
@@ -81,12 +88,14 @@ for platform in linux-amd64 darwin-arm64; do
   chmod 0644 "$root/release.json"
   install -m 0644 "$source_dir/deployment/providers/shell-init" \
     "$source_dir/deployment/providers/terminal-context-init" "$root/providers"
-  members=(skidbladnir release.json providers)
+  members=(skidbladnir release.json providers third-party-notices.txt)
+  binaries=("$root/skidbladnir")
   if [[ "$platform" == darwin-arm64 ]]; then
     app="$root/Skid.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 ./cmd/skid-notifications \
       "$app/Contents/MacOS/skid-notifications"
+    binaries+=("$app/Contents/MacOS/skid-notifications")
     install -m 0644 "$source_dir/macos/Info.plist" "$app/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${tag#v}" -c "Set :CFBundleVersion ${tag#v}" \
       -c "Add :SkidSourceSHA string $sha" "$app/Contents/Info.plist"
@@ -99,6 +108,27 @@ for platform in linux-amd64 darwin-arm64; do
     chmod 0644 "$app/Contents/_CodeSignature/CodeResources"
     members+=(Skid.app)
   fi
+  # the binaries link the go standard library, whose license is the go distribution's
+  # (golang.org/toolchain for this darwin arm64 host), and the modules go version -m names.
+  # each one's license and notice files ship in the archive; one without a license stops the release.
+  modules="$(go version -m "${binaries[@]}" |
+    awk '!/^\t/ { print "golang.org/toolchain@v0.0.1-" $NF ".darwin-arm64" } $1 == "dep" { print $2 "@" $3 }' |
+    LC_ALL=C sort -u)"
+  {
+    printf "Third-party notices for skid's %s archive: the license and notice files of the Go distribution,\n" "$platform"
+    printf 'whose standard library its binaries link, and of every Go module they link.\n'
+    while IFS= read -r module; do
+      dir="$(cd "$staging" && go mod download -json "$module" | jq -er .Dir)"
+      files="$(find "$dir" -maxdepth 1 -type f \( -iname 'licen[cs]e*' -o -iname 'copying*' -o -iname 'notice*' \
+        -o -iname 'patents*' \) | LC_ALL=C sort)"
+      grep -Eiq '/(licen[cs]e|copying)[^/]*$' <<<"$files" || refuse "Go module $module has no license file"
+      while IFS= read -r file; do
+        printf '\n== %s/%s\n\n' "$module" "${file##*/}"
+        cat "$file"
+      done <<<"$files"
+    done <<<"$modules"
+  } >"$root/third-party-notices.txt"
+  chmod 0644 "$root/third-party-notices.txt"
   archive="$assets/skidbladnir-$platform.tar.gz"
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$root" -czf "$archive" "${members[@]}"
   openssl dgst -sha256 -binary "$archive" >"$staging/digest"
@@ -112,8 +142,11 @@ done
 install -m 0644 "$source_dir/android/app/build/outputs/apk/release/app-release.apk" "$assets/skidbladnir-android.apk"
 install -m 0644 "$source_dir/android/app-signing-cert.sha256" "$assets/android-signing-cert.sha256"
 install -m 0755 "$source_dir/scripts/install" "$assets/install"
-(cd "$assets" && shasum -a 256 android-signing-cert.sha256 skidbladnir-android.apk \
+(cd "$assets" && shasum -a 256 android-signing-cert.sha256 install skidbladnir-android.apk \
   skidbladnir-darwin-arm64.tar.gz skidbladnir-linux-amd64.tar.gz >SHA256SUMS)
+# the release key signs the checksums too, so every asset verifies against the pinned public key.
+openssl dgst -sha256 -binary "$assets/SHA256SUMS" >"$staging/digest"
+openssl pkeyutl -sign -rawin -inkey "$key" -in "$staging/digest" -out "$assets/SHA256SUMS.sig"
 
 # the one release-directory verifier; published-release runs it again on the public bytes.
 "$repo_dir/scripts/check-release" --source "$source_dir" "$assets" "$tag" "$sha"
@@ -121,14 +154,18 @@ install -m 0755 "$source_dir/scripts/install" "$assets/install"
 notes="$staging/notes.md"
 # shellcheck disable=SC2016 # markdown code spans are literal.
 {
-  printf '# skíðblaðnir %s\n\n' "$tag"
-  printf -- '- source: `%s`\n- verify run: `%s`\n' "$sha" "$run_id"
-  printf -- '- android signer sha256: `%s`\n' "$(<"$assets/android-signing-cert.sha256")"
-  printf -- '- mac app signer sha256: `%s`\n\n' "$(<"$source_dir/macos/app-signing-cert.sha256")"
-  printf '## install\n\ndownload `install` from this release, inspect it, then run `bash install %s`.\n' "$tag"
-  printf 'the [readme](https://github.com/%s/blob/%s/README.md#install) covers hosts, the phone and updates.\n\n' "$repo" "$sha"
-  printf '## assets\n\n| asset | sha256 |\n| --- | --- |\n'
-  for name in skidbladnir-android.apk skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz android-signing-cert.sha256; do
+  printf '# Skíðblaðnir %s\n\n' "$tag"
+  printf -- '- Source: `%s`\n- Verify run: `%s`\n' "$sha" "$run_id"
+  printf -- '- Android signer SHA-256: `%s`\n' "$(<"$assets/android-signing-cert.sha256")"
+  printf -- '- macOS app signer SHA-256: `%s`\n\n' "$(<"$source_dir/macos/app-signing-cert.sha256")"
+  # github merges carry the pull request's title as their body; first-parent keeps main's own merges.
+  printf '## Changes\n\n'
+  git log --first-parent --merges --format='%s%x09%b' "${previous_tag:+$previous_tag..}$sha" |
+    awk -F '\t' '$1 ~ /^Merge pull request #[0-9]+ from / { split($1, words, " "); printf "- %s (%s)\n", $2, words[4] }'
+  printf '\n## Install\n\nDownload `install` from this release, inspect it, then run `bash install %s`.\n' "$tag"
+  printf 'The [README](https://github.com/%s/blob/%s/README.md#install) covers hosts, the phone and updates.\n\n' "$repo" "$sha"
+  printf '## Assets\n\n| Asset | SHA-256 |\n| --- | --- |\n'
+  for name in skidbladnir-android.apk skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz android-signing-cert.sha256 install; do
     printf '| `%s` | `%s` |\n' "$name" "$(awk -v name="$name" '$2 == name { print $1 }' "$assets/SHA256SUMS")"
   done
   printf '| `SHA256SUMS` | `%s` |\n' "$(shasum -a 256 <"$assets/SHA256SUMS" | awk '{ print $1 }')"
@@ -142,6 +179,7 @@ gh release create "$tag" \
   "$assets/skidbladnir-darwin-arm64.tar.gz.sig" \
   "$assets/install" \
   "$assets/SHA256SUMS" \
+  "$assets/SHA256SUMS.sig" \
   "$assets/android-signing-cert.sha256" \
   --repo "$repo" \
   --draft \
