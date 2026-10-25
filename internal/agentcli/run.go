@@ -91,8 +91,8 @@ output and exit
   terminal delivery proves neither completion nor cancellation
   unknown delivery is never replayed; a nonzero exit alone permits no retry
   fleet commands print text; with --json, status, apply, join, remove and
-  recover print the fleet status as one json line. they exit 0, 1 on failure
-  and 64 on invalid usage.
+  recover print the fleet status as one json line, and their errors stay text
+  on stderr. they exit 0, 1 on failure and 64 on invalid usage.
 
 peers
   cross-machine replies use ordinary message text, for example:
