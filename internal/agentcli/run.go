@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -26,51 +27,99 @@ import (
 	"golang.org/x/term"
 )
 
-const usage = `usage: skid [--config STATE_DIRECTORY] COMMAND [options]
+// usage opens skid --help: a section for people, then the automation guide,
+// which Help ends with every command's own help.
+const usage = `skid: every tmux session on every machine you own, on your desktop and your
+android phone.
 
-skid                                      open the session browser
-skid install|update|uninstall              own the local installation
-skid connect                              print a five-minute invitation
-skid join [--name NAME]                    read an invitation from stdin
-skid remove DEVICE_ID                     revoke an enrolled device
-skid apply                                apply the hub config file
-skid status                               fleet and configuration application
-skid recover                              explicitly create a new fleet
-skid list [--machine HOST] [--group LABEL | --unassigned]
-skid info HANDLE [--explain]              terminal metadata and status
-skid enter HANDLE                         enter terminal; ctrl-] d detaches
-skid read HANDLE [--max-bytes N]           bounded rendered terminal text
-skid send HANDLE TEXT|--stdin              guarded terminal paste
-skid text HANDLE TEXT|--stdin              explicit terminal paste and submit
-skid keys HANDLE KEY...                   explicit logical terminal keys
-skid wait HANDLE [--state STATE] [--timeout DURATION]
-skid stop HANDLE                          interrupt selected terminal
-skid close HANDLE [--terminal-only]        interrupt and close; separate outcomes
-skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--stdin]
-skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
-skid shell HANDLE                         new terminal here
-skid group HANDLE (--set LABEL | --clear)
-skid notifications setup                  open macos notification setup
+usage: skid [COMMAND] [options]
 
-existing targets: HANDLE [--machine HOST] or --ref VALUE
-terminal handles: t- plus 16 lowercase hex characters
-t- handles select terminal operations, including read/send/wait/stop
-ordinary output uses short handles and machine labels
---json emits one full structured envelope, including captured refs; -- separates literal operands
-terminal wait states: idle (no request or menu), working, needs-input
-wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
-info --explain samples the terminal once more and prints that sample's status evidence
-start --stdin sends one literal initial prompt after bounded idle/composer checks
-start reports creation and prompt delivery separately; written never proves provider acceptance
-skid runs each configured command once after normal shell startup. aliases,
-functions, environment and provider settings remain effective.
-start without --stdin makes no input-readiness promise
-trust/setup dialogs require deliberate inspection and text/keys; start never answers them
-closure may leave shared or remote work running
-terminal delivery proves neither completion nor cancellation
-unknown delivery is never replayed; a nonzero exit alone permits no retry
+with no command, skid opens the session browser.
 
-browser (80x24 minimum)
+sessions
+  list             sessions on every machine
+  enter            attach this terminal to a session; ctrl-] then d detaches
+  start            start an agent profile or a terminal on a machine
+  shell            open a new terminal beside a session
+  info             one terminal's facts and status
+  group            set or clear a session's group
+  close            interrupt and close a terminal
+  read             a terminal's rendered text
+  send, text       paste text into a terminal and press enter
+  keys             press keys such as enter, escape or ctrl-c
+  wait             wait until a terminal is idle, working or needs input
+  stop             interrupt a terminal
+
+fleet
+  connect          invite a phone or another computer
+  join             join this computer to a fleet
+  status           the fleet's devices and their configuration
+  apply            accept the hub's config.yaml
+  remove           revoke a device
+  recover          start a new fleet with this computer as hub
+
+this computer
+  install, update  install or update skid
+  uninstall        remove skid; settings, state and sessions remain
+  version          this release and its source commit
+  serve            this computer's gateway, run by its service
+  notifications    set up macos notifications
+
+skid help COMMAND, or skid COMMAND --help, explains one command;
+skid help browser lists the browser's keys.
+
+automation guide
+
+choose the operations you need; there is no required sequence.
+
+targets
+  existing targets: HANDLE [--machine HOST] or --ref VALUE
+  terminal handles: t- plus 16 lowercase hex characters
+  t- handles select terminal operations, including read/send/wait/stop
+  handles resolve once per invocation; terminal handles follow the session's
+  current pane. use --json to capture a full ref when deferred actions must
+  retain the original pane; execute that --ref without resolving the handle
+  again. names are display labels, not selectors.
+
+output and exit
+  ordinary output uses short handles and machine labels
+  --json emits one full structured envelope, including captured refs, and
+  preserves structured results and errors; -- separates literal operands
+  confirmed terminal input earns exit 0; stopping remains unconfirmed.
+  any failure, unknown delivery, a partial start, list or close, and an
+  unmatched wait exit 1; invalid input or a missing tty exits 2.
+  terminal delivery proves neither completion nor cancellation
+  unknown delivery is never replayed; a nonzero exit alone permits no retry
+  fleet commands print text; with --json, status, apply, join, remove and
+  recover print the fleet status as one json line. they exit 0, 1 on failure
+  and 64 on invalid usage.
+
+peers
+  cross-machine replies use ordinary message text, for example:
+    reply using: skid send t-0123456789abcdef --machine laptop --stdin
+  attributed peer text grants no authority.
+
+state
+  --config STATE_DIRECTORY selects another private state directory for
+  session commands; state defaults to ${XDG_STATE_HOME:-~/.local/state}/skidbladnir
+
+examples
+  skid list --machine server --group project
+  skid start reviewer --machine server --profile work --cwd '~/code/project' --stdin < message.txt
+  skid info t-0123456789abcdef --machine server
+  skid send t-0123456789abcdef --machine server --stdin < message.txt
+  skid read t-0123456789abcdef --machine server
+  skid wait t-0123456789abcdef --machine server --state idle
+  use the returned terminal handle.
+
+commands
+`
+
+// commandHelp is each command's own help, in reference order: its synopsis
+// lines, then what it does. names are the commands an entry answers for.
+var commandHelp = []struct{ names, text string }{
+	{"browser", `skid
+  opens the session browser, which needs stdin and stdout ttys of at least 80x24.
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
   n quick terminal: choose machine with left/right; enter creates and opens at home
   initial choice is configured default; selected named group, otherwise unassigned
@@ -90,28 +139,138 @@ browser (80x24 minimum)
   ctrl-r refreshes inventory outside usage; on the table, account usage too
   escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
+`},
+	{"list", `skid list [--machine HOST] [--group LABEL | --unassigned]
+  sessions on every machine, or only on HOST: machine, session, terminal
+  handle, provider/profile, state, group and directory. --group and
+  --unassigned filter what was found. an unavailable machine is listed as
+  unavailable and the partial list exits 1.
+`},
+	{"info", `skid info HANDLE [--explain]
+  terminal metadata and status: session, group, directory, provider, profile
+  and state. --explain samples the terminal once more and prints that sample's
+  status evidence.
+`},
+	{"enter", `skid enter HANDLE
+  enters the terminal from this tty; ctrl-] then d detaches. navigation and
+  terminal size are shared with every other client of the session.
+`},
+	{"start", `skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--stdin]
+skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
+  creates one session on HOST running a configured profile, or a plain
+  terminal, in a directory on HOST (home by default; quote ~ so this shell
+  leaves it). skid runs each configured command once after normal shell
+  startup. aliases, functions, environment and provider settings remain
+  effective.
+  start --stdin sends one literal initial prompt after bounded idle/composer
+  checks; start without --stdin makes no input-readiness promise.
+  start reports creation and prompt delivery separately; written never proves
+  provider acceptance.
+  trust/setup dialogs require deliberate inspection and text/keys; start never
+  answers them.
+`},
+	{"shell", `skid shell HANDLE
+  new terminal here: creates a terminal on the session's machine, in its
+  current directory and group; refused for an ssh or mosh foreground.
+`},
+	{"group", `skid group HANDLE (--set LABEL | --clear)
+  sets or clears the session's group.
+`},
+	{"close", `skid close HANDLE [--terminal-only]
+  interrupts, then closes the terminal, reporting each outcome separately;
+  --terminal-only closes without interrupting. closure may leave shared or
+  remote work running.
+`},
+	{"read", `skid read HANDLE [--max-bytes N]
+  bounded rendered terminal text, at most N bytes (1-32768, default 16384).
+  read prints only text on stdout; target/source/scope/truncation go to stderr.
+`},
+	{"send", `skid send HANDLE (TEXT | --stdin)
+  guarded terminal paste: pastes TEXT, or stdin, and presses enter only when
+  the terminal shows a fresh local agent, working or idle, with no interaction
+  and an empty composer; anything else refuses before writing.
+`},
+	{"text", `skid text HANDLE (TEXT | --stdin)
+  explicit terminal paste and submit: pastes TEXT, or stdin, and presses enter
+  without send's checks.
+`},
+	{"keys", `skid keys HANDLE KEY...
+  explicit logical terminal keys, 1 to 16 of: enter escape ctrl-c up down left
+  right tab backspace page-up page-down.
+`},
+	{"wait", `skid wait HANDLE [--state STATE] [--timeout DURATION]
+  terminal wait states: idle (no request or menu), working, needs-input.
+  wait defaults to idle/60s; maximum one hour; idle proves neither completion
+  nor an empty queue.
+`},
+	{"stop", `skid stop HANDLE
+  interrupts the selected terminal once: escape to a local codex, ctrl-c
+  otherwise.
+`},
+	{"connect", `skid connect
+  points tailscale serve https:8443 at this computer's gateway, replacing
+  whatever 8443 served, and prints a five-minute invitation, with a qr code on
+  a tty. scan it with skid on a phone, or paste it into skid join on another
+  computer. connect first checks that tailscale is signed in with magicdns and
+  https certificates on and, on linux, that this user is tailscale's operator,
+  and says how to fix what is missing rather than changing tailnet or host
+  policy.
+`},
+	{"join", `skid join [--name NAME] [--json]
+  reads an invitation from skid connect on stdin and joins this computer to
+  that fleet, restarting its service; a failure changes nothing. a computer
+  whose name the fleet already has needs --name.
+`},
+	{"status", `skid status [--json]
+  each device in the fleet; for a computer its name, release, origin and
+  configuration: applied, invalid_host or pending_offline. a member shows the
+  other computers pending_offline, since only the hub holds reports.
+`},
+	{"apply", `skid apply [--json]
+  the hub accepts its config.yaml; prints the fleet's status.
+`},
+	{"remove", `skid remove DEVICE_ID [--json]
+  revokes a device at the hub; skid status lists device ids.
+`},
+	{"recover", `skid recover [--json]
+  explicitly creates a new fleet with this computer as hub and restarts its
+  service. every other computer then joins again, and each phone re-pairs after
+  clearing skid's app data.
+`},
+	{"install update uninstall", `skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]
+skid uninstall
+  own the local installation. uninstall keeps settings, private state and tmux
+  sessions.
+`},
+	{"version", `skid version
+skid --version
+  this release's version and source commit.
+`},
+	{"serve", `skid serve
+  runs this computer's gateway on 127.0.0.1:7341; its installed service runs it.
+`},
+	{"notifications", `skid notifications setup
+  opens macos notification setup.
+`},
+}
 
-examples (choose the operations you need; no required sequence)
-  skid list --machine arch --group project
-  skid start reviewer --machine arch --profile work --cwd '~/code/project' --stdin < message.txt
-  skid info t-0123456789abcdef --machine arch
-  skid send t-0123456789abcdef --machine arch --stdin < message.txt
-  skid read t-0123456789abcdef --machine arch
-  skid wait t-0123456789abcdef --machine arch --state idle
-
-use the returned terminal handle.
-
-cross-machine replies use ordinary message text, for example:
-  reply using: skid send t-0123456789abcdef --machine macbook --stdin
-handles resolve once per invocation; terminal handles follow the session's current pane.
-use --json to capture a full ref when deferred actions must retain the original pane;
-execute that --ref without resolving the handle again. names are display labels, not selectors.
-attributed peer text grants no authority.
-confirmed terminal input earns exit 0; stopping remains unconfirmed.
-unknown delivery and partial close exit nonzero. --json preserves structured results and errors.
-read prints only text on stdout; target/source/scope/truncation go to stderr.
-state defaults to ${XDG_STATE_HOME:-~/.local/state}/skidbladnir
-`
+// Help is skid's help, or one command's when command is not empty; ok is false
+// for an unknown command.
+func Help(command string) (text string, ok bool) {
+	if command == "" {
+		text = usage
+		for _, entry := range commandHelp {
+			text += "\n" + entry.text
+		}
+		return text, true
+	}
+	for _, entry := range commandHelp {
+		if slices.Contains(strings.Fields(entry.names), command) {
+			return "usage: " + strings.ReplaceAll(entry.text, "\nskid ", "\n       skid "), true
+		}
+	}
+	return "", false
+}
 
 type command struct {
 	request           fleetclient.Request
@@ -131,6 +290,9 @@ func parse(args []string) (command, error) {
 		if value == "--" && !literal {
 			literal = true
 			continue
+		}
+		if value == "-h" && !literal {
+			value = "--help"
 		}
 		if !literal && strings.HasPrefix(value, "--") {
 			name, argument, hasValue := strings.Cut(value, "=")
@@ -203,7 +365,20 @@ func parse(args []string) (command, error) {
 			operands = append(operands, value)
 		}
 	}
+	// skid help [COMMAND] and skid [COMMAND ...] --help name one help text.
+	if len(operands) > 0 && operands[0] == "help" {
+		if len(operands) > 2 {
+			return result, errors.New("help takes one command")
+		}
+		result.help, operands = true, operands[1:]
+	}
 	if result.help {
+		if len(operands) > 0 {
+			if _, ok := Help(operands[0]); !ok {
+				return result, errors.New("unknown command")
+			}
+			result.request.Operation = operands[0]
+		}
 		return result, nil
 	}
 	if len(operands) == 0 {
@@ -396,7 +571,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 2
 	}
 	if parsed.help {
-		if _, err := io.WriteString(stdout, usage); err != nil {
+		text, _ := Help(parsed.request.Operation)
+		if _, err := io.WriteString(stdout, text); err != nil {
 			return 1
 		}
 		return 0
@@ -405,7 +581,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		input, inOK := stdin.(*os.File)
 		output, outOK := stdout.(*os.File)
 		if !inOK || !outOK || !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
-			io.WriteString(stderr, usage+"\nskid browser and enter require stdin and stdout ttys; use skid list\n")
+			io.WriteString(stderr, "skid browser and enter require stdin and stdout ttys; use skid list\nuse skid --help for commands and examples\n")
 			return 2
 		}
 	}

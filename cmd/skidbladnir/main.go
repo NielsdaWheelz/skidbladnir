@@ -7,6 +7,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/install"
 	"io"
 	"os"
+	"slices"
 )
 
 const (
@@ -23,6 +24,10 @@ func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
+	}
+	// internal/install parses the installation commands' flags and owns their help.
+	if len(arguments) == 2 && arguments[0] == "help" && slices.Contains([]string{"install", "update", "uninstall"}, arguments[1]) {
+		arguments = []string{arguments[1], "-h"}
 	}
 	switch arguments[0] {
 	case "terminal-context":
@@ -43,8 +48,12 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		return 0
-	case "version":
+	case "version", "--version":
+		if len(arguments) == 2 && (arguments[1] == "-h" || arguments[1] == "--help") {
+			return commandHelp(stdout, "version")
+		}
 		if len(arguments) != 1 {
+			commandHelp(stderr, "version")
 			return exitUsage
 		}
 		if _, err := fmt.Fprintf(stdout, "%s %s\n", releaseVersion, releaseSHA); err != nil {
@@ -52,7 +61,11 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "serve":
+		if len(arguments) == 2 && (arguments[1] == "-h" || arguments[1] == "--help") {
+			return commandHelp(stdout, "serve")
+		}
 		if len(arguments) != 1 {
+			commandHelp(stderr, "serve")
 			return exitUsage
 		}
 		if err := serveStandalone(stdout); err != nil {
@@ -71,4 +84,13 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	default:
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
+}
+
+// commandHelp writes the help of a command parsed here; agentcli owns the text.
+func commandHelp(w io.Writer, command string) int {
+	text, _ := agentcli.Help(command)
+	if _, err := io.WriteString(w, text); err != nil {
+		return exitFailure
+	}
+	return 0
 }
