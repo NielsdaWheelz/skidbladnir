@@ -42,10 +42,16 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 		device = flags.Arg(0)
 		err = flags.Parse(flags.Args()[1:]) // options may follow DEVICE_ID
 	}
-	if errors.Is(err, flag.ErrHelp) {
+	switch {
+	case errors.Is(err, flag.ErrHelp):
 		return commandHelp(stdout, command)
+	case err == nil && flags.NArg() != 0:
+		err = errors.New("unexpected argument")
+	case err == nil && command == "remove" && !fleet.ValidDeviceID(device):
+		err = errors.New("invalid device id")
 	}
-	if err != nil || flags.NArg() != 0 || command == "remove" && !fleet.ValidDeviceID(device) {
+	if err != nil {
+		fmt.Fprintf(stderr, "skid %s: %v\n", command, err)
 		commandHelp(stderr, command)
 		return exitUsage
 	}
@@ -228,20 +234,12 @@ func routeGateway(ctx context.Context) (string, error) {
 		fixes = append(fixes, "turn on https certificates at https://login.tailscale.com/admin/dns")
 	}
 	// linux tailscaled lets only root and its operator change what it serves.
+	// when its preferences cannot be read, tailscale serve's own error names the fix.
 	if runtime.GOOS == "linux" && os.Getuid() != 0 {
-		account, err := user.Current()
-		if err != nil {
-			return "", err
-		}
-		data, err := exec.CommandContext(ctx, tailscale, "debug", "prefs").Output()
-		if err != nil {
-			return "", tailscaleError("tailscale preferences unavailable", nil, err)
-		}
+		account, accountErr := user.Current()
+		data, prefsErr := exec.CommandContext(ctx, tailscale, "debug", "prefs").Output()
 		var prefs struct{ OperatorUser string }
-		if err = json.Unmarshal(data, &prefs); err != nil {
-			return "", fmt.Errorf("tailscale preferences unreadable: %w", err)
-		}
-		if prefs.OperatorUser != account.Username {
+		if accountErr == nil && prefsErr == nil && json.Unmarshal(data, &prefs) == nil && prefs.OperatorUser != account.Username {
 			fixes = append(fixes, "make this user tailscale's operator: sudo tailscale set --operator="+account.Username)
 		}
 	}

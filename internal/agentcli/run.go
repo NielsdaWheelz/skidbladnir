@@ -239,8 +239,8 @@ skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 `},
 	{"install update uninstall", `skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]
 skid uninstall
-  own the local installation. uninstall keeps settings, private state and tmux
-  sessions.
+  own this computer's installation; skid help install, update or uninstall
+  explains each.
 `},
 	{"version", `skid version
 skid --version
@@ -371,6 +371,9 @@ func parse(args []string) (command, error) {
 			return result, errors.New("help takes one command")
 		}
 		result.help, operands = true, operands[1:]
+		if len(operands) > 0 && operands[0] == "help" {
+			operands = operands[1:]
+		}
 	}
 	if result.help {
 		if len(operands) > 0 {
