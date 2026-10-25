@@ -122,8 +122,16 @@ func (i *installer) dependencies(ctx context.Context) error {
 			return e
 		}
 		if linuxFamily(values) == "arch" {
+			// pacman reads its confirmation from stdin, which under curl | bash is
+			// the spent script, so it asks on the terminal instead.
 			args := append([]string{"pacman", "-S", "--needed"}, missing...)
-			if e = command(ctx, i.stdout, i.stderr, "sudo", args...); e != nil {
+			tty, e := os.Open("/dev/tty")
+			if e != nil {
+				return errors.New("pacman needs a terminal to confirm; run: sudo " + strings.Join(args, " ") + ", then rerun skid install")
+			}
+			pacman := exec.CommandContext(ctx, "sudo", args...)
+			pacman.Stdin, pacman.Stdout, pacman.Stderr = tty, i.stdout, i.stderr
+			if e = errors.Join(pacman.Run(), tty.Close()); e != nil {
 				return e
 			}
 		} else {
