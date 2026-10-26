@@ -2325,13 +2325,13 @@ still exists, and a rerun of the phone typing, touch and selection journeys.
 ### installation
 
 a host archive holds the `skidbladnir` binary, `release.json` `{platform,
-sourceSha, version}`, `providers/shell-init`, `providers/terminal-context-init`
-and, on mac, the signed `Skid.app`. it ships no interpreter; runtime startup
-downloads nothing. supported: `darwin-arm64` on macos 26+; `linux-amd64` on
-ubuntu 24.04+ or arch-family (`ID=arch`, or `arch` in `ID_LIKE`) with systemd
-user services (`internal/install/platform.go`); android 13+ (min sdk 33, target
-36) with google play services, where the owner waives verification on versions
-older than the test phone's.
+sourceSha, version}`, `providers/shell-init`, `providers/terminal-context-init`,
+`third-party-notices.txt` and, on mac, the signed `Skid.app`. it ships no
+interpreter; runtime startup downloads nothing. supported: `darwin-arm64` on
+macos 26+; `linux-amd64` on ubuntu 24.04+ or arch-family (`ID=arch`, or `arch`
+in `ID_LIKE`) with systemd user services (`internal/install/platform.go`);
+android 13+ (min sdk 33, target 36) with google play services, where the owner
+waives verification on versions older than the test phone's.
 
 `bash install [vX.Y.Z]` (the release's bootstrap; latest stable when omitted)
 verifies and hands off to the archive's own `skid install`. installed commands:
@@ -2420,18 +2420,37 @@ installation operation runs at a time (`install.lock`).
    `scripts/build-host-binary` (go.mod's go family at or above its patch,
    `GOTOOLCHAIN=local`, trimmed and stamped; mac deployment target 26.0), the apk
    by gradle `assembleRelease`, never the debug keystore.
-3. exactly eight assets: both host archives and their `.sig`,
-   `skidbladnir-android.apk`, `android-signing-cert.sha256`, `install` and a
-   four-entry `SHA256SUMS`. `scripts/check-release` verifies every artifact once,
-   before the draft; `--reproduce` also rebuilds and compares bytes.
-4. publication is a separate reviewed action. then `scripts/check
+3. exactly nine assets: both host archives and their `.sig`,
+   `skidbladnir-android.apk`, `android-signing-cert.sha256`, `install`, a
+   five-entry `SHA256SUMS` naming every asset but itself and the signatures, and
+   `SHA256SUMS.sig`, the release key's signature over its sha256 digest, as for
+   the archives. a user verifies it with openssl 3+ against
+   `internal/install/release-public-key.pem` at the tag; the digest must be a
+   file, since ed25519 verification cannot read it from a pipe.
+   `scripts/check-release` verifies every artifact once, before the draft;
+   `--reproduce` also rebuilds and compares bytes.
+4. third-party notices ship inside the artifacts. a host archive's
+   `third-party-notices.txt` holds the license and notice files of the go
+   distribution (`golang.org/toolchain` at the binaries' go version) and of each
+   module `go version -m` names; a module without a license file stops the
+   release, and check-release refuses notices that omit a linked module. the
+   apk's `assets/licenses/third-party-notices.txt` comes from the app build's
+   `<variant>ThirdPartyNotices` task: each runtime library with the licenses its
+   pom or parent pom declares, then each distinct license or notice text the
+   libraries carry, google's `third_party_licenses` included; a library that
+   declares no license fails the build. the font and xterm.js licenses are
+   committed assets.
+5. the notes give the source, verify run and signers, then the changes: the
+   pull request titles github's merge commits carry, on main's first-parent
+   history since the previous release tag, then install and asset digests.
+6. publication is a separate reviewed action. then `scripts/check
    published-release TAG SHA` re-verifies the public release, its tag and hosted
    run, and requires `release-pin.json` at `HEAD` to pin version, source sha and
    five asset digests. the pin states what is published, never what a host runs.
-5. signing keys are operator backups outside git. a lost android key means
+7. signing keys are operator backups outside git. a lost android key means
    reinstalling the app, since android refuses another signer. checksums detect
    corruption; signatures prove possession of the key.
-6. hosted ci runs `scripts/check verify` on each pull request and main push,
+8. hosted ci runs `scripts/check verify` on each pull request and main push,
    scoped by changed paths (`.github/workflows/verify.yml`); docs, `AGENTS.md`
    and `release-pin.json` build nothing. release integrity and engineering
    checks are not behavioral acceptance ([testing](rules.md#testing)).
