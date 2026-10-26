@@ -425,13 +425,14 @@ Done when: the essay is published and this file is deleted.
 | wave | pull request | status | merged as |
 | --- | --- | --- | --- |
 | W0 plan | `publication/plan` | merged | #175, `2265104` |
-| W1 trust floor | `publication/license`, owner actions | running | |
-| W2.0 environments | owner approval | planned | |
-| W2.1 install | `publication/install` | planned | |
-| W2.2 cli | `publication/cli` | planned | |
-| W2.3 fleet admin | `publication/fleet-admin` | planned | |
-| W2.4 release integrity | `publication/release-integrity` | planned | |
-| W2 release | owner | planned | |
+| W1 trust floor | `publication/license`, owner actions | merged; alert #1 left open by the owner | #176, `db4188a` |
+| W2.0 environments | owner approval | dropped: the owner skipped the container, VM and live connect checks | |
+| W2.1 install | `publication/install` | merged | #178, `9e1e04a` |
+| W2.2 cli | `publication/cli` | merged | #179, `b57b353` |
+| W2.3 fleet admin | `publication/fleet-admin` | merged | #180, `abd943b` |
+| W2.4 release integrity | `publication/release-integrity` | merged | #181, `6d54498` |
+| W2.4 android key | `publication/android-key` | review | |
+| W2 release | owner | running | |
 | W3 stranger walk | `publication/install-docs`, follow-ups, release | planned | |
 | W4 media | `publication/media` | planned | |
 | W5.1 reading path | `publication/reading-path` | planned | |
