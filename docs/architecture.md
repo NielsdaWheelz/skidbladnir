@@ -301,17 +301,20 @@ machine header before authenticating:
 | `PUT /v1/fleet/self` | hub, from computers | `{origin?, version, application}`, the caller's own report |
 | `/v1/local/{status,network,join,apply,recover}` | installed local bearer | the cli's control surface; a member's apply and network report forward to the hub |
 
-the fleet cli (`cmd/skidbladnir/fleet_cli.go`) prints json on stdout and exits 0,
-1 on failure, 64 on usage:
+the fleet cli (`cmd/skidbladnir/fleet_cli.go`) prints text on stdout; with `--json`,
+every command but `connect` prints the resulting status as one json line instead;
+errors stay text on stderr.
+it exits 0; 1 on failure; 64 on usage, printing the reason and the command's help
+on stderr. `-h` or `--help` prints that help on stdout and exits 0:
 
 | command | effect |
 | --- | --- |
-| `skid connect` | refuses when the running service's version differs from the cli; points `https:8443` at the gateway, replacing any 8443 handler; reports this host's origin; prints one invitation line, plus a qr on a tty |
-| `skid join [--name NAME]` | reads one invitation line from stdin, enrols this computer, restarts its service; a failure changes nothing |
-| `skid remove DEVICE_ID` | removal at the hub |
-| `skid recover` | a new fleet with this computer as hub, from its cached accepted settings with itself as default machine; restarts; startup then accepts its own `config.yaml` when valid |
-| `skid apply` | the hub accepts its `config.yaml` |
-| `skid status` | members and each computer's last report, `applied`, `invalid_host` or `pending_offline`; no terminal or account content. a member shows the other computers `pending_offline`, since only the hub holds reports |
+| `skid connect` | refuses when the running service's version differs from the cli; then checks that tailscale is running with magicdns and an https certificate domain for this host and, on linux as a non-root user, this user as tailscale's operator when `tailscale debug prefs` can be read, naming every missing fix at once and changing no tailnet or host policy; points `https:8443` at the gateway, replacing any 8443 handler, and shows tailscale's own text when that fails; reports this host's origin; prints one invitation line, plus a qr on a tty |
+| `skid join [--name NAME] [--json]` | reads one invitation line from stdin, enrols this computer, restarts its service; a failure changes nothing |
+| `skid remove DEVICE_ID [--json]` | removal at the hub |
+| `skid recover [--json]` | a new fleet with this computer as hub, from its cached accepted settings with itself as default machine; restarts; startup then accepts its own `config.yaml` when valid |
+| `skid apply [--json]` | the hub accepts its `config.yaml` |
+| `skid status [--json]` | members and each computer's last report, `applied`, `invalid_host` or `pending_offline`; no terminal or account content. a member shows the other computers `pending_offline`, since only the hub holds reports |
 
 a command that needs the hub uses loopback and the local bearer on the hub, else
 the hub's origin and this host's fleet bearer; with no hub origin it fails with
@@ -1149,11 +1152,15 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
 
 ### cli
 
-`skid --help` (`internal/agentcli/run.go`) is the command reference and ends with
-an automation guide; dev-server keeps only a pointer to it. ordinary commands are
-`list`, `info`, `enter`, `read`, `send`, `text`, `keys`, `wait`, `stop`, `close`,
-`start`, `shell` and `group`, beside the fleet commands of [§4](#fleet-interfaces)
-and `update`/`uninstall`.
+`skid --help` (or `-h`, or `skid help`; `internal/agentcli/run.go`) is the command
+reference: a section for people, then the automation guide, which ends with every
+command's own help. `skid help COMMAND` and `skid COMMAND --help` print that one
+entry on stdout and exit 0; `skid help install|update|uninstall` runs that
+command's own `-h` (`internal/install`), which owns its text. `skid --version` is
+`skid version`, byte for byte; the installer parses it. dev-server keeps only a
+pointer to `skid --help`. ordinary commands are `list`, `info`, `enter`, `read`,
+`send`, `text`, `keys`, `wait`, `stop`, `close`, `start`, `shell` and `group`,
+beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
 
 - **targets**: a handle is `t-` plus the hex of the first 8 bytes of sha256 over
   `["skid-terminal-handle", machine, tmuxId, identityToken]`. it names a lifetime,
