@@ -187,6 +187,9 @@ desktop clients and the phone call every gateway directly.
    verifier and compare in constant time (`internal/auth`). each computer also has
    an installed local bearer that authenticates its own cli as that computer. a
    source address grants nothing: tailscale serve also arrives over loopback.
+   computers administer, phones are clients: the hub refuses a phone bearer on
+   invitation, removal, apply and computer reports with 403 `Forbidden`. a
+   phone's fleet routes are join, the public view and its revision stream.
 5. `Skidbladnir-Machine` must equal the addressed gateway's machine handle. it
    binds a pairing to an installation and never authenticates. a mismatch is 409
    `MachineIdentityMismatch`, discloses no handle, and reaches no tmux, body or
@@ -295,9 +298,9 @@ machine header before authenticating:
 | `GET /v1/fleet` | member | `state`; the public view for phones |
 | `GET /v1/fleet/events` | member | sse `event: revision`, `data: {"stateRevision":N}` at connect and per revision; re-authenticates on each change, so a removed caller's stream ends |
 | `POST /v1/fleet/join` | hub, no bearer | `201` with `state` (phones: the public view) |
-| `POST /v1/fleet/invites` | hub | one invitation |
-| `POST /v1/fleet/apply` | hub | accept the hub's `config.yaml`; status |
-| `DELETE /v1/fleet/members/{deviceId}` | hub | removal; refuses the hub |
+| `POST /v1/fleet/invites` | hub, from computers | one invitation |
+| `POST /v1/fleet/apply` | hub, from computers | accept the hub's `config.yaml`; status |
+| `DELETE /v1/fleet/members/{deviceId}` | hub, from computers | removal; refuses the hub |
 | `PUT /v1/fleet/self` | hub, from computers | `{origin?, version, application}`, the caller's own report |
 | `/v1/local/{status,network,join,apply,recover}` | installed local bearer | the cli's control surface; a member's apply and network report forward to the hub |
 
@@ -322,11 +325,11 @@ the hub's origin and this host's fleet bearer; with no hub origin it fails with
 
 fleet errors are `{code, message}`: 400 `InvalidRequest` or `ConfigInvalid`; 401
 `Unauthenticated` (including a removed device) or `PairingInviteRejected`
-(unknown, expired or used token); 403 `Forbidden` (wrong device kind); 409
-`FleetConflict`, including `this computer is not the hub` from a member; 413
-`RequestTooLarge`; 503 `HubUnavailable` from local routes while the hub has no
-origin; 500 `InternalError`. errors carry no routing; nothing redirects a
-credential.
+(unknown, expired or used token); 403 `Forbidden` (a phone on a route from
+computers); 409 `FleetConflict`, including `this computer is not the hub` from a
+member; 413 `RequestTooLarge`; 503 `HubUnavailable` from local routes while the
+hub has no origin; 500 `InternalError`. errors carry no routing; nothing
+redirects a credential.
 
 accepted limits: join, recover and failed writes restart serve (3–10 s; websockets
 drop and clients reattach). moving or losing the hub is a new fleet
