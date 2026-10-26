@@ -16,10 +16,11 @@ dependable for one who does. A reader can:
 3. judge the code, the design and the project's history from evidence;
 4. install it on a fresh computer and an Android phone from the published docs alone.
 
-Deliverables: a license; an install path verified on fresh hosts; a front door
-(README, user docs, community files) in correct capitalization; a reading path
-through the code and a history of its decisions; demo media; a static site at
-skid.nielseriknandal.com; an essay on nielseriknandal.com.
+Deliverables: a license; an install path verified on a fresh macOS VM, with Linux
+package managers in containers; a front door (README, user docs, community files)
+in correct capitalization; a reading path through the code and a history of its
+decisions; demo media; a static site at skid.nielseriknandal.com; an essay on
+nielseriknandal.com.
 
 Non-goals: growth or conversion work, search optimization, support commitments,
 product capabilities beyond the fixes below, iOS, an app store listing, telemetry,
@@ -44,6 +45,8 @@ Owner, 2026-10-25.
 | site | static HTML and CSS in `site/`, no framework or build step; a Vercel project rooted at `site/`; a DNS-only `skid` CNAME; dark only; no analytics; self-hosted subsets of Big Shoulders and JetBrains Mono; JavaScript only for copy buttons and tabs; under 100 KB before media | no light theme; no visitor data |
 | launch | an essay on nielseriknandal.com leads; Show HN is optional and later | |
 | history | no rewrite; the Firebase client key in history is handled in Google Cloud, not git | the tailnet name and one hostname email stay in history |
+| Linux walk | no fresh Linux host; the fresh Linux install is `NOT_RUN`; Linux fixes are proven by temporary tests and package-manager containers | Linux first-install failures can ship unseen |
+| test tailnet | test machines join the owner's tailnet as ephemeral nodes, removed after W4, each use approved; no throwaway tailnet; the HTTPS-off path is proven by a temporary test against a faked `tailscale status --json` | a stranger's tailnet defaults are never seen live |
 
 ### Proposed, for the owner before W2
 
@@ -161,10 +164,10 @@ Done when: the owner approves it and it merges.
 Goal: anyone may lawfully use the code, and the tree exposes nothing avoidable.
 
 - `license`:
-  - `LICENSE` with the Apache-2.0 text and "Copyright 2026 Niels-Erik Nandal"; a
-    License section in the README.
-  - Delete [project license](issues/project-license.md); the root integrator
-    removes its roadmap line.
+  - `LICENSE` holds the verbatim Apache-2.0 text, so GitHub detects it; "Copyright
+    2026 Niels-Erik Nandal" opens a License section in the README.
+  - Delete the project-license issue; the root integrator removes its roadmap
+    line.
   - Add `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `README.md`,
     `.github/ISSUE_TEMPLATE/*` and `site/*` to the documentation-only paths in
     `.github/workflows/verify.yml`, so they skip the builds.
@@ -192,10 +195,10 @@ Goal: what a stranger meets first works, and the trust model is the one the docs
 will state. Entry: the owner has settled every row of [proposed](#proposed-for-the-owner-before-w2)
 and the open questions marked "before W2".
 
-- W2.0 environments (owner approval): a fresh macOS 26 VM under tart and a fresh
-  Ubuntu 24.04 amd64 host, each snapshotted clean; an `archlinux` amd64 container
-  for package-manager behavior; the test tailnet, as decided below. Nothing touches
-  the owner's machines. W3 and W4 reuse them.
+- W2.0 environments (owner approval): a fresh macOS 26 VM under tart, snapshotted
+  clean; `ubuntu:24.04` and `archlinux` amd64 containers for package-manager
+  behavior; ephemeral nodes on the owner's tailnet. Nothing touches the owner's
+  machines. W3 and W4 reuse them.
 - W2.1 `install` (`internal/install`, `scripts/install`):
   - PATH as decided. `internal/install/paths.go:16` links `skid` into
     `~/.local/bin`, which nothing adds to PATH; `shell.go` writes the blocks.
@@ -208,8 +211,8 @@ and the open questions marked "before W2".
     exit 0; `uninstall` stops advertising flags it rejects.
   - Architecture: [installation](architecture.md#installation), through the
     root integrator. Paired dev-server: its digest of `scripts/install`.
-  - Venue: the macOS VM and Ubuntu host; the Arch container for `pacman`. The rest
-    of Arch is `NOT_RUN`.
+  - Venue: the macOS VM; the containers for `apt` and `pacman`. The rest of Linux
+    is `NOT_RUN`.
 - W2.2 `cli` (`cmd/skidbladnir`, `internal/agentcli`):
   - Help: `-h`, `--help`, `help` and `help COMMAND` work, print to stdout and exit
     0; every command has its own help; `--version` and `skid --help` as decided;
@@ -259,8 +262,8 @@ phone. Entry: the open questions marked "before W3" are settled.
 
 - Restore the W2.0 snapshots; add an Android emulator with Play Services and the
   Tailscale app on the test tailnet.
-- Install the W2 release on macOS and on Ubuntu from the README alone. Record every
-  prompt, error and guess.
+- Install the W2 release on macOS from the README alone. Record every prompt,
+  error and guess.
 - Fix what is cheap in follow-up pull requests; record the rest as issues. Write
   `docs/install.md` from the transcript, not from memory.
 - Update: install the previous release, then run `skid update`. The phone's
@@ -269,9 +272,8 @@ phone. Entry: the open questions marked "before W3" are settled.
 - Uninstall, and compare what remains with the README's claim.
 - Release (owner) after the follow-ups.
 
-Done when: macOS and Ubuntu each reach a typing session on the emulator from the
-docs alone, or each remaining failure has an issue and a stated reason. Arch is
-`NOT_RUN` unless a fresh Arch host exists.
+Done when: macOS reaches a typing session on the emulator from the docs alone, or
+each remaining failure has an issue and a stated reason. Linux is `NOT_RUN`.
 
 ### W4 Media
 
@@ -350,7 +352,7 @@ and a reviewer from first glance to the architecture.
 Done when: a fresh agent given only the README can say what skid is, whether it
 suits them, how to install it and where the architecture lives; every factual claim
 is checked against the code at the pull request's head; a re-walk from the W2.0
-snapshots following the merged README and `docs/install.md` reaches a typing
+macOS snapshot following the merged README and `docs/install.md` reaches a typing
 session.
 
 ### W7 Site
@@ -407,16 +409,6 @@ Done when: the essay is published and this file is deleted.
   dev-server and jarvis if they pass it, or keep it?
 - [ ] Before W2: accept Ubuntu derivatives and Debian
   (`internal/install/platform.go:35-43`)? Default: no, documented.
-- [ ] Before W2: the fresh Linux host. skid's Linux build is amd64 only and this
-  Mac is arm64. The owner's Linux hosts are already configured, which hides exactly
-  the first-install failures W2 fixes, and a second account on one of them cannot
-  run a second gateway on 127.0.0.1:7341. Recommended: an hourly cloud VM, deleted
-  after W3. Alternatives: x86 emulation in UTM (free, slow) or Linux `NOT_RUN`.
-- [ ] Before W2: the test tailnet. A throwaway tailnet reproduces a stranger's
-  defaults (HTTPS certificates off) and keeps test machines off the owner's
-  network, at the cost of a new identity. Recommended instead: ephemeral nodes on
-  the owner's tailnet, removed after W4, with the HTTPS-off path proven by a
-  temporary test against a faked `tailscale status --json`.
 - [ ] Before W3: pairing the emulator. Show the QR code through the emulator
   camera's virtual scene, or add a QR paste fallback, which also serves phones
   without Play Services but is a new capability whose scope the owner decides.
@@ -432,8 +424,8 @@ Done when: the essay is published and this file is deleted.
 
 | wave | pull request | status | merged as |
 | --- | --- | --- | --- |
-| W0 plan | `publication/plan` | review | |
-| W1 trust floor | `publication/license`, owner actions | planned | |
+| W0 plan | `publication/plan` | merged | #175, `2265104` |
+| W1 trust floor | `publication/license`, owner actions | running | |
 | W2.0 environments | owner approval | planned | |
 | W2.1 install | `publication/install` | planned | |
 | W2.2 cli | `publication/cli` | planned | |

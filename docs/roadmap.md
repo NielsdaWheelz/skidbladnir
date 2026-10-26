@@ -57,9 +57,8 @@ each removes a second owner or a needless hop:
   [visual redesign](issues/visual-redesign.md): unscoped.
 - [launcher recognition](issues/provider-wrapper-recognition.md) and
   [agent exit attention](issues/agent-exit-attention.md): need scope first.
-- [mac serve stderr](issues/macos-serve-stderr-discarded.md),
-  [behavioral suite](issues/test-system-reset.md) and
-  [project license](issues/project-license.md): owner decisions.
+- [mac serve stderr](issues/macos-serve-stderr-discarded.md) and
+  [behavioral suite](issues/test-system-reset.md): owner decisions.
 - [cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
 - [terminal runtime](issues/terminal-runtime-decision.md): control mode, an owned
