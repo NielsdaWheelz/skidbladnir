@@ -102,7 +102,7 @@ func (i *installer) dependencies(ctx context.Context) error {
 	fmt.Fprintln(i.stdout, "installing missing shared dependencies; native package tools may request administrator permission")
 	if runtime.GOOS == "darwin" {
 		if _, e := exec.LookPath("brew"); e != nil {
-			return errors.New("homebrew is required to install tmux; install it from https://brew.sh, then rerun skid install")
+			return errors.New("homebrew is required to install tmux; install it from https://brew.sh, then rerun the installer")
 		}
 		for _, name := range missing {
 			if name == "tmux" {
@@ -122,8 +122,16 @@ func (i *installer) dependencies(ctx context.Context) error {
 			return e
 		}
 		if linuxFamily(values) == "arch" {
+			// pacman reads its confirmation from stdin, which under curl | bash is
+			// the spent script, so it asks on the terminal instead.
 			args := append([]string{"pacman", "-S", "--needed"}, missing...)
-			if e = command(ctx, i.stdout, i.stderr, "sudo", args...); e != nil {
+			tty, e := os.Open("/dev/tty")
+			if e != nil {
+				return errors.New("pacman needs a terminal to confirm; run: sudo " + strings.Join(args, " ") + ", then rerun the installer")
+			}
+			pacman := exec.CommandContext(ctx, "sudo", args...)
+			pacman.Stdin, pacman.Stdout, pacman.Stderr = tty, i.stdout, i.stderr
+			if e = errors.Join(pacman.Run(), tty.Close()); e != nil {
 				return e
 			}
 		} else {
@@ -155,7 +163,7 @@ func (i *installer) dependencies(ctx context.Context) error {
 		}
 	}
 	if _, e := exec.LookPath("tmux"); e != nil {
-		return errors.New("tmux installed but absent from PATH; reopen your login shell and rerun skid install")
+		return errors.New("tmux installed but absent from PATH; reopen your login shell and rerun the installer")
 	}
 	return nil
 }

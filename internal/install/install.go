@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -40,6 +41,30 @@ func readManifest(path string) (releaseManifest, error) {
 	return manifest, err
 }
 
+var help = map[string]string{
+	"install": `usage: skid install [--version vX.Y.Z] [--archive PATH --signature PATH]
+
+install a signed skid release on this computer: the latest stable release, the
+--version given, or a local --archive with its detached --signature. missing
+tmux and tailscale are installed with homebrew (required on macos), apt and
+tailscale's installer, or pacman. skid links ~/.local/bin/skid, adds its marked
+blocks to your shell startup files, which put ~/.local/bin on PATH, and starts
+its services. settings and private state are kept; a release older than the
+installed one is refused.
+`,
+	"update": `usage: skid update [--version vX.Y.Z] [--archive PATH --signature PATH]
+
+replace the installed release with the latest stable release or the one given,
+as skid install does. tmux sessions and providers keep running.
+`,
+	"uninstall": `usage: skid uninstall
+
+turn off tailscale serve on https port 8443, stop skid's services, and remove
+~/.local/bin/skid, the installed releases, the service files and skid's shell
+blocks. settings, private state, provider data, tmux and shared packages remain.
+`,
+}
+
 // Run installs, updates or uninstalls skid. Every path it writes is fixed and
 // skid's by name: releases/*, current, bin/skid, the service files and two marked
 // shell blocks. Install overwrites them, uninstall deletes them, and nothing else
@@ -47,12 +72,21 @@ func readManifest(path string) (releaseManifest, error) {
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result error) {
 	action := args[0]
 	flags := flag.NewFlagSet(action, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	version := flags.String("version", "", "immutable release version (default: latest stable)")
-	archive := flags.String("archive", "", "local signed release archive")
-	signature := flags.String("signature", "", "detached archive signature")
-	if err := flags.Parse(args[1:]); err != nil {
+	// The caller reports parse errors; -h and --help print help below.
+	flags.SetOutput(io.Discard)
+	version, archive, signature := new(string), new(string), new(string)
+	if action != "uninstall" {
+		version = flags.String("version", "", "")
+		archive = flags.String("archive", "", "")
+		signature = flags.String("signature", "", "")
+	}
+	err := flags.Parse(args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		_, err = io.WriteString(stdout, help[action])
 		return err
+	}
+	if err != nil {
+		return fmt.Errorf("%w; see skid %s --help", err, action)
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected installation argument")
@@ -62,9 +96,6 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	}
 	if *version != "" && !versionPattern.MatchString(*version) {
 		return errors.New("version must be vMAJOR.MINOR.PATCH")
-	}
-	if action == "uninstall" && (*version != "" || *archive != "") {
-		return errors.New("uninstall accepts no release options")
 	}
 	dirs, err := Paths()
 	if err != nil {
@@ -217,7 +248,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 		}
 	}
 	fmt.Fprintf(stdout, "installed %s; settings and private state preserved\n", manifest.Version)
-	fmt.Fprintln(stdout, "local shells need no provider or tailscale login; open a new login shell to use skid")
+	fmt.Fprintln(stdout, "local shells need no provider or tailscale login")
+	// The installer's PATH is the invoking shell's.
+	if !slices.Contains(filepath.SplitList(os.Getenv("PATH")), dirs.Bin) {
+		fmt.Fprintln(stdout, `new login and interactive shells find skid; in this one, run: export PATH="$HOME/.local/bin:$PATH"`)
+	}
 	return nil
 }
 
