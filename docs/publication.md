@@ -438,10 +438,10 @@ Done when: the essay is published and this file is deleted.
 | W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone reinstalled with the new key and re-paired the same day | `677bbb2` |
 | W3 stranger walk | `publication/install-docs`, follow-ups, release | dropped: the owner skipped the pristine macOS walk; W6 writes `docs/install.md` from the code, unwalked | |
 | W4 media | `publication/media` | planned | |
-| W5.1 reading path | `publication/reading-path` | in progress | |
-| W5.2 history | `publication/history` | in progress | |
-| W5.3 roadmap | `publication/roadmap` | in review | |
-| W5.4 voice | `publication/voice` | planned | |
+| W5.1 reading path | `publication/reading-path` | merged; the owner approved the path | #187, `3396647` |
+| W5.2 history | `publication/history` | merged; the owner approved it and gave the herdr reason | #188, `e8af534` |
+| W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |
+| W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
 | W6 front door | `publication/front-door` | planned | |
 | W7 site | `publication/site` | planned | |
 | W8 site details | `publication/site-details`, owner actions | planned | |
