@@ -439,7 +439,7 @@ Done when: the essay is published and this file is deleted.
 | W2.4 android key | `publication/android-key` | merged | #182, `677bbb2` |
 | W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone reinstalled with the new key and re-paired the same day | `677bbb2` |
 | W3 stranger walk | `publication/install-docs`, follow-ups, release | dropped: the owner skipped the pristine macOS walk; W6 writes `docs/install.md` from the code, unwalked | |
-| W4 media | `publication/media` | in review: staged on the owner's fleet (the owner approved fake sessions there, and showing the browser's group labels and quota); the owner approves each asset | #190 |
+| W4 media | `publication/media` | in review: staged on the owner's fleet (the owner approved fake sessions there, and showing the browser's group labels and quota); the owner approves each asset; the README links the repository's `continuity.mp4` until the owner uploads it as a GitHub attachment for inline playback | #190 |
 | W5.1 reading path | `publication/reading-path` | merged; the owner approved the path | #187, `3396647` |
 | W5.2 history | `publication/history` | merged; the owner approved it and gave the herdr reason | #188, `e8af534` |
 | W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |

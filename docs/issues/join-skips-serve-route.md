@@ -1,8 +1,8 @@
 # Joining does not make a computer reachable
 
 Problem: `skid join` enrolls a computer but neither points Tailscale Serve's port
-8443 at its gateway nor reports its origin to the hub. Only `skid connect` does
-both (`cmd/skidbladnir/fleet_cli.go`, `routeGateway` and `PUT /v1/local/network`),
+8443 at its gateway nor sets its origin; it reports an origin only if an earlier
+`skid connect` set one. Only `skid connect` does both (`cmd/skidbladnir/fleet_cli.go`, `routeGateway` and `PUT /v1/local/network`),
 so every joined computer must also run `skid connect` once and discard the
 invitation it prints.
 

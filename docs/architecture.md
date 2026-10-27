@@ -2473,7 +2473,7 @@ it.
 - Another computer: install, sign in to Tailscale, run `skid connect` on any
   enrolled computer, then `skid join --name NAME` on the new one and paste the
   line. Then run `skid connect` once on the new computer and discard its
-  invitation: join neither routes port 8443 nor reports the computer's origin
+  invitation: join neither routes port 8443 nor sets the computer's origin
   ([issue](issues/join-skips-serve-route.md)).
 - Phone: `scripts/install-android APK` checks the pinned signer and the package
   `dev.niels.skidbladnir`, needs exactly one authorized adb device and SDK
