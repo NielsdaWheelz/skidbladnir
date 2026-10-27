@@ -1552,7 +1552,7 @@ Omitting `android_push` is healthy: no Firebase initialisation or registration,
 no setup error, and pairing, sessions and Mac notices all work.
 
 ```yaml
-android_push:              # public client options; operations: android push setup
+android_push:              # public client options; setup: docs/phone.md
   project_id: your-firebase-project
   application_id: '1:123456789:android:0123456789abcdef'
   sender_id: '123456789'
@@ -2472,8 +2472,9 @@ it.
   origin.
 - Another computer: install, sign in to Tailscale, run `skid connect` on any
   enrolled computer, then `skid join --name NAME` on the new one and paste the
-  line. If `skid status` on the hub lacks its origin, run `skid connect` on it
-  once and discard the invitation.
+  line. Then run `skid connect` once on the new computer and discard its
+  invitation: join neither routes port 8443 nor sets the computer's origin
+  ([issue](issues/join-skips-serve-route.md)).
 - Phone: `scripts/install-android APK` checks the pinned signer and the package
   `dev.niels.skidbladnir`, needs exactly one authorized adb device and SDK
   build-tools 36.1.0, and runs `adb install -r`, keeping app data; installation
@@ -2490,32 +2491,6 @@ it.
   then `skid connect` once for the route. Android refuses an in-place
   downgrade: uninstall the app, losing its data, and re-pair. The release's
   cutover issue names the state files to restore or delete.
-
-### Android push setup
-
-Once, on the hub, for optional [Android push](#android-push):
-
-1. Create a Firebase project with an Android app for `dev.niels.skidbladnir`;
-   enable the FCM HTTP v1 API and keep the client key restricted to the Firebase
-   APIs it needs. Phones use the ordinary signed APK.
-2. Create a dedicated service account with a custom role holding only
-   `cloudmessaging.messages.create`; export its JSON key.
-3. `install -m 600 KEY "${XDG_CONFIG_HOME:-$HOME/.config}/skidbladnir/android-push-credentials.json"`
-   as the hub user, directory `0700`. Never put it in YAML, arguments, a phone
-   or a repository.
-4. From `google-services.json`, client package `dev.niels.skidbladnir`:
-   `project_id` = `project_info.project_id`, `application_id` =
-   `client[].client_info.mobilesdk_app_id`, `sender_id` =
-   `project_info.project_number` (quoted), `api_key` =
-   `client[].api_key[].current_key`. Add them under `android_push` and run
-   `skid apply`; paired phones learn them from the fleet view.
-5. Confirm a real notification with the phone backgrounded: pairing or an
-   accepted FCM request proves no delivery.
-
-Rotate the key by replacing the file (`0600`) and running `skid apply`, then
-revoke the old key. Disable by dropping `android_push` and applying; attention
-and channels stay. Changed public options need one phone restart: stop skid in
-Android's app settings and reopen it (swiping a task may leave the process alive).
 
 ### Logs
 

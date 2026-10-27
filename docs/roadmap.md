@@ -28,7 +28,11 @@ contract; each item's evidence and resolution criteria live in its
 - Fleet and install: [hub self-report after an update](issues/hub-self-report-after-update.md),
   [member status placeholder](issues/member-status-placeholder.md),
   [connect operator check](issues/connect-operator-uid-match.md),
-  [systemd unit warning](issues/systemd-unit-changed-warning.md).
+  [systemd unit warning](issues/systemd-unit-changed-warning.md),
+  [join skips the serve route](issues/join-skips-serve-route.md),
+  [unwalked install](issues/fresh-install-walk.md).
+- Design language: [fret angle](issues/fret-angle-spec.md),
+  [wordmark tracking](issues/wordmark-tracking.md).
 - Desktop: [SIGTERM hang](issues/tui-sigterm-hang.md),
   [canceled input race](issues/bubbletea-canceled-input-race.md),
   [list JSON output limit](issues/list-json-output-limit.md),
@@ -66,5 +70,7 @@ Each removes a second owner or a needless hop:
   [behavioral suite](issues/test-system-reset.md): owner decisions.
 - [Cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
+- [Android developer verification](issues/android-developer-verification.md):
+  register the signing key, or say what not registering means.
 - [Terminal runtime](issues/terminal-runtime-decision.md): control mode, an owned
   PTY or tmux as is; undecided.
