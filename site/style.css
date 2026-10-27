@@ -1,0 +1,291 @@
+/* Niðavellir on the web: docs/design-language.md, dark only. */
+
+@font-face {
+  font-family: "Big Shoulders";
+  src: url(fonts/big-shoulders.woff2) format("woff2");
+  font-weight: 600 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url(fonts/jetbrains-mono.woff2) format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  /* Stone (§5) */
+  --ink: #0C0D0F;
+  --deep: #15171A;
+  --raised: #202329;
+  /* Text and accents (§5) */
+  --bone: #F3F0E8;
+  --muted: #AAA69D;
+  --gold: #D6A85F;
+  --frost: #78A9C6;
+  --lip: rgb(214 168 95 / 0.25);
+  --display: "Big Shoulders", "Arial Narrow", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--ink); }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.0625rem);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+::selection { background: rgb(243 240 232 / 0.3); }
+
+.bar, main, .foot { width: min(100% - 32px, 44rem); margin-inline: auto; }
+
+/* Type (§9): Display for titles, the system face for running text, mono for machine facts; sizes decay from the initial. */
+h1, h2, h3 { font-family: var(--display); font-weight: 650; color: var(--bone); letter-spacing: 0.04em; }
+h1 {
+  font-size: clamp(2.75rem, 11vw, 5.5rem);
+  line-height: 0.95;
+  text-transform: uppercase;
+  margin: 1.25rem 0 1rem;
+}
+h2 { font-size: clamp(1.75rem, 5vw, 2.25rem); line-height: 1.05; margin: 4rem 0 1rem; }
+h3 { font-size: 1.375rem; line-height: 1.1; margin: 2.25rem 0 0.75rem; }
+p { margin: 0 0 1rem; }
+b, strong { font-weight: 700; }
+code { font-family: var(--mono); font-size: 0.875em; background: var(--raised); padding: 0 0.3em; }
+p code, dd code { white-space: nowrap; }
+.note { color: var(--muted); font-size: 0.875rem; }
+
+a {
+  color: var(--gold);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  transition: color 100ms var(--ease);
+}
+a:hover { color: var(--bone); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -10rem;
+  z-index: 1;
+  padding: 0.75rem 1rem;
+  background: var(--raised);
+}
+.skip:focus { top: 0.5rem; }
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Bar: the reversed wordmark, as the terminal browser draws it (§17). */
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4rem; }
+.brand { padding: 0 0.45em; background: var(--bone); color: var(--ink); font-family: var(--mono); font-weight: 700; text-decoration: none; }
+.brand:hover { background: var(--gold); color: var(--ink); }
+.bar nav, .foot nav { display: flex; flex-wrap: wrap; column-gap: 1rem; }
+.bar nav a, .foot nav a { display: inline-flex; align-items: center; min-height: 48px; }
+.bar nav [aria-current] { color: var(--bone); text-decoration: none; }
+
+/* Cut corners: a stratum behind its content, so clipping never cuts a focus ring (§6). */
+.panel { position: relative; isolation: isolate; margin: 0 0 1rem; padding: 1rem; --c: 10px; }
+.panel::before, .shape::before, .copy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--deep);
+  clip-path: polygon(var(--c) 0, calc(100% - var(--c)) 0, 100% var(--c), 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, var(--c) 100%, 0 calc(100% - var(--c)), 0 var(--c));
+}
+.panel::before { border-top: 1px solid var(--lip); }
+
+/* The fret band: whole 12px units, Gold at 40% (§7). */
+.fret {
+  width: calc(12px * 24);
+  max-width: 100%;
+  height: 13px;
+  margin: 0 0 1.5rem;
+  background: url(assets/fret-band.svg) 0 50% / 12px 12.6px repeat-x;
+}
+
+/* Hero */
+.hero { padding-top: 1.5rem; }
+.mark { display: block; width: 132px; height: auto; }
+.say { color: var(--muted); }
+.line { font-size: 1.25rem; line-height: 1.5; }
+/* Commands wrap, a wrapped line hanging under its first word, so nothing is cut off and the copied text stays exact. */
+.code { margin-top: 1.5rem; }
+.code > p:first-child { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.875rem; }
+.code pre { margin: 0; padding-left: 2ch; text-indent: -2ch; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.875rem/1.7 var(--mono); }
+.code pre code { font-size: 1em; background: none; padding: 0; }
+.cmd { display: flex; align-items: flex-start; gap: 0.75rem; }
+.cmd pre { flex: 1; min-width: 0; }
+.cmd .copy { margin-top: -0.75rem; }
+
+.copy {
+  position: relative;
+  isolation: isolate;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0 1rem;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  --c: 4px;
+}
+.copy::before { inset: 8px 0; background: var(--raised); transition: background-color 100ms var(--ease); }
+.copy:hover::before { background: color-mix(in srgb, var(--bone) 6%, var(--raised)); }
+.copy:active::before { background: color-mix(in srgb, var(--bone) 10%, var(--raised)); }
+
+/* Epigraph */
+.epigraph { margin: 4rem 0 1.5rem; }
+.epigraph blockquote { margin: 0; padding-left: 1rem; border-left: 2px solid rgb(214 168 95 / 0.4); }
+.epigraph blockquote p { margin: 0; font-size: 1.0625rem; }
+.epigraph figcaption { margin-top: 0.75rem; padding-left: 1rem; color: var(--muted); font-size: 0.875rem; }
+
+/* Lists: the lozenge is a rotated square (§6). */
+.clauses, .list, .alts, .constraints, .swatches, .shapes, .sealset, .ledger { list-style: none; margin: 0 0 1rem; padding: 0; }
+.clauses li, .list li { position: relative; margin-bottom: 0.5rem; padding-left: 1.25rem; }
+.clauses li::before, .list li::before {
+  content: "";
+  position: absolute;
+  left: 0.2rem;
+  top: 0.62em;
+  width: 0.42em;
+  height: 0.42em;
+  background: var(--muted);
+  transform: rotate(45deg);
+}
+.clauses li::before { background: var(--gold); }
+.clauses strong { color: var(--gold); }
+
+.constraints { counter-reset: constraint; }
+.constraints li { position: relative; counter-increment: constraint; margin-bottom: 0.9rem; padding-left: 2.25rem; }
+.constraints li::before {
+  content: counter(constraint);
+  position: absolute;
+  left: 0;
+  top: -0.05em;
+  color: var(--gold);
+  font: 650 1.5rem/1.2 var(--display);
+}
+
+.alts { display: grid; gap: 0.75rem; }
+.alts li { margin: 0; color: var(--muted); }
+.alts strong { color: var(--bone); }
+
+/* Demo and diagram */
+.media { padding: 0.5rem 0.5rem 0.75rem; }
+/* The demo breaks out of the text column on wide screens so the terminals stay legible. */
+.media { position: relative; left: 50%; transform: translateX(-50%); width: min(72rem, max(100%, 100vw - 48px)); }
+.media video { display: block; width: 100%; height: auto; background: var(--ink); }
+.media figcaption { margin: 0.75rem 0.5rem 0; font-size: 0.875rem; }
+.figure { margin: 1.5rem 0; }
+@media (max-width: 30rem) { .figure { padding-inline: 0.5rem; } }
+.diagram { display: block; width: 100%; max-width: 30rem; height: auto; margin: 0 auto; }
+.diagram text { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+.dg-net { fill: none; stroke: rgb(170 166 157 / 0.55); }
+.dg-box { fill: var(--raised); }
+.dg-cell { fill: var(--ink); }
+.dg-data { fill: none; stroke: var(--gold); stroke-width: 2; }
+.dg-ctl { fill: none; stroke: var(--frost); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.dg-bone { fill: var(--bone); }
+.dg-muted { fill: var(--muted); }
+.dg-frost { fill: var(--frost); }
+.figure figcaption { margin-top: 1rem; font-size: 0.875rem; color: var(--muted); }
+.figure figcaption p { margin: 0 0 0.25rem; }
+.key { display: inline-block; width: 1.5rem; height: 2px; margin-right: 0.6rem; vertical-align: middle; }
+.key-data { background: var(--gold); }
+.key-ctl { background: repeating-linear-gradient(90deg, var(--frost) 0 5px, transparent 5px 9px); }
+.motto { color: var(--gold); font-weight: 700; }
+
+/* Install */
+.reqs { margin: 0 0 1.5rem; }
+.reqs div { display: grid; grid-template-columns: 8rem 1fr; gap: 1rem; padding: 0.75rem 0; border-top: 1px solid var(--raised); }
+.reqs dt { color: var(--gold); font-weight: 700; }
+.reqs dd { margin: 0; }
+
+/* Design page */
+.names { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1rem; margin: 0 0 1.5rem; }
+.names dt { color: var(--muted); font-size: 0.875rem; }
+.names dd { margin: 0; }
+.specimen { font-family: var(--display); font-weight: 650; font-size: 2.25rem; line-height: 1.1; letter-spacing: 0.02em; }
+
+.swatches, .sealset { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 1.25rem 1rem; }
+.swatches li, .sealset li { display: flex; flex-direction: column; }
+/* A swatch is two stacked cut planes, so its 1px keyline follows the cuts: the inner cut is 10px less (2 - √2) × 1px. */
+.chip { position: relative; display: block; height: 4rem; margin-bottom: 0.5rem; background: rgb(170 166 157 / 0.3); --k: 10px; }
+.chip, .chip::after { clip-path: polygon(var(--k) 0, calc(100% - var(--k)) 0, 100% var(--k), 100% calc(100% - var(--k)), calc(100% - var(--k)) 100%, var(--k) 100%, 0 calc(100% - var(--k)), 0 var(--k)); }
+.chip::after { content: ""; position: absolute; inset: 1px; background: var(--c); --k: 9.41px; }
+.swatches code, .sealset code { background: none; padding: 0; color: var(--muted); }
+.swatches li > span:last-child, .sealset li > span:last-child { color: var(--muted); font-size: 0.8125rem; }
+
+.shapes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+@media (min-width: 44rem) { .shapes { grid-template-columns: repeat(5, 1fr); } }
+.shape { position: relative; isolation: isolate; display: flex; flex-direction: column; min-height: 8rem; padding: 0.9rem; --c: 10px; }
+.shape::before { background: var(--raised); }
+.shape span { color: var(--muted); font-size: 0.8125rem; line-height: 1.45; }
+.s-card::before { border-top: 1px solid var(--lip); }
+.s-chip { --c: 4px; }
+.s-sheet::before { clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px); }
+.s-cleft::before { clip-path: polygon(14px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 14px); }
+.s-octagon { aspect-ratio: 1; justify-content: center; text-align: center; --c: 29%; }
+@media (max-width: 43.99rem) { .s-octagon { grid-column: 1 / -1; justify-self: center; width: calc(50% - 0.5rem); } }
+
+.marks { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.marks .panel { margin: 0; }
+.art { display: flex; align-items: center; justify-content: center; min-height: 13rem; margin-bottom: 1rem; }
+.art img { display: block; max-width: 100%; height: auto; }
+.marks figcaption { color: var(--muted); font-size: 0.875rem; }
+.marks figcaption b { color: var(--bone); }
+.art-fret { flex-direction: column; gap: 1.75rem; }
+.fret-wide { width: calc(12px * 16); margin: 0; }
+.fret-big { width: calc(48px * 4); height: 51px; margin: 0; background-size: 48px 50.4px; }
+
+.sealset img { width: 72px; height: 72px; margin-bottom: 0.5rem; }
+.sealset b { font-family: var(--display); font-weight: 650; font-size: 1.25rem; line-height: 1.2; letter-spacing: 0.02em; }
+.sealset code { font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.faces .panel { margin: 0; }
+.face h3 { margin-top: 1rem; }
+.specimen-display { margin: 0; color: var(--gold); font-size: clamp(2.25rem, 7vw, 3rem); letter-spacing: 0.04em; }
+.specimen-mono { margin: 0; font-family: var(--mono); font-weight: 400; font-size: 1.125rem; letter-spacing: 0; }
+
+.ledger li { display: grid; grid-template-columns: 12rem 1fr; gap: 0.25rem 1.25rem; padding: 0.9rem 0; border-top: 1px solid var(--raised); }
+.ledger b { grid-row: span 2; }
+.ledger .role { color: var(--muted); }
+
+@media (max-width: 40rem) {
+  .reqs div, .ledger li { grid-template-columns: 1fr; gap: 0.25rem; }
+  .ledger b { grid-row: auto; }
+}
+
+/* Footer */
+.foot { margin-top: 5rem; padding: 1.5rem 0 3rem; border-top: 1px solid var(--raised); color: var(--muted); font-size: 0.875rem; }
+.foot p { margin: 0.75rem 0 0; }
+
+/* Stone has mass, and with reduced motion it does not move at all (§12). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
