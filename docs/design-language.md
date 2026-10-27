@@ -1,7 +1,7 @@
 # Niðavellir: the Skíðblaðnir design language
 
 This document owns visual identity: color, shape, ornament, typography,
-iconography, motion, the terminal theme and the dwarf catalogue's curation. the
+iconography, motion, the terminal theme and the dwarf catalogue's curation. The
 [architecture](architecture.md) owns behavior and wins on any conflict; status
 copy and tone come from [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering).
 
@@ -297,7 +297,7 @@ Every face guarantees ð/þ.
 | --- | --- | --- | --- |
 | Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf signatures on cards | Body copy, sentences |
 | UI body | System Roboto (quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
-| Data | JetBrains Mono | Status lines, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
+| Data | JetBrains Mono | Status lines, freshness, cwd paths, session IDs, key-deck labels, pressure numerals — every machine fact | Prose |
 
 The Display role's caps direction applies only where the source is caps, such
 as the wordmark and applicable headings. Dwarf signatures preserve exact
@@ -320,7 +320,7 @@ catalogue casing; group labels keep their authored case in body or data type.
 
 ## 10. Terminal theme
 
-`terminal.js` uses a derived ansi table: **bright slots are the four brand
+`terminal.js` uses a derived ANSI table: **bright slots are the four brand
 accents verbatim** (bold=bright is the emphasis signal git/pytest/ripgrep rely
 on — the reason Nord's bright=base collapse is rejected); **base slots are the
 same hues systematically darkened** (S−6pp, L≈44%, with red/blue/magenta lifted
@@ -353,13 +353,13 @@ A seal is a pure function of `character.key`: the octagonal frame (§6), a
 mineral field, a bind-rune maker's mark and angular figure geometry. No colour
 travels on the wire. With `h = SHA-256(UTF-8(key))` as unsigned bytes:
 
-- mineral `h[0] mod 8` (one of 8 fill-only tones: Garnet, Hematite, BlueGlass
+- Mineral `h[0] mod 8` (one of 8 fill-only tones: Garnet, Hematite, BlueGlass
   and 5 desaturated stones);
-- rune count `2 + (h[4] and 1)`; runes the first distinct `h[5+i] mod 16` for
+- Rune count `2 + (h[4] and 1)`; runes the first distinct `h[5+i] mod 16` for
   `i` in 0..7, stopping at the count (a shorter list is defined, not an error);
-- beard teeth `3 + h[8] mod 4`; beard depth `h[9] mod 4`;
-- facet mask `h[12]` (bit `e` gilds octagon edge `e`);
-- metal Gold when `h[14]` is odd, else Bronze.
+- Beard teeth `3 + h[8] mod 4`; beard depth `h[9] mod 4`;
+- Facet mask `h[12]` (bit `e` gilds octagon edge `e`);
+- Metal Gold when `h[14]` is odd, else Bronze.
 
 Changing a slice re-rolls every visible identity: a design event, never a
 tweak. Check values (mineral, runes, teeth, depth, mask, metal):
@@ -459,9 +459,9 @@ The phone has no screen-reader support (owner cut). It ships no curated
 narration, custom actions, roles, headings, live regions, traversal order,
 state descriptions or terminal wheel actions; TalkBack gets only Compose's
 merged visible text. xterm's `screenReaderMode` stays on only because it
-selects the ime input path the phone relies on; with it off, Gboard lost the
+selects the IME input path the phone relies on; with it off, Gboard lost the
 first letter after the keyboard opened in 4 of 72 emulator runs. Labels carry
-no bidi isolates, so an rtl machine, group or folder name may reorder
+no bidi isolates, so an RTL machine, group or folder name may reorder
 neighbouring punctuation; paths keep their explicit left-to-right direction.
 Drawn controls with no text keep a `contentDescription`: the overflow studs and
 the Forge seal.
@@ -479,44 +479,44 @@ code; fonts outside §9's table without a license entry here.
 
 | Asset | License | Status |
 | --- | --- | --- |
-| Big Shoulders, JetBrains Mono | SIL OFL 1.1 | Bundled; the apk carries their license texts in `assets/licenses/`, as the OFL requires |
+| Big Shoulders, JetBrains Mono | SIL OFL 1.1 | Bundled; the APK carries their license texts in `assets/licenses/`, as the OFL requires |
 | jdenticon (channel-slicing model) | MIT (LICENSE verified) | Model only; own implementation (§11) |
 | Berkeley Mono, Norse (Carrouché), Cirth fonts, Book of Kells facsimile imagery, WETA/film artwork | Restricted or unusable | Never embed |
 
 ## 17. Terminal browser
 
-the desktop browser is this language with every ornament deleted (§1.2), drawn
-in the operator's own terminal. the operator's theme supplies the ground and
-default ink; the browser paints no background. its behavior is the
+The desktop browser is this language with every ornament deleted (§1.2), drawn
+in the operator's own terminal. The operator's theme supplies the ground and
+default ink; the browser paints no background. Its behavior is the
 [architecture's](architecture.md#browser).
 
-| intensity | sgr | carries |
+| Intensity | SGR | Carries |
 | --- | --- | --- |
-| reverse | 7 | the `skid` wordmark; the form caret |
-| bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
-| plain | — | everything that must be read: names, status words, key labels, notices, the exclusive `needs input` view label |
-| faint | 2 | what may recede: group headings/cells, provider/profile/model text, every row's machine/path, omission markers, the rule, names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
+| Reverse | 7 | The `skid` wordmark; the form caret |
+| Bold | 1 | The cursor row's name, the current view's label, keys, page titles, the rule's target |
+| Plain | — | Everything that must be read: names, status words, key labels, notices, the exclusive `needs input` view label |
+| Faint | 2 | What may recede: group headings/cells, provider/profile/model text, every row's machine/path, omission markers, the rule, names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
 
-| accent | slot | its one meaning |
+| Accent | Slot | Its one meaning |
 | --- | --- | --- |
-| Gold | bright yellow | you are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
-| Ember | bright red | a request or error status, a failed outcome, the stop/kill question |
+| Gold | Bright yellow | You are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
+| Ember | Bright red | A request or error status, a failed outcome, the stop/kill question |
 | Frost | RGB `#78A9C6` | starting, working |
 | Moss | RGB `#76B082` | ready |
-| Muted | RGB `#AAA69D` | every other status |
+| Muted | RGB `#AAA69D` | Every other status |
 
-status colour follows the projected tone (§5), never the printed word. a stale
-row's status cell reads muted `last observed: <label>` and is never ready, even
+Status colour follows the projected tone (§5), never the printed word. A stale
+row's status cell reads Muted `last observed: <label>` and is never ready, even
 while its failed host is re-read; a row of any other host being re-read reads
-faint `checking`; both names recede faint. ember never appears in hints, so
+faint `checking`; both names recede faint. Ember never appears in hints, so
 requests and shown errors stay the table's only red statuses and are found at a
-glance. colour never carries meaning alone: every status is a word; the cursor
-is a glyph plus bold; the current view is bold, between gold `‹ ›` at the table;
+glance. Colour never carries meaning alone: every status is a word; the cursor
+is a glyph plus bold; the current view is bold, between Gold `‹ ›` at the table;
 form chevrons stay faint because the `▌` gutter marks focus. `NO_COLOR` strips
-styling and preserves every label. faint varies by terminal and disappears
-under mosh. section and session hierarchy and omission survive complete style
+styling and preserves every label. Faint varies by terminal and disappears
+under mosh. Section and session hierarchy and omission survive complete style
 stripping; one content line identifies each session, with gaps only at group
-boundaries. one rule separates content from controls. no boxes, fret, runes,
+boundaries. One rule separates content from controls. No boxes, fret, runes,
 icons or motion.
 
 ## 18. Dvergatal curation
