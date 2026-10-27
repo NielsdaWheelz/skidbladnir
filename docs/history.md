@@ -194,11 +194,14 @@ were to run side by side on every host and the same phone (herdr-mobile
 (original #138, merged 30 September), the owner retired herdr and herdr-mobile
 across the fleet and moved worker control to skid, as qualified on v0.10.6,
 which carried skid's new native controls (#14, #18, #21). The records state no
-reason for either step. The episode took eight days and two skid releases,
-v0.7.0 and v0.8.0. Something carried over: skid's own status research named
-herdr's separation of detection from attention, its explicit unknown and its
-startup readiness as "the useful borrowing" (`docs/agent-status-research.md` in
-`67af37f`, #14).
+reason for either step; the owner gave it afterwards (26 October). herdr's
+interface did not suit them: it leans on the mouse and on shortcuts they found
+arcane, and pairing the phone was laborious. Having used skid, minimal and
+keyboard-first, they would not go back. The episode took eight days and two
+skid releases, v0.7.0 and v0.8.0. Something carried over: skid's own status
+research named herdr's separation of detection from attention, its explicit
+unknown and its startup readiness as "the useful borrowing"
+(`docs/agent-status-research.md` in `67af37f`, #14).
 
 ### 7. Screen inference over provider hooks
 
