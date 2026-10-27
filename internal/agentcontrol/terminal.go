@@ -98,7 +98,7 @@ func (service *Service) TerminalRead(ctx context.Context, target sessions.Termin
 	return api.ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
 }
 
-// TerminalSend pastes only into a freshly observed local provider's empty
+// TerminalSend pastes only into a freshly recognized local provider's empty
 // ordinary composer: activity working or idle, interaction none. Initial sends
 // also require the requested profile, idle activity and no notice. It resolves
 // target, observes it once, and refuses before writing: a request interaction
