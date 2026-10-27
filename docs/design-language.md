@@ -99,7 +99,10 @@ established Nordic-terminal convention.
 Labels, domain, error, and destructive copy stay literal. The dwarven voice
 lives entirely in geometry, material, and type — never in wording. No "ye
 olde" register, no rune-transliterated labels, no themed error messages.
-Destructive and error copy names the tmux session and its machine.
+Destructive and error copy names the tmux session and its machine. This section
+governs product copy; public prose may quote, with attribution, the primary
+sources the provenance ledger (§2) cites, and uses the canonical copy in the
+[README](../README.md).
 
 ## 5. Color
 

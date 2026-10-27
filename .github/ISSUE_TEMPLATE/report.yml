@@ -1,0 +1,79 @@
+name: Bug, question or request
+description: Something in skid failed, surprised you or needs explaining, or you want it to do something within its scope.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Leave out terminal content, prompts, bearers, invitation lines (`skid://connect/…`), `fleet.json`, provider account details and real tailnet names; write `example.ts.net` instead. Report a vulnerability privately, as the [security policy](https://github.com/NielsdaWheelz/skidbladnir/security/policy) describes, never here.
+  - type: input
+    id: host-version
+    attributes:
+      label: skid version
+      description: The output of `skid version` on each computer involved, or the release you tried to install.
+      placeholder: v0.23.0 0123456789abcdef0123456789abcdef01234567
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: From Android's App info for Skíðblaðnir. Leave it empty if the phone is not involved.
+      placeholder: 0.23.0
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Every platform involved.
+      multiple: true
+      options:
+        - macOS
+        - Ubuntu
+        - Arch Linux or an Arch-based distribution
+        - Android
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: platform-versions
+    attributes:
+      label: Platform versions
+      description: The macOS version, or the Linux distribution and version; the Android version and phone model.
+      placeholder: macOS 26.1; Android 16 on a Pixel 9
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The exact command, its error text and exit code, or what the screen showed, described in words. For a request, what you were trying to do.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: For a question, what you want to know; for a request, what skid should do.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For a bug, the shortest sequence that shows it, from a state anyone could reach.
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: log
+    attributes:
+      label: Service log
+      description: Optional. Lines around the failure from `journalctl --user -u skidbladnir` on Linux, or `serve.log` in `${XDG_STATE_HOME:-~/.local/state}/skidbladnir` on macOS. They record codes, IDs and durations, never terminal content.
+      render: text
+  - type: checkboxes
+    id: content-free
+    attributes:
+      label: Nothing private
+      options:
+        - label: This report holds no terminal content, prompts, bearers, invitation lines or real tailnet names.
+          required: true

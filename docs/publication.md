@@ -338,8 +338,8 @@ and a reviewer from first glance to the architecture.
 - `docs/README.md`: an index separating using skid from how it is built.
 - `docs/install.md` (from W3) and `docs/phone.md` (sideloading, checking the
   signer, Obtainium, optional push). The push procedure moves from architecture's
-  [android push setup](architecture.md#android-push-setup), through the root
-  integrator.
+  android push setup (now [phone](phone.md#push-notifications-optional)), through
+  the root integrator.
 - `SECURITY.md`: private reporting; the threat model in plain terms (a device in
   the fleet is a shell on every machine; an agent that can run skid can drive every
   terminal; what is not a vulnerability), linking architecture §3.
@@ -419,7 +419,9 @@ Done when: the essay is published and this file is deleted.
   explains it.
 - [ ] Before W6: Google's Android developer verification, after W2.4's new key:
   register, and when?
-- [ ] Before W6: macOS notarization ($99 a year). Default: no, documented.
+- [x] Before W6: macOS notarization ($99 a year). Default: no, documented.
+  Settled by the default: [install](install.md) says `Skid.app` is signed with the
+  project's own certificate and not notarized.
 - [ ] Before W9: release cadence and host/phone lockstep make a stranger update the
   phone often. Record as an issue?
 
@@ -437,12 +439,12 @@ Done when: the essay is published and this file is deleted.
 | W2.4 android key | `publication/android-key` | merged | #182, `677bbb2` |
 | W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone reinstalled with the new key and re-paired the same day | `677bbb2` |
 | W3 stranger walk | `publication/install-docs`, follow-ups, release | dropped: the owner skipped the pristine macOS walk; W6 writes `docs/install.md` from the code, unwalked | |
-| W4 media | `publication/media` | planned | |
+| W4 media | `publication/media` | in review: staged on the owner's fleet (the owner approved fake sessions there, and showing the browser's group labels and quota); the owner approves each asset | #190 |
 | W5.1 reading path | `publication/reading-path` | merged; the owner approved the path | #187, `3396647` |
 | W5.2 history | `publication/history` | merged; the owner approved it and gave the herdr reason | #188, `e8af534` |
 | W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |
 | W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
-| W6 front door | `publication/front-door` | planned | |
+| W6 front door | `publication/front-door` | in review; the walk from the W2.0 snapshot is `NOT_RUN` ([unwalked install](issues/fresh-install-walk.md)) | |
 | W7 site | `publication/site` | planned | |
 | W8 site details | `publication/site-details`, owner actions | planned | |
 | W9 essay and close | owner's site, `publication/close` | planned | |
