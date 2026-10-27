@@ -70,5 +70,7 @@ Each removes a second owner or a needless hop:
   [behavioral suite](issues/test-system-reset.md): owner decisions.
 - [Cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
+- [Android developer verification](issues/android-developer-verification.md):
+  register the signing key, or say what not registering means.
 - [Terminal runtime](issues/terminal-runtime-decision.md): control mode, an owned
   PTY or tmux as is; undecided.
