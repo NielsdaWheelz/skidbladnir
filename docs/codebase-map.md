@@ -46,10 +46,3 @@ its state and keep no notification memory.
 Phone source paths are relative to
 `android/app/src/main/java/dev/niels/skidbladnir`; terminal assets are under
 `android/app/src/main`.
-
-Cleanup proceeds one finding and one merged PR at a time: establish the current
-contract and callers, demonstrate the finding, characterize important behavior
-through its real boundary, simplify its owner, and independently review the
-result. Remove temporary tests before committing, as requested for this cleanup.
-[testing policy](rules.md#testing) distinguishes that evidence from retained
-engineering checks. Unresolved findings belong in `docs/issues`, one per issue.
