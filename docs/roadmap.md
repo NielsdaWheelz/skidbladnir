@@ -6,14 +6,15 @@ contract; each item's evidence and resolution criteria live in its
 
 ## next
 
-1. measure the macbook's tmux exec cost
+1. carry the [publication campaign](publication.md) to its close.
+2. measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-2. observe the shipped but unobserved journeys
+3. observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
    recovery, and explain linux claude's guarded start
    ([linux claude turn](issues/terminal-only-live-qualification.md)).
-3. finish qualifying conversation recovery on deployed hosts and clients:
+4. finish qualifying conversation recovery on deployed hosts and clients:
    linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
@@ -24,6 +25,10 @@ contract; each item's evidence and resolution criteria live in its
   [ime reshow clears the selection](issues/terminal-ime-reshow-selection.md).
 - phone: [sheet uniformity](issues/sheet-uniformity.md),
   [tailscale dns outage](issues/phone-tailscale-dns.md).
+- fleet and install: [hub self-report after an update](issues/hub-self-report-after-update.md),
+  [member status placeholder](issues/member-status-placeholder.md),
+  [connect operator check](issues/connect-operator-uid-match.md),
+  [systemd unit warning](issues/systemd-unit-changed-warning.md).
 - desktop: [sigterm hang](issues/tui-sigterm-hang.md),
   [canceled input race](issues/bubbletea-canceled-input-race.md),
   [list json output limit](issues/list-json-output-limit.md),

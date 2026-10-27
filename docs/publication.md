@@ -412,8 +412,11 @@ Done when: the essay is published and this file is deleted.
 - [ ] Before W3: pairing the emulator. Show the QR code through the emulator
   camera's virtual scene, or add a QR paste fallback, which also serves phones
   without Play Services but is a new capability whose scope the owner decides.
-- [ ] Before W5: `release-pin.json` at the root: keep, move or delete (carried from
-  the cleanup campaign).
+- [x] Before W5: `release-pin.json` at the root: keep, move or delete (carried from
+  the cleanup campaign). Kept, 2026-10-26: the published-release gate, `verify.yml`
+  and the architecture name it, and a root file states plainly which source built
+  which bytes. Cost: one unexplained file in the root listing until W6's README
+  explains it.
 - [ ] Before W6: Google's Android developer verification, after W2.4's new key:
   register, and when?
 - [ ] Before W6: macOS notarization ($99 a year). Default: no, documented.
@@ -432,12 +435,12 @@ Done when: the essay is published and this file is deleted.
 | W2.3 fleet admin | `publication/fleet-admin` | merged | #180, `abd943b` |
 | W2.4 release integrity | `publication/release-integrity` | merged | #181, `6d54498` |
 | W2.4 android key | `publication/android-key` | merged | #182, `677bbb2` |
-| W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone's reinstall and re-pair wait for the owner | `677bbb2` |
+| W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone reinstalled with the new key and re-paired the same day | `677bbb2` |
 | W3 stranger walk | `publication/install-docs`, follow-ups, release | dropped: the owner skipped the pristine macOS walk; W6 writes `docs/install.md` from the code, unwalked | |
 | W4 media | `publication/media` | planned | |
-| W5.1 reading path | `publication/reading-path` | planned | |
-| W5.2 history | `publication/history` | planned | |
-| W5.3 roadmap | `publication/roadmap` | planned | |
+| W5.1 reading path | `publication/reading-path` | in progress | |
+| W5.2 history | `publication/history` | in progress | |
+| W5.3 roadmap | `publication/roadmap` | in review | |
 | W5.4 voice | `publication/voice` | planned | |
 | W6 front door | `publication/front-door` | planned | |
 | W7 site | `publication/site` | planned | |
