@@ -37,6 +37,7 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveLocal(w, r)
 		return
 	}
+	// join presents a one-use invitation token, not a bearer: s.join checks it.
 	if r.Method == "POST" && r.URL.Path == "/v1/fleet/join" {
 		var request joinRequest
 		if err := readBody(r, &request); err != nil {

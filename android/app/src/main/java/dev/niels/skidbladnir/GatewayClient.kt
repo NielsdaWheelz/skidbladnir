@@ -96,7 +96,8 @@ private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
 internal object GatewayClient {
     /**
      * The process's one http client. Calls are asynchronous and share its dispatcher, so one host may use every
-     * slot: an open terminal's websocket reader holds one for as long as it is attached.
+     * slot: an open terminal's websocket reader holds one for as long as it is attached. Connection retries,
+     * redirects and proxies are off, so a call is sent once, straight to its pinned origin.
      */
     internal val http: OkHttpClient = OkHttpClient.Builder()
         .dispatcher(Dispatcher().apply { maxRequestsPerHost = maxRequests })

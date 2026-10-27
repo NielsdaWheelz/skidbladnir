@@ -1,5 +1,20 @@
 # codebase map
 
+## Reading path
+
+Eight files, read in order, carry the ideas the rest of the code follows.
+
+1. [`internal/tmux/guard.go`](../internal/tmux/guard.go): every effect runs in tmux's own command queue behind a guard on the exact server lifetime and session, so it happens at most once, and a lost completion is unknown, never retried.
+2. [`internal/tmux/inventory.go`](../internal/tmux/inventory.go): tmux is the store, holding skid's metadata as session options, and each read runs in one tmux client between two server-identity records whose equality proves it saw one server lifetime.
+3. [`internal/agentcontrol/terminal.go`](../internal/agentcontrol/terminal.go): status is evidence for a human, never authority for an effect, so a send re-resolves its exact target, samples the screen itself and refuses before writing unless it sees an empty composer.
+4. [`internal/privatefile/file.go`](../internal/privatefile/file.go): the little state a host keeps outside tmux is written through one owner, the only package that syncs a directory, and a write that reports failure may still have landed.
+5. [`internal/fleet/http.go`](../internal/fleet/http.go): every request must name the machine it expects and present its own device's bearer or a one-use invitation, every body must decode exactly, and only computers may administer the fleet.
+6. [`GatewayClient.kt`](../android/app/src/main/java/dev/niels/skidbladnir/GatewayClient.kt): the phone sends each call once, straight to one pinned machine, and decodes failures totally, so an unreadable answer is a lost response and a gateway error keeps the host's copy and its `not_sent` or `unknown` dispatch.
+7. [`Machines.kt`](../android/app/src/main/java/dev/niels/skidbladnir/Machines.kt): the phone composes independent machines, each with its own poll, state and serial mutation lane, so a failure fences only that machine's rows and actions, and a read that predates a mutation never passes for its result.
+8. [`Ornament.kt`](../android/app/src/main/java/dev/niels/skidbladnir/Ornament.kt): the design language is frozen data, its ornament fixed geometry and each dwarf's seal a pure function of its catalogue key, with no state or meaning of its own.
+
+## Owners
+
 tmux owns session state and process lifetimes. each gateway owns one host;
 clients compose independent gateways. there is no application database. every
 private state file (fleet, machine handle, notification observer, workspace

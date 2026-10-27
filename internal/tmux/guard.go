@@ -27,7 +27,9 @@ const appliedMarker = "SKIDBLADNIR_APPLIED_V1"
 //
 // The guard is the only authority: it pins the server lifetime and session id
 // in the same queue as the effect, and an absent id refuses
-// (sessionIDCondition).
+// (sessionIDCondition). if-shell -F inserts its chosen branch right after
+// itself, and tmux drains one client's queue before other event work, so no
+// other client can act between the guard and the effect.
 func (client Client) guarded(ctx context.Context, id string, server ServerIdentity, conditions []string, action string) (bool, error) {
 	var stdout, stderr bytes.Buffer
 	command := client.commandWithStderr(ctx, &stdout, &stderr, "-N", "if-shell", "-F", "-t", id,
