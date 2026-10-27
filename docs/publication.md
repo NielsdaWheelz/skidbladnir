@@ -446,6 +446,6 @@ Done when: the essay is published and this file is deleted.
 | W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |
 | W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
 | W6 front door | `publication/front-door` | merged; the owner approved it, README length included; the walk from the W2.0 snapshot is `NOT_RUN` ([unwalked install](issues/fresh-install-walk.md)) | #191 |
-| W7 site | `publication/site` | planned | |
+| W7 site | `publication/site` | in review: Vercel project `skidbladnir` (root `site/`, connected to the repository, production branch `main`); `skid.nielseriknandal.com` attached, waiting for its DNS record | |
 | W8 site details | `publication/site-details`, owner actions | planned | |
 | W9 essay and close | owner's site, `publication/close` | planned | |
