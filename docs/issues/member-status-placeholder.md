@@ -16,5 +16,6 @@ behavior is documented in [architecture](../architecture.md) (`skid status` row)
 and in `skid --help`.
 
 Resolved when: `skid status` on a member shows the hub's view, as a member's apply
-and network report already forward to the hub, or marks rows it cannot know as
-unknown rather than `pending_offline`; the architecture and help text say which.
+and network report already forward to the hub, or leaves the rows it cannot know
+blank; the status values stay `applied`, `invalid_host` and `pending_offline`, and
+the architecture and help text say which.
