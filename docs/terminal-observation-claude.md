@@ -917,7 +917,7 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c14** Screen-reader mode is unsupported (§4): its screens read
   unknown/unknown/none, composer unknown. Such a session gets no status,
   attention, ready or needs-input entry; guarded send refuses, `start --stdin`
-  ends in `readiness_timeout` and `wait` never matches. Stop and close are
+  ends in `readiness_timeout` and `wait` never matches. stop and close are
   unaffected.
 - **c15** Human-request dialogs without a rule (auto-mode offer, rate-limit options,
   consumer terms, trial expired) read unknown/unknown. Live qualification of each

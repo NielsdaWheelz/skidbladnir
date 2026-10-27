@@ -257,7 +257,7 @@ equal canonical cwd before unknown before different; newest metadata update time
 last. Missing time ranks oldest. Equal best tuples stay unresolved; UUID order is
 never a tiebreak. Recency means metadata update, not proof of last activity.
 Codex uses index `updated_at`; Claude uses transcript modification time, consistently
-for that provider. Cwd/recency without a title match never chooses an ID.
+for that provider. cwd/recency without a title match never chooses an ID.
 
 Initial per-home read bounds: registry 64 KiB; Codex index 8 MiB; first rollout
 record 1 MiB; Claude head/tail 64 KiB each; 16,384 directory entries and 64 MiB total

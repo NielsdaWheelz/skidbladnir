@@ -217,9 +217,9 @@ names its reason: a request interaction is `dialog`; otherwise a draft composer 
 `draft`; otherwise `unknown`. A failed sample refuses with `TerminalUnavailable`.
 Better status coverage never relaxes composer recognition on its own.
 
-`wait --state` accepts `working`, `idle` and `needs-input`, default idle. Idle
+`wait --state` accepts `working`, `idle` and `needs-input`, default idle. idle
 matches idle with interaction none, whatever notice the turn ended with, so a wait
-ends on an interrupted or failed turn too. Working matches working even with a
+ends on an interrupted or failed turn too. working matches working even with a
 question. needs-input matches permission, question, confirmation, setup and input.
 An unknown tested dimension never matches: working with unknown interaction
 matches working, and unknown activity with a question matches needs-input.

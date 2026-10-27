@@ -59,7 +59,7 @@ Consistency: every row fact, metadata included, comes from the single
 brackets prove that one server lifetime produced the transcript; and the only
 cross-command dependency, the global-option check, fails only if an operator sets
 and clears a global `@skid_` option within the script's own duration, which
-requiring both reads to be empty bounds. Afaict tmux also runs one client's queued
+requiring both reads to be empty bounds. AFAICT tmux also runs one client's queued
 commands consecutively, but correctness does not depend on it.
 
 ### a2. All captures in one exec
@@ -88,7 +88,7 @@ After foreground enrichment, one `source-file -` script on stdin
   screen. Each captured pane's foreground is then re-sampled against the session's
   own sample. A row with no rows or columns gets no block and reads
   `capture_failed`.
-- Stdin lifts tmux's 16 KiB client-message limit, but the 192-row top cap stays so
+- stdin lifts tmux's 16 KiB client-message limit, but the 192-row top cap stays so
   that batch and per-pane observations agree. Region byte limits are unchanged;
   overflow falls back per pane, never to silent truncation.
 - A batch with no bracketed transcript (deadline, client failure, overflow) falls

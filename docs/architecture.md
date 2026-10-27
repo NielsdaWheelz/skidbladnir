@@ -198,7 +198,7 @@ Desktop clients and the phone call every gateway directly.
 6. One trusted user. Agents run as their host user; skid claims no containment
    against a same-user process. Client state is private to the login user:
    `fleet.json` and `machine-handle` are read only as `0600` regular files, so
-   another unix user, such as jarvis's system service, has no supported access
+   another Unix user, such as jarvis's system service, has no supported access
    ([jarvis's record](https://github.com/NielsdaWheelz/jarvis/blob/f397031fe089b90c601dcadbbc0d5ab0fc98d3a2/docs/issues/skid-installed-state-access.md)).
 7. Logs are content-free ([operations](#logs)).
 
@@ -814,16 +814,16 @@ the guarantee is the exactness of the target, not semantic safety.
    buffer within 1 s. Provider-specific input (send, stop to an agent) revalidates
    the agent and foreground; text and keys need terminal authority only.
 2. Bytes written prove terminal delivery only, not a program's or provider's
-   acceptance, submission or completion. ctrl-c and closure prove no cancellation.
+   acceptance, submission or completion. Ctrl-C and closure prove no cancellation.
    No step joins job control, the screen read and consumption, and no supervisor
    pretends to.
-3. Close inside its 10 s: validation ends 2 s before the deadline; the interrupt
+3. close inside its 10 s: validation ends 2 s before the deadline; the interrupt
    gets at most 2 s, ending by deadline − 8 s; connection cleanup at most 6 s,
    keeping the last 2 s for deletion; each phase has its own context; cleanup
    failure is logged and never vetoes deletion. `not_closed` means refused before
    deletion; `unknown` means possibly deleted. Closure proves nothing about
    shared-window, background or remote work.
-4. Wait is a client loop over inspect: capture the target once, sample at once and
+4. wait is a client loop over inspect: capture the target once, sample at once and
    every 5 s, 60 s by default, at most 1 h, matching the states
    [observation §5](terminal-observation.md#5-controls-and-diagnostic-api)
    defines. An unavailable sample fails the wait; `TerminalTargetChanged`,
@@ -1048,7 +1048,7 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
 | `internal/fleetclient` | Peer routing from `fleet.json`, one HTTP/WebSocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution |
 | `internal/fleetview` | The shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `RecoveryNotice`, `GroupHeading`) |
 | `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes |
-| `internal/sessionui` | The browser: one bubble tea model holding peers, one selected view, one cursor, one page and at most one pending operation |
+| `internal/sessionui` | The browser: one Bubble Tea model holding peers, one selected view, one cursor, one page and at most one pending operation |
 | `internal/terminalclient` | Lending the local TTY to one exact session over the terminal WebSocket, and acknowledging that visit |
 
 ### Desktop concepts
@@ -1300,8 +1300,8 @@ on the table also usage. The rest is in the help text.
 - `N` offers machine (available ones only), launch, name (blank follows the
   terminal title), directory and group, then an explicit `create`. Directory:
   empty is home; `/…` and `~…` are literal; other text is search words sent to the
-  host after 150 ms. Typing supplies choices, ←→ cycles, tab or enter accepts and
-  advances without dispatch, shift-tab returns without accepting, `ctrl-u` clears
+  host after 150 ms. Typing supplies choices, ←→ cycles, Tab or Enter accepts and
+  advances without dispatch, Shift-Tab returns without accepting, `ctrl-u` clears
   to home or unassigned. A highlighted choice enters the draft only when accepted,
   and only an accepted match or literal can be submitted. Editing, machine change,
   focus loss or cancellation invalidates a pending search, so a late reply never
@@ -1378,7 +1378,7 @@ visible. Start failures prefix the chosen host.
 - Duplicate suppression lasts only while an action is in flight; a later `n`
   creates another terminal. There is no exactly-once creation or remote
   cancellation.
-- `n` restarts at the default and costs an enter even with one machine;
+- `n` restarts at the default and costs an Enter even with one machine;
   unavailable machines stay in its cycle; first creation waits for inventory, with
   no optimistic bypass.
 - Strict field priority can hide machine and path and leave cells unused; the
@@ -1407,14 +1407,14 @@ visible. Start failures prefix the chosen host.
 
 - One table with a strip of views: an agents sidebar would be a second rendering of the
   same rows with its own cursor; the strip gives left and right a visible referent
-  and names views, never sessions. Digits or tab cycling would name different
+  and names views, never sessions. Digits or Tab cycling would name different
   views on different days, since tabs come from observed labels.
 - No badges, counters or attention row: status is sampled and incomplete, so a
   missing badge would claim that nothing needs you.
 - Escape never quits because Codex and Claude train a reflexive escape, often
   right after `ctrl-] d`.
 - Styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision
-  that bubble tea 2.0.9 was not released with.
+  that Bubble Tea 2.0.9 was not released with.
 
 ## 12. Notifications
 
@@ -2024,7 +2024,7 @@ replayed; terminal content stays transient.
 7. Chrome never changes the terminal's box. Only the keyboard, rotation,
    window size and font scale do; text size changes only the grid. The rail is
    one row whose height depends only on font scale.
-8. The page alone owns ctrl, alt and shift, each `Off` or `Armed`, and
+8. The page alone owns Ctrl, Alt and Shift, each `Off` or `Armed`, and
    publishes all three in one `ModifierState`: all-off before `Ready`, all-off
    before the `Input` that consumes armed ones, never an unchanged snapshot.
    Every `Input` consumes all three. Reset emits no input and happens on page
@@ -2119,25 +2119,25 @@ never scroll locally. Each enabled tap plays the keyboard-tap haptic.
 
 Encoding, from one modifier snapshot, with `m = 1 + shift + 2·alt + 4·ctrl`:
 
-- Arrows, home, end: xterm's normal or application-cursor sequence; modified,
+- Arrows, Home, End: xterm's normal or application-cursor sequence; modified,
   `CSI 1;m A/B/C/D/H/F`. PgUp, PgDn: `CSI 5~`, `CSI 6~`; modified `CSI 5;m~`,
   `CSI 6;m~`.
-- Tab is `HT`, or backtab `CSI Z` under shift; ctrl leaves it, alt prefixes
-  `ESC`. Escape and slash ignore shift.
-- Ctrl, then alt, apply to a proven key: a deck literal, or a typed unit that
+- Tab is `HT`, or backtab `CSI Z` under Shift; Ctrl leaves it, Alt prefixes
+  `ESC`. Escape and slash ignore Shift.
+- Ctrl, then Alt, apply to a proven key: a deck literal, or a typed unit that
   xterm's `onKey` proves is one printable ASCII keystroke. Ctrl uppercases
-  ASCII letters, maps `@`..`_` to `& 0x1f` and `?` to `0x7f`; alt prefixes
+  ASCII letters, maps `@`..`_` to `& 0x1f` and `?` to `0x7f`; Alt prefixes
   `ESC`. IME commits, composition, dictation, paste, non-ASCII and
   multi-character text stay literal and still consume all three. Shift never
   changes text.
 
-Shift exists for Codex's pending questions (shift+←/→) and Claude's mode switch
-(shift+tab): providers interpret keys, skid never detects a question.
-Alt+shift+tab is `ESC CSI Z`, deliberately unlike xterm's physical-key
+Shift exists for Codex's pending questions (Shift+←/→) and Claude's mode switch
+(Shift+Tab): providers interpret keys, skid never detects a question.
+Alt+Shift+Tab is `ESC CSI Z`, deliberately unlike xterm's physical-key
 evaluator. Gboard supplies hyphen and capitals.
 
 Gboard owns typing, dictation (editable, never auto-sent) and the paste UI;
-enter is CR. Paste drops C0 except tab and newline, DEL and C1, turns CR and
+Enter is CR. Paste drops C0 except tab and newline, DEL and C1, turns CR and
 CRLF into LF, and wraps the result in bracketed paste when the application
 asked. Only a tap and deck keys focus xterm's helper textarea, so page-sent
 input never fakes a focus-in. IME composition is clipped to the terminal edge,
@@ -2339,7 +2339,7 @@ verifies and hands off to the archive's own `skid install`. Installed commands:
 `skid uninstall`, each printing its help to stdout on `-h` or `--help`; one
 installation operation runs at a time (`install.lock`).
 
-1. Trust starts at the bootstrap. `scripts/install` embeds the ed25519 release
+1. Trust starts at the bootstrap. `scripts/install` embeds the Ed25519 release
    public key; a key fetched beside an archive would authenticate nothing.
    Archives are signed over their SHA256 digest, and the installed binary
    verifies with its compiled-in key (`internal/install/release-public-key.pem`),
@@ -2411,7 +2411,7 @@ installation operation runs at a time (`install.lock`).
    for that SHA, a tag that exists nowhere and whose Android version code
    (`major*10^6 + minor*10^3 + patch`) exceeds every existing tag's. Keys:
    `SKIDBLADNIR_MAC_SIGNING_IDENTITY` (SHA1 of the certificate pinned by
-   `macos/app-signing-cert.sha256`, in the user keychain), the ed25519 key at
+   `macos/app-signing-cert.sha256`, in the user keychain), the Ed25519 key at
    `SKIDBLADNIR_RELEASE_SIGNING_KEY` (default
    `~/.config/skidbladnir/release-signing.pem`) matching the pinned public key,
    and `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/android-signing.properties`
@@ -2426,7 +2426,7 @@ installation operation runs at a time (`install.lock`).
    `SHA256SUMS.sig`, the release key's signature over its SHA256 digest, as for
    the archives. A user verifies it with OpenSSL 3+ against
    `internal/install/release-public-key.pem` at the tag; the digest must be a
-   file, since ed25519 verification cannot read it from a pipe.
+   file, since Ed25519 verification cannot read it from a pipe.
    `scripts/check-release` verifies every artifact once, before the draft;
    `--reproduce` also rebuilds and compares bytes.
 4. Third-party notices ship inside the artifacts. A host archive's
