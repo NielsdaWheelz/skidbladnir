@@ -11,7 +11,9 @@ Each asset is derived from a frozen source in the app. The artwork is the projec
 
 The media are recordings of the product, staged with demo sessions, fake
 repositories and stub agents that paint authored frames
-(`internal/agentcontrol/testdata/frames`); no real terminal content.
+(`internal/agentcontrol/testdata/frames`); no real terminal content. The
+computer's hostname in the tmux status lines is painted over in the bar's own
+color, in every frame of the video, its poster and `phone-terminal.png`.
 
 - `continuity.mp4`: 31 seconds, side by side. The desktop session browser opens a
   terminal and runs `git log`, then detaches; the phone opens the same terminal,
