@@ -102,32 +102,25 @@ func (client Client) TerminalCommand(directory, launch string) ([]string, error)
 // subprocess cwd; a source supplies the existing lifetime gate in the same
 // tmux command queue. Any command error may follow creation.
 func (client Client) CreateSession(ctx context.Context, directory, sourceID string, server ServerIdentity, args []string) (string, bool, error) {
-	commandName := "new-session"
-	if sourceID != "" {
-		var branch strings.Builder
-		branch.WriteString("new-session")
-		for _, argument := range args {
-			branch.WriteByte(' ')
-			if argument == ";" {
-				branch.WriteByte(';')
-			} else {
-				branch.WriteString(commandToken(argument))
-			}
-		}
-		commandName = "-N" // A vanished source must never start a replacement server.
-		args = []string{"if-shell", "-F", "-t", sourceID, andFormatConditions(sessionLifetimeConditions(sourceID, server)),
-			branch.String(), "display-message -p -l '" + identityMismatchMarker + "'"}
-	} else {
-		// cmd_parse_from_arguments consumes a trailing semicolon even in direct
-		// argv. Escape that delimiter once; all other bytes remain literal.
-		for index, argument := range args {
-			if len(argument) > 1 && strings.HasSuffix(argument, ";") {
-				args[index] = argument[:len(argument)-1] + "\\;"
-			}
+	var branch strings.Builder
+	branch.WriteString("new-session")
+	for _, argument := range args {
+		branch.WriteByte(' ')
+		if argument == ";" {
+			branch.WriteByte(';')
+		} else {
+			branch.WriteString(commandToken(argument))
 		}
 	}
+	conditions := serverLifetimeConditions(server)
+	guard := []string{"-F"}
+	if sourceID != "" {
+		guard = append(guard, "-t", sourceID)
+		conditions = sessionLifetimeConditions(sourceID, server)
+	}
+	guard = append(guard, andFormatConditions(conditions), branch.String(), "display-message -p -l '"+identityMismatchMarker+"'")
 	var stdout bytes.Buffer
-	command := client.command(ctx, &stdout, commandName, args...)
+	command := client.command(ctx, &stdout, "if-shell", guard...)
 	command.Dir = directory
 	if err := command.Start(); err != nil {
 		return "", false, err
@@ -176,7 +169,7 @@ func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerId
 	if expected.Epoch == "" {
 		branch = commandText("set-option", "-soq", ServerEpochOption, proposed) + " ; " + branch
 	}
-	output, err := client.Output(ctx, "initialize-server-epoch", "-N", "if-shell", "-F", andFormatConditions(serverLifetimeConditions(expected)),
+	output, err := client.Output(ctx, "initialize-server-epoch", "if-shell", "-F", andFormatConditions(serverLifetimeConditions(expected)),
 		branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		return ServerIdentity{}, err
@@ -251,10 +244,7 @@ func (client Client) commandWithStderr(ctx context.Context, stdout, stderr *byte
 	commandArgs := make([]string, 0, len(args)+6)
 	// Tmux otherwise sanitizes stdout under a non-UTF-8 client locale. Names,
 	// titles and literal comparisons require the exact UTF-8 server values.
-	// Attachment already supplies the same global flag as its first argument.
-	if operation != "-u" {
-		commandArgs = append(commandArgs, "-u")
-	}
+	commandArgs = append(commandArgs, "-N", "-u")
 	if client.socketName != "" {
 		commandArgs = append(commandArgs, "-L", client.socketName, "-f", "/dev/null")
 	}

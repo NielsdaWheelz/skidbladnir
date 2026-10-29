@@ -23,6 +23,13 @@ google play services. use host and phone artifacts from the same release.
 run `skid` for the desktop browser. empty profiles support ordinary shells;
 provider tools and accounts are optional. the terminal needs at least 80 × 24 cells.
 
+skid installs an independent terminal service for the default tmux server. native
+tmux clients share it; gateway restarts and gateway-only updates preserve its work.
+an existing unmanaged server must be drained and stopped before installation.
+runtime replacement and uninstall require empty tmux sessions, an empty saved
+checkpoint and a pause in new session creation. see the
+[installation contract](docs/architecture.md#installation) for the one-time cutover.
+
 ## configure
 
 edit `${XDG_CONFIG_HOME:-~/.config}/skidbladnir/config.yaml` on your hub:
@@ -96,8 +103,8 @@ account report from an already-running native daemon, then
 attributable terminal observations. [agent control](docs/architecture.md#7-observation-and-agent-control)
 describes the boundaries. readiness is a cue to inspect, not proof of successful work.
 
-uninstall removes skid's fixed runtime paths and shell blocks. settings, private
-state, provider history, tmux sessions and shared dependencies remain.
+uninstall requires a drain, then removes skid's services, fixed runtime paths and
+shell blocks. settings, private state, provider history and shared dependencies remain.
 
 ## development
 

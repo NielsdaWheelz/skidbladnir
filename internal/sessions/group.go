@@ -23,6 +23,9 @@ func (manager *Manager) SetGroup(ctx context.Context, input SetGroupInput) error
 	if err != nil {
 		return err
 	}
+	if err := manager.requireManagedLifetime(ctx, server); err != nil {
+		return err
+	}
 	assigned, err := manager.tmux.SetSessionGroupIfIdentity(ctx, input.TmuxID, input.Group, server)
 	if err != nil {
 		return ErrGroupDispatchUnknown

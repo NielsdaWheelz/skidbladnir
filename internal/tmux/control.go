@@ -57,7 +57,7 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 		"capture-pane -p -J -t "+pane, "capture-pane -p -J -t "+pane+" -S -"+strconv.Itoa(maxBytes))
 	tail := captureTail{limit: maxBytes}
 	output := captureOutput{body: &tail}
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
+	command := client.command(ctx, nil, "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
 		return Capture{}, ErrUnavailable
@@ -85,9 +85,9 @@ func (client Client) Paste(ctx context.Context, target PaneTarget, text string, 
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		defer cancel()
-		_ = client.Run(cleanup, "clear-terminal-input", "-N", "delete-buffer", "-b", name) // justify-ignore-error: bounded cleanup only removes this operation's transient buffer; tmux may already be unavailable.
+		_ = client.Run(cleanup, "clear-terminal-input", "delete-buffer", "-b", name) // justify-ignore-error: bounded cleanup only removes this operation's transient buffer; tmux may already be unavailable.
 	}()
-	load := client.command(ctx, nil, "-N", "load-buffer", "-b", name, "-")
+	load := client.command(ctx, nil, "load-buffer", "-b", name, "-")
 	load.Stdin = strings.NewReader(text)
 	if err := load.Run(); err != nil {
 		return ErrUnavailable
@@ -142,7 +142,7 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 	// A dead pane is positively unavailable; a different active pane/lifetime is stale.
 	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	var output strings.Builder
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", target.refusal(inputUnavailableMarker))
+	command := client.command(ctx, nil, "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", target.refusal(inputUnavailableMarker))
 	command.Stdout = &output
 	if err := command.Start(); err != nil {
 		return ErrUnavailable

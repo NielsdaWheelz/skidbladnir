@@ -317,7 +317,7 @@ func (client Client) batch(ctx context.Context, body string) (ServerIdentity, []
 	script := commandText("display-message", "-p", "B"+identity) + " ; " + body + commandText("display-message", "-p", "E"+identity) + "\n"
 	output := batchOutput{}
 	var stderr bytes.Buffer
-	command := client.commandWithStderr(ctx, nil, &stderr, "-N", "source-file", "-")
+	command := client.commandWithStderr(ctx, nil, &stderr, "source-file", "-")
 	command.Stdin = strings.NewReader(script)
 	command.Stdout = &output
 	err := command.Run()

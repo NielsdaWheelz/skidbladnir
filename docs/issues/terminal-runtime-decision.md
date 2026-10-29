@@ -1,9 +1,13 @@
-# terminal runtime ownership is undecided
+# terminal transport replacement is deferred
 
 problem: process awareness, terminal output access and tui reading and selection
 friction motivated replacing tmux, but they have different owners. whether a
 control-mode client or an owned pty runtime best meets the remaining terminal
 requirements is not established.
+
+the [ownership cutover](../architecture.md#terminal-service) retains tmux and assigns
+its supervision to a native service. that settles process ownership; replacing the
+terminal transport remains deferred and is outside that cutover.
 
 impact: choosing from the shared symptom could create a new process-lifetime
 owner without solving conversation identity or history, or keep a bridge whose

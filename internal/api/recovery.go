@@ -150,9 +150,9 @@ func (recovery Recovery) Notice() *RecoveryNotice {
 		}
 		return notice
 	case RecoveryDelayed:
-		status, action = "workspace saving delayed", "retrying automatically; live terminals remain usable."
+		status, action = "workspace saving delayed", "retrying automatically."
 	case RecoveryBroken:
-		status, action = "workspace recovery stopped", "manual repair required; live terminals remain usable."
+		status, action = "workspace recovery stopped", "manual repair required."
 	}
 	if failure := recovery.Failure; failure != nil {
 		status += ". " + recoveryPhaseText[failure.Phase] + ": " + recoveryCauseText[failure.Cause]

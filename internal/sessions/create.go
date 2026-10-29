@@ -77,11 +77,18 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
-	epochCandidate := newServerEpoch()
-	// Names and character use are advisory samples of whichever server runs:
-	// tmux enforces name uniqueness, and the create queue stamps the epoch, so
-	// no lifetime is held.
-	current, err := manager.tmux.ReadCurrentInventory(ctx, tmuxclient.ServerIdentity{})
+	serverObservation, present, err := manager.tmux.InspectServer(ctx)
+	if err != nil {
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+	}
+	server, err := manager.admitServer(ctx, serverObservation, present)
+	if err != nil {
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+	}
+	if sourceID != "" && server != sourceServer {
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
+	}
+	current, err := manager.tmux.ReadInventory(ctx, server)
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
@@ -96,7 +103,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	} else if _, occupied := scan.names[name]; occupied {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
-	character := selectCharacter(scan.characterUse, epochCandidate)
+	character := selectCharacter(scan.characterUse, server.Epoch+"\x00"+name)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	// The launch is the profile's command text, opaque to every hop until
 	// agent-exec decodes it for the initialized shell (one binary produces and
@@ -111,7 +118,6 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	commandArgs = append(commandArgs, terminal...)
 	exactName := "=" + name + ":"
-	commandArgs = append(commandArgs, ";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate)
 	if input.Kind == LaunchAgent {
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key))
 	}
@@ -132,7 +138,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		"#{"+tmuxclient.ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}")
 	// A directory that vanished since validation fails the tmux client's chdir,
 	// which maps to the same answer.
-	output, accepted, err := manager.tmux.CreateSession(ctx, cwd, sourceID, sourceServer, commandArgs)
+	output, accepted, err := manager.tmux.CreateSession(ctx, cwd, sourceID, server, commandArgs)
 	if !accepted {
 		if err != nil {
 			var pathError *os.PathError
@@ -163,8 +169,8 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if len(identityFields) != 4 || identityFields[3] != id {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid server identity")
 	}
-	server, err := tmuxclient.ParseServerIdentity(identityFields[0], identityFields[1], identityFields[2])
-	if err != nil || server.Epoch == "" {
+	createdServer, err := tmuxclient.ParseServerIdentity(identityFields[0], identityFields[1], identityFields[2])
+	if err != nil || createdServer != server {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, errors.New("tmux create returned an invalid server identity")
 	}
 	created, err := manager.tmux.ReadSession(ctx, id)

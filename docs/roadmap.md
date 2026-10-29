@@ -6,14 +6,17 @@ contract; each item's evidence and resolution criteria live in its
 
 ## next
 
-1. measure the macbook's tmux exec cost
+1. qualify the independent [terminal service](issues/terminal-service-qualification.md)
+   on supported hosts: mac identity/consent and crash cleanup, native installation,
+   gateway-only updates, drained replacement/removal and linux amd64 service behavior.
+2. measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-2. observe the shipped but unobserved journeys
+3. observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
    recovery, and explain linux claude's guarded start
    ([linux claude turn](issues/terminal-only-live-qualification.md)).
-3. finish qualifying conversation recovery on deployed hosts and clients:
+4. finish qualifying conversation recovery on deployed hosts and clients:
    linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
@@ -33,7 +36,9 @@ contract; each item's evidence and resolution criteria live in its
   [invisible label characters](issues/group-label-invisible-characters.md),
   [pane retarget](issues/terminal-pane-retarget.md),
   [agent creation 500](issues/agent-creation-internal-error.md),
-  [member settings validation](issues/member-settings-validation.md).
+  [member settings validation](issues/member-settings-validation.md),
+  [macos process attribution](issues/macos-process-attribution.md),
+  [repeated file-access prompts](issues/macos-permission-prompts.md).
 - observation: [claude panel rows](issues/claude-panel-status-unknown.md),
   [unruled claude dialogs](issues/claude-unruled-request-dialogs.md).
 
@@ -62,5 +67,5 @@ each removes a second owner or a needless hop:
   [project license](issues/project-license.md): owner decisions.
 - [cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
-- [terminal runtime](issues/terminal-runtime-decision.md): control mode, an owned
-  pty or tmux as is; undecided.
+- [terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
+  pty; replacement deferred. the ownership cutover retains tmux.

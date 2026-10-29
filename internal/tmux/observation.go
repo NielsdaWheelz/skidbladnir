@@ -75,7 +75,7 @@ type PaneObservation struct {
 // or alternate screen changed), ErrUnavailable.
 func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneObservation, error) {
 	pane := commandToken(target.PaneID)
-	screen, err := client.Output(ctx, "read-pane-screen", "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(),
+	screen, err := client.Output(ctx, "read-pane-screen", "if-shell", "-F", "-t", target.SessionID, target.condition(),
 		"display-message -p -t "+pane+" '"+paneScreenFormat+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
@@ -101,7 +101,7 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	// unchanged; the refusal distinguishes a changed screen from a stale target.
 	condition := andFormatConditions([]string{target.condition(), "#{==:" + paneScreenFormat + "," + formatLiteral(screen) + "}"})
 	output := captureOutput{body: &rows}
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition,
+	command := client.command(ctx, nil, "if-shell", "-F", "-t", target.SessionID, condition,
 		"display-message -p -l '"+observedMarker+"'"+rows.commands(target.PaneID), target.refusal(screenChangedMarker))
 	command.Stdout = &output
 	if err := command.Run(); err != nil {

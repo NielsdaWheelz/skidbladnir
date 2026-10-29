@@ -27,11 +27,10 @@ type Manager struct {
 	workdir   *workdir.Service
 	settings  atomic.Pointer[runtimeSettings]
 	mutations chan struct{}
-	// admitted is the last lifetime List admitted; read and written only under
-	// mutations. It is a hint, never authority: every use is confirmed by the
-	// B and E records of the read it skips admission for, and a failed read is
-	// a changed lifetime only once InspectServer no longer finds it.
-	admitted tmuxclient.ServerIdentity
+	// admitted is the last managed lifetime; effects can read it outside
+	// mutations. Fresh observations and guarded commands confirm its lifetime
+	// at every use; only that exact lifetime can skip native admission.
+	admitted atomic.Pointer[tmuxclient.ServerIdentity]
 	recovery workspaceRecovery
 }
 
@@ -114,7 +113,7 @@ func (manager *Manager) release() { <-manager.mutations }
 // inventory's B and E records prove that lifetime for every row and token, and
 // List proves it only through normalization: agentcontrol.Inventory proves it
 // through enrichment (a2). Epoch admission runs only for a lifetime List has
-// not admitted and never stamps an absent or empty server.
+// not admitted, including an empty server. Native ownership precedes all writes.
 func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	settings := manager.settings.Load()
 	if err := manager.acquire(ctx); err != nil {
@@ -126,31 +125,29 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 			manager.release()
 		}
 	}()
-	capture, err := manager.tmux.ReadCurrentInventory(ctx, manager.admitted)
+	capture, err := manager.tmux.ReadCurrentInventory(ctx, manager.admittedServer())
 	if err != nil {
 		return Inventory{}, err
 	}
-	if len(capture.Rows) > 0 && capture.Server != manager.admitted {
+	if capture.Server == (tmuxclient.ServerIdentity{}) || capture.Server != manager.admittedServer() {
 		observed, present, err := manager.tmux.InspectServer(ctx)
-		admit := err == nil && present && observed.SessionCount > 0
-		var server tmuxclient.ServerIdentity
-		if admit {
-			server, err = manager.tmux.EnsureServerIdentity(ctx, observed.Identity, newServerEpoch())
-		}
 		if err != nil {
 			return Inventory{}, err
 		}
-		capture = tmuxclient.InventoryCapture{}
-		if admit {
-			manager.admitted = server
-			capture, err = manager.tmux.ReadInventory(ctx, server)
-			if err != nil {
-				return Inventory{}, err
-			}
+		if capture.Server != (tmuxclient.ServerIdentity{}) && (!present || observed.Identity != capture.Server) {
+			return Inventory{}, terminalServiceUnavailable(false)
+		}
+		server, err := manager.admitServer(ctx, observed, present)
+		if err != nil {
+			return Inventory{}, err
+		}
+		capture, err = manager.tmux.ReadInventory(ctx, server)
+		if err != nil {
+			return Inventory{}, err
 		}
 	}
 	if len(capture.Rows) == 0 {
-		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Profiles: settings.profiles, Recovery: manager.recovery.fact}, nil
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Profiles: settings.profiles, Recovery: manager.recovery.fact, Server: capture.Server}, nil
 	}
 	scan := manager.scanCapture(capture)
 	rows, err := manager.normalizeCharacters(ctx, scan, capture.Server)
@@ -193,6 +190,9 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 
 	server, err := parseLifetime(input.TmuxID, input.IdentityToken)
 	if err != nil {
+		return err
+	}
+	if err := manager.requireManagedLifetime(ctx, server); err != nil {
 		return err
 	}
 	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, server)

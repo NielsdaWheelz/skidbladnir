@@ -14,12 +14,46 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 const maximumCheckpointBytes = 8 << 20
+
+// CheckDrainedCheckpoint reads the same recipe recovery admits. The installer
+// separately proves native absence or the exact empty lifetime immediately
+// before stopping it. An empty file never proves a saved source process is gone.
+func CheckDrainedCheckpoint(path string, machine machine.Handle, home string, observed tmuxclient.ServerObservation, present bool) error {
+	if present && observed.SessionCount != 0 {
+		return errors.New("tmux sessions remain; finish work, close sessions and pause new session creation")
+	}
+	directory, err := workdir.New(home, "")
+	if err != nil {
+		return err
+	}
+	manager := &Manager{workdir: directory, recovery: workspaceRecovery{path: path, machine: machine}}
+	recipe, failure := manager.readCheckpoint()
+	if failure != nil {
+		return errors.New("workspace checkpoint is unreadable; repair it using the current installation")
+	}
+	if recipe == nil {
+		return nil
+	}
+	if len(recipe.Sessions) != 0 {
+		return errors.New("workspace checkpoint still contains tmux sessions; let the current gateway save the drained workspace")
+	}
+	gone, failure := sourceGone(recipe.Source)
+	if failure != nil {
+		return errors.New("workspace checkpoint source cannot be inspected; repair it using the current installation")
+	}
+	if !gone && (!present || observed.Identity != recipe.Source.Server) {
+		return errors.New("workspace checkpoint source is still running without the inspected empty tmux server")
+	}
+	return nil
+}
 
 type checkpoint struct {
 	Schema    int                           `json:"schema"`

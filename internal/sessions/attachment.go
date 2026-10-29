@@ -27,6 +27,9 @@ func (manager *Manager) OpenTerminal(lifetimeCtx, startupCtx context.Context, in
 	if err != nil {
 		return nil, err
 	}
+	if err := manager.requireManagedLifetime(startupCtx, server); err != nil {
+		return nil, err
+	}
 	runtime, err := manager.tmux.StartAttachment(lifetimeCtx, startupCtx, tmuxclient.AttachmentSpec{
 		SourceID: input.TmuxID,
 		Columns:  input.Columns, Rows: input.Rows, Server: server,

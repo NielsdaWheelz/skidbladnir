@@ -269,6 +269,8 @@ func sessionFailure(err error) apiError {
 		return errorInternal
 	}
 	switch sessionError.Code {
+	case sessions.ErrorTerminalServiceUnavailable:
+		return apiError{api.Error{Code: string(sessionError.Code), Message: sessionError.Message}, http.StatusServiceUnavailable}
 	case sessions.ErrorWorkingDirectoryInvalid:
 		return errorWorkingDirectoryInvalid
 	case sessions.ErrorWorkingDirectoryUnavailable:

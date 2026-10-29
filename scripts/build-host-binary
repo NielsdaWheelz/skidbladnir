@@ -19,6 +19,14 @@ if [[ ! "$patch" =~ ^[0-9]+$ ]] || ((patch < ${floor##*.})); then
   printf 'resolved Go toolchain %s is outside supported family %s at or above its patch floor\n' "$version" "$floor" >&2
   exit 1
 fi
-go build -buildvcs=false -mod=readonly -trimpath \
-  -ldflags "-s -w -X main.releaseVersion=$2 -X main.releaseSHA=$3" -o "$6" "$5"
+ldflags="-s -w -X main.releaseVersion=$2 -X main.releaseSHA=$3"
+if [[ "$5" == ./cmd/skid-terminals ]]; then
+  # The terminal runtime changes only with its own compiled payload or resources.
+  ldflags='-s -w -linkmode=external'
+fi
+if [[ "$4" == darwin-arm64 && "$5" == ./cmd/skidbladnir ]]; then
+  # A command-line executable needs embedded metadata for its stable mac identity.
+  ldflags+=' -linkmode=external -extldflags=-Wl,-sectcreate,__TEXT,__info_plist,macos/gateway/Info.plist'
+fi
+go build -buildvcs=false -mod=readonly -trimpath -ldflags "$ldflags" -o "$6" "$5"
 chmod 0755 "$6"

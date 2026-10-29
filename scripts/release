@@ -83,6 +83,10 @@ for platform in linux-amd64 darwin-arm64; do
     "$source_dir/deployment/providers/terminal-context-init" "$root/providers"
   members=(skidbladnir release.json providers)
   if [[ "$platform" == darwin-arm64 ]]; then
+    codesign --force --sign "$SKIDBLADNIR_MAC_SIGNING_IDENTITY" --timestamp=none --options runtime \
+      --identifier dev.niels.skidbladnir.gateway \
+      --requirements "=designated => identifier \"dev.niels.skidbladnir.gateway\" and certificate leaf = H\"$SKIDBLADNIR_MAC_SIGNING_IDENTITY\"" \
+      "$root/skidbladnir"
     app="$root/Skid.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 ./cmd/skid-notifications \
@@ -97,7 +101,18 @@ for platform in linux-amd64 darwin-arm64; do
       --entitlements "$source_dir/macos/entitlements.plist" "$app"
     chmod 0755 "$app/Contents/_CodeSignature"
     chmod 0644 "$app/Contents/_CodeSignature/CodeResources"
-    members+=(Skid.app)
+    runtime="$root/terminal-runtime/SkidTerminals.app"
+    install -d -m 0755 "$runtime/Contents/MacOS"
+    "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 ./cmd/skid-terminals \
+      "$runtime/Contents/MacOS/skid-terminals"
+    install -m 0644 "$source_dir/macos/terminals/Info.plist" "$runtime/Contents/Info.plist"
+    codesign --force --sign "$SKIDBLADNIR_MAC_SIGNING_IDENTITY" --timestamp=none --options runtime \
+      --identifier dev.niels.skidbladnir.terminals \
+      --requirements "=designated => identifier \"dev.niels.skidbladnir.terminals\" and certificate leaf = H\"$SKIDBLADNIR_MAC_SIGNING_IDENTITY\"" \
+      "$runtime"
+    chmod 0755 "$runtime/Contents/_CodeSignature"
+    chmod 0644 "$runtime/Contents/_CodeSignature/CodeResources"
+    members+=(Skid.app terminal-runtime)
   fi
   archive="$assets/skidbladnir-$platform.tar.gz"
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$root" -czf "$archive" "${members[@]}"
@@ -124,7 +139,7 @@ notes="$staging/notes.md"
   printf '# skíðblaðnir %s\n\n' "$tag"
   printf -- '- source: `%s`\n- verify run: `%s`\n' "$sha" "$run_id"
   printf -- '- android signer sha256: `%s`\n' "$(<"$assets/android-signing-cert.sha256")"
-  printf -- '- mac app signer sha256: `%s`\n\n' "$(<"$source_dir/macos/app-signing-cert.sha256")"
+  printf -- '- mac app signer sha256: `%s`\n\n' "$(<"$source_dir/internal/install/mac-signing-cert.sha256")"
   printf '## install\n\ndownload `install` from this release, inspect it, then run `bash install %s`.\n' "$tag"
   printf 'the [readme](https://github.com/%s/blob/%s/README.md#install) covers hosts, the phone and updates.\n\n' "$repo" "$sha"
   printf '## assets\n\n| asset | sha256 |\n| --- | --- |\n'
