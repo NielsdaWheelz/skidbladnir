@@ -97,6 +97,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	} else if err != nil {
 		return fmt.Errorf("installed release unreadable: %w", err)
 	}
+	// Refuse a foreign server before downloading or changing authoritative state.
+	if _, lookupErr := exec.LookPath("tmux"); lookupErr == nil {
+		if _, _, err = i.inspectTerminal(ctx, false); err != nil {
+			return err
+		}
+	}
 	releases := filepath.Join(dirs.Data, "releases")
 	if err = os.MkdirAll(releases, 0700); err != nil {
 		return err
@@ -147,10 +153,64 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err = i.dependencies(ctx); err != nil {
 		return err
 	}
+	tmuxPath, err := exec.LookPath("tmux")
+	if err != nil {
+		return err
+	}
+	terminal := i.terminalService(tmuxPath)
+	runtimeChange, err := i.runtimeChanged(ctx, payload, terminal)
+	if err != nil {
+		return err
+	}
+	before, present, err := i.inspectTerminal(ctx, runtimeChange)
+	if err != nil {
+		return err
+	}
+	if !runtimeChange {
+		if err = i.waitTerminal(ctx); err != nil {
+			return err
+		}
+	}
+	completed := ""
+	defer func() {
+		if result != nil && completed != "" {
+			result = fmt.Errorf("%s; installation incomplete: %w", completed, result)
+		}
+	}()
+	if err = i.stopGateway(ctx); err != nil {
+		return fmt.Errorf("gateway shutdown failed: %w", err)
+	}
+	completed = "gateway stopped"
+	if runtimeChange {
+		// The stopped gateway cannot repopulate the checkpoint after this read.
+		after, stillPresent, inspectErr := i.inspectTerminal(ctx, true)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		if stillPresent != present || present && after.Identity != before.Identity {
+			return errors.New("the drained tmux server lifetime changed; " + drainInstructions)
+		}
+		if err = i.stopTerminal(ctx, terminal, after, stillPresent); err != nil {
+			return fmt.Errorf("terminal service shutdown failed: %w", err)
+		}
+		completed = "gateway and drained terminal service stopped"
+		if err = i.replaceRuntime(payload, stage); err != nil {
+			return fmt.Errorf("terminal runtime replacement failed: %w", err)
+		}
+		if err = i.writeService(terminal); err != nil {
+			return fmt.Errorf("terminal service definition failed: %w", err)
+		}
+		if err = i.startService(ctx, terminal); err != nil {
+			return fmt.Errorf("terminal service startup failed: %w", err)
+		}
+		if err = i.waitTerminal(ctx); err != nil {
+			return fmt.Errorf("terminal service readiness failed: %w", err)
+		}
+		completed = "terminal service replaced and ready; gateway stopped"
+	} else if err = os.RemoveAll(filepath.Join(payload, "terminal-runtime")); err != nil {
+		return err
+	}
 
-	// Nothing above changed a skid-owned path. The writes below leave running
-	// services undisturbed, so they precede stop: a refused startup file fails
-	// before any downtime.
 	if err = os.MkdirAll(dirs.Config, 0700); err != nil {
 		return err
 	}
@@ -172,18 +232,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err = i.addShellBlocks(ctx); err != nil {
 		return err
 	}
-	for _, s := range i.services() {
-		if err = os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+	for _, s := range i.gatewayServices() {
+		if err = i.writeService(s); err != nil {
 			return err
 		}
-		if err = writeAtomic(s.path, []byte(s.text), 0644); err != nil {
-			return err
-		}
-	}
-	// Stop precedes any release move: mac finds the running app through
-	// current's old physical bundle, which a move aside would hide.
-	if err = i.stopServices(ctx); err != nil {
-		return err
 	}
 	final := filepath.Join(releases, manifest.Version+"-"+manifest.SourceSHA)
 	replaced := filepath.Join(stage, "replaced")
@@ -200,7 +252,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err = replaceLink(current, final); err != nil {
 		return err
 	}
-	if err = i.startServices(ctx); err != nil {
+	completed = "gateway release installed; terminal service ready"
+	if err = i.startGateway(ctx, manifest.Version); err != nil {
 		return fmt.Errorf("release installed; service startup failed: %w", err)
 	}
 	// Only a release that started supersedes the others; a failed start keeps them.
@@ -216,7 +269,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 			return fmt.Errorf("release installed; pruning failed: %w", err)
 		}
 	}
-	fmt.Fprintf(stdout, "installed %s; settings and private state preserved\n", manifest.Version)
+	if runtimeChange {
+		fmt.Fprintf(stdout, "installed %s; terminal service replaced and ready; gateway ready\n", manifest.Version)
+	} else {
+		fmt.Fprintf(stdout, "updated gateway to %s; terminal service unchanged; gateway ready\n", manifest.Version)
+	}
 	fmt.Fprintln(stdout, "local shells need no provider or tailscale login; open a new login shell to use skid")
 	return nil
 }
@@ -231,26 +288,77 @@ func validate(ctx context.Context, payload string) (releaseManifest, error) {
 	if manifest.Platform != runtime.GOOS+"-"+runtime.GOARCH {
 		return manifest, errors.New("release is for another platform")
 	}
+	if runtime.GOOS == "darwin" {
+		for _, artifact := range []struct{ path, id string }{
+			{filepath.Join(payload, "skidbladnir"), "dev.niels.skidbladnir.gateway"},
+			{filepath.Join(payload, "Skid.app"), "dev.niels.skidbladnir"},
+			{filepath.Join(payload, "terminal-runtime", "SkidTerminals.app"), "dev.niels.skidbladnir.terminals"},
+		} {
+			if _, err = verifyMacSignature(ctx, artifact.path, artifact.id); err != nil {
+				return manifest, err
+			}
+		}
+	}
 	output, err := exec.CommandContext(ctx, filepath.Join(payload, "skidbladnir"), "version").Output()
 	if err != nil || string(output) != manifest.Version+" "+manifest.SourceSHA+"\n" {
 		return manifest, errors.New("release executable identity check failed")
 	}
-	if runtime.GOOS == "darwin" {
-		if err = exec.CommandContext(ctx, "codesign", "--verify", "--strict", filepath.Join(payload, "Skid.app")).Run(); err != nil {
-			return manifest, errors.New("mac notification app signature invalid")
-		}
-	}
 	return manifest, nil
 }
 
-// uninstall is idempotent: on a host with nothing installed it changes nothing
-// but the tailscale route and still succeeds.
-func (i *installer) uninstall(ctx context.Context) error {
+func (i *installer) uninstall(ctx context.Context) (result error) {
+	completed := ""
+	defer func() {
+		if result != nil && completed != "" {
+			result = fmt.Errorf("%s; removal incomplete: %w", completed, result)
+		}
+	}()
+	paths := []string{filepath.Join(i.dirs.Data, "current"), filepath.Join(i.dirs.Data, "releases"), filepath.Join(i.dirs.Data, "terminal-runtime"), filepath.Join(i.dirs.Bin, "skid")}
+	for _, s := range append(i.gatewayServices(), i.terminalService("")) {
+		paths = append(paths, s.path)
+	}
+	installed := false
+	for _, path := range paths {
+		if _, err := os.Lstat(path); err == nil {
+			installed = true
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if !installed {
+		fmt.Fprintln(i.stdout, "no skid installation files found; nothing removed")
+		return nil
+	}
+	// No route, service or file changes precede the drain and checkpoint proof.
+	before, present, err := i.inspectTerminal(ctx, true)
+	if err != nil {
+		return err
+	}
 	// zsh runs the user's .zshenv and can fail, so it runs before any side effect.
 	zdir, err := zshDirectory(ctx, i.dirs.Home)
 	if err != nil {
 		return err
 	}
+	if err = i.stopGateway(ctx); err != nil {
+		return fmt.Errorf("gateway shutdown failed; removal incomplete: %w", err)
+	}
+	completed = "gateway stopped"
+	after, stillPresent, err := i.inspectTerminal(ctx, true)
+	if err != nil {
+		return fmt.Errorf("gateway stopped; removal refused: %w", err)
+	}
+	if stillPresent != present || present && after.Identity != before.Identity {
+		return errors.New("gateway stopped; the drained tmux server lifetime changed; " + drainInstructions)
+	}
+	tmuxPath, err := exec.LookPath("tmux")
+	if err != nil {
+		return err
+	}
+	terminal := i.terminalService(tmuxPath)
+	if err = i.stopTerminal(ctx, terminal, after, stillPresent); err != nil {
+		return fmt.Errorf("gateway stopped; terminal service shutdown failed; removal incomplete: %w", err)
+	}
+	completed = "gateway and drained terminal service stopped"
 	// skid connect points tailscale serve's https:8443 at the gateway. A host that
 	// never connected, or whose tailscale is down, warns and continues.
 	if tailscale, err := TailscalePath(); err == nil {
@@ -261,14 +369,21 @@ func (i *installer) uninstall(ctx context.Context) error {
 			fmt.Fprintf(i.stderr, "tailscale serve --https=8443 off failed (%v); if a route remains, run it by hand\n", err)
 		}
 	}
-	if err = i.stopServices(ctx); err != nil {
-		return err
-	}
 	if err = removeShellBlocks(i.dirs.Home, zdir); err != nil {
 		return err
 	}
-	paths := []string{filepath.Join(i.dirs.Bin, "skid"), filepath.Join(i.dirs.Data, "current")}
-	for _, s := range i.services() {
+	paths = []string{filepath.Join(i.dirs.Bin, "skid"), filepath.Join(i.dirs.Data, "current")}
+	services := append(i.gatewayServices(), terminal)
+	for _, s := range services {
+		if runtime.GOOS == "linux" {
+			if _, err = os.Stat(s.path); err == nil {
+				if err = command(ctx, i.stdout, i.stderr, "systemctl", "--user", "disable", s.name); err != nil {
+					return fmt.Errorf("services stopped; disabling %s failed: %w", s.name, err)
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		paths = append(paths, s.path)
 	}
 	for _, path := range paths {
@@ -279,7 +394,15 @@ func (i *installer) uninstall(ctx context.Context) error {
 	if err = os.RemoveAll(filepath.Join(i.dirs.Data, "releases")); err != nil {
 		return err
 	}
-	fmt.Fprintln(i.stdout, "skid runtime removed; settings, private state, provider data, tmux and shared packages retained")
+	if err = os.RemoveAll(filepath.Join(i.dirs.Data, "terminal-runtime")); err != nil {
+		return err
+	}
+	if runtime.GOOS == "linux" {
+		if err = command(ctx, i.stdout, i.stderr, "systemctl", "--user", "daemon-reload"); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintln(i.stdout, "gateway and drained terminal service removed; settings, private state, provider data and shared packages retained")
 	return nil
 }
 

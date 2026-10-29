@@ -40,7 +40,7 @@ func Inspect(ctx context.Context, observed tmux.ServerObservation, present bool)
 			return observationFailure(err)
 		}
 	}
-	pid, err := nativePID(ctx)
+	pid, err := nativePID(ctx, terminalJob)
 	if err != nil {
 		return Unavailable, err
 	}
@@ -51,7 +51,7 @@ func Inspect(ctx context.Context, observed tmux.ServerObservation, present bool)
 			return observationFailure(err)
 		}
 	}
-	closingPID, err := nativePID(ctx)
+	closingPID, err := nativePID(ctx, terminalJob)
 	if err != nil {
 		return Unavailable, err
 	}
@@ -84,6 +84,49 @@ func Inspect(ctx context.Context, observed tmux.ServerObservation, present bool)
 		return Unmanaged, nil
 	}
 	return Managed, nil
+}
+
+// GatewayProcess observes the fixed gateway job for installation readiness and
+// shutdown. A changing job or kernel lifetime is an observation failure.
+func GatewayProcess(ctx context.Context) (process.Observation, bool, error) {
+	return jobProcess(ctx, gatewayJob)
+}
+
+// RuntimeProcess observes the fixed runtime job before installer shutdown.
+func RuntimeProcess(ctx context.Context) (process.Observation, bool, error) {
+	return jobProcess(ctx, terminalJob)
+}
+
+func jobProcess(ctx context.Context, job string) (process.Observation, bool, error) {
+	pid, err := nativePID(ctx, job)
+	if err != nil {
+		return process.Observation{}, false, err
+	}
+	var before process.Observation
+	if pid != 0 {
+		before, err = process.Observe(pid)
+		if err != nil {
+			return process.Observation{}, false, err
+		}
+	}
+	afterPID, err := nativePID(ctx, job)
+	if err != nil {
+		return process.Observation{}, false, err
+	}
+	if afterPID != pid {
+		return process.Observation{}, false, errors.New("native service process changed during observation")
+	}
+	if pid == 0 {
+		return process.Observation{}, false, nil
+	}
+	after, err := process.Observe(pid)
+	if err != nil {
+		return process.Observation{}, false, err
+	}
+	if after != before {
+		return process.Observation{}, false, errors.New("native kernel identity changed during observation")
+	}
+	return before, true, nil
 }
 
 func observationFailure(err error) (State, error) {

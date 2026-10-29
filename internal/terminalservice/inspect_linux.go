@@ -11,15 +11,18 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func nativePID(ctx context.Context) (process.PID, error) {
-	output, err := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=MainPID", LinuxUnit).Output()
+const terminalJob = LinuxUnit
+const gatewayJob = "skidbladnir.service"
+
+func nativePID(ctx context.Context, unit string) (process.PID, error) {
+	output, err := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=MainPID", unit).Output()
 	if err != nil {
-		return 0, fmt.Errorf("inspect terminal user service: %w", err)
+		return 0, fmt.Errorf("inspect native user service %s: %w", unit, err)
 	}
 	value, ok := strings.CutPrefix(strings.TrimSuffix(string(output), "\n"), "MainPID=")
 	pid, err := strconv.Atoi(value)
 	if !ok || err != nil || pid < 0 {
-		return 0, errors.New("invalid terminal user service pid")
+		return 0, errors.New("invalid native user service pid")
 	}
 	return process.PID(pid), nil
 }

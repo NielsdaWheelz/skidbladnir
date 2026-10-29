@@ -5,43 +5,51 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func nativePID(ctx context.Context) (process.PID, error) {
+const terminalJob = DarwinLabel
+const gatewayJob = "dev.niels.skidbladnir"
+
+var launchAgentRow = regexp.MustCompile(`^([^ \t]+)[ \t]+([^ \t]+)[ \t]+(.*)$`)
+
+func nativePID(ctx context.Context, label string) (process.PID, error) {
 	// launchctl(1) documents these three columns. Its print output is not API.
 	output, err := exec.CommandContext(ctx, "/bin/launchctl", "list").Output()
 	if err != nil {
-		return 0, fmt.Errorf("inspect terminal launch agent: %w", err)
+		return 0, fmt.Errorf("inspect native launch agent %s: %w", label, err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	lines := strings.Split(strings.TrimSuffix(string(output), "\n"), "\n")
 	if len(lines) == 0 || strings.Join(strings.Fields(lines[0]), " ") != "PID Status Label" {
 		return 0, errors.New("invalid launch agent list header")
 	}
 	var pid process.PID
 	found := false
 	for _, line := range lines[1:] {
-		fields := strings.Fields(line)
-		if len(fields) != 3 {
+		// The first two columns are tokens; the remaining label may contain
+		// whitespace. launchctl does not promise a particular column delimiter.
+		fields := launchAgentRow.FindStringSubmatch(line)
+		if fields == nil {
 			return 0, errors.New("invalid launch agent list row")
 		}
-		if fields[2] != DarwinLabel {
+		if fields[3] != label {
 			continue
 		}
 		if found {
-			return 0, errors.New("duplicate terminal launch agent")
+			return 0, errors.New("duplicate native launch agent")
 		}
 		found = true
-		if _, err := strconv.Atoi(fields[1]); err != nil {
-			return 0, errors.New("invalid terminal launch agent status")
+		if _, err := strconv.Atoi(fields[2]); err != nil {
+			return 0, errors.New("invalid native launch agent status")
 		}
-		if fields[0] != "-" {
-			value, err := strconv.Atoi(fields[0])
+		if fields[1] != "-" {
+			value, err := strconv.Atoi(fields[1])
 			if err != nil || value <= 0 {
-				return 0, errors.New("invalid terminal launch agent pid")
+				return 0, errors.New("invalid native launch agent pid")
 			}
 			pid = process.PID(value)
 		}
