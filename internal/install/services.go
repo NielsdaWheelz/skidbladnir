@@ -28,7 +28,7 @@ func xmlText(value string) string {
 	return out.String()
 }
 func systemdQuote(value string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, `$`, `$$`).Replace(value) + `"`
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`).Replace(value) + `"`
 }
 func (i *installer) environment() [][2]string {
 	locale := os.Getenv("LANG")
@@ -52,7 +52,7 @@ func (i *installer) unit(name string, args []string, terminal bool) service {
 		if index != 0 {
 			text += " "
 		}
-		text += systemdQuote(arg)
+		text += systemdQuote(strings.ReplaceAll(arg, "$", "$$"))
 	}
 	text += "\n"
 	for _, entry := range i.environment() {
