@@ -9,7 +9,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fcmpush"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
@@ -29,10 +28,16 @@ type receiverStatus struct {
 	Status string `json:"status"` // disabled | unconfigured | active | unavailable
 }
 
+func phoneMember(members []fleet.Member, device string) bool {
+	return slices.ContainsFunc(members, func(member fleet.Member) bool {
+		return member.Kind == "phone" && member.DeviceID == device
+	})
+}
+
 // phones keeps the receivers of current phone members.
 func phones(receivers []receiver, members []fleet.Member) []receiver {
 	return slices.DeleteFunc(slices.Clone(receivers), func(value receiver) bool {
-		return !slices.ContainsFunc(members, func(member fleet.Member) bool { return member.Kind == "phone" && member.DeviceID == value.DeviceID })
+		return !phoneMember(members, value.DeviceID)
 	})
 }
 
@@ -51,51 +56,31 @@ func (observer *Observer) status(device string) receiverStatus {
 	}
 }
 
-// ConfigurePush changes only the push transport; it is synchronous and offline.
-// A configuration change erases destinations but keeps floors.
-func (observer *Observer) ConfigurePush(push *hostconfig.AndroidPush, sender *fcmpush.Client) error {
+// Configure retains the latest accepted settings even while storage is unavailable.
+// Recovery reconciles those settings before reopening notification routes.
+func (observer *Observer) Configure(members []fleet.Member, push *hostconfig.AndroidPush, sender *fcmpush.Client) {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		return attention.ErrUnavailable
-	}
 	configuration := ""
 	if push != nil {
 		configuration = push.ID()
 	} else {
 		sender = nil
 	}
-	if configuration != observer.file.Configuration {
-		file := observer.file
-		file.Configuration = configuration
-		file.Receivers = slices.Clone(file.Receivers)
-		for index := range file.Receivers {
-			file.Receivers[index].FID, file.Receivers[index].Failed = "", false
+	transportChanged := observer.configuration != configuration || observer.sender != sender
+	observer.members = slices.Clone(members)
+	observer.configuration, observer.sender = configuration, sender
+	if observer.failure != nil {
+		return
+	}
+	if file, changed := observer.reconcileConfiguration(observer.file); changed {
+		if observer.save(file) != nil {
+			return
 		}
-		if err := observer.save(file); err != nil {
-			return err
-		}
 	}
-	observer.sender = sender
-	wake(observer.send)
-	return nil
-}
-
-// ReconcileMembers deletes the receivers of devices no longer in the fleet; a
-// removed member can no longer authenticate to register again.
-func (observer *Observer) ReconcileMembers(members []fleet.Member) error {
-	observer.mutex.Lock()
-	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		return attention.ErrUnavailable
+	if transportChanged {
+		wake(observer.send)
 	}
-	receivers := phones(observer.file.Receivers, members)
-	if len(receivers) == len(observer.file.Receivers) {
-		return nil
-	}
-	file := observer.file
-	file.Receivers = receivers
-	return observer.save(file)
 }
 
 // register activates a phone's destination for a newer generation; the same
@@ -115,8 +100,14 @@ func (observer *Observer) register(writer http.ResponseWriter, request *http.Req
 	}
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		WriteUnavailable(writer)
+	// Membership can change after authentication while the request body arrives.
+	if !phoneMember(observer.members, device) {
+		writer.Header().Set("WWW-Authenticate", "Bearer")
+		writeError(writer, http.StatusUnauthorized, "Unauthenticated", "authentication required")
+		return
+	}
+	if observer.failure != nil {
+		writeUnavailable(writer)
 		return
 	}
 	index := slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == device })
@@ -139,7 +130,7 @@ func (observer *Observer) register(writer http.ResponseWriter, request *http.Req
 			file.Receivers[index] = next
 		}
 		if observer.save(file) != nil {
-			WriteUnavailable(writer)
+			writeUnavailable(writer)
 			return
 		}
 		wake(observer.send)
@@ -166,6 +157,18 @@ func token(value string, maximum int) bool {
 	return true
 }
 
+// currentReceiver binds a send and its completion to the current desired
+// transport, membership and registered destination. The caller holds the mutex.
+func (observer *Observer) currentReceiver(sender *fcmpush.Client, configuration string, target receiver) int {
+	if observer.failure != nil || observer.sender != sender || observer.configuration != configuration ||
+		!phoneMember(observer.members, target.DeviceID) {
+		return -1
+	}
+	return slices.IndexFunc(observer.file.Receivers, func(current receiver) bool {
+		return current.DeviceID == target.DeviceID && current.Floor == target.Floor && current.FID == target.FID
+	})
+}
+
 // sendHints is the only fcm sender. It wakes on every projection change,
 // registration and push reconfiguration, sends one content-free hint to each
 // destination, and stops with ctx. A failed send waits for the next change.
@@ -177,7 +180,7 @@ func (observer *Observer) sendHints(ctx context.Context) {
 		case <-observer.send:
 		}
 		observer.mutex.Lock()
-		if observer.unavailable || observer.sender == nil {
+		if observer.failure != nil || observer.sender == nil {
 			observer.mutex.Unlock()
 			continue
 		}
@@ -190,16 +193,25 @@ func (observer *Observer) sendHints(ctx context.Context) {
 		targets := slices.DeleteFunc(slices.Clone(observer.file.Receivers), func(value receiver) bool { return value.FID == "" })
 		observer.mutex.Unlock()
 		for _, target := range targets {
+			observer.mutex.Lock()
+			if ctx.Err() != nil {
+				observer.mutex.Unlock()
+				return
+			}
+			current := observer.currentReceiver(sender, configuration, target) >= 0
+			observer.mutex.Unlock()
+			if !current {
+				continue
+			}
 			request, cancel := context.WithTimeout(ctx, 10*time.Second)
 			err := sender.Send(request, fcmpush.Message{FID: target.FID, Data: map[string]string{"kind": "hint"}, Android: fcmpush.AndroidConfig{CollapseKey: urgency, Priority: priority, TTL: "2419200s", RestrictedPackageName: "dev.niels.skidbladnir"}})
 			cancel()
+			observer.mutex.Lock()
 			if ctx.Err() != nil {
+				observer.mutex.Unlock()
 				return
 			}
-			observer.mutex.Lock()
-			// A reconfiguration or re-registration during the send owns the receiver now.
-			index := slices.IndexFunc(observer.file.Receivers, func(value receiver) bool { return value.DeviceID == target.DeviceID })
-			if !observer.unavailable && observer.sender == sender && observer.file.Configuration == configuration && index >= 0 && observer.file.Receivers[index].Floor == target.Floor && observer.file.Receivers[index].FID == target.FID {
+			if index := observer.currentReceiver(sender, configuration, target); index >= 0 {
 				next := observer.file.Receivers[index]
 				next.Failed = err != nil
 				var failure *fcmpush.Error
@@ -210,7 +222,10 @@ func (observer *Observer) sendHints(ctx context.Context) {
 					file := observer.file
 					file.Receivers = slices.Clone(file.Receivers)
 					file.Receivers[index] = next
-					_ = observer.save(file) // a failed save latches the observer unavailable
+					if observer.save(file) != nil {
+						observer.mutex.Unlock()
+						break
+					}
 				}
 			}
 			observer.mutex.Unlock()

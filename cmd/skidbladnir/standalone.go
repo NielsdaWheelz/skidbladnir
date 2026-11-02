@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,7 +15,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -97,15 +95,19 @@ func serveStandalone(stdout io.Writer) (result error) {
 	agents := agentcontrol.New(manager)
 	client := fleetclient.New(state, local)
 	credentials := filepath.Join(config, "android-push-credentials.json")
-	notifications := &notificationHost{logger: logger}
-	configuredPush := pushKey(credentials, local.Push)
+	var notifications http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"code":"NotificationsUnavailable","message":"notification hub unavailable; check skid status and service logs"}`+"\n") // a disconnected client cannot be answered
+	})
+	var observer *notifier.Observer
+	var sender *fcmpush.Client
+	configuredPush := ""
 	if local.Hub == local.Machine {
-		observer, err := notifier.New(notifier.Config{FleetID: local.FleetID, Client: client, StatePath: observerPath, Fleet: control, Push: local.Push, Sender: pushSender(credentials, local.Push), Members: local.Members})
-		if err != nil {
-			notifications.fail()
-		} else {
-			notifications.observer = observer
-		}
+		configuredPush = pushKey(credentials, local.Push)
+		sender = pushSender(credentials, local.Push)
+		observer = notifier.New(notifier.Config{FleetID: local.FleetID, Client: client, StatePath: observerPath, Fleet: control, Push: local.Push, Sender: sender, Members: local.Members, Logger: logger})
+		notifications = observer
 	}
 	monitor := pressure.NewMonitor()
 	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle})
@@ -113,8 +115,8 @@ func serveStandalone(stdout io.Writer) (result error) {
 	go func() { monitor.Run(ctx); workers <- nil }()
 	go func() { control.Run(ctx); workers <- nil }()
 	go func() {
-		if notifications.observer != nil && notifications.observer.Run(ctx) != nil {
-			notifications.fail()
+		if observer != nil {
+			observer.Run(ctx)
 		}
 		workers <- nil
 	}()
@@ -152,17 +154,13 @@ func serveStandalone(stdout io.Writer) (result error) {
 				return
 			}
 			client.Adopt(next)
-			if observer := notifications.observer; observer != nil {
-				if observer.ReconcileMembers(next.Members) != nil {
-					notifications.fail()
-				}
-				// Only a changed transport reconfigures: a new sender drops its cached token and discards the result of a send in flight.
+			if observer != nil {
+				// Reuse the sender until accepted options or credential bytes change.
 				if key := pushKey(credentials, next.Push); key != configuredPush {
 					configuredPush = key
-					if observer.ConfigurePush(next.Push, pushSender(credentials, next.Push)) != nil {
-						notifications.fail()
-					}
+					sender = pushSender(credentials, next.Push)
 				}
+				observer.Configure(next.Members, next.Push, sender)
 			}
 			previous = next
 		}
@@ -173,37 +171,6 @@ func serveStandalone(stdout io.Writer) (result error) {
 		result = errors.Join(result, <-workers)
 	}
 	return errors.Join(result, control.Err())
-}
-
-// notificationHost serves the hub's observer, which is fixed before the
-// gateway serves and itself answers 503 after a failed save until restart.
-// Without an observer, a hub whose observer failed to start and a member both
-// answer 503.
-type notificationHost struct {
-	observer *notifier.Observer
-	failed   atomic.Bool
-	logger   *slog.Logger
-}
-
-func (host *notificationHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case host.observer != nil:
-		host.observer.ServeHTTP(w, r)
-	case host.failed.Load():
-		notifier.WriteUnavailable(w)
-	default:
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = io.WriteString(w, `{"code":"NotificationsUnavailable","message":"notification hub unavailable; check skid status and service logs"}`+"\n") // a disconnected client cannot be answered
-	}
-}
-
-// fail reports the hub's notification failure once; a running observer has
-// already latched itself unavailable.
-func (host *notificationHost) fail() {
-	if !host.failed.Swap(true) {
-		host.logger.Info("Notifications.Unavailable")
-	}
 }
 
 // pushSender loads the hub's firebase credential; nil when push is off or the

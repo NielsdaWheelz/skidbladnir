@@ -1456,13 +1456,15 @@ gateways (5 s per machine) -> hub notifier: records -> projection
 4. an episode is allocated when a cause appears, changes or belongs to a new
    foreground. action outranks latent ready; clearing a notice to reveal pending
    ready alerts again, acknowledged ready does not; renames never allocate.
-5. durability: a commit is saved before it is published, and the file is written
-   only when a machine's records change, so every value a client holds was saved
-   under a revision at least as large and a restart allocates above it. startup
+5. durability: a commit is saved before it is published; unchanged inventory
+   needs no write. every value a client holds was saved under a revision at least
+   as large and a restart allocates above it. startup
    marks every machine a gap until its first fresh read. a missing or
    other-fleet file starts empty and a new fleet deletes it; any other read,
-   decode or save failure answers 503 `NotificationsUnavailable` until restart,
-   never an empty state (`observer.go`, `cmd/skidbladnir/standalone.go`).
+   decode or save failure pauses attention and answers 503
+   `NotificationsUnavailable`, never an empty state. the observer retries
+   admission on its existing five-second tick while the gateway and terminals
+   keep running (`observer.go`, `cmd/skidbladnir/standalone.go`).
 6. projection, per session of a fresh machine (`transitions.go`): `clear`
    when there is no cause, the episode is handled, or the cause is ready and its
    generation acknowledged; otherwise title, body and episode with `post` while
@@ -1497,6 +1499,23 @@ gateways (5 s per machine) -> hub notifier: records -> projection
    ready only beside a direct idle row with the same foreground: direct
    inventory qualifies ready and never creates it.
 
+recovery rereads the actual file, reconciles current membership and push settings,
+and durably saves before reopening with every machine a gap. only fresh inventory
+qualifies readiness; late reads from cancelled lanes cannot restore freshness.
+failed requests are never replayed: a replacement may fail after rename, so a
+saved acknowledgement can survive a 503. corrupt or unreadable state stays
+untouched until repaired; missing or other-fleet state retains the startup rule.
+current settings are retained during the outage, including receiver revocation
+and push changes. file operations remain synchronous under the observer mutex;
+five seconds bounds retry cadence, not filesystem latency. cancellation admits
+no new recovery attempt and shutdown joins the observer's workers.
+
+failure logs `Notifications.Unavailable` with classified phase (`read`, `decode`,
+`admit`, `write`) and known operation/errno, once per changed classification;
+recovery logs `Notifications.Recovered`. no raw errors or paths. unavailable copy:
+`notification state unavailable; retrying automatically. check hub storage and
+service logs if this persists.`
+
 content: the title is the session name with control, format and separator
 characters replaced (`attention.SingleLine`); the body is `ready`, the request
 phrase, the notice phrase or `request · notice` (`api/status.go`). no
@@ -1511,7 +1530,7 @@ replies, history or replay, linux popups.
 | route (hub) | contract |
 | --- | --- |
 | `GET /v1/notifications/state` | the projection; phones also get `receiver.status` |
-| `GET /v1/notifications/events` | `text/event-stream`: `data: changed` at connect and per projection change, `: keepalive` every 60 s; no ids or replay |
+| `GET /v1/notifications/events` | `text/event-stream`: `data: changed` at connect, per projection change and before closing on observer failure; `: keepalive` every 60 s; no ids or replay |
 | `POST /v1/notifications/handled` | strict json at most 4 KiB; 204 |
 | `PUT /v1/notifications/receivers/me` | phones only, else 403; [android push](#android-push), item 3 |
 
@@ -1568,11 +1587,12 @@ android_push:              # public client options; operations: android push set
    configuration activates when `generation > floor` and is 204 for the
    identical active tuple; anything else, or push off, is 409 `ReceiverConflict`
    (`internal/notifier/receivers.go`). a configuration change erases
-   destinations and keeps floors; removed members' receivers are deleted.
+   destinations and keeps floors; removed members' receivers are deleted and
+   cannot be recreated by registrations admitted before removal.
 4. a message is data-only `{kind:"hint"}`, restricted to `dev.niels.skidbladnir`,
    four-week ttl, collapse key and priority `attention`/high when an episode was
    allocated since the last send, else `sync`/normal (`receivers.go`). hints
-   go on projection change, hub start, push reconfiguration and registration,
+   go on projection change, hub start/recovery, push reconfiguration and registration,
    never periodically. a hint only wakes the phone: it checks the sender against
    its options and schedules one bounded authenticated state read (expedited
    when high, three retries); only that read presents. no text, terminal data or
@@ -1583,10 +1603,19 @@ android_push:              # public client options; operations: android push set
    (no destination or failed), `active`. a state read never clears a push
    failure.
 
+new sends pause while observer state is unavailable. each target is admitted
+against current membership, sender, configuration and registration; an admitted
+send may finish, but its result applies only to that same current tuple. recovery
+forces a hint even when the projection is unchanged; a recovery-only hint uses
+normal priority.
+
 ### notification accepted limits
 
 - five-second sampling misses brief transitions; inference can be wrong and has
   no grace period.
+- attention pauses during storage outages and can miss a complete busy-to-idle
+  turn. restoring an older file or deleting it loses history absent from that
+  file; automatic recovery cannot reconstruct it or repair corrupt data.
 - a notice removed without a callback (android reboot) or dismissed with a
   failed ack re-alerts once in the next process.
 - ready during an open visit stays unacknowledged until the next entry or until
@@ -1599,7 +1628,8 @@ android_push:              # public client options; operations: android push set
   permission or stopped tailscale suspend delivery, and nothing is delivered
   before first unlock. linux has no os popups.
 - each entry adds one state read beside dialing; exit may wait 3 s for its ack.
-- a hand-edited observer record yields odd verdicts, not a 503; delete the file.
+- admitted hand edits can yield odd verdicts. decode or closed-set failures stay
+  unavailable until owner repair; deleting the file discards attention history.
 - fleet and notification hints stay two streams: one merged stream would make
   member gateways refetch the fleet on every attention change.
 
