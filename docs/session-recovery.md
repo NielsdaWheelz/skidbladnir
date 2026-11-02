@@ -13,11 +13,11 @@ Owner decisions:
 
 - Cover every session skid exposes, desktop-created ones included, with all their
   windows and panes.
-- checkpoint every 30 seconds and right after each confirmed skid structural
-  mutation. native tmux changes can be lost between checkpoints.
+- Checkpoint every 30 seconds and right after each confirmed skid structural
+  mutation. Native tmux changes can be lost between checkpoints.
 - restore automatically after a reboot **or** a same-boot server loss, only into a
   managed empty server. an absent service delays; a populated replacement is broken.
-- restore the last confirmed recipe regardless of its age; saved session names
+- Restore the last confirmed recipe regardless of its age; saved session names
   return as manual names, and automatic-title reset stays available.
 - An unsuccessful ordinary checkpoint never disables later saves: keep the
   confirmed recipe, disclose the gap, retry on the next tick. Restoration stays
@@ -62,14 +62,14 @@ reconstruction recipe; it never supplies inventory or agent status.
 
 | Owner | Responsibility |
 | --- | --- |
-| `sessions` (`recovery.go`, `recovery_store.go`) | checkpoint policy, loss decision, restore decision, the file, the state, failure classification; `internal/api` declares the fact and its notice copy (`api.Recovery.Notice`) |
-| `tmux` (`recovery.go`) | presence distinct from empty, coherent graph capture, opaque final-pane startups, guarded reconstruction, layout comparison |
-| `agentruntime` (`conversation*.go`) | bounded native metadata discovery, provider title grammar and ranking; no recovery policy |
-| `hostconfig` / profile runtime | unchanged user command text and current profile/home scope |
-| gateway | starts recovery after the listener, owns its cancellation, logs its transitions |
-| `process` | boot identity and kernel start identity that prove whether the saved server process lives |
+| `sessions` (`recovery.go`, `recovery_store.go`) | Checkpoint policy, loss decision, restore decision, the file, the state, failure classification; `internal/api` declares the fact and its notice copy (`api.Recovery.Notice`) |
+| `tmux` (`recovery.go`) | Presence distinct from empty, coherent graph capture, opaque final-pane startups, guarded reconstruction, layout comparison |
+| `agentruntime` (`conversation*.go`) | Bounded native metadata discovery, provider title grammar and ranking; no recovery policy |
+| `hostconfig` / profile runtime | Unchanged user command text and current profile/home scope |
+| Gateway | Starts recovery after the listener, owns its cancellation, logs its transitions |
+| `process` | Boot identity and kernel start identity that prove whether the saved server process lives |
 | native terminal service | bootstrap, supervise and restart tmux independently of the gateway |
-| clients | the inventory's recovery fact and notice, shown outside every view, with fresh inventory only |
+| Clients | The inventory's recovery fact and notice, shown outside every view, with fresh inventory only |
 | owner | ordinary tmux configuration, with required exit settings off; dev-server is optional |
 
 A process-held exclusive flock on `workspace.lock` precedes any recovery effect, so
@@ -336,25 +336,25 @@ durable recovery state; every state below lives in memory.
 
 | Observation or result | Transition |
 | --- | --- |
-| initial lock, read or admission failure; loaded `attempted=true` | `broken`; storage preserved; no recovery effects |
+| Initial lock, read or admission failure; loaded `attempted=true` | `broken`; storage preserved; no recovery effects |
 | destination service absent or unavailable | `delayed/source/unavailable`; no bootstrap and no durable claim; retry on the existing tick |
 | destination server unmanaged | `broken/source/changed`; no preparation or reconstruction |
-| no recipe and a live server | attempt a complete baseline; a failed save is `delayed` without `savedAt` |
-| the saved source survives | capture its complete current graph, a genuinely empty one included |
-| ordinary checkpoint deadline with gate held | `delayed`; a deadline is not evidence of changed identity; gate-reentry timeout abandons without a status write |
-| capture race, malformed/unavailable native observation, a supported-limit rejection or an unsupported live value | `delayed`; publish nothing; keep the recipe |
-| inconclusive boot/process/socket observation, or source disappearance/change during capture | `delayed`; next tick repeats source-loss proof and target checks |
-| uncertain ordinary preparation write | `delayed`; end the pass; fresh observation precedes any later correction, never replay the failed invocation |
-| ordinary publication failure, before or after rename | `delayed`; keep the recipe; repeat full source checks before another attempt |
-| saved source positively alive but another server observed; ordinary save would replace a nonempty recipe from another source | `broken`; no preparation, overwrite or reconstruction |
-| source proven dead; recipe empty | reconstruct nothing; baseline a new live server when present |
-| source proven dead; recipe nonempty | regardless of age, run the target and preflight checks and durably claim the exact recipe; never select an unconfirmed candidate from the pathname |
-| populated replacement, failed preflight or failed claim | `broken`; no automatic repair or retry |
-| durable claim succeeds | in-memory `attempted=true` before native effects; guarded construction and full verification follow |
-| any later restoration failure, final capture or publication included | `broken`; construction is never replayed by this owner; failed final publication retains the confirmed claim in memory, while restart admits the actual file under the source fences |
-| complete ordinary publication | `tracking`, new `savedAt`, no failure |
-| verified restoration and final publication | `recovered`, new `savedAt`; the next ordinary success becomes `tracking` |
-| gateway cancellation | stop and join before releasing the lock; no failure fact or event |
+| No recipe and a live server | Attempt a complete baseline; a failed save is `delayed` without `savedAt` |
+| The saved source survives | Capture its complete current graph, a genuinely empty one included |
+| Ordinary checkpoint deadline with gate held | `delayed`; a deadline is not evidence of changed identity; gate-reentry timeout abandons without a status write |
+| Capture race, malformed/unavailable native observation, a supported-limit rejection or an unsupported live value | `delayed`; publish nothing; keep the recipe |
+| Inconclusive boot/process/socket observation, or source disappearance/change during capture | `delayed`; next tick repeats source-loss proof and target checks |
+| Uncertain ordinary preparation write | `delayed`; end the pass; fresh observation precedes any later correction, never replay the failed invocation |
+| Ordinary publication failure, before or after rename | `delayed`; keep the recipe; repeat full source checks before another attempt |
+| Saved source positively alive but another server observed; ordinary save would replace a nonempty recipe from another source | `broken`; no preparation, overwrite or reconstruction |
+| Source proven dead; recipe empty | Reconstruct nothing; baseline a new live server when present |
+| Source proven dead; recipe nonempty | Regardless of age, run the target and preflight checks and durably claim the exact recipe; never select an unconfirmed candidate from the pathname |
+| Populated replacement, failed preflight or failed claim | `broken`; no automatic repair or retry |
+| Durable claim succeeds | In-memory `attempted=true` before native effects; guarded construction and full verification follow |
+| Any later restoration failure, final capture or publication included | `broken`; construction is never replayed by this owner; failed final publication retains the confirmed claim in memory, while restart admits the actual file under the source fences |
+| Complete ordinary publication | `tracking`, new `savedAt`, no failure |
+| Verified restoration and final publication | `recovered`, new `savedAt`; the next ordinary success becomes `tracking` |
+| Gateway cancellation | Stop and join before releasing the lock; no failure fact or event |
 
 Only `tracking`, `delayed` and `recovered` continue the loop. Delayed mutation
 checkpoints may also save; broken ones may not. There is no inner retry loop: the
@@ -381,20 +381,20 @@ identity) proves it; an observation failure does not. There is no PID-only test.
 
 1. Pin current settings and prepare final-pane startups. Require the saved profile
    key, provider, accessible home scope and current resume command; otherwise
-   prepare a fixed shell explanation. deduplicate usable provider/scope/id tuples
-   by lowest numeric eligible saved pane. never substitute another profile,
-   conversation or directory. validate the whole checkpoint and every requested local cwd before creating
+   prepare a fixed shell explanation. Deduplicate usable provider/scope/ID tuples
+   by lowest numeric eligible saved pane. Never substitute another profile,
+   conversation or directory. Validate the whole checkpoint and every requested local cwd before creating
    panes: no partial admission or substitute directory. require a managed empty target,
    a configured executable bash or zsh, an empty `default-command`,
    `exit-empty off` and `exit-unattached off`; recheck destination readiness before
    the claim so an unavailable destination cannot consume it.
-2. durably publish the **same confirmed** checkpoint with `attempted=true` before
-   any recovery tmux effect. this may replace an unconfirmed candidate left by a
+2. Durably publish the **same confirmed** checkpoint with `attempted=true` before
+   any recovery tmux effect. This may replace an unconfirmed candidate left by a
    failed ordinary save; a successful claim resolves that uncertainty, and an
    uncertain claim stops recovery. destination absence delays before this claim;
    the gateway never starts tmux. native management precedes stamping an epoch.
-3. guard the first creation in the same synchronous queue on the expected
-   destination epoch, pid and start time, `#{==:#{server_sessions},0}` and the
+3. Guard the first creation in the same synchronous queue on the expected
+   destination epoch, PID and start time, `#{==:#{server_sessions},0}` and the
    required configuration, with `-N if-shell -F` and no shell predicate (format
    booleans are `0`/`1`, unlike `show-options`' `off`/`on`). A native client winning
    the race causes refusal. Every later operation is pinned to that destination
@@ -544,7 +544,7 @@ retryability:
 
 | State | Text / tone |
 | --- | --- |
-| tracking | no notice, also after saving resumes |
+| tracking | No notice, also after saving resumes |
 | delayed | `<host>: workspace saving delayed. <phase label>: <cause phrase>. <last-save>. retrying automatically.` / degraded |
 | broken | `<host>: workspace recovery stopped. <phase label>: <cause phrase>. <last-save>. manual repair required.` / failure |
 | recovered | `<host>: terminals restored.` plus nonzero requested/inferred/skipped clauses below / degraded |

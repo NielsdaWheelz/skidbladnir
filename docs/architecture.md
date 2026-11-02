@@ -64,12 +64,15 @@ private checkpoint, using current configured commands.
   configured profile command.
 - Provider credentials stay on their host. They never enter clients, push
   messages or skid state.
-- a gateway or client restart re-lists surviving tmux; it never replays input.
+- A gateway or client restart re-lists surviving tmux; it never replays input.
 - the native user service manager supervises tmux independently of the gateway.
   gateway restart, crash and gateway-only updates preserve terminal processes;
   clients can reattach after their gateway connection closes.
-- after proven tmux loss, recovery may use an inferred conversation id. ties stay
-  unresolved; unusable targets become explained shells. native resume success is
+- an explicitly requested runtime restart validates the selected server's checkpoint
+  before shutdown and uses ordinary recovery to reconstruct its workspace. this
+  restarts processes; it does not preserve in-flight commands or unsaved memory.
+- After proven tmux loss, recovery may use an inferred conversation ID. Ties stay
+  unresolved; unusable targets become explained shells. Native resume success is
   never inferred from dispatch ([recovery](#8-workspace-recovery)).
 
 ### Non-goals
@@ -248,9 +251,9 @@ joining again.
    serve with a nonzero exit, because a failed replace may have landed and only a
    restart can tell. launchd `KeepAlive` and systemd `Restart=on-failure` restart
    it; the independent terminal service preserves tmux and its agents.
-3. the handle is written once. a `fleet.json` naming another handle refuses to
-   start. deleting the handle re-keys the host and breaks workspace recovery.
-4. the hub is fixed. members fetch only from it, plain json over tailnet tls with
+3. The handle is written once. A `fleet.json` naming another handle refuses to
+   start. Deleting the handle re-keys the host and breaks workspace recovery.
+4. The hub is fixed. Members fetch only from it, plain JSON over tailnet TLS with
    their own bearer: `GET /v1/fleet`, adopt, `PUT /v1/fleet/self`, then wait on
    `GET /v1/fleet/events`. Failures back off from 1 s to 30 s; a local request
    that reaches the hub resets the backoff. There are no signatures, relays,
@@ -523,7 +526,7 @@ partial answer.
    succeeds with `sessions: []`; absent, unavailable or unmanaged service is
    `503 TerminalServiceUnavailable`. a server that vanishes or is replaced after
    admission retains its source/target error semantics.
-3. normalization, under the gate: dwarf repair, then automatic naming. a write
+3. Normalization, under the gate: dwarf repair, then automatic naming. A write
    projects only when tmux printed its applied marker.
 4. Projection, outside the gate: per row one foreground sample (agent, observed
    profile, connection); then enrichment under one shared 2 s deadline: screenless
@@ -881,13 +884,13 @@ failure vocabulary. The contract:
 3. restoration targets only a managed empty server, after validating destination
    readiness/settings and durably claiming the confirmed schema-2 recipe
    (`attempted=true`), and rebuilds final panes at their
-   saved local cwds. recognized local agents use native-id then title discovery;
-   unusable targets become explained shells. each usable conversation launches
+   saved local cwds. Recognized local agents use native-ID then title discovery;
+   unusable targets become explained shells. Each usable conversation launches
    once through the current profile's `resume_command`, in the lowest numeric
-   eligible saved pane. reconstruction is never merged, rolled back or replayed.
+   eligible saved pane. Reconstruction is never merged, rolled back or replayed.
    an absent/unavailable destination delays until the existing tick without consuming
    the claim; unmanaged destinations refuse reconstruction. recovery never starts tmux.
-4. one writer holds a flock on `workspace.lock`. recovery starts after the listener
+4. One writer holds a flock on `workspace.lock`. Recovery starts after the listener
    and reconciles every 30 s and after each confirmed create, shell, rename, group
    and kill. Source admission precedes required epoch/character preparation;
    checkpoint captures then read without mutations and preserve actual tmux names.
@@ -1055,26 +1058,26 @@ own; `/v1/notifications/*` go to the hub's notifier.
 
 | Code | Status | Meaning |
 | --- | ---: | --- |
-| `InvalidRequest`, `RequestTooLarge`, `Unauthenticated` | 400, 413, 401 | admission |
-| `MachineIdentityMismatch` | 409 | the machine header names another installation |
-| `WorkingDirectoryInvalid`, `WorkingDirectoryUnavailable` | 422 | creation cwd, by grammar or by existence |
-| `ProfileUnknown`, `SessionNameInvalid`, `ObjectiveInvalid`, `GroupInvalid` | 422 | creation, rename or group input |
-| `SessionNameConflict`, `SessionNameChanged` | 409 | naming |
-| `SessionIdentityMismatch` | 409 | the token names another lifetime |
-| `SessionNotFound` | 404 | no such session |
+| `InvalidRequest`, `RequestTooLarge`, `Unauthenticated` | 400, 413, 401 | Admission |
+| `MachineIdentityMismatch` | 409 | The machine header names another installation |
+| `WorkingDirectoryInvalid`, `WorkingDirectoryUnavailable` | 422 | Creation cwd, by grammar or by existence |
+| `ProfileUnknown`, `SessionNameInvalid`, `ObjectiveInvalid`, `GroupInvalid` | 422 | Creation, rename or group input |
+| `SessionNameConflict`, `SessionNameChanged` | 409 | Naming |
+| `SessionIdentityMismatch` | 409 | The token names another lifetime |
+| `SessionNotFound` | 404 | No such session |
 | `TerminalServiceUnavailable` | 503 | inventory/create cannot reach an admitted managed terminal runtime; creation is `not_sent` |
-| `TerminalTargetChanged`, `TerminalUnavailable`, `TerminalInputBlocked` | 409 | terminal control; a blocked input's message names its reason (`dialog`, `draft`, `initial_not_ready` or `unknown`); there is no reason member |
-| `TerminalContextUnavailable` | 404 | no live registration |
-| `DirectoryListingUnavailable`, `DirectoryListingTooLarge`, `DirectorySearchUnavailable`, `DirectorySearchTooLarge` | 422 | directories |
-| `NotificationsUnavailable` | 503 | hub notification state |
-| `InternalError` | 500 | an unmodeled defect |
+| `TerminalTargetChanged`, `TerminalUnavailable`, `TerminalInputBlocked` | 409 | Terminal control; a blocked input's message names its reason (`dialog`, `draft`, `initial_not_ready` or `unknown`); there is no reason member |
+| `TerminalContextUnavailable` | 404 | No live registration |
+| `DirectoryListingUnavailable`, `DirectoryListingTooLarge`, `DirectorySearchUnavailable`, `DirectorySearchTooLarge` | 422 | Directories |
+| `NotificationsUnavailable` | 503 | Hub notification state |
+| `InternalError` | 500 | An unmodeled defect |
 
 Token admission order: a malformed ID is not found; a malformed or foreign token
 is a mismatch; no server or an absent ID is not found; another server is a
 mismatch. Create, shell, group, delete and terminal routes answer errors as
 `dispatch:not_sent` unless an effect may have run: possibly written input,
 possible deletion, accepted creation and failed group writes are
-`dispatch:unknown`. fleet codes are listed under [fleet](#fleet-interfaces).
+`dispatch:unknown`. Fleet codes are listed under [fleet](#fleet-interfaces).
 shell-here retains its exact source's not-found/mismatch precedence; direct terminal
 creation and inventory report terminal-service unavailability as 503.
 
@@ -2365,9 +2368,9 @@ still exists, and a rerun of the phone typing, touch and selection journeys.
 
 ### Installation
 
-a host archive holds the `skidbladnir` binary, `release.json` `{platform,
+A host archive holds the `skidbladnir` binary, `release.json` `{platform,
 sourceSha, version}`, `providers/shell-init`, `providers/terminal-context-init`,
-`THIRD-PARTY-NOTICES.txt`
+`third-party-notices.txt`
 and, on mac, the signed `Skid.app` and `terminal-runtime/SkidTerminals.app`.
 the gateway and terminal host have distinct stable signed identities. it ships no interpreter; runtime startup
 downloads nothing. supported: `darwin-arm64` on macos 26+; `linux-amd64` on
@@ -2378,7 +2381,8 @@ older than the test phone's.
 
 `bash install [vX.Y.Z]` (the release's bootstrap; latest stable when omitted)
 verifies and hands off to the archive's own `skid install`. Installed commands:
-`skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]` and
+`skid install | update [--version vX.Y.Z] [--archive PATH --signature PATH]
+[--restart-terminals]` and
 `skid uninstall`, each printing its help to stdout on `-h` or `--help`; one
 installation operation runs at a time (`install.lock`).
 
@@ -2395,14 +2399,14 @@ installation operation runs at a time (`install.lock`).
    mac, strict signature, pinned signer, identifier and designated-requirement checks
    accept the gateway and both apps before any signature normalization. a release older than
    `current/release.json` is refused.
-3. layout: `${XDG_DATA_HOME:-~/.local/share}/skidbladnir/releases/<version>-<sha>`,
-   `current` a symlink to one, `~/.local/bin/skid` into `current`. install
+3. Layout: `${XDG_DATA_HOME:-~/.local/share}/skidbladnir/releases/<version>-<sha>`,
+   `current` a symlink to one, `~/.local/bin/skid` into `current`. Install
    keeps the terminal runtime at `terminal-runtime/`, beside `releases/`.
    gateway-only updates stop only the gateway/notification jobs, switch `current`,
    prove readiness, then prune old releases. an unchanged normalized runtime payload,
    signer/requirement and effective service definition leave its files/job/pid intact.
    runtime artifacts contain no gateway version/source stamps. an actual runtime
-   difference requires a drain before replacement; no deferred update or second
+   difference requires a drain or explicit checkpoint-preserving restart; no deferred update or second
    implementation. failures name the completed stage and failed component.
 4. skid owns fixed paths by name and records nothing: `releases/`, `current`,
    `bin/skid`, `terminal-runtime/`, its service files and two marked shell blocks. install overwrites
@@ -2436,9 +2440,11 @@ installation operation runs at a time (`install.lock`).
    and xdg directory roots, no fleet/provider credentials. terminal readiness proves
    a reachable managed lifetime with `exit-empty off` and `exit-unattached off`.
    gateway readiness proves the new service lifetime and authenticated existing
-   `/v1/local/status` for the installed version; mere registration is not success.
-7. missing tmux or tailscale install through homebrew (`tmux`, cask
-   `tailscale-app`; homebrew is a prerequisite), apt plus tailscale's official
+   `/v1/local/status` for the installed version; its wait allows the existing
+   30-second recovery budget plus five seconds of native startup. mere registration
+   is not success.
+7. Missing tmux or Tailscale install through Homebrew (`tmux`, cask
+   `tailscale-app`; Homebrew is a prerequisite), apt plus Tailscale's official
    installer, or pacman; privilege prompts are the user's. providers, zoxide,
    ssh and mosh are never installed. pacman confirms on the controlling terminal;
    without `/dev/tty`, installation refuses before stopping services.
@@ -2461,11 +2467,22 @@ installation operation runs at a time (`install.lock`).
    runtime paths and shell blocks. settings, private state, provider data, the tmux package and
    shared packages remain; there is no purge.
 
-initial cutover uses the old installation to finish the drain and save an empty
-checkpoint, stops its gateway and empty server, then runs the new bootstrap. an
-unmanaged default server blocks activation without being signalled. there is no
-automatic migration, adoption or compatibility bootstrap. normal fresh installation
-remains `bash install`, then `skid`; local shells need no provider/tailscale login.
+`--restart-terminals` explicitly authorizes restarting the selected default server,
+including an unmanaged server, after pausing new work and finishing important turns.
+normal installs still refuse unmanaged servers. the installer must run outside the
+selected tmux tree. it stops the gateway, takes the existing workspace writer lock,
+validates the unattempted schema-2 checkpoint against the exact live source and full
+current graph, and reconfirms usable distinct resume targets for every recognized
+agent. unrecognized foreground programs or missing resume coverage refuse before
+shutdown. no prompt, terminal text, account data or conversation id enters its report.
+
+the exact source is stopped only after final validation. the installer establishes
+a managed empty destination, releases the writer lock and starts the gateway;
+ordinary recovery durably claims and reconstructs once. partial installation failure
+preserves the recipe; a proven-lost source can retry setup without replacing it with
+an empty checkpoint. `attempted=true` never resets. no checkpoint schema migration,
+compatibility bootstrap or live process adoption. uninstall remains drain-required.
+fresh installation remains `bash install`, then `skid`.
 
 ### Release
 
@@ -2473,9 +2490,9 @@ remains `bash install`, then `skid`; local shells need no provider/tailscale log
 
 1. Preconditions: a clean worktree at exact `origin/main` of the original public
    repository, immutable releases enabled, a successful hosted `verify` push run
-   for that sha, a tag that exists nowhere and whose android version code
-   (`major*10^6 + minor*10^3 + patch`) exceeds every existing tag's. keys:
-   `SKIDBLADNIR_MAC_SIGNING_IDENTITY` (sha1 of the certificate pinned by
+   for that SHA, a tag that exists nowhere and whose Android version code
+   (`major*10^6 + minor*10^3 + patch`) exceeds every existing tag's. Keys:
+   `SKIDBLADNIR_MAC_SIGNING_IDENTITY` (SHA1 of the certificate pinned by
    `internal/install/mac-signing-cert.sha256`, in the user keychain), the ed25519 key at
    `SKIDBLADNIR_RELEASE_SIGNING_KEY` (default
    `~/.config/skidbladnir/release-signing.pem`) matching the pinned public key,

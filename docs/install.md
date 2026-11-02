@@ -266,12 +266,35 @@ Nothing updates itself. For each computer, then the phone:
 `skid update` runs the installed release's installer, so changes to the
 installer itself take effect from the following update; running the new release's
 `install` applies them at once. An older release than the installed one is
-refused. tmux sessions and their programs keep running while skid's services
-restart; an open `skid` session browser keeps its old binary until you reopen it.
+refused. gateway-only updates preserve tmux sessions and programs; an open `skid`
+session browser keeps its old binary until you reopen it. runtime replacement
+requires a drain or the explicit restart below.
 After the hub updates, `skid status` lists it at its old version until you run
 `skid connect` on it ([issue](issues/hub-self-report-after-update.md)).
 
+### checkpoint-preserving runtime restart
+
+after important turns finish, save work and pause new sessions. from a terminal
+outside tmux, run the newly downloaded release bootstrap:
+
+```sh
+bash install vX.Y.Z --restart-terminals
+```
+
+this explicitly authorizes replacing the selected default server, including an
+unmanaged one. the installer requires an unattempted checkpoint matching the live
+workspace and usable distinct resume targets for recognized agents. missing or
+changed evidence refuses before the server is stopped. ordinary recovery rebuilds
+the workspace under the new native service and requests native conversation resumes.
+process memory, shell variables and running commands do not survive. a partial
+installation preserves the checkpoint; a completed recovery claim is never reset.
+gateway-only updates need no restart; uninstall still requires an empty workspace.
+
 ## Uninstall
+
+finish work, close all tmux sessions and let the gateway save an empty checkpoint.
+pause session creators until removal completes. uninstall refuses occupied sessions,
+unreadable/nonempty checkpoints or a changed source before destructive effects.
 
 1. If the computer is a member of a fleet, remove it first: on any computer in
    the fleet, find its device ID with `skid status` and run
@@ -286,7 +309,7 @@ After the hub updates, `skid status` lists it at its old version until you run
    (`tailscale serve --https=8443 off`), whatever that port served, and warns if
    it cannot. It stops skid's services and removes `~/.local/bin/skid`, the
    installed releases, the service files and the shell blocks. It keeps your
-   configuration, private state, provider data, tmux sessions, tmux and
+   configuration, private state, provider data, the tmux package and
    Tailscale.
 3. Optionally, delete what it keeps. This forgets the computer's identity and
    fleet; if it was the hub, every other device must join a new fleet:
@@ -327,9 +350,9 @@ Linux, `launchctl kickstart -k gui/$(id -u)/dev.niels.skidbladnir` on macOS.
 | `release downgrade refused; ...` | The release is older than the installed one. Downgrading is a deliberate rollback: see [fleet operations](architecture.md#fleet-operations) |
 | `another skid installation operation is running` | Wait for the other install, update or uninstall to finish |
 | `skid shell block is incomplete or duplicated: FILE` | Edit FILE so it holds one complete block between the markers, or none, then run the installer again |
-| `release installed; service startup failed: ...` | Read the logs, fix the cause, and run the installer again. Two macOS causes follow |
-| macOS: `...failed: skid serve did not appear within 5 s of bootstrap, ...` | The gateway did not start, or exited at once. Run the `launchctl print` command the message names, and read the logs |
-| macOS: `...failed: skid serve (pid N) runs at scheduling priority N, below interactive 31: ...` | Follow the message's check, then reinstall |
+| `...installation incomplete: ...` | The message names the completed stage. preserve the checkpoint, repair the failed component, then rerun the operation |
+| `the installed gateway did not become ready within its recovery and startup deadline` | Check the native gateway job and content-free service logs; startup allows recovery's 30-second budget plus five seconds |
+| `the terminal service requires exit-empty off and exit-unattached off; ...` | Correct those settings in the normal tmux configuration before retrying |
 
 ### After installing
 

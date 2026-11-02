@@ -2,7 +2,7 @@
 
 Every tmux command skid runs is a process spawn, and the hub lists every machine
 every five seconds whether or not anyone is looking, so inventory's exec count is
-a standing cost. this spec bounds it to two execs per steady list and
+a standing cost. This spec bounds it to two execs per steady list and
 keeps terminal scheduling responsive. dev-server's `docs/macbook-capacity-plan.md`
 (decisions d6, d7, d10) supplies the targets; the open measurement is
 [exec overhead](issues/tmux-exec-overhead.md).
@@ -44,7 +44,7 @@ One `source-file -` script on stdin, framed by `B`/`E` identity records within t
 4. The same fifteen `show-options -q` reads again.
 5. `E`.
 
-admission: `B` supplies the epoch. when the epoch option is absent, or the identity
+Admission: `B` supplies the epoch. When the epoch option is absent, or the identity
 differs from the last admitted one, the manager proves native service ownership,
 ensures its epoch even when empty, and runs the script again. absent/unavailable
 or unmanaged service is `503 TerminalServiceUnavailable`; a managed empty server
@@ -165,11 +165,11 @@ owner-approved.
 
 - Presence: one `list-clients` every 2 s per attached web terminal (0.5 execs/s); it
   bounds handoff and revocation lag.
-- attach readiness: every 25 ms for at most 5 s, once per attach.
+- Attach readiness: every 25 ms for at most 5 s, once per attach.
 - recovery checkpoint: every 30 s, five steady execs: two server inspections,
   inventory and two workspace captures. the final capture fences graph/process/
   settings changes during provider discovery outside the gate; retain it.
-- websocket pings, pressure sampling and process inspection spawn nothing.
+- WebSocket pings, pressure sampling and process inspection spawn nothing.
 
 ## Priority (macbook-capacity d7)
 
@@ -186,9 +186,9 @@ owner-approved.
 Acceptance runs at N ≥ 18 agent sessions, with no phone or browser in the
 foreground and the hub lane active:
 
-- at most 1.5 tmux execs/s from serve.
+- At most 1.5 tmux execs/s from serve.
 - serve, its reaped children, tmux and the new terminal host together under 5% of one core.
-- inventory rows, metadata and status equal to the per-pane implementation's on the
+- Inventory rows, metadata and status equal to the per-pane implementation's on the
   same panes.
 
 CPU comes from `proc_pid_rusage(RUSAGE_INFO_V4)` deltas over 30 s, converted with
@@ -196,6 +196,6 @@ CPU comes from `proc_pid_rusage(RUSAGE_INFO_V4)` deltas over 30 s, converted wit
 server, `ri_child_user_time + ri_child_system_time` for serve's reaped children.
 Execs come from a temporary isolated-socket test whose tmux path is a counting
 shim, or on the real host from sampling serve's children (a lower bound) or
-`eslogger exec` with operator approval. wakeups are reported, not gated. predicted:
+`eslogger exec` with operator approval. Wakeups are reported, not gated. Predicted:
 the hub lane's 2 execs per 5 s plus recovery's 5 per 30 s, about 0.57 execs/s, plus
 0.5/s per attached terminal.
