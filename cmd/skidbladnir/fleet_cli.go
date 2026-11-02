@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
+	"runtime"
+	"slices"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -21,6 +26,35 @@ import (
 )
 
 func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	command := arguments[0]
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	asJSON, name := false, ""
+	if command != "connect" {
+		flags.BoolVar(&asJSON, "json", false, "")
+	}
+	if command == "join" {
+		flags.StringVar(&name, "name", "", "")
+	}
+	err := flags.Parse(arguments[1:])
+	device := ""
+	if err == nil && command == "remove" && flags.NArg() > 0 {
+		device = flags.Arg(0)
+		err = flags.Parse(flags.Args()[1:]) // options may follow DEVICE_ID
+	}
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return commandHelp(stdout, command)
+	case err == nil && flags.NArg() != 0:
+		err = errors.New("unexpected argument")
+	case err == nil && command == "remove" && !fleet.ValidDeviceID(device):
+		err = errors.New("invalid device id")
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "skid %s: %v\n", command, err)
+		commandHelp(stderr, command)
+		return exitUsage
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	directory, err := attention.StateDirectory()
@@ -35,23 +69,14 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	}
 	self, hub := local.Target(local.Machine), local.Target(local.Hub)
 	var status fleet.Status
-	switch arguments[0] {
+	switch command {
 	case "status", "apply", "recover":
-		if len(arguments) != 1 {
-			return exitUsage
-		}
 		method := "POST"
-		if arguments[0] == "status" {
+		if command == "status" {
 			method = "GET"
 		}
-		err = fleet.Call(ctx, self, method, "/v1/local/"+arguments[0], nil, &status)
+		err = fleet.Call(ctx, self, method, "/v1/local/"+command, nil, &status)
 	case "join":
-		flags := flag.NewFlagSet("join", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		name := flags.String("name", "", "new computer name")
-		if flags.Parse(arguments[1:]) != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
 		if file, ok := stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
 			fmt.Fprintln(stderr, "paste the invitation from skid connect:")
 		}
@@ -68,11 +93,8 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 		err = fleet.Call(ctx, self, "POST", "/v1/local/join", struct {
 			Invitation fleet.Invitation `json:"invitation"`
 			Name       string           `json:"name"`
-		}{invitation, *name}, &status)
+		}{invitation, name}, &status)
 	case "connect":
-		if len(arguments) != 1 {
-			return exitUsage
-		}
 		if err = fleet.Call(ctx, self, "GET", "/v1/local/status", nil, &status); err != nil {
 			break
 		}
@@ -80,15 +102,9 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 			fmt.Fprintln(stderr, "skid connect: installed service differs from this skid release; restart the installed service before connect")
 			return exitFailure
 		}
-		origin, tailscale, networkErr := networkOrigin(ctx)
-		// Point https:8443 at the gateway, replacing whatever 8443 served.
-		if networkErr == nil {
-			if serveErr := exec.CommandContext(ctx, tailscale, "serve", "--bg", "--https=8443", fleet.LocalOrigin).Run(); serveErr != nil {
-				networkErr = fmt.Errorf("tailscale route configuration failed: %w", serveErr)
-			}
-		}
-		if networkErr != nil {
-			fmt.Fprintln(stderr, networkErr)
+		origin, routeErr := routeGateway(ctx)
+		if routeErr != nil {
+			fmt.Fprintf(stderr, "skid connect: %v\n", routeErr)
 			return exitFailure
 		}
 		if err = fleet.Call(ctx, self, "PUT", "/v1/local/network", struct {
@@ -114,14 +130,11 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 		fmt.Fprintln(stderr, "scan with skid on your phone, or paste into skid join on another computer; expires in five minutes")
 		return 0
 	case "remove":
-		if len(arguments) != 2 || !fleet.ValidDeviceID(arguments[1]) {
-			return exitUsage
-		}
 		if hub.Origin == "" {
 			fmt.Fprintln(stderr, "skid remove: "+hubWithoutOrigin)
 			return exitFailure
 		}
-		err = fleet.Call(ctx, hub, "DELETE", "/v1/fleet/members/"+arguments[1], nil, &status)
+		err = fleet.Call(ctx, hub, "DELETE", "/v1/fleet/members/"+device, nil, &status)
 	default:
 		return exitUsage
 	}
@@ -134,34 +147,119 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 				message = failure.Code + ": " + failure.Message
 			}
 		}
-		fmt.Fprintf(stderr, "skid %s: %s\n", arguments[0], message)
+		fmt.Fprintf(stderr, "skid %s: %s\n", command, message)
 		return exitFailure
 	}
-	if err := json.NewEncoder(stdout).Encode(status); err != nil {
+	if asJSON {
+		err = json.NewEncoder(stdout).Encode(status)
+	} else {
+		_, err = stdout.Write(statusText(status))
+	}
+	if err != nil {
 		return exitFailure
 	}
 	return 0
 }
 
+// statusText renders a fleet status for people: the fleet, one row per device
+// in join order, then any message.
+func statusText(status fleet.Status) []byte {
+	var text bytes.Buffer
+	fmt.Fprintf(&text, "fleet %s; service %s\n", status.FleetID, status.Version)
+	table := tabwriter.NewWriter(&text, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "device\tkind\tname\tversion\torigin\tconfiguration")
+	for _, member := range status.Members {
+		kind, name, version, origin, configuration := member.Kind, "", "", "", ""
+		if member.Machine == status.Hub {
+			kind = "hub"
+		}
+		for _, application := range status.Applications {
+			if application.DeviceID == member.DeviceID {
+				report := application.SelfReport
+				name, version, origin, configuration = application.Name, report.Version, report.Origin, report.ApplyStatus.Status
+				if report.ApplyStatus.Reason != "" {
+					configuration += ": " + report.ApplyStatus.Reason
+				}
+			}
+		}
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", member.DeviceID, kind, name, version, origin, configuration)
+	}
+	table.Flush()
+	if status.Message != "" {
+		fmt.Fprintln(&text, status.Message)
+	}
+	return text.Bytes()
+}
+
 const hubWithoutOrigin = "hub has no remote address; connect tailscale on the hub and run skid connect there"
 
-// networkOrigin returns this host's tailnet gateway origin and the tailscale
-// command that resolved it.
-func networkOrigin(ctx context.Context) (origin, tailscale string, err error) {
+// tailnetStatus is what skid reads of `tailscale status --json`.
+type tailnetStatus struct {
+	BackendState   string
+	Self           *struct{ DNSName string }
+	CurrentTailnet *struct{ MagicDNSEnabled bool }
+	CertDomains    []string
+}
+
+// networkOrigin returns this host's tailnet gateway origin, the tailscale
+// command that resolved it and the status it read.
+func networkOrigin(ctx context.Context) (origin, tailscale string, status tailnetStatus, err error) {
 	tailscale, err = install.TailscalePath()
 	if err != nil {
-		return "", "", err
+		return "", "", status, err
 	}
 	data, err := exec.CommandContext(ctx, tailscale, "status", "--json").Output()
 	if err != nil {
-		return "", "", errors.New("tailscale unavailable; open tailscale and sign in")
-	}
-	var status struct {
-		BackendState string
-		Self         *struct{ DNSName string }
+		return "", "", status, tailscaleError("tailscale unavailable; open tailscale and sign in", nil, err)
 	}
 	if json.Unmarshal(data, &status) != nil || status.BackendState != "Running" || status.Self == nil || status.Self.DNSName == "" {
-		return "", "", errors.New("tailscale is not connected; sign in to tailscale first")
+		return "", "", status, errors.New("tailscale is not connected; sign in to tailscale first")
 	}
-	return "https://" + strings.TrimSuffix(status.Self.DNSName, ".") + ":8443", tailscale, nil
+	return "https://" + strings.TrimSuffix(status.Self.DNSName, ".") + ":8443", tailscale, status, nil
+}
+
+// routeGateway checks what serving the gateway over tailnet https needs, points
+// https:8443 at the gateway, replacing whatever 8443 served, and returns this
+// host's origin. A missing prerequisite is the owner's to fix: skid names the
+// fix and changes no tailnet or host policy.
+func routeGateway(ctx context.Context) (string, error) {
+	origin, tailscale, status, err := networkOrigin(ctx)
+	if err != nil {
+		return "", err
+	}
+	var fixes []string
+	if status.CurrentTailnet == nil || !status.CurrentTailnet.MagicDNSEnabled {
+		fixes = append(fixes, "turn on magicdns and https certificates at https://login.tailscale.com/admin/dns")
+	} else if !slices.Contains(status.CertDomains, strings.TrimSuffix(status.Self.DNSName, ".")) {
+		fixes = append(fixes, "turn on https certificates at https://login.tailscale.com/admin/dns")
+	}
+	// linux tailscaled lets only root and its operator change what it serves.
+	// when its preferences cannot be read, tailscale serve's own error names the fix.
+	if runtime.GOOS == "linux" && os.Getuid() != 0 {
+		account, accountErr := user.Current()
+		data, prefsErr := exec.CommandContext(ctx, tailscale, "debug", "prefs").Output()
+		var prefs struct{ OperatorUser string }
+		if accountErr == nil && prefsErr == nil && json.Unmarshal(data, &prefs) == nil && prefs.OperatorUser != account.Username {
+			fixes = append(fixes, "make this user tailscale's operator: sudo tailscale set --operator="+account.Username)
+		}
+	}
+	if len(fixes) > 0 {
+		return "", errors.New("tailscale is not ready to serve skid:\n  " + strings.Join(fixes, "\n  ") + "\nthen run skid connect again")
+	}
+	if output, err := exec.CommandContext(ctx, tailscale, "serve", "--bg", "--https=8443", fleet.LocalOrigin).CombinedOutput(); err != nil {
+		return "", tailscaleError("tailscale serve failed", output, err)
+	}
+	return origin, nil
+}
+
+// tailscaleError keeps tailscale's own explanation, which usually names the fix.
+func tailscaleError(message string, output []byte, err error) error {
+	var exit *exec.ExitError
+	if len(output) == 0 && errors.As(err, &exit) {
+		output = exit.Stderr
+	}
+	if text := strings.TrimSpace(string(output)); text != "" {
+		return fmt.Errorf("%s:\n%s", message, text)
+	}
+	return fmt.Errorf("%s: %w", message, err)
 }

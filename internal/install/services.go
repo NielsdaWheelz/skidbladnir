@@ -234,6 +234,17 @@ func (i *installer) startGateway(ctx context.Context, version string) error {
 				if err != nil || !stillRunning || after != before {
 					return errors.New("the started gateway lifetime changed during readiness")
 				}
+				if runtime.GOOS == "linux" {
+					// Linger and tailscaled remain host policy; installation names
+					// the commands without changing either setting.
+					uid := strconv.Itoa(os.Getuid())
+					if linger, _ := exec.CommandContext(ctx, "loginctl", "show-user", uid, "--property=Linger", "--value").Output(); strings.TrimSpace(string(linger)) != "yes" {
+						fmt.Fprintln(i.stdout, "linger is off, so logging out stops the skid gateway and terminal service; to keep them running, run: sudo loginctl enable-linger "+uid)
+					}
+					if exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "tailscaled").Run() != nil {
+						fmt.Fprintln(i.stdout, "tailscaled is not running, so other devices cannot reach this computer; run: sudo systemctl enable --now tailscaled")
+					}
+				}
 				return nil
 			}
 		}

@@ -16,10 +16,11 @@ dependable for one who does. A reader can:
 3. judge the code, the design and the project's history from evidence;
 4. install it on a fresh computer and an Android phone from the published docs alone.
 
-Deliverables: a license; an install path verified on fresh hosts; a front door
-(README, user docs, community files) in correct capitalization; a reading path
-through the code and a history of its decisions; demo media; a static site at
-skid.nielseriknandal.com; an essay on nielseriknandal.com.
+Deliverables: a license; an install path verified on a fresh macOS VM, with Linux
+package managers in containers; a front door (README, user docs, community files)
+in correct capitalization; a reading path through the code and a history of its
+decisions; demo media; a static site at skid.nielseriknandal.com; an essay on
+nielseriknandal.com.
 
 Non-goals: growth or conversion work, search optimization, support commitments,
 product capabilities beyond the fixes below, iOS, an app store listing, telemetry,
@@ -44,6 +45,8 @@ Owner, 2026-10-25.
 | site | static HTML and CSS in `site/`, no framework or build step; a Vercel project rooted at `site/`; a DNS-only `skid` CNAME; dark only; no analytics; self-hosted subsets of Big Shoulders and JetBrains Mono; JavaScript only for copy buttons and tabs; under 100 KB before media | no light theme; no visitor data |
 | launch | an essay on nielseriknandal.com leads; Show HN is optional and later | |
 | history | no rewrite; the Firebase client key in history is handled in Google Cloud, not git | the tailnet name and one hostname email stay in history |
+| Linux walk | no fresh Linux host; the fresh Linux install is `NOT_RUN`; Linux fixes are proven by temporary tests and package-manager containers | Linux first-install failures can ship unseen |
+| test tailnet | test machines join the owner's tailnet as ephemeral nodes, removed after W4, each use approved; no throwaway tailnet; the HTTPS-off path is proven by a temporary test against a faked `tailscale status --json` | a stranger's tailnet defaults are never seen live |
 
 ### Proposed, for the owner before W2
 
@@ -161,10 +164,10 @@ Done when: the owner approves it and it merges.
 Goal: anyone may lawfully use the code, and the tree exposes nothing avoidable.
 
 - `license`:
-  - `LICENSE` with the Apache-2.0 text and "Copyright 2026 Niels-Erik Nandal"; a
-    License section in the README.
-  - Delete [project license](issues/project-license.md); the root integrator
-    removes its roadmap line.
+  - `LICENSE` holds the verbatim Apache-2.0 text, so GitHub detects it; "Copyright
+    2026 Niels-Erik Nandal" opens a License section in the README.
+  - Delete the project-license issue; the root integrator removes its roadmap
+    line.
   - Add `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `README.md`,
     `.github/ISSUE_TEMPLATE/*` and `site/*` to the documentation-only paths in
     `.github/workflows/verify.yml`, so they skip the builds.
@@ -192,10 +195,10 @@ Goal: what a stranger meets first works, and the trust model is the one the docs
 will state. Entry: the owner has settled every row of [proposed](#proposed-for-the-owner-before-w2)
 and the open questions marked "before W2".
 
-- W2.0 environments (owner approval): a fresh macOS 26 VM under tart and a fresh
-  Ubuntu 24.04 amd64 host, each snapshotted clean; an `archlinux` amd64 container
-  for package-manager behavior; the test tailnet, as decided below. Nothing touches
-  the owner's machines. W3 and W4 reuse them.
+- W2.0 environments (owner approval): a fresh macOS 26 VM under tart, snapshotted
+  clean; `ubuntu:24.04` and `archlinux` amd64 containers for package-manager
+  behavior; ephemeral nodes on the owner's tailnet. Nothing touches the owner's
+  machines. W3 and W4 reuse them.
 - W2.1 `install` (`internal/install`, `scripts/install`):
   - PATH as decided. `internal/install/paths.go:16` links `skid` into
     `~/.local/bin`, which nothing adds to PATH; `shell.go` writes the blocks.
@@ -208,8 +211,8 @@ and the open questions marked "before W2".
     exit 0; `uninstall` stops advertising flags it rejects.
   - Architecture: [installation](architecture.md#installation), through the
     root integrator. Paired dev-server: its digest of `scripts/install`.
-  - Venue: the macOS VM and Ubuntu host; the Arch container for `pacman`. The rest
-    of Arch is `NOT_RUN`.
+  - Venue: the macOS VM; the containers for `apt` and `pacman`. The rest of Linux
+    is `NOT_RUN`.
 - W2.2 `cli` (`cmd/skidbladnir`, `internal/agentcli`):
   - Help: `-h`, `--help`, `help` and `help COMMAND` work, print to stdout and exit
     0; every command has its own help; `--version` and `skid --help` as decided;
@@ -241,7 +244,7 @@ and the open questions marked "before W2".
     the signing properties; the pin changes.
   - Release notes gain a Changes section built from merged pull request titles.
   - If it must touch `scripts/install`, it starts after W2.1 merges. Architecture:
-    [release](architecture.md#release) (its asset list and four-entry
+    [release](architecture.md#release) (its asset list and five-entry
     `SHA256SUMS`), and `scripts/check`'s composition, through the root integrator.
     Paired dev-server: the release pin and its expected digests.
   - Venue: `scripts/check-release` on a local release build.
@@ -259,8 +262,8 @@ phone. Entry: the open questions marked "before W3" are settled.
 
 - Restore the W2.0 snapshots; add an Android emulator with Play Services and the
   Tailscale app on the test tailnet.
-- Install the W2 release on macOS and on Ubuntu from the README alone. Record every
-  prompt, error and guess.
+- Install the W2 release on macOS from the README alone. Record every prompt,
+  error and guess.
 - Fix what is cheap in follow-up pull requests; record the rest as issues. Write
   `docs/install.md` from the transcript, not from memory.
 - Update: install the previous release, then run `skid update`. The phone's
@@ -269,9 +272,8 @@ phone. Entry: the open questions marked "before W3" are settled.
 - Uninstall, and compare what remains with the README's claim.
 - Release (owner) after the follow-ups.
 
-Done when: macOS and Ubuntu each reach a typing session on the emulator from the
-docs alone, or each remaining failure has an issue and a stated reason. Arch is
-`NOT_RUN` unless a fresh Arch host exists.
+Done when: macOS reaches a typing session on the emulator from the docs alone, or
+each remaining failure has an issue and a stated reason. Linux is `NOT_RUN`.
 
 ### W4 Media
 
@@ -336,8 +338,8 @@ and a reviewer from first glance to the architecture.
 - `docs/README.md`: an index separating using skid from how it is built.
 - `docs/install.md` (from W3) and `docs/phone.md` (sideloading, checking the
   signer, Obtainium, optional push). The push procedure moves from architecture's
-  [android push setup](architecture.md#android-push-setup), through the root
-  integrator.
+  android push setup (now [phone](phone.md#push-notifications-optional)), through
+  the root integrator.
 - `SECURITY.md`: private reporting; the threat model in plain terms (a device in
   the fleet is a shell on every machine; an agent that can run skid can drive every
   terminal; what is not a vulnerability), linking architecture §3.
@@ -350,7 +352,7 @@ and a reviewer from first glance to the architecture.
 Done when: a fresh agent given only the README can say what skid is, whether it
 suits them, how to install it and where the architecture lives; every factual claim
 is checked against the code at the pull request's head; a re-walk from the W2.0
-snapshots following the merged README and `docs/install.md` reaches a typing
+macOS snapshot following the merged README and `docs/install.md` reaches a typing
 session.
 
 ### W7 Site
@@ -407,24 +409,20 @@ Done when: the essay is published and this file is deleted.
   dev-server and jarvis if they pass it, or keep it?
 - [ ] Before W2: accept Ubuntu derivatives and Debian
   (`internal/install/platform.go:35-43`)? Default: no, documented.
-- [ ] Before W2: the fresh Linux host. skid's Linux build is amd64 only and this
-  Mac is arm64. The owner's Linux hosts are already configured, which hides exactly
-  the first-install failures W2 fixes, and a second account on one of them cannot
-  run a second gateway on 127.0.0.1:7341. Recommended: an hourly cloud VM, deleted
-  after W3. Alternatives: x86 emulation in UTM (free, slow) or Linux `NOT_RUN`.
-- [ ] Before W2: the test tailnet. A throwaway tailnet reproduces a stranger's
-  defaults (HTTPS certificates off) and keeps test machines off the owner's
-  network, at the cost of a new identity. Recommended instead: ephemeral nodes on
-  the owner's tailnet, removed after W4, with the HTTPS-off path proven by a
-  temporary test against a faked `tailscale status --json`.
 - [ ] Before W3: pairing the emulator. Show the QR code through the emulator
   camera's virtual scene, or add a QR paste fallback, which also serves phones
   without Play Services but is a new capability whose scope the owner decides.
-- [ ] Before W5: `release-pin.json` at the root: keep, move or delete (carried from
-  the cleanup campaign).
-- [ ] Before W6: Google's Android developer verification, after W2.4's new key:
+- [x] Before W5: `release-pin.json` at the root: keep, move or delete (carried from
+  the cleanup campaign). Kept, 2026-10-26: the published-release gate, `verify.yml`
+  and the architecture name it, and a root file states plainly which source built
+  which bytes. Cost: one unexplained file in the root listing until W6's README
+  explains it.
+- [x] Before W6: Google's Android developer verification, after W2.4's new key:
   register, and when?
-- [ ] Before W6: macOS notarization ($99 a year). Default: no, documented.
+  Deferred by the owner, 2026-10-26 ([issue](issues/android-developer-verification.md)).
+- [x] Before W6: macOS notarization ($99 a year). Default: no, documented.
+  Settled by the default: [install](install.md) says `Skid.app` is signed with the
+  project's own certificate and not notarized.
 - [ ] Before W9: release cadence and host/phone lockstep make a stranger update the
   phone often. Record as an issue?
 
@@ -432,21 +430,22 @@ Done when: the essay is published and this file is deleted.
 
 | wave | pull request | status | merged as |
 | --- | --- | --- | --- |
-| W0 plan | `publication/plan` | review | |
-| W1 trust floor | `publication/license`, owner actions | planned | |
-| W2.0 environments | owner approval | planned | |
-| W2.1 install | `publication/install` | planned | |
-| W2.2 cli | `publication/cli` | planned | |
-| W2.3 fleet admin | `publication/fleet-admin` | planned | |
-| W2.4 release integrity | `publication/release-integrity` | planned | |
-| W2 release | owner | planned | |
-| W3 stranger walk | `publication/install-docs`, follow-ups, release | planned | |
-| W4 media | `publication/media` | planned | |
-| W5.1 reading path | `publication/reading-path` | planned | |
-| W5.2 history | `publication/history` | planned | |
-| W5.3 roadmap | `publication/roadmap` | planned | |
-| W5.4 voice | `publication/voice` | planned | |
-| W6 front door | `publication/front-door` | planned | |
+| W0 plan | `publication/plan` | merged | #175, `2265104` |
+| W1 trust floor | `publication/license`, owner actions | merged; alert #1 left open by the owner | #176, `db4188a` |
+| W2.0 environments | owner approval | dropped: the owner skipped the container, VM and live connect checks | |
+| W2.1 install | `publication/install` | merged | #178, `9e1e04a` |
+| W2.2 cli | `publication/cli` | merged | #179, `b57b353` |
+| W2.3 fleet admin | `publication/fleet-admin` | merged | #180, `abd943b` |
+| W2.4 release integrity | `publication/release-integrity` | merged | #181, `6d54498` |
+| W2.4 android key | `publication/android-key` | merged | #182, `677bbb2` |
+| W2 release | owner | v0.23.0 published and pinned (#183, dev-server #208); devbox, macbook and arch updated 2026-10-26; the phone reinstalled with the new key and re-paired the same day | `677bbb2` |
+| W3 stranger walk | `publication/install-docs`, follow-ups, release | dropped: the owner skipped the pristine macOS walk; W6 writes `docs/install.md` from the code, unwalked | |
+| W4 media | `publication/media` | merged; the owner approved every asset. Staged on the owner's fleet (the owner approved fake sessions there, and showing the browser's group labels and quota); the README links the repository's `continuity.mp4` until the owner uploads it as a GitHub attachment for inline playback | #190, `806c8bb` |
+| W5.1 reading path | `publication/reading-path` | merged; the owner approved the path | #187, `3396647` |
+| W5.2 history | `publication/history` | merged; the owner approved it and gave the herdr reason | #188, `e8af534` |
+| W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |
+| W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
+| W6 front door | `publication/front-door` | merged; the owner approved it, README length included; the walk from the W2.0 snapshot is `NOT_RUN` ([unwalked install](issues/fresh-install-walk.md)) | #191 |
 | W7 site | `publication/site` | planned | |
 | W8 site details | `publication/site-details`, owner actions | planned | |
 | W9 essay and close | owner's site, `publication/close` | planned | |

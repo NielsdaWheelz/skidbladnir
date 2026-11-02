@@ -31,7 +31,12 @@ func (i *installer) addShellBlocks(ctx context.Context) error {
 		}
 	}
 	source := filepath.Join(i.dirs.Data, "current", "providers", "shell-init")
-	shell := "\n# >>> skidbladnir managed shell >>>\nif [ \"${SKIDBLADNIR_SHELL:-}\" = 1 ] && [ -r " + shellQuote(source) + " ]; then\n  . " + shellQuote(source) + "\nfi\n# <<< skidbladnir managed shell <<<\n"
+	// The PATH line runs in every shell that reads the block, so new shells find
+	// skid. It adds ~/.local/bin only when absent: sourcing the block again
+	// changes nothing, and an order the user chose stays.
+	shell := "\n# >>> skidbladnir managed shell >>>\n" +
+		`case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin${PATH:+:$PATH}" ;; esac` + "\n" +
+		"if [ \"${SKIDBLADNIR_SHELL:-}\" = 1 ] && [ -r " + shellQuote(source) + " ]; then\n  . " + shellQuote(source) + "\nfi\n# <<< skidbladnir managed shell <<<\n"
 	// The documented p10k cache preamble can redirect the first command's tty.
 	// Disable it before user startup code, only in the exact shell skid created.
 	prompt := `

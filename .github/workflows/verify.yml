@@ -36,7 +36,7 @@ jobs:
               case "$path" in
                 *.go | go.mod | go.sum | deployment/*) host=true ;;
                 android/*) android=true ;;
-                docs/* | AGENTS.md | release-pin.json) ;;
+                docs/* | AGENTS.md | release-pin.json | README.md | LICENSE | SECURITY.md | CONTRIBUTING.md | .github/ISSUE_TEMPLATE/* | site/*) ;;
                 *) host=true; android=true ;;
               esac
             done < "$RUNNER_TEMP/verify-inputs"

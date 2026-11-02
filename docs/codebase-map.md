@@ -1,16 +1,31 @@
-# codebase map
+# Codebase map
 
-tmux owns session state and process lifetimes. each gateway owns one host;
-clients compose independent gateways. there is no application database. every
+## Reading path
+
+Eight files, read in order, carry the ideas the rest of the code follows.
+
+1. [`internal/tmux/guard.go`](../internal/tmux/guard.go): every effect runs in one tmux command queue whose guard pins the exact lifetime it targets, here the server's and the session's; it is attempted once, and a lost completion is unknown, never retried.
+2. [`internal/tmux/inventory.go`](../internal/tmux/inventory.go): tmux is the store, holding skid's metadata as session options, and each read batch runs in one tmux client between two server-identity records whose equality proves it saw one server lifetime.
+3. [`internal/agentcontrol/terminal.go`](../internal/agentcontrol/terminal.go): status is evidence for a human, never authority for an effect, so a guarded send re-resolves its exact target, samples the screen itself and refuses before writing unless it sees an empty composer.
+4. [`internal/gateway/gateway.go`](../internal/gateway/gateway.go): every session and terminal call enters through one route table that authenticates the device, requires the request to name this machine, bounds and strictly decodes the body, and decides per route whether an error answer defaults to `not_sent`.
+5. [`internal/fleet/http.go`](../internal/fleet/http.go): membership is the trust domain: each device presents its own bearer, a joining one a one-use invitation and the local CLI its installed credential; phones see the fleet without its members or settings, and only computers administer it.
+6. [`GatewayClient.kt`](../android/app/src/main/java/dev/niels/skidbladnir/GatewayClient.kt): the phone sends each call once, straight to one pinned machine, and decodes failures totally, so an unreadable answer is a lost response and a gateway error keeps the host's copy and its `not_sent` or `unknown` dispatch.
+7. [`Machines.kt`](../android/app/src/main/java/dev/niels/skidbladnir/Machines.kt): the phone composes independent machines, each with its own poll, state and serial mutation lane, so a failure fences only that machine's rows and actions, and a read that predates a mutation never passes for its result.
+8. [`Ornament.kt`](../android/app/src/main/java/dev/niels/skidbladnir/Ornament.kt): the design language's ornament is frozen data: fixed geometry, and each dwarf's seal a pure function of its catalogue key, with no state or meaning of its own.
+
+## Owners
+
+tmux owns session state and process lifetimes. Each gateway owns one host;
+clients compose independent gateways. There is no application database. Every
 private state file (fleet, machine handle, notification observer, workspace
 checkpoint, terminal contexts) is written through `internal/privatefile`, the
 only package that syncs a directory.
 
-the table describes current source. the hub's notifier persists attention
+The table describes current source. The hub's notifier persists attention
 records and the owner's acknowledgements; clients reconcile native notices against
 its state and keep no notification memory.
 
-| slice | owner | boundary |
+| Slice | Owner | Boundary |
 | --- | --- | --- |
 | startup and host configuration | `cmd/skidbladnir`, `internal/hostconfig` | compose one local host from accepted yaml and the hub's fleet state |
 | sessions and metadata | `internal/sessions`, `internal/tmux`, `internal/group`, `internal/catalog` | inventory, creation, exact lifetime mutations, direct attachment: one tmux read module (`tmux/inventory.go`: every session or one id per bracketed script), guarded single-session effects (`tmux/guard.go`), client-token admission (`sessions/identity.go`), creation (`sessions/create.go`); focused observation (`Manager.ObservePane`: `tmux.Client.ObservePane`'s bounded screen regions, then the pane foreground re-observed against the session's own sample; `Manager.CapturePanes`: every agent pane of one inventory in one bracketed `tmux.Client.CapturePanes` script, each block guarded by the row's `ScreenTarget`, the same re-sample after; `Session.ScreenKey`, a3's reuse key) |
@@ -29,13 +44,6 @@ its state and keep no notification memory.
 | visual assets | `Theme.kt` (tokens, material theme, notice panel, modal back, sheet title and form body), `Ornament.kt` (frozen ornament and seal geometry, the seal formula and their renderers), `internal/catalog` (embedded; [curation](design-language.md#18-dvergatal-curation)) | shared presentation and frozen artwork |
 | build and operations | `scripts`, `.github/workflows`, android build files | engineering checks, release artifacts, installation and fleet operations; `internal/install` owns standalone installation; dev-server is an optional consumer |
 
-phone source paths are relative to
+Phone source paths are relative to
 `android/app/src/main/java/dev/niels/skidbladnir`; terminal assets are under
 `android/app/src/main`.
-
-cleanup proceeds one finding and one merged pr at a time: establish the current
-contract and callers, demonstrate the finding, characterize important behavior
-through its real boundary, simplify its owner, and independently review the
-result. remove temporary tests before committing, as requested for this cleanup.
-[testing policy](rules.md#testing) distinguishes that evidence from retained
-engineering checks. unresolved findings belong in `docs/issues`, one per issue.

@@ -58,7 +58,7 @@ func serveStandalone(stdout io.Writer) (result error) {
 	}
 	logger := logging.New(logOutput)
 	networkCtx, stopNetwork := context.WithTimeout(ctx, 2*time.Second)
-	origin, _, networkErr := networkOrigin(networkCtx)
+	origin, _, _, networkErr := networkOrigin(networkCtx)
 	stopNetwork()
 	if networkErr != nil {
 		origin = "" // local access needs no tailnet login

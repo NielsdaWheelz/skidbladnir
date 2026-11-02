@@ -1,50 +1,59 @@
-# roadmap
+# Roadmap
 
-what is next and what is deferred. the [architecture](architecture.md) is the
+What is next and what is deferred. The [architecture](architecture.md) is the
 contract; each item's evidence and resolution criteria live in its
 [issue](issues).
 
-## next
+## Next
 
-1. qualify the independent [terminal service](issues/terminal-service-qualification.md)
-   on supported hosts: mac identity/consent and crash cleanup, native installation,
-   gateway-only updates, drained replacement/removal and linux amd64 service behavior.
-2. measure the macbook's tmux exec cost
+qualify the independent [terminal service](issues/terminal-service-qualification.md)
+through the owner's approved local checkpoint-preserving cutover and native smoke test.
+
+1. Carry the [publication campaign](publication.md) to its close.
+2. Measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-3. observe the shipped but unobserved journeys
+3. Observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
-   recovery, and explain linux claude's guarded start
-   ([linux claude turn](issues/terminal-only-live-qualification.md)).
-4. finish qualifying conversation recovery on deployed hosts and clients:
-   linux loss, notices and actual reboots
+   recovery, and explain Linux Claude's guarded start
+   ([Linux Claude turn](issues/terminal-only-live-qualification.md)).
+4. Finish qualifying conversation recovery on deployed hosts and clients:
+   Linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
-## open defects
+## Open defects
 
-- phone terminal: [keyboard resize churn](issues/terminal-resize-churn.md),
+- Phone terminal: [keyboard resize churn](issues/terminal-resize-churn.md),
   [landscape with the keyboard](issues/terminal-landscape-keyboard.md),
-  [ime reshow clears the selection](issues/terminal-ime-reshow-selection.md).
-- phone: [sheet uniformity](issues/sheet-uniformity.md),
-  [tailscale dns outage](issues/phone-tailscale-dns.md).
-- desktop: [sigterm hang](issues/tui-sigterm-hang.md),
+  [IME reshow clears the selection](issues/terminal-ime-reshow-selection.md).
+- Phone: [sheet uniformity](issues/sheet-uniformity.md),
+  [Tailscale DNS outage](issues/phone-tailscale-dns.md).
+- Fleet and install: [hub self-report after an update](issues/hub-self-report-after-update.md),
+  [member status placeholder](issues/member-status-placeholder.md),
+  [connect operator check](issues/connect-operator-uid-match.md),
+  [systemd unit warning](issues/systemd-unit-changed-warning.md),
+  [join skips the serve route](issues/join-skips-serve-route.md),
+  [unwalked install](issues/fresh-install-walk.md).
+- Design language: [fret angle](issues/fret-angle-spec.md),
+  [wordmark tracking](issues/wordmark-tracking.md).
+- Desktop: [SIGTERM hang](issues/tui-sigterm-hang.md),
   [canceled input race](issues/bubbletea-canceled-input-race.md),
-  [list json output limit](issues/list-json-output-limit.md),
+  [list JSON output limit](issues/list-json-output-limit.md),
   [default machine case](issues/default-machine-case.md).
-- host: [directory listing fifo hang](issues/directory-listing-fifo-hang.md),
-  [nfc validation](issues/xtext-nfc-validation.md),
+- Host: [directory listing FIFO hang](issues/directory-listing-fifo-hang.md),
+  [NFC validation](issues/xtext-nfc-validation.md),
   [invisible label characters](issues/group-label-invisible-characters.md),
   [pane retarget](issues/terminal-pane-retarget.md),
   [agent creation 500](issues/agent-creation-internal-error.md),
   [member settings validation](issues/member-settings-validation.md),
   [macos process attribution](issues/macos-process-attribution.md),
   [repeated file-access prompts](issues/macos-permission-prompts.md).
-- observation: [claude panel rows](issues/claude-panel-status-unknown.md),
-  [unruled claude dialogs](issues/claude-unruled-request-dialogs.md).
+- Observation: [Claude panel rows](issues/claude-panel-status-unknown.md),
+  [unruled Claude dialogs](issues/claude-unruled-request-dialogs.md).
 
-## queued simplifications
+## Queued simplifications
 
-each removes a second owner or a needless hop:
+Each removes a second owner or a needless hop:
 [phone ready eligibility](issues/phone-ready-eligibility.md),
 [notification member auth](issues/notification-member-auth.md),
 [hello identity](issues/terminal-hello-identity.md),
@@ -52,20 +61,21 @@ each removes a second owner or a needless hop:
 [attention helpers](issues/attention-shared-helpers.md),
 [inventory snapshot](issues/inventory-snapshot-wrapper.md),
 [picker nullables](issues/picker-model-nullables.md),
-[cli input bounds](issues/cli-terminal-input-bounds.md).
+[CLI input bounds](issues/cli-terminal-input-bounds.md).
 
-## deferred by the owner
+## Deferred by the owner
 
-- [phone notification entry](issues/phone-entry-metadata-latency.md): splitting
+- [Phone notification entry](issues/phone-entry-metadata-latency.md): splitting
   the transport lifetime from the display model.
-- [phone interaction redesign](issues/phone-interaction-redesign.md) and
+- [Phone interaction redesign](issues/phone-interaction-redesign.md) and
   [visual redesign](issues/visual-redesign.md): unscoped.
-- [launcher recognition](issues/provider-wrapper-recognition.md) and
+- [Launcher recognition](issues/provider-wrapper-recognition.md) and
   [agent exit attention](issues/agent-exit-attention.md): need scope first.
-- [mac serve stderr](issues/macos-serve-stderr-discarded.md),
-  [behavioral suite](issues/test-system-reset.md) and
-  [project license](issues/project-license.md): owner decisions.
-- [cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
+- [Mac serve stderr](issues/macos-serve-stderr-discarded.md) and
+  [behavioral suite](issues/test-system-reset.md): owner decisions.
+- [Cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
-- [terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
+- [Android developer verification](issues/android-developer-verification.md):
+  register the signing key, or say what not registering means.
+- [Terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
   pty; replacement deferred. the ownership cutover retains tmux.

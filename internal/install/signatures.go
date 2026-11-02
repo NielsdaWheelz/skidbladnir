@@ -57,11 +57,7 @@ func verifyMacSignature(ctx context.Context, path, identifier string) (string, e
 		return "", err
 	}
 	leaf := sha1.Sum(certificate)
-	clause := "certificate leaf"
-	if identifier == "dev.niels.skidbladnir" {
-		clause = "anchor"
-	}
-	expected := fmt.Sprintf("designated => identifier %q and %s = H%q", identifier, clause, hex.EncodeToString(leaf[:]))
+	expected := fmt.Sprintf("designated => identifier %q and certificate leaf = H%q", identifier, hex.EncodeToString(leaf[:]))
 	if strings.TrimSpace(string(requirement)) != expected {
 		return "", errors.New("mac artifact designated requirement differs")
 	}
