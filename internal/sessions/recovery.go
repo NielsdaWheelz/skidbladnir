@@ -25,6 +25,9 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
+// RecoveryTimeout bounds one recovery preflight, durable claim and reconstruction.
+const RecoveryTimeout = 30 * time.Second
+
 // RecoveryChange carries only content-free evidence; the observer must not reenter Manager.
 type RecoveryChange struct {
 	At              time.Time
@@ -230,7 +233,7 @@ func (manager *Manager) reconcileRecovery() {
 		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCheckpointRead, cause: api.RecoveryCauseAlreadyAttempted, operation: "validate"}, api.RecoveryBroken)
 		return
 	}
-	restore, cancelRestore := context.WithTimeout(manager.recovery.owner, 30*time.Second)
+	restore, cancelRestore := context.WithTimeout(manager.recovery.owner, RecoveryTimeout)
 	defer cancelRestore()
 	// An ordinary save gets 10 seconds, so a hung tmux holds the lock briefly.
 	ctx, cancel := context.WithTimeout(restore, 10*time.Second)
@@ -504,23 +507,7 @@ func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmux
 	manager.release()
 	locked = false
 	discovery, cancel := context.WithTimeout(ctx, 2*time.Second)
-	results := make(map[string]agentruntime.ConversationResult)
-	for _, profile := range settings.profiles {
-		var queries []agentruntime.ConversationQuery
-		for key, observation := range observations {
-			if observation.profile == profile.Key && observation.scope != "" && observation.reason == "" {
-				queries = append(queries, agentruntime.ConversationQuery{PaneKey: key, ForegroundPID: observation.foreground.PID, RawTitle: observation.pane.Title, CWD: observation.pane.CWD})
-			}
-		}
-		if len(queries) == 0 {
-			continue
-		}
-		found := agentruntime.DiscoverConversations(discovery, profile, queries)
-		found = agentruntime.CloseConversationObservations(discovery, profile, queries, found)
-		for _, result := range found {
-			results[result.PaneKey] = result
-		}
-	}
+	results := discoverRecoveryConversations(discovery, settings.profiles, observations)
 	cancel()
 	if manager.acquire(ctx) != nil {
 		return
@@ -576,6 +563,27 @@ func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmux
 		return
 	}
 	manager.commitCheckpoint(fresh, api.RecoveryTracking, nil)
+}
+
+func discoverRecoveryConversations(ctx context.Context, profiles []agentruntime.Profile, observations map[string]recoveryAgentObservation) map[string]agentruntime.ConversationResult {
+	results := make(map[string]agentruntime.ConversationResult)
+	for _, profile := range profiles {
+		var queries []agentruntime.ConversationQuery
+		for key, observation := range observations {
+			if observation.profile == profile.Key && observation.scope != "" && observation.reason == "" {
+				queries = append(queries, agentruntime.ConversationQuery{PaneKey: key, ForegroundPID: observation.foreground.PID, RawTitle: observation.pane.Title, CWD: observation.pane.CWD})
+			}
+		}
+		if len(queries) == 0 {
+			continue
+		}
+		found := agentruntime.DiscoverConversations(ctx, profile, queries)
+		found = agentruntime.CloseConversationObservations(ctx, profile, queries, found)
+		for _, result := range found {
+			results[result.PaneKey] = result
+		}
+	}
+	return results
 }
 
 // prepareCheckpoint admits the epoch and repairs required character metadata once.

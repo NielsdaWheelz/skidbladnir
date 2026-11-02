@@ -17,6 +17,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/process"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalservice"
 )
 
@@ -219,7 +220,9 @@ func (i *installer) startGateway(ctx context.Context, version string) error {
 			return err
 		}
 	}
-	ready, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Startup may synchronously consume the existing recovery budget before
+	// serving local status, including during an ordinary gateway-only update.
+	ready, cancel := context.WithTimeout(ctx, sessions.RecoveryTimeout+5*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -250,7 +253,7 @@ func (i *installer) startGateway(ctx context.Context, version string) error {
 		}
 		select {
 		case <-ready.Done():
-			return errors.New("the installed gateway did not become ready within 5 s")
+			return errors.New("the installed gateway did not become ready within its recovery and startup deadline")
 		case <-ticker.C:
 		}
 	}

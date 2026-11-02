@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
 type installer struct {
@@ -42,7 +44,7 @@ func readManifest(path string) (releaseManifest, error) {
 }
 
 var help = map[string]string{
-	"install": `usage: skid install [--version vX.Y.Z] [--archive PATH --signature PATH]
+	"install": `usage: skid install [--version vX.Y.Z] [--archive PATH --signature PATH] [--restart-terminals]
 
 install a signed skid release on this computer: the latest stable release, the
 --version given, or a local --archive with its detached --signature. missing
@@ -50,18 +52,27 @@ tmux and tailscale are installed with homebrew (required on macos), apt and
 tailscale's installer, or pacman. skid links ~/.local/bin/skid, adds its marked
 blocks to your shell startup files, which put ~/.local/bin on PATH, and starts
 its services. settings and private state are kept; a release older than the
-installed one is refused.
+installed one is refused. terminal runtime replacement requires closed tmux
+sessions, unless --restart-terminals explicitly selects the default server for
+checkpointed restart. finish terminal work and pause session creation first.
+the restart requires a fresh complete checkpoint and a confirmed resume target
+for every recognized agent. shells are rebuilt; running processes are stopped.
 `,
-	"update": `usage: skid update [--version vX.Y.Z] [--archive PATH --signature PATH]
+	"update": `usage: skid update [--version vX.Y.Z] [--archive PATH --signature PATH] [--restart-terminals]
 
 replace the installed release with the latest stable release or the one given,
-as skid install does. tmux sessions and providers keep running.
+as skid install does. gateway-only updates leave terminals running. terminal
+runtime replacement requires closed sessions or explicit --restart-terminals,
+which checkpoints and stops the selected default server before recovery.
+finish work and pause session creation; provider resume requests do not prove
+successful resume, and shell process state is not preserved.
 `,
 	"uninstall": `usage: skid uninstall
 
-turn off tailscale serve on https port 8443, stop skid's services, and remove
+require closed tmux sessions and an empty checkpoint, turn off tailscale serve
+on https port 8443, stop skid's services, and remove
 ~/.local/bin/skid, the installed releases, the service files and skid's shell
-blocks. settings, private state, provider data, tmux and shared packages remain.
+blocks. settings, private state, provider data and shared packages remain.
 `,
 }
 
@@ -75,10 +86,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	// The caller reports parse errors; -h and --help print help below.
 	flags.SetOutput(io.Discard)
 	version, archive, signature := new(string), new(string), new(string)
+	restartTerminals := new(bool)
 	if action != "uninstall" {
 		version = flags.String("version", "", "")
 		archive = flags.String("archive", "", "")
 		signature = flags.String("signature", "", "")
+		restartTerminals = flags.Bool("restart-terminals", false, "")
 	}
 	err := flags.Parse(args[1:])
 	if errors.Is(err, flag.ErrHelp) {
@@ -128,10 +141,20 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	} else if err != nil {
 		return fmt.Errorf("installed release unreadable: %w", err)
 	}
-	// Refuse a foreign server before downloading or changing authoritative state.
+	// The ordinary path refuses foreign servers; the explicit restart selects
+	// one exact default lifetime and never silently retargets during installation.
+	var selection *restartSelection
 	if _, lookupErr := exec.LookPath("tmux"); lookupErr == nil {
-		if _, _, err = i.inspectTerminal(ctx, false); err != nil {
-			return err
+		if *restartTerminals {
+			chosen, selectionErr := inspectRestartSelection(ctx)
+			if selectionErr != nil {
+				return selectionErr
+			}
+			selection = &chosen
+		} else {
+			if _, _, err = i.inspectTerminal(ctx, false); err != nil {
+				return err
+			}
 		}
 	}
 	releases := filepath.Join(dirs.Data, "releases")
@@ -193,11 +216,30 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err != nil {
 		return err
 	}
-	before, present, err := i.inspectTerminal(ctx, runtimeChange)
-	if err != nil {
-		return err
+	var before tmux.ServerObservation
+	var present bool
+	var restartConfig restartSettings
+	if *restartTerminals {
+		chosen, selectionErr := inspectRestartSelection(ctx)
+		if selectionErr != nil {
+			return selectionErr
+		}
+		if selection != nil && (chosen.present != selection.present || chosen.present && (chosen.observed.Identity != selection.observed.Identity || chosen.process.StartIdentity != selection.process.StartIdentity)) {
+			return errors.New("the selected terminal server changed during release preparation")
+		}
+		selection = &chosen
+		before, present = chosen.observed, chosen.present
+		restartConfig, err = i.restartConfiguration()
+		if err != nil {
+			return err
+		}
+	} else {
+		before, present, err = i.inspectTerminal(ctx, runtimeChange)
+		if err != nil {
+			return err
+		}
 	}
-	if !runtimeChange {
+	if !runtimeChange && !*restartTerminals {
 		if err = i.waitTerminal(ctx); err != nil {
 			return err
 		}
@@ -212,24 +254,48 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 		return fmt.Errorf("gateway shutdown failed: %w", err)
 	}
 	completed = "gateway stopped"
-	if runtimeChange {
-		// The stopped gateway cannot repopulate the checkpoint after this read.
-		after, stillPresent, inspectErr := i.inspectTerminal(ctx, true)
-		if inspectErr != nil {
-			return inspectErr
+	var restartCheckpoint *sessions.RuntimeRestart
+	defer func() {
+		if restartCheckpoint != nil {
+			result = errors.Join(result, restartCheckpoint.Close())
 		}
-		if stillPresent != present || present && after.Identity != before.Identity {
-			return errors.New("the drained tmux server lifetime changed; " + drainInstructions)
+	}()
+	if runtimeChange || *restartTerminals {
+		if *restartTerminals {
+			capture, cancel := context.WithTimeout(ctx, 10*time.Second)
+			restartCheckpoint, err = sessions.PrepareRuntimeRestart(capture, restartConfig.config, before, present)
+			cancel()
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "validated terminal restart: %d sessions, %d panes, %d agent resume targets (%d inferred); shell process state is not preserved\n", restartCheckpoint.Sessions, restartCheckpoint.Panes, restartCheckpoint.AgentPanes, restartCheckpoint.InferredAgentPanes)
+			if err = i.stopRestartSelection(ctx, terminal, *selection, restartCheckpoint, restartConfig); err != nil {
+				return err
+			}
+			completed = "gateway and checkpointed terminal source stopped"
+		} else {
+			// The stopped gateway cannot repopulate the checkpoint after this read.
+			after, stillPresent, inspectErr := i.inspectTerminal(ctx, true)
+			if inspectErr != nil {
+				return inspectErr
+			}
+			if stillPresent != present || present && after.Identity != before.Identity {
+				return errors.New("the drained tmux server lifetime changed; " + drainInstructions)
+			}
+			if err = i.stopTerminal(ctx, terminal, after, stillPresent); err != nil {
+				return fmt.Errorf("terminal service shutdown failed: %w", err)
+			}
+			completed = "gateway and drained terminal service stopped"
 		}
-		if err = i.stopTerminal(ctx, terminal, after, stillPresent); err != nil {
-			return fmt.Errorf("terminal service shutdown failed: %w", err)
-		}
-		completed = "gateway and drained terminal service stopped"
-		if err = i.replaceRuntime(payload, stage); err != nil {
-			return fmt.Errorf("terminal runtime replacement failed: %w", err)
-		}
-		if err = i.writeService(terminal); err != nil {
-			return fmt.Errorf("terminal service definition failed: %w", err)
+		if runtimeChange {
+			if err = i.replaceRuntime(payload, stage); err != nil {
+				return fmt.Errorf("terminal runtime replacement failed: %w", err)
+			}
+			if err = i.writeService(terminal); err != nil {
+				return fmt.Errorf("terminal service definition failed: %w", err)
+			}
+		} else if err = os.RemoveAll(filepath.Join(payload, "terminal-runtime")); err != nil {
+			return err
 		}
 		if err = i.startService(ctx, terminal); err != nil {
 			return fmt.Errorf("terminal service startup failed: %w", err)
@@ -284,6 +350,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 		return err
 	}
 	completed = "gateway release installed; terminal service ready"
+	if restartCheckpoint != nil {
+		if err = restartCheckpoint.Close(); err != nil {
+			return fmt.Errorf("checkpoint writer release failed: %w", err)
+		}
+		restartCheckpoint = nil
+	}
 	if err = i.startGateway(ctx, manifest.Version); err != nil {
 		return fmt.Errorf("release installed; service startup failed: %w", err)
 	}
@@ -300,7 +372,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 			return fmt.Errorf("release installed; pruning failed: %w", err)
 		}
 	}
-	if runtimeChange {
+	if *restartTerminals {
+		fmt.Fprintf(stdout, "installed %s; terminal service ready; gateway ready; checkpoint recovery requested\n", manifest.Version)
+	} else if runtimeChange {
 		fmt.Fprintf(stdout, "installed %s; terminal service replaced and ready; gateway ready\n", manifest.Version)
 	} else {
 		fmt.Fprintf(stdout, "updated gateway to %s; terminal service unchanged; gateway ready\n", manifest.Version)
