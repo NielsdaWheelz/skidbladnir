@@ -21,7 +21,7 @@ terminal continuity and creation:
 - v0.10.3: one of 12 unrelated sessions vanished during the physical-phone window; cause unattributed, so unrelated-session preservation is unproven (terminal-continuity-phone-qualification).
 - v0.21.0: initial agent under powerlevel10k instant prompt on an installed zsh host with a warm cache: terminal stdin/stdout at launch, input and job control, same-shell survival, one-shot launch (initial-agent-instant-prompt, at `ba60841`).
 - v0.14.0: workspace recovery after an actual linux and mac reboot, with changed boot identity and no client request (session-recovery-reboot).
-- v0.20.0: clean supported-host installation, real uninstall with child-session survival, ghostty and apple terminal adapters, installed owner visual parity (generalization-installed-cutover).
+- v0.20.0: clean supported-host installation, ghostty and apple terminal adapters, installed owner visual parity (generalization-installed-cutover). uninstall now requires a drain; its native qualification is tracked in [terminal service](terminal-service-qualification.md).
 - v0.20.0: the owner confirms no blank apple terminal window from the 2026-10-20 adapter probes remains open; never close an unreceipted one automatically (generalization-terminal-probe-windows).
 
 desktop:

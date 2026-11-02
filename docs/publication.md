@@ -244,7 +244,7 @@ and the open questions marked "before W2".
     the signing properties; the pin changes.
   - Release notes gain a Changes section built from merged pull request titles.
   - If it must touch `scripts/install`, it starts after W2.1 merges. Architecture:
-    [release](architecture.md#release) (its asset list and four-entry
+    [release](architecture.md#release) (its asset list and five-entry
     `SHA256SUMS`), and `scripts/check`'s composition, through the root integrator.
     Paired dev-server: the release pin and its expected digests.
   - Venue: `scripts/check-release` on a local release build.

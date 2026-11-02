@@ -32,7 +32,7 @@ const appliedMarker = "SKIDBLADNIR_APPLIED_V1"
 // other client can act between the guard and the effect.
 func (client Client) guarded(ctx context.Context, id string, server ServerIdentity, conditions []string, action string) (bool, error) {
 	var stdout, stderr bytes.Buffer
-	command := client.commandWithStderr(ctx, &stdout, &stderr, "-N", "if-shell", "-F", "-t", id,
+	command := client.commandWithStderr(ctx, &stdout, &stderr, "if-shell", "-F", "-t", id,
 		andFormatConditions(append(sessionLifetimeConditions(id, server), conditions...)),
 		action+" ; "+commandText("display-message", "-p", "-l", appliedMarker),
 		commandText("display-message", "-p", "-l", identityMismatchMarker))

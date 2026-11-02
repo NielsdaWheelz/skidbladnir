@@ -5,7 +5,17 @@ set -euo pipefail
 release_public_key='-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAQPo1EnENUATq/vDEyv4YW31yW6CauuzQ249BT/TBLAU=
 -----END PUBLIC KEY-----'
-[[ $# -le 1 ]] || { printf 'usage: %s [vMAJOR.MINOR.PATCH]\n' "$0" >&2; exit 64; }
+usage="usage: $0 [vMAJOR.MINOR.PATCH] [--restart-terminals]"
+version=''
+restart_terminals=''
+for arg in "$@"; do
+  case "$arg" in
+    --help) [[ $# -eq 1 ]] || { printf '%s\n' "$usage" >&2; exit 64; }; printf '%s\n' "$usage"; exit 0 ;;
+    --restart-terminals) [[ -z "$restart_terminals" ]] || { printf '%s\n' "$usage" >&2; exit 64; }; restart_terminals=1 ;;
+    v*) [[ -z "$version" && "$arg" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { printf '%s\n' "$usage" >&2; exit 64; }; version="$arg" ;;
+    *) printf '%s\n' "$usage" >&2; exit 64 ;;
+  esac
+done
 case "$(uname -s)/$(uname -m)" in
   Darwin/arm64)
     platform=darwin-arm64
@@ -28,7 +38,6 @@ if [[ "$help" != *'-rawin'* ]]; then
     exit 1
   fi
 fi
-version="${1:-}"
 if [[ -z "$version" ]]; then
   metadata="$(curl --connect-timeout 15 --max-time 30 --fail --silent --show-error --proto '=https' --tlsv1.2 'https://api.github.com/repos/NielsdaWheelz/skidbladnir/releases/latest')"
   version="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$metadata")"
@@ -45,4 +54,8 @@ printf '%s\n' "$release_public_key" > "$stage/key.pem"
 "$openssl_bin" dgst -sha256 -binary "$stage/archive.tar.gz" > "$stage/digest"
 "$openssl_bin" pkeyutl -verify -rawin -pubin -inkey "$stage/key.pem" -in "$stage/digest" -sigfile "$stage/archive.sig" >/dev/null || { printf 'release signature invalid; nothing installed\n' >&2; exit 1; }
 tar -xzf "$stage/archive.tar.gz" -C "$stage" skidbladnir
-"$stage/skidbladnir" install --version "$version" --archive "$stage/archive.tar.gz" --signature "$stage/archive.sig"
+if [[ -n "$restart_terminals" ]]; then
+  "$stage/skidbladnir" install --version "$version" --archive "$stage/archive.tar.gz" --signature "$stage/archive.sig" --restart-terminals
+else
+  "$stage/skidbladnir" install --version "$version" --archive "$stage/archive.tar.gz" --signature "$stage/archive.sig"
+fi

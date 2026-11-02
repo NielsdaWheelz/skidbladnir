@@ -66,6 +66,9 @@ func (manager *Manager) resolve(ctx context.Context, id, token string) (tmuxclie
 	if capture.Server != server {
 		return tmuxclient.ServerIdentity{}, tmuxclient.InventoryRow{}, sessionIdentityMismatch()
 	}
+	if err := manager.requireManaged(ctx, tmuxclient.ServerObservation{Identity: capture.Server, SessionCount: len(capture.Rows)}, true); err != nil {
+		return tmuxclient.ServerIdentity{}, tmuxclient.InventoryRow{}, err
+	}
 	return server, capture.Rows[0], nil
 }
 
@@ -94,5 +97,5 @@ func (manager *Manager) RequireServer(ctx context.Context, expected tmuxclient.S
 	if !present || observed.Identity != expected {
 		return tmuxclient.WorkspaceSourceChanged
 	}
-	return nil
+	return manager.requireManaged(ctx, observed, present)
 }

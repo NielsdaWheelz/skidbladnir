@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,9 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
+	"github.com/NielsdaWheelz/skidbladnir/internal/process"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminalservice"
 )
 
-type service struct{ path, text string }
+type service struct{ name, path, text string }
 
 func xmlText(value string) string {
 	var out strings.Builder
@@ -23,80 +29,135 @@ func xmlText(value string) string {
 	return out.String()
 }
 func systemdQuote(value string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, `$`, `$$`).Replace(value) + `"`
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`).Replace(value) + `"`
 }
-
-// services are this host's fixed skid-owned service definitions: one systemd user
-// unit on linux, the gateway and notification launch agents on mac.
-func (i *installer) services() []service {
+func (i *installer) environment() [][2]string {
+	locale := os.Getenv("LANG")
+	if locale == "" {
+		locale = "en_US.UTF-8"
+		if runtime.GOOS == "linux" {
+			locale = "C.UTF-8"
+		}
+	}
+	return [][2]string{{"HOME", i.dirs.Home}, {"PATH", os.Getenv("PATH")}, {"LANG", locale}, {"XDG_CONFIG_HOME", filepath.Dir(i.dirs.Config)}, {"XDG_DATA_HOME", filepath.Dir(i.dirs.Data)}, {"XDG_STATE_HOME", filepath.Dir(i.dirs.State)}}
+}
+func (i *installer) unit(name string, args []string, terminal bool) service {
+	text := "[Unit]\nDescription=skid "
+	if terminal {
+		text += "terminals\n\n[Service]\nType=simple\nRestart=always\nRestartPreventExitStatus=78\n"
+	} else {
+		text += "gateway\nAfter=network.target\n\n[Service]\nType=simple\nRestart=on-failure\n"
+	}
+	text += "RestartSec=3\nExecStart="
+	for index, arg := range args {
+		if index != 0 {
+			text += " "
+		}
+		text += systemdQuote(strings.ReplaceAll(arg, "$", "$$"))
+	}
+	text += "\n"
+	for _, entry := range i.environment() {
+		text += "Environment=" + systemdQuote(entry[0]+"="+entry[1]) + "\n"
+	}
+	text += "\n[Install]\nWantedBy=default.target\n"
+	return service{name, filepath.Join(filepath.Dir(i.dirs.Config), "systemd", "user", name), text}
+}
+func (i *installer) agent(name string, args []string, terminal bool) service {
+	text := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + xmlText(name) + `</string><key>ProgramArguments</key><array>`
+	for _, arg := range args {
+		text += "<string>" + xmlText(arg) + "</string>"
+	}
+	text += `</array><key>RunAtLoad</key><true/>`
+	if terminal {
+		text += `<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ProcessType</key><string>Interactive</string><key>AssociatedBundleIdentifiers</key><string>` + terminalservice.DarwinLabel + `</string>`
+	} else {
+		text += `<key>KeepAlive</key><true/>`
+		if name == "dev.niels.skidbladnir" {
+			text += `<key>ProcessType</key><string>Interactive</string>`
+		}
+	}
+	text += `<key>EnvironmentVariables</key><dict>`
+	for _, entry := range i.environment() {
+		text += "<key>" + entry[0] + "</key><string>" + xmlText(entry[1]) + "</string>"
+	}
+	text += "</dict></dict></plist>\n"
+	return service{name, filepath.Join(i.dirs.Home, "Library", "LaunchAgents", name+".plist"), text}
+}
+func (i *installer) terminalService(tmuxPath string) service {
+	if runtime.GOOS == "linux" {
+		return i.unit(terminalservice.LinuxUnit, []string{tmuxPath, "-D", "-c", "exit 78"}, true)
+	}
+	return i.agent(terminalservice.DarwinLabel, []string{filepath.Join(i.dirs.Data, "terminal-runtime", "SkidTerminals.app", "Contents", "MacOS", "skid-terminals"), tmuxPath}, true)
+}
+func (i *installer) gatewayServices() []service {
 	current := filepath.Join(i.dirs.Data, "current")
-	environment := map[string]string{"PATH": os.Getenv("PATH"), "XDG_CONFIG_HOME": filepath.Dir(i.dirs.Config), "XDG_DATA_HOME": filepath.Dir(i.dirs.Data), "XDG_STATE_HOME": filepath.Dir(i.dirs.State)}
 	if runtime.GOOS == "linux" {
-		unit := "[Unit]\nDescription=skid local host\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=" + systemdQuote(filepath.Join(current, "skidbladnir")) + " serve\nRestart=on-failure\nRestartSec=3\nKillMode=process\n"
-		for _, key := range []string{"PATH", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
-			unit += "Environment=" + systemdQuote(key+"="+environment[key]) + "\n"
-		}
-		unit += "\n[Install]\nWantedBy=default.target\n"
-		return []service{{filepath.Join(filepath.Dir(i.dirs.Config), "systemd", "user", "skidbladnir.service"), unit}}
+		return []service{i.unit("skidbladnir.service", []string{filepath.Join(current, "skidbladnir"), "serve"}, false)}
 	}
-	var services []service
-	for _, agent := range []struct {
-		name string
-		args []string
-	}{{"dev.niels.skidbladnir", []string{filepath.Join(current, "skidbladnir"), "serve"}}, {"dev.niels.skidbladnir.notifications", []string{"/usr/bin/open", "-g", "-W", "-a", filepath.Join(current, "Skid.app"), "--env", "XDG_STATE_HOME=" + filepath.Dir(i.dirs.State), "--env", "XDG_DATA_HOME=" + filepath.Dir(i.dirs.Data), "--env", "XDG_CONFIG_HOME=" + filepath.Dir(i.dirs.Config), "--env", "PATH=" + environment["PATH"], "--args", "--config", i.dirs.State, "--skid", filepath.Join(current, "skidbladnir")}}} {
-		text := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + xmlText(agent.name) + `</string><key>ProgramArguments</key><array>`
-		for _, arg := range agent.args {
-			text += "<string>" + xmlText(arg) + "</string>"
-		}
-		text += `</array><key>RunAtLoad</key><true/><key>KeepAlive</key><true/>`
-		if agent.name == "dev.niels.skidbladnir" {
-			// Without Interactive, launchd runs serve, tmux and every agent at priority 20.
-			text += `<key>AbandonProcessGroup</key><true/><key>ProcessType</key><string>Interactive</string>`
-		}
-		text += `<key>EnvironmentVariables</key><dict>`
-		for _, key := range []string{"PATH", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
-			text += "<key>" + key + "</key><string>" + xmlText(environment[key]) + "</string>"
-		}
-		text += "</dict></dict></plist>\n"
-		services = append(services, service{filepath.Join(i.dirs.Home, "Library", "LaunchAgents", agent.name+".plist"), text})
+	args := []string{"/usr/bin/open", "-g", "-W", "-a", filepath.Join(current, "Skid.app")}
+	for _, entry := range i.environment() {
+		args = append(args, "--env", entry[0]+"="+entry[1])
 	}
-	return services
+	args = append(args, "--args", "--config", i.dirs.State, "--skid", filepath.Join(current, "skidbladnir"))
+	return []service{i.agent("dev.niels.skidbladnir", []string{filepath.Join(current, "skidbladnir"), "serve"}, false), i.agent("dev.niels.skidbladnir.notifications", args, false)}
 }
-
-// stopServices stops whichever skid services are loaded; on a fresh host every
-// probe finds nothing. On mac the running app is found through current's
-// physical bundle, so no release tree or current may move before this.
-func (i *installer) stopServices(ctx context.Context) error {
+func (i *installer) writeService(s service) error {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+		return err
+	}
+	return writeAtomic(s.path, []byte(s.text), 0644)
+}
+func (i *installer) stopService(ctx context.Context, s service) error {
 	if runtime.GOOS == "linux" {
-		state, err := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=LoadState", "--value", "skidbladnir.service").Output()
+		state, err := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=LoadState", "--value", s.name).Output()
 		if strings.TrimSpace(string(state)) == "not-found" {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if err = command(ctx, i.stdout, i.stderr, "systemctl", "--user", "stop", "skidbladnir.service"); err != nil {
-			return err
-		}
-		unit := i.services()[0].path
-		if _, err = os.Stat(unit); errors.Is(err, os.ErrNotExist) {
-			return nil
-		} else if err != nil {
-			return err
-		}
-		return command(ctx, i.stdout, i.stderr, "systemctl", "--user", "disable", filepath.Base(unit))
+		return command(ctx, i.stdout, i.stderr, "systemctl", "--user", "stop", s.name)
 	}
-	for _, s := range i.services() {
-		target := "gui/" + strconv.Itoa(os.Getuid()) + "/" + strings.TrimSuffix(filepath.Base(s.path), ".plist")
-		probe := command(ctx, io.Discard, io.Discard, "launchctl", "print", target)
-		var exit *exec.ExitError
-		if probe == nil {
-			if err := command(ctx, i.stdout, i.stderr, "launchctl", "bootout", target); err != nil {
-				return err
-			}
-		} else if !errors.As(probe, &exit) || exit.ExitCode() != 113 {
-			return fmt.Errorf("inspect skid service: %w", probe)
+	target := "gui/" + strconv.Itoa(os.Getuid()) + "/" + s.name
+	err := command(ctx, io.Discard, io.Discard, "launchctl", "print", target)
+	if err == nil {
+		return command(ctx, i.stdout, i.stderr, "launchctl", "bootout", target)
+	}
+	var failure *exec.ExitError
+	if errors.As(err, &failure) && failure.ExitCode() == 113 {
+		return nil
+	}
+	return fmt.Errorf("inspect %s: %w", s.name, err)
+}
+func (i *installer) startService(ctx context.Context, s service) error {
+	if runtime.GOOS == "linux" {
+		if err := command(ctx, i.stdout, i.stderr, "systemctl", "--user", "daemon-reload"); err != nil {
+			return err
 		}
+		if err := command(ctx, i.stdout, i.stderr, "systemctl", "--user", "enable", s.name); err != nil {
+			return err
+		}
+		return command(ctx, i.stdout, i.stderr, "systemctl", "--user", "start", s.name)
+	}
+	return command(ctx, i.stdout, i.stderr, "launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), s.path)
+}
+func (i *installer) stopGateway(ctx context.Context) error {
+	previous, running, err := terminalservice.GatewayProcess(ctx)
+	if err != nil {
+		return err
+	}
+	for _, s := range i.gatewayServices() {
+		if err := i.stopService(ctx, s); err != nil {
+			return err
+		}
+	}
+	if running {
+		if err = waitStopped(ctx, previous); err != nil {
+			return err
+		}
+	}
+	if runtime.GOOS != "darwin" {
+		return nil
 	}
 	app, err := filepath.EvalSymlinks(filepath.Join(i.dirs.Data, "current", "Skid.app"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -108,99 +169,92 @@ func (i *installer) stopServices(ctx context.Context) error {
 	return command(ctx, i.stdout, i.stderr, filepath.Join(app, "Contents", "MacOS", "skid-notifications"), "stop", app)
 }
 
-func (i *installer) startServices(ctx context.Context) error {
-	if runtime.GOOS == "linux" {
-		if err := command(ctx, i.stdout, i.stderr, "systemctl", "--user", "daemon-reload"); err != nil {
-			return err
-		}
-		if err := command(ctx, i.stdout, i.stderr, "systemctl", "--user", "enable", "skidbladnir.service"); err != nil {
-			return err
-		}
-		if err := command(ctx, i.stdout, i.stderr, "systemctl", "--user", "restart", "skidbladnir.service"); err != nil {
-			return err
-		}
-		// Linger and tailscaled are host policy: skid names the command and never
-		// runs it. A failed probe reads as off, costing at most a needless line.
-		// loginctl takes a uid, which unlike $USER is always set.
-		uid := strconv.Itoa(os.Getuid())
-		if linger, _ := exec.CommandContext(ctx, "loginctl", "show-user", uid, "--property=Linger", "--value").Output(); strings.TrimSpace(string(linger)) != "yes" {
-			fmt.Fprintln(i.stdout, "linger is off, so logging out stops the skid gateway and its sessions; to keep them running, run: sudo loginctl enable-linger "+uid)
-		}
-		if exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "tailscaled").Run() != nil {
-			fmt.Fprintln(i.stdout, "tailscaled is not running, so other devices cannot reach this computer; run: sudo systemctl enable --now tailscaled")
-		}
-		return nil
-	}
-	app, err := filepath.EvalSymlinks(filepath.Join(i.dirs.Data, "current", "Skid.app"))
-	if err != nil {
-		return err
-	}
-	if err = command(ctx, i.stdout, i.stderr, filepath.Join(app, "Contents", "MacOS", "skid-notifications"), "register", app); err != nil {
-		return err
-	}
-	// The previous serve, which ran the same command, may still be exiting after
-	// bootout; only a serve absent from this table is the one bootstrap starts.
-	// A failed read is returned after bootstrap, so the check never leaves the
-	// jobs unloaded.
-	serve := filepath.Join(i.dirs.Data, "current", "skidbladnir") + " serve"
-	serves := func() (map[int]int, error) {
-		table, err := exec.CommandContext(ctx, "ps", "-xww", "-o", "pid=,ppid=,pri=,command=").Output()
-		if err != nil {
-			return nil, fmt.Errorf("list processes: %w", err)
-		}
-		return launchdChildren(table, serve)
-	}
-	previous, listErr := serves()
-	domain := "gui/" + strconv.Itoa(os.Getuid())
-	// stopServices booted every agent out under the same install lock.
-	for _, s := range i.services() {
-		if err = command(ctx, i.stdout, i.stderr, "launchctl", "bootstrap", domain, s.path); err != nil {
-			return err
-		}
-	}
-	if listErr != nil {
-		return listErr
-	}
-	// Every agent inherits serve's priority through tmux. Poll every 100 ms, up
-	// to 5 s, until the new serve appears; RunAtLoad spawns it at bootstrap.
-	for attempt := 0; attempt < 50; attempt++ {
-		time.Sleep(100 * time.Millisecond)
-		current, err := serves()
-		if err != nil {
-			return err
-		}
-		for pid, priority := range current {
-			if _, old := previous[pid]; old {
+func waitStopped(ctx context.Context, previous ...process.Observation) error {
+	stopped, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		remaining := false
+		for _, expected := range previous {
+			after, err := process.Observe(expected.PID)
+			if errors.Is(err, process.ErrProcessAbsent) || err == nil && after.StartIdentity != expected.StartIdentity {
 				continue
 			}
-			if priority < 31 {
-				return fmt.Errorf("skid serve (pid %d) runs at scheduling priority %d, below interactive 31: check that `launchctl print %s/dev.niels.skidbladnir` reports an interactive spawn type, then reinstall", pid, priority, domain)
+			if err != nil {
+				return err
 			}
-			fmt.Fprintf(i.stdout, "skid serve (pid %d) runs at scheduling priority %d\n", pid, priority)
+			remaining = true
+		}
+		if !remaining {
 			return nil
 		}
+		select {
+		case <-stopped.Done():
+			return errors.New("a stopped service process did not exit within 5 s")
+		case <-ticker.C:
+		}
 	}
-	return fmt.Errorf("skid serve did not appear within 5 s of bootstrap, so its priority is unchecked: inspect `launchctl print %s/dev.niels.skidbladnir`", domain)
 }
-
-// launchdChildren maps each process whose parent is launchd (pid 1) and whose
-// argv is exactly command to its scheduling priority. table is `ps -xww -o
-// pid=,ppid=,pri=,command=` output, whose command column joins argv with spaces.
-func launchdChildren(table []byte, command string) (map[int]int, error) {
-	processes := map[int]int{}
-	for _, line := range strings.Split(string(table), "\n") {
-		pid, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
-		parent, rest, _ := strings.Cut(strings.TrimSpace(rest), " ")
-		priority, rest, _ := strings.Cut(strings.TrimSpace(rest), " ")
-		if parent != "1" || strings.TrimSpace(rest) != command {
-			continue
-		}
-		id, idErr := strconv.Atoi(pid)
-		level, levelErr := strconv.Atoi(priority)
-		if idErr != nil || levelErr != nil {
-			return nil, fmt.Errorf("unreadable process table row for %s", command)
-		}
-		processes[id] = level
+func (i *installer) startGateway(ctx context.Context, version string) error {
+	// Installation excludes concurrent manual gateway launches. Prove that an
+	// unmanaged old listener cannot answer readiness for the new native job.
+	listener, err := net.Listen("tcp", fleet.LocalAddress)
+	if err != nil {
+		return errors.New("the local gateway address is already in use; stop the conflicting listener, then rerun the installer")
 	}
-	return processes, nil
+	if err = listener.Close(); err != nil {
+		return err
+	}
+	if runtime.GOOS == "darwin" {
+		app, err := filepath.EvalSymlinks(filepath.Join(i.dirs.Data, "current", "Skid.app"))
+		if err != nil {
+			return err
+		}
+		if err = command(ctx, i.stdout, i.stderr, filepath.Join(app, "Contents", "MacOS", "skid-notifications"), "register", app); err != nil {
+			return err
+		}
+	}
+	for _, s := range i.gatewayServices() {
+		if err := i.startService(ctx, s); err != nil {
+			return err
+		}
+	}
+	// Startup may synchronously consume the existing recovery budget before
+	// serving local status, including during an ordinary gateway-only update.
+	ready, cancel := context.WithTimeout(ctx, sessions.RecoveryTimeout+5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		before, running, observeErr := terminalservice.GatewayProcess(ready)
+		executable, pathErr := filepath.EvalSymlinks(filepath.Join(i.dirs.Data, "current", "skidbladnir"))
+		local, localErr := fleet.ReadLocal(i.dirs.State)
+		if observeErr == nil && running && pathErr == nil && before.Executable == executable && localErr == nil {
+			var status fleet.Status
+			if localErr = fleet.Call(ready, local.Target(local.Machine), "GET", "/v1/local/status", nil, &status); localErr == nil && status.Version == version {
+				after, stillRunning, err := terminalservice.GatewayProcess(ready)
+				if err != nil || !stillRunning || after != before {
+					return errors.New("the started gateway lifetime changed during readiness")
+				}
+				if runtime.GOOS == "linux" {
+					// Linger and tailscaled remain host policy; installation names
+					// the commands without changing either setting.
+					uid := strconv.Itoa(os.Getuid())
+					if linger, _ := exec.CommandContext(ctx, "loginctl", "show-user", uid, "--property=Linger", "--value").Output(); strings.TrimSpace(string(linger)) != "yes" {
+						fmt.Fprintln(i.stdout, "linger is off, so logging out stops the skid gateway and terminal service; to keep them running, run: sudo loginctl enable-linger "+uid)
+					}
+					if exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "tailscaled").Run() != nil {
+						fmt.Fprintln(i.stdout, "tailscaled is not running, so other devices cannot reach this computer; run: sudo systemctl enable --now tailscaled")
+					}
+				}
+				return nil
+			}
+		}
+		select {
+		case <-ready.Done():
+			return errors.New("the installed gateway did not become ready within its recovery and startup deadline")
+		case <-ticker.C:
+		}
+	}
 }

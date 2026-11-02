@@ -65,7 +65,7 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
 	}
 	if err != nil {
-		writeError(writer, errorInternal)
+		writeError(writer, sessionFailure(err))
 		return
 	}
 	// inventory.Profiles is the one settings snapshot every launch profile and agent profile in it names.

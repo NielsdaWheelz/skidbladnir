@@ -74,8 +74,11 @@ curl -fsSL https://github.com/NielsdaWheelz/skidbladnir/releases/latest/download
 `~/.local/bin/skid`, puts `~/.local/bin` on `PATH` through marked blocks in your
 shell startup files, writes a default `config.yaml` once and starts skid's
 services. Updates are manual: `skid update` on each computer, and a new APK on the
-phone. `skid uninstall` turns off Tailscale Serve on port 8443 and removes skid,
-keeping settings, private state, sessions, tmux and Tailscale.
+phone. skid provisions an independent terminal service; gateway-only updates preserve
+its sessions. `skid uninstall` requires a drain, turns off Tailscale Serve on port
+8443 and removes skid, keeping settings, private state, tmux and Tailscale.
+runtime replacement can instead use an explicit checkpoint-preserving
+[restart](docs/install.md#checkpoint-preserving-runtime-restart) after work is saved.
 [Install](docs/install.md) has every step.
 
 ## Quickstart

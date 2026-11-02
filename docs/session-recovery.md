@@ -15,8 +15,8 @@ Owner decisions:
   windows and panes.
 - Checkpoint every 30 seconds and right after each confirmed skid structural
   mutation. Native tmux changes can be lost between checkpoints.
-- Restore automatically after a reboot **or** a same-boot server loss, only into an
-  absent or empty server. A populated replacement server is broken recovery.
+- restore automatically after a reboot **or** a same-boot server loss, only into a
+  managed empty server. an absent service delays; a populated replacement is broken.
 - Restore the last confirmed recipe regardless of its age; saved session names
   return as manual names, and automatic-title reset stays available.
 - An unsuccessful ordinary checkpoint never disables later saves: keep the
@@ -68,8 +68,9 @@ reconstruction recipe; it never supplies inventory or agent status.
 | `hostconfig` / profile runtime | Unchanged user command text and current profile/home scope |
 | Gateway | Starts recovery after the listener, owns its cancellation, logs its transitions |
 | `process` | Boot identity and kernel start identity that prove whether the saved server process lives |
+| native terminal service | bootstrap, supervise and restart tmux independently of the gateway |
 | Clients | The inventory's recovery fact and notice, shown outside every view, with fresh inventory only |
-| dev-server | The managed tmux configuration (operations below) |
+| owner | ordinary tmux configuration, with required exit settings off; dev-server is optional |
 
 A process-held exclusive flock on `workspace.lock` precedes any recovery effect, so
 a second gateway cannot become the writer; an initial lock or storage failure
@@ -336,7 +337,8 @@ durable recovery state; every state below lives in memory.
 | Observation or result | Transition |
 | --- | --- |
 | Initial lock, read or admission failure; loaded `attempted=true` | `broken`; storage preserved; no recovery effects |
-| No recipe and no live server | Create nothing; keep the current fact |
+| destination service absent or unavailable | `delayed/source/unavailable`; no bootstrap and no durable claim; retry on the existing tick |
+| destination server unmanaged | `broken/source/changed`; no preparation or reconstruction |
 | No recipe and a live server | Attempt a complete baseline; a failed save is `delayed` without `savedAt` |
 | The saved source survives | Capture its complete current graph, a genuinely empty one included |
 | Ordinary checkpoint deadline with gate held | `delayed`; a deadline is not evidence of changed identity; gate-reentry timeout abandons without a status write |
@@ -382,16 +384,15 @@ identity) proves it; an observation failure does not. There is no PID-only test.
    prepare a fixed shell explanation. Deduplicate usable provider/scope/ID tuples
    by lowest numeric eligible saved pane. Never substitute another profile,
    conversation or directory. Validate the whole checkpoint and every requested local cwd before creating
-   panes: no partial admission or substitute directory. For a live empty target,
-   also require a configured executable bash or zsh, an empty `default-command`,
-   `exit-empty off` and `exit-unattached off`; this check runs once, before the
-   claim.
+   panes: no partial admission or substitute directory. require a managed empty target,
+   a configured executable bash or zsh, an empty `default-command`,
+   `exit-empty off` and `exit-unattached off`; recheck destination readiness before
+   the claim so an unavailable destination cannot consume it.
 2. Durably publish the **same confirmed** checkpoint with `attempted=true` before
    any recovery tmux effect. This may replace an unconfirmed candidate left by a
    failed ordinary save; a successful claim resolves that uncertainty, and an
-   uncertain claim stops recovery. If the server is absent, start it without panes,
-   stamp its server identity and check the configuration above; an existing empty
-   destination is only stamped when it has no epoch.
+   uncertain claim stops recovery. destination absence delays before this claim;
+   the gateway never starts tmux. native management precedes stamping an epoch.
 3. Guard the first creation in the same synchronous queue on the expected
    destination epoch, PID and start time, `#{==:#{server_sessions},0}` and the
    required configuration, with `-N if-shell -F` and no shell predicate (format
@@ -544,8 +545,8 @@ retryability:
 | State | Text / tone |
 | --- | --- |
 | tracking | No notice, also after saving resumes |
-| delayed | `<host>: workspace saving delayed. <phase label>: <cause phrase>. <last-save>. retrying automatically; live terminals remain usable.` / degraded |
-| broken | `<host>: workspace recovery stopped. <phase label>: <cause phrase>. <last-save>. manual repair required; live terminals remain usable.` / failure |
+| delayed | `<host>: workspace saving delayed. <phase label>: <cause phrase>. <last-save>. retrying automatically.` / degraded |
+| broken | `<host>: workspace recovery stopped. <phase label>: <cause phrase>. <last-save>. manual repair required.` / failure |
 | recovered | `<host>: terminals restored.` plus nonzero requested/inferred/skipped clauses below / degraded |
 
 Recovered clauses: `conversation resume requested in {n} panes.`;

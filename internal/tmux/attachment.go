@@ -66,7 +66,7 @@ func (client Client) StartAttachment(lifetimeCtx, startupCtx context.Context, sp
 		commandText("attach-session", "-E", "-t", spec.SourceID), commandText("display-message", "-p", "-l", attachmentConfigurationMarker))
 	// Tmux renders through the terminal descriptor inherited as stdin. Ordinary
 	// command stdout carries only the closed startup failure marker, not the screen.
-	command := client.commandWithStderr(lifetimeCtx, &attachment.startupOutput, nil, "-u", "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
+	command := client.commandWithStderr(lifetimeCtx, &attachment.startupOutput, nil, "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
 		andFormatConditions(sessionLifetimeConditions(spec.SourceID, spec.Server)), attach, commandText("display-message", "-p", "-l", identityMismatchMarker))
 	command.Env = attachmentEnvironment(command.Env)
 	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(spec.Columns), Rows: uint16(spec.Rows)})
@@ -128,7 +128,7 @@ func (attachment *Attachment) ObserveClient(ctx context.Context) (AttachmentClie
 	return row, nil
 }
 func (attachment *Attachment) observeClient(ctx context.Context) (AttachmentClient, string, bool, error) {
-	output, err := attachment.client.Output(ctx, "read-terminal-client", "-N", "list-clients", "-F",
+	output, err := attachment.client.Output(ctx, "read-terminal-client", "list-clients", "-F",
 		"#{client_pid}|#{client_tty}|#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_attached}|#{pane_id}|#{pane_pid}")
 	if err != nil {
 		return AttachmentClient{}, "", false, err

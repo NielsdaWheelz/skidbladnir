@@ -96,7 +96,7 @@ type WorkspaceStartup struct {
 // WorkspaceLimit: recovery's source phase has no limit cause.
 func (client Client) InspectServer(ctx context.Context) (ServerObservation, bool, error) {
 	var stdout, stderr bytes.Buffer
-	command := client.commandWithStderr(ctx, &stdout, &stderr, "-N", "display-message", "-p",
+	command := client.commandWithStderr(ctx, &stdout, &stderr, "display-message", "-p",
 		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{server_sessions}")
 	if err := command.Run(); err != nil {
 		if missingServer(err, stderr.String()) {
@@ -126,17 +126,13 @@ func missingServer(err error, stderr string) bool {
 		(strings.HasPrefix(message, "no server running on ") || strings.HasPrefix(message, "error connecting to ") && strings.HasSuffix(message, "(No such file or directory)"))
 }
 
-func (client Client) StartRecoveryServer(ctx context.Context) error {
-	return client.Run(ctx, "start-recovery-server", "start-server")
-}
-
 // ValidateRecoveryServer admits expected as an empty restore destination and
 // returns its default shell: no sessions, an empty default-command, exit-empty
 // and exit-unattached off, and an executable bash or zsh default-shell. A
 // missing shell is the stat error, so it matches fs.ErrNotExist.
 func (client Client) ValidateRecoveryServer(ctx context.Context, expected ServerIdentity) (string, error) {
 	format := inventoryFields(ServerEpochOption, "pid", "start_time", "server_sessions", "default-shell", "default-command", "exit-empty", "exit-unattached")
-	output, err := client.Output(ctx, "validate-recovery-server", "-N", "display-message", "-p", format)
+	output, err := client.Output(ctx, "validate-recovery-server", "display-message", "-p", format)
 	if err != nil {
 		return "", err
 	}
@@ -429,7 +425,7 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 
 func (client Client) recoveryQueue(ctx context.Context, conditions []string, branch string) (string, error) {
 	const complete = "SKIDBLADNIR_RECOVERY_COMPLETE"
-	output, err := client.Output(ctx, "restore-workspace", "-N", "if-shell", "-F", andFormatConditions(conditions), branch+" ; display-message -p -l '"+complete+"'", "display-message -p -l '"+identityMismatchMarker+"'")
+	output, err := client.Output(ctx, "restore-workspace", "if-shell", "-F", andFormatConditions(conditions), branch+" ; display-message -p -l '"+complete+"'", "display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		operation, _, _ := strings.Cut(branch, " ")
 		return "", fmt.Errorf("tmux recovery %s: %w", operation, err)

@@ -109,8 +109,14 @@ import tarfile
 
 required = {"skidbladnir", "release.json", "providers/shell-init", "providers/terminal-context-init",
             "third-party-notices.txt"}
+runtime = "terminal-runtime/SkidTerminals.app"
+runtime_members = {"terminal-runtime", runtime, runtime + "/Contents", runtime + "/Contents/MacOS",
+                   runtime + "/Contents/Info.plist", runtime + "/Contents/MacOS/skid-terminals",
+                   runtime + "/Contents/_CodeSignature", runtime + "/Contents/_CodeSignature/CodeResources"}
 if sys.argv[2] == "darwin-arm64":
-    required.update({"Skid.app/Contents/Info.plist", "Skid.app/Contents/MacOS/skid-notifications"})
+    required.update({"Skid.app/Contents/Info.plist", "Skid.app/Contents/MacOS/skid-notifications",
+                     "terminal-runtime/SkidTerminals.app/Contents/Info.plist",
+                     "terminal-runtime/SkidTerminals.app/Contents/MacOS/skid-terminals"})
 seen = set()
 with tarfile.open(sys.argv[1], "r:gz") as archive:
     for member in archive:
@@ -118,8 +124,10 @@ with tarfile.open(sys.argv[1], "r:gz") as archive:
         path = pathlib.PurePosixPath(name)
         if path.is_absolute() or ".." in path.parts or name in seen:
             sys.exit("release archive has unsafe or duplicate members")
-        if path.parts[0] not in {"skidbladnir", "release.json", "providers", "third-party-notices.txt", "Skid.app"}:
+        if path.parts[0] not in {"skidbladnir", "release.json", "providers", "third-party-notices.txt", "Skid.app", "terminal-runtime"}:
             sys.exit("release archive has unexpected members")
+        if path.parts[0] == "terminal-runtime" and (sys.argv[2] != "darwin-arm64" or name not in runtime_members):
+            sys.exit("release archive has unexpected terminal runtime resources")
         seen.add(name)
         if not (member.isfile() or member.isdir()):
             sys.exit("release archive member type differs")
@@ -146,20 +154,79 @@ verify_mac_floor() {
   [[ "$observed" == 26.0 ]] || { printf 'mac binary deployment target differs from declared macos 26.0 floor\n' >&2; return 1; }
 }
 
-verify_mac_app() {
-  local app="$1" tag="$2" sha="$3" stage="$4" pin observed expected
+verify_mac_signature() {
+  local artifact="$1" identifier="$2" stage="$3" pin observed leaf requirement
   [[ "$(uname -s)" == Darwin ]] || {
-    printf 'NOT_RUN: native macOS is required to verify the signed app\n' >&2
+    printf 'NOT_RUN: native macos is required to verify signed executables\n' >&2
     return 2
   }
-  pin="$(cat "$source_dir/macos/app-signing-cert.sha256")"
-  [[ "$pin" =~ ^[0-9a-f]{64}$ && "$(wc -l <"$source_dir/macos/app-signing-cert.sha256" | tr -d ' ')" == 1 ]] || return 1
-  cmp -s "$source_dir/macos/app-signing-cert.sha256" "$repo_dir/macos/app-signing-cert.sha256" || return 1
-  codesign --verify --strict "$app" >/dev/null 2>&1 || return 1
-  codesign --display --extract-certificates="$stage/mac-cert" "$app" >/dev/null 2>&1 || return 1
-  [[ -f "$stage/mac-cert0" ]] || return 1
-  observed="$("${digest_command[@]}" "$stage/mac-cert0" | awk '{print $1}')"
+  pin="$(cat "$source_dir/internal/install/mac-signing-cert.sha256")"
+  [[ "$pin" =~ ^[0-9a-f]{64}$ && "$(wc -l <"$source_dir/internal/install/mac-signing-cert.sha256" | tr -d ' ')" == 1 ]] || return 1
+  cmp -s "$source_dir/internal/install/mac-signing-cert.sha256" "$repo_dir/internal/install/mac-signing-cert.sha256" || return 1
+  codesign --verify --strict "$artifact" >/dev/null 2>&1 || return 1
+  codesign --display --extract-certificates="$stage/cert" "$artifact" >/dev/null 2>&1 || return 1
+  [[ -f "$stage/cert0" ]] || return 1
+  observed="$("${digest_command[@]}" "$stage/cert0" | awk '{print $1}')"
   [[ "$observed" == "$pin" ]] || return 1
+  observed="$(codesign --display --verbose=4 "$artifact" 2>&1 | awk -F= '$1 == "Identifier" { print $2 }')" || return 1
+  [[ "$observed" == "$identifier" ]] || return 1
+  leaf="$(shasum -a 1 "$stage/cert0" | awk '{print $1}')"
+  requirement="$(codesign --display -r- "$artifact" 2>/dev/null)" || return 1
+  [[ "$requirement" == "designated => identifier \"$identifier\" and certificate leaf = H\"$leaf\"" ]]
+}
+
+compare_mac_payload() {
+  local expected="$1" artifact="$2" observed="$3"
+  cp "$artifact" "$observed" || return 1
+  # Signing normalizes __LINKEDIT allocation. Only private audit copies change.
+  codesign --force --sign - --timestamp=none --options 0 \
+    --identifier dev.niels.skidbladnir.reproduction "$expected" "$observed" || return 1
+  codesign --remove-signature "$expected" "$observed" || return 1
+  cmp -s "$expected" "$observed"
+}
+
+verify_mac_gateway() {
+  local binary="$1"
+  python3 - "$binary" "$source_dir/macos/gateway/Info.plist" <<'PY' || return 1
+import pathlib, plistlib, struct, sys
+data = pathlib.Path(sys.argv[1]).read_bytes()
+if struct.unpack_from("<I", data)[0] != 0xfeedfacf:
+    raise SystemExit("gateway must be an arm64 mach-o executable")
+offset = 32
+for _ in range(struct.unpack_from("<I", data, 16)[0]):
+    command, size = struct.unpack_from("<II", data, offset)
+    if command == 0x19:
+        for index in range(struct.unpack_from("<I", data, offset + 64)[0]):
+            section = offset + 72 + index * 80
+            if data[section:section + 16].rstrip(b"\0") == b"__info_plist":
+                length, start = struct.unpack_from("<QI", data, section + 40)
+                if plistlib.loads(data[start:start + length]) != plistlib.loads(pathlib.Path(sys.argv[2]).read_bytes()):
+                    raise SystemExit("gateway metadata differs from release source")
+                raise SystemExit(0)
+    offset += size
+raise SystemExit("gateway is missing its embedded identity")
+PY
+}
+
+verify_mac_runtime() {
+  local app="$1" stage="$2" expected
+  python3 - "$app/Contents/Info.plist" "$source_dir/macos/terminals/Info.plist" <<'PY' || return 1
+import pathlib, plistlib, sys
+observed, expected = [plistlib.loads(pathlib.Path(name).read_bytes()) for name in sys.argv[1:]]
+if observed != expected:
+    raise SystemExit("terminal runtime metadata differs from release source")
+PY
+  verify_go_identity "$app/Contents/MacOS/skid-terminals" darwin arm64 || return 1
+  verify_mac_floor "$app/Contents/MacOS/skid-terminals" || return 1
+  if [[ -n "$reproduce" ]]; then
+    expected="$stage/expected-terminals"
+    "$repo_dir/scripts/build-host-binary" "$source_dir" '' '' darwin-arm64 ./cmd/skid-terminals "$expected" || return 1
+    compare_mac_payload "$expected" "$app/Contents/MacOS/skid-terminals" "$stage/observed-terminals" || return 1
+  fi
+}
+
+verify_mac_app() {
+  local app="$1" tag="$2" sha="$3" stage="$4" expected
   python3 - "$app/Contents/Info.plist" "$tag" "$sha" "$source_dir" "$reproduce" <<'PY' || return 1
 import pathlib, plistlib, sys
 with open(sys.argv[1], "rb") as stream:
@@ -196,14 +263,7 @@ PY
     expected="$stage/expected-notifications"
     "$repo_dir/scripts/build-host-binary" "$source_dir" "$tag" "$sha" darwin-arm64 \
       ./cmd/skid-notifications "$expected" || return 1
-    cp "$app/Contents/MacOS/skid-notifications" "$stage/observed-notifications" || return 1
-    # Apple signing normalizes __LINKEDIT allocation. Match that metadata on
-    # private audit copies before stripping; the verified release is untouched.
-    codesign --force --sign - --timestamp=none --options 0 \
-      --identifier dev.niels.skidbladnir.reproduction \
-      "$expected" "$stage/observed-notifications" || return 1
-    codesign --remove-signature "$expected" "$stage/observed-notifications" || return 1
-    cmp -s "$expected" "$stage/observed-notifications" || return 1
+    compare_mac_payload "$expected" "$app/Contents/MacOS/skid-notifications" "$stage/observed-notifications" || return 1
   fi
 }
 
@@ -240,6 +300,16 @@ verify_archive() (
     printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
   }
+  # Authenticate untouched mac artifacts before any reproduction normalization.
+  if [[ "$goos" == darwin ]]; then
+    mkdir "$staging_dir/gateway" "$staging_dir/runtime" "$staging_dir/notification"
+    verify_mac_signature "$staging_dir/skidbladnir" dev.niels.skidbladnir.gateway "$staging_dir/gateway" || return 1
+    verify_mac_signature "$staging_dir/terminal-runtime/SkidTerminals.app" dev.niels.skidbladnir.terminals "$staging_dir/runtime" || return 1
+    verify_mac_signature "$staging_dir/Skid.app" dev.niels.skidbladnir "$staging_dir/notification" || return 1
+    verify_mac_gateway "$staging_dir/skidbladnir" || return 1
+    verify_mac_runtime "$staging_dir/terminal-runtime/SkidTerminals.app" "$staging_dir" || return 1
+    verify_mac_app "$staging_dir/Skid.app" "$tag" "$sha" "$staging_dir" || return 1
+  fi
   if [[ -n "$reproduce" ]]; then
     expected_binary="$staging_dir/expected-skidbladnir"
     "$repo_dir/scripts/build-host-binary" \
@@ -247,14 +317,23 @@ verify_archive() (
       printf '%s exact-source binary reproduction failed\n' "$(basename "$archive")" >&2
       return 1
     }
-    cmp -s "$expected_binary" "$staging_dir/skidbladnir" || {
-      printf '%s binary differs from the exact release source\n' "$(basename "$archive")" >&2
-      return 1
-    }
+    if [[ "$goos" == darwin ]]; then
+      compare_mac_payload "$expected_binary" "$staging_dir/skidbladnir" "$staging_dir/observed-skidbladnir" || return 1
+    else
+      cmp -s "$expected_binary" "$staging_dir/skidbladnir" || {
+        printf '%s binary differs from the exact release source\n' "$(basename "$archive")" >&2
+        return 1
+      }
+    fi
   fi
   verify_go_identity "$staging_dir/skidbladnir" "$goos" "$goarch" || return 1
   # the notices hold the go distribution's license files and every linked module's.
-  linked="$(GOTOOLCHAIN=local go version -m "$staging_dir" |
+  local binaries=("$staging_dir/skidbladnir")
+  if [[ "$goos" == darwin ]]; then
+    binaries+=("$staging_dir/Skid.app/Contents/MacOS/skid-notifications"
+      "$staging_dir/terminal-runtime/SkidTerminals.app/Contents/MacOS/skid-terminals")
+  fi
+  linked="$(GOTOOLCHAIN=local go version -m "${binaries[@]}" |
     awk '!/^\t/ { print "golang.org/toolchain@v0.0.1-" $NF "." } $1 == "dep" { print $2 "@" $3 "/" }')"
   while IFS= read -r module; do
     grep -Fq "== $module" "$staging_dir/third-party-notices.txt" || {
@@ -264,7 +343,6 @@ verify_archive() (
   done <<<"$linked"
   if [[ "$goos" == darwin ]]; then
     verify_mac_floor "$staging_dir/skidbladnir"
-    verify_mac_app "$staging_dir/Skid.app" "$tag" "$sha" "$staging_dir"
   fi
 )
 

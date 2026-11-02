@@ -6,6 +6,9 @@ contract; each item's evidence and resolution criteria live in its
 
 ## Next
 
+qualify the independent [terminal service](issues/terminal-service-qualification.md)
+through the owner's approved local checkpoint-preserving cutover and native smoke test.
+
 1. Carry the [publication campaign](publication.md) to its close.
 2. Measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
@@ -42,7 +45,9 @@ contract; each item's evidence and resolution criteria live in its
   [invisible label characters](issues/group-label-invisible-characters.md),
   [pane retarget](issues/terminal-pane-retarget.md),
   [agent creation 500](issues/agent-creation-internal-error.md),
-  [member settings validation](issues/member-settings-validation.md).
+  [member settings validation](issues/member-settings-validation.md),
+  [macos process attribution](issues/macos-process-attribution.md),
+  [repeated file-access prompts](issues/macos-permission-prompts.md).
 - Observation: [Claude panel rows](issues/claude-panel-status-unknown.md),
   [unruled Claude dialogs](issues/claude-unruled-request-dialogs.md).
 
@@ -72,5 +77,5 @@ Each removes a second owner or a needless hop:
   authorization.
 - [Android developer verification](issues/android-developer-verification.md):
   register the signing key, or say what not registering means.
-- [Terminal runtime](issues/terminal-runtime-decision.md): control mode, an owned
-  PTY or tmux as is; undecided.
+- [Terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
+  pty; replacement deferred. the ownership cutover retains tmux.

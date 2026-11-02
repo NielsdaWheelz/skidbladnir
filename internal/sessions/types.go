@@ -143,7 +143,7 @@ type Inventory struct {
 	Sessions   []Session
 	Profiles   []agentruntime.Profile // the one settings snapshot every LaunchProfile and Agent.Profile names
 	Recovery   api.Recovery
-	Server     tmuxclient.ServerIdentity // the one admitted lifetime of every row; zero with no rows
+	Server     tmuxclient.ServerIdentity // the one admitted lifetime, including an empty managed server
 }
 
 type ObservedSession struct {
@@ -163,6 +163,7 @@ const (
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
+	ErrorTerminalServiceUnavailable  ErrorCode = "TerminalServiceUnavailable"
 )
 
 type Error struct {
