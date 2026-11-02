@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" aria-hidden="true">
+<!-- norse.nori: mineral 0 Garnet, runes [7, 9], teeth 6, depth 3, mask 63, metal Bronze -->
+<clipPath id="octagon"><path d="M10.44 0L25.56 0L36 10.44L36 25.56L25.56 36L10.44 36L0 25.56L0 10.44Z"/></clipPath>
+<g clip-path="url(#octagon)" stroke-linecap="butt">
+<rect width="36" height="36" fill="#830E0D"/>
+<path d="M0 0H36L0 36Z" fill="#FFF" fill-opacity=".045"/>
+<path d="M36 19.8V36H12.6Z" fill="#000" fill-opacity=".16"/>
+<path d="M8.64 21.6L27.36 21.6L27.36 25.704L25.488 31.68L23.616 25.704L21.744 31.68L19.872 25.704L18 31.68L16.128 25.704L14.256 31.68L12.384 25.704L10.512 31.68L8.64 25.704Z" fill="#000" fill-opacity=".34" stroke="#FFF" stroke-opacity=".1" stroke-width="0.3333"/>
+<path d="M18 5.4L18 20.88M15.192 10.6632L20.808 13.7592M15.192 13.7592L20.808 10.6632" fill="none" stroke="#CD7F32" stroke-width="1.62"/>
+<path d="M10.44 0L25.56 0M25.56 0L36 10.44M36 10.44L36 25.56M36 25.56L25.56 36M25.56 36L10.44 36M10.44 36L0 25.56M0 25.56L0 10.44M0 10.44L10.44 0" stroke="#3A3E45" stroke-width="0.432"/>
+<path d="M10.44 0L25.56 0M25.56 0L36 10.44M36 10.44L36 25.56M36 25.56L25.56 36M25.56 36L10.44 36M10.44 36L0 25.56" stroke="#D6A85F" stroke-width="0.9"/>
+<path d="M89.7 0V1600H445.5L553.9 1091.3L673.6 209.7H723L679.3 959.2L661.1 1600H891V0H518.3L406.1 542.7L311.8 1391.6H259.1L299.4 608.2L319 0Z" fill="#F3F0E8" transform="translate(23.8658 26.626) scale(0.006 -0.006)"/>
+</g>
+</svg>

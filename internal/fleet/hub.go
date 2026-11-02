@@ -25,6 +25,9 @@ type joinRequest struct {
 
 var errNotHub = conflict("this computer is not the hub")
 
+// errNotComputer refuses a phone: computers administer the fleet, phones are clients.
+var errNotComputer = &Error{Code: "Forbidden", Message: "computer membership required", Status: 403}
+
 func (s *Service) isHub() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -220,7 +223,7 @@ func (s *Service) report(member Member, report SelfReport) (Status, error) {
 		return Status{}, errNotHub
 	}
 	if member.Kind != "computer" {
-		return Status{}, &Error{Code: "Forbidden", Message: "computer membership required", Status: 403}
+		return Status{}, errNotComputer
 	}
 	next := s.draft()
 	current := &next.Fleet.State

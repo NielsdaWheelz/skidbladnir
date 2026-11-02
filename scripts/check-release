@@ -107,7 +107,8 @@ import pathlib
 import sys
 import tarfile
 
-required = {"skidbladnir", "release.json", "providers/shell-init", "providers/terminal-context-init"}
+required = {"skidbladnir", "release.json", "providers/shell-init", "providers/terminal-context-init",
+            "third-party-notices.txt"}
 if sys.argv[2] == "darwin-arm64":
     required.update({"Skid.app/Contents/Info.plist", "Skid.app/Contents/MacOS/skid-notifications"})
 seen = set()
@@ -117,7 +118,7 @@ with tarfile.open(sys.argv[1], "r:gz") as archive:
         path = pathlib.PurePosixPath(name)
         if path.is_absolute() or ".." in path.parts or name in seen:
             sys.exit("release archive has unsafe or duplicate members")
-        if path.parts[0] not in {"skidbladnir", "release.json", "providers", "Skid.app"}:
+        if path.parts[0] not in {"skidbladnir", "release.json", "providers", "third-party-notices.txt", "Skid.app"}:
             sys.exit("release archive has unexpected members")
         seen.add(name)
         if not (member.isfile() or member.isdir()):
@@ -216,6 +217,8 @@ verify_archive() (
   local goarch="$6"
   local staging_dir
   local expected_binary
+  local linked
+  local module
   verify_archive_metadata "$archive" "$platform" || return 1
   staging_dir="$(mktemp -d /tmp/skidbladnir-archive-check.XXXXXX)"
   case "$staging_dir" in
@@ -250,6 +253,15 @@ verify_archive() (
     }
   fi
   verify_go_identity "$staging_dir/skidbladnir" "$goos" "$goarch" || return 1
+  # the notices hold the go distribution's license files and every linked module's.
+  linked="$(GOTOOLCHAIN=local go version -m "$staging_dir" |
+    awk '!/^\t/ { print "golang.org/toolchain@v0.0.1-" $NF "." } $1 == "dep" { print $2 "@" $3 "/" }')"
+  while IFS= read -r module; do
+    grep -Fq "== $module" "$staging_dir/third-party-notices.txt" || {
+      printf '%s third-party notices omit %s\n' "$(basename "$archive")" "$module" >&2
+      return 1
+    }
+  done <<<"$linked"
   if [[ "$goos" == darwin ]]; then
     verify_mac_floor "$staging_dir/skidbladnir"
     verify_mac_app "$staging_dir/Skid.app" "$tag" "$sha" "$staging_dir"
@@ -308,10 +320,10 @@ validate_release_source "$source_dir" "$sha" || {
   exit 1
 }
 
-expected_assets=$'SHA256SUMS\nandroid-signing-cert.sha256\ninstall\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-darwin-arm64.tar.gz.sig\nskidbladnir-linux-amd64.tar.gz\nskidbladnir-linux-amd64.tar.gz.sig'
+expected_assets=$'SHA256SUMS\nSHA256SUMS.sig\nandroid-signing-cert.sha256\ninstall\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-darwin-arm64.tar.gz.sig\nskidbladnir-linux-amd64.tar.gz\nskidbladnir-linux-amd64.tar.gz.sig'
 observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | LC_ALL=C sort)"
 [[ "$observed_assets" == "$expected_assets" ]] || {
-  printf 'Release directory does not contain the exact eight owned assets\n' >&2
+  printf 'Release directory does not contain the exact nine owned assets\n' >&2
   exit 1
 }
 [[ -z "$(find "$release_dir" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ]] || {
@@ -328,12 +340,12 @@ cmp -s "$source_dir/android/app-signing-cert.sha256" "$repo_dir/android/app-sign
   exit 1
 }
 
-expected_checksum_names=$'android-signing-cert.sha256\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
+expected_checksum_names=$'android-signing-cert.sha256\ninstall\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
 awk '
   !/^[0-9a-f]{64}  [A-Za-z0-9._-]+$/ { invalid = 1 }
-  END { exit invalid || NR != 4 }
+  END { exit invalid || NR != 5 }
 ' "$release_dir/SHA256SUMS" || {
-  printf 'SHA256SUMS is not the strict four-asset manifest\n' >&2
+  printf 'SHA256SUMS is not the strict five-asset manifest\n' >&2
   exit 1
 }
 observed_checksum_names="$(awk '{ print $2 }' "$release_dir/SHA256SUMS" | LC_ALL=C sort)"
@@ -357,12 +369,12 @@ match = re.search(r"release_public_key='([^']+)'", script)
 if not match or match[1] != key:
     raise SystemExit("bootstrap release signing key differs from canonical pin")
 PYKEY
-for name in skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz; do
+for name in SHA256SUMS skidbladnir-linux-amd64.tar.gz skidbladnir-darwin-arm64.tar.gz; do
   digest="$(mktemp /tmp/skid-release-digest.XXXXXX)"
   openssl dgst -sha256 -binary "$release_dir/$name" > "$digest"
   if ! openssl pkeyutl -verify -rawin -pubin -inkey "$source_dir/internal/install/release-public-key.pem" -in "$digest" -sigfile "$release_dir/$name.sig" >/dev/null; then
     rm -f -- "$digest"
-    printf 'host release signature verification failed\n' >&2
+    printf 'release signature verification failed: %s\n' "$name" >&2
     exit 1
   fi
   rm -f -- "$digest"
@@ -405,6 +417,11 @@ if "$apkanalyzer" manifest permissions "$release_dir/skidbladnir-android.apk" |
   printf 'APK unexpectedly requests camera permission\n' >&2
   exit 1
 fi
+"$apkanalyzer" files list "$release_dir/skidbladnir-android.apk" |
+  grep -Fx /assets/licenses/third-party-notices.txt >/dev/null || {
+  printf 'APK lacks its third-party notices\n' >&2
+  exit 1
+}
 
 staging_dir="$(mktemp -d /tmp/skidbladnir-release-check.XXXXXX)"
 case "$staging_dir" in

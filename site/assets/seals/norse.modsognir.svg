@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" aria-hidden="true">
+<!-- norse.modsognir: mineral 6 Porphyry, runes [12, 9], teeth 6, depth 1, mask 229, metal Bronze -->
+<clipPath id="octagon"><path d="M10.44 0L25.56 0L36 10.44L36 25.56L25.56 36L10.44 36L0 25.56L0 10.44Z"/></clipPath>
+<g clip-path="url(#octagon)" stroke-linecap="butt">
+<rect width="36" height="36" fill="#3A2C33"/>
+<path d="M0 0H36L0 36Z" fill="#FFF" fill-opacity=".045"/>
+<path d="M36 19.8V36H12.6Z" fill="#000" fill-opacity=".16"/>
+<path d="M8.64 21.6L27.36 21.6L27.36 27.288L25.488 31.68L23.616 27.288L21.744 31.68L19.872 27.288L18 31.68L16.128 27.288L14.256 31.68L12.384 27.288L10.512 31.68L8.64 27.288Z" fill="#000" fill-opacity=".34" stroke="#FFF" stroke-opacity=".1" stroke-width="0.3333"/>
+<path d="M18 5.4L18 20.88M18 7.5672L21.024 9.7344M21.024 9.7344L18 11.9016M18 12.5208L21.024 14.688M21.024 14.688L18 16.8552M15.192 13.7592L20.808 10.6632" fill="none" stroke="#CD7F32" stroke-width="1.62"/>
+<path d="M10.44 0L25.56 0M25.56 0L36 10.44M36 10.44L36 25.56M36 25.56L25.56 36M25.56 36L10.44 36M10.44 36L0 25.56M0 25.56L0 10.44M0 10.44L10.44 0" stroke="#3A3E45" stroke-width="0.432"/>
+<path d="M10.44 0L25.56 0M36 10.44L36 25.56M10.44 36L0 25.56M0 25.56L0 10.44M0 10.44L10.44 0" stroke="#D6A85F" stroke-width="0.9"/>
+<path d="M89.7 0V1600H481.9L600.3 975.9L640.5 212.3H687.4L725.6 975.9L846 1600H1236.9V0H999.5V482.3L1044.6 1390.3H993.8L901.5 467.5L796.8 2.6H529.1L426.5 467.5L332.7 1390.3H283.9L327 482.3V0Z" fill="#F3F0E8" transform="translate(21.7906 26.626) scale(0.006 -0.006)"/>
+</g>
+</svg>

@@ -312,7 +312,7 @@ func writeJSON(writer http.ResponseWriter, status int, value any, tooLarge *apiE
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
-	_, _ = writer.Write(payload) // justify-ignore-error: a client disconnect after headers cannot be repaired.
+	_, _ = writer.Write(payload) // A client disconnect after headers cannot be repaired.
 }
 
 // writeError fills an absent dispatch from the request's default, records the code for the
@@ -357,7 +357,7 @@ func (writer *trackedResponseWriter) Flush() {
 	if writer.status == 0 {
 		writer.WriteHeader(http.StatusOK)
 	}
-	_ = http.NewResponseController(writer.ResponseWriter).Flush() // justify-ignore-error: the streaming write owns disconnect handling.
+	_ = http.NewResponseController(writer.ResponseWriter).Flush() // The streaming write owns disconnect handling.
 }
 
 func (gateway *Gateway) logObservationFailure(tmuxID string, reason api.StatusReason, elapsed time.Duration) {

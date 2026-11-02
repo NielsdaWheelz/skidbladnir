@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" aria-hidden="true">
+<!-- norse.fili: mineral 7 Slate, runes [15, 2], teeth 5, depth 0, mask 219, metal Bronze -->
+<clipPath id="octagon"><path d="M10.44 0L25.56 0L36 10.44L36 25.56L25.56 36L10.44 36L0 25.56L0 10.44Z"/></clipPath>
+<g clip-path="url(#octagon)" stroke-linecap="butt">
+<rect width="36" height="36" fill="#2E3A3D"/>
+<path d="M0 0H36L0 36Z" fill="#FFF" fill-opacity=".045"/>
+<path d="M36 19.8V36H12.6Z" fill="#000" fill-opacity=".16"/>
+<path d="M8.64 21.6L27.36 21.6L27.36 28.08L25.02 31.68L22.68 28.08L20.34 31.68L18 28.08L15.66 31.68L13.32 28.08L10.98 31.68L8.64 28.08Z" fill="#000" fill-opacity=".34" stroke="#FFF" stroke-opacity=".1" stroke-width="0.3333"/>
+<path d="M18 5.4L18 20.88M18 17.784L14.976 20.2608M18 17.784L21.024 20.2608M18 9.4248L21.024 12.2112M21.024 12.2112L18 14.9976" fill="none" stroke="#CD7F32" stroke-width="1.62"/>
+<path d="M10.44 0L25.56 0M25.56 0L36 10.44M36 10.44L36 25.56M36 25.56L25.56 36M25.56 36L10.44 36M10.44 36L0 25.56M0 25.56L0 10.44M0 10.44L10.44 0" stroke="#3A3E45" stroke-width="0.432"/>
+<path d="M10.44 0L25.56 0M25.56 0L36 10.44M36 25.56L25.56 36M25.56 36L10.44 36M0 25.56L0 10.44M0 10.44L10.44 0" stroke="#D6A85F" stroke-width="0.9"/>
+<path d="M89.7 0V1600H691.3V1390.3H326.7V915.6H671.3V705.9H326.7V0Z" fill="#F3F0E8" transform="translate(25.3819 26.626) scale(0.006 -0.006)"/>
+</g>
+</svg>
