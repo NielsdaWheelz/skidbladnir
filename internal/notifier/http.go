@@ -49,7 +49,7 @@ func (observer *Observer) state(writer http.ResponseWriter, member fleet.Member)
 		Receiver *receiverStatus `json:"receiver,omitempty"`
 	}{}
 	observer.mutex.Lock()
-	unavailable := observer.unavailable
+	unavailable := observer.failure != nil
 	response.State = observer.served
 	if member.Kind == "phone" {
 		status := observer.status(member.DeviceID)
@@ -57,7 +57,7 @@ func (observer *Observer) state(writer http.ResponseWriter, member fleet.Member)
 	}
 	observer.mutex.Unlock()
 	if unavailable {
-		WriteUnavailable(writer)
+		writeUnavailable(writer)
 		return
 	}
 	data, _ := json.Marshal(response) // plain fields always encode
@@ -72,13 +72,13 @@ func (observer *Observer) events(writer http.ResponseWriter, request *http.Reque
 	stream := make(chan struct{}, 1)
 	stream <- struct{}{}
 	observer.mutex.Lock()
-	unavailable := observer.unavailable
+	unavailable := observer.failure != nil
 	if !unavailable {
 		observer.streams[stream] = struct{}{}
 	}
 	observer.mutex.Unlock()
 	if unavailable {
-		WriteUnavailable(writer)
+		writeUnavailable(writer)
 		return
 	}
 	defer func() {
@@ -93,17 +93,25 @@ func (observer *Observer) events(writer http.ResponseWriter, request *http.Reque
 	defer keepalive.Stop()
 	for {
 		line := ": keepalive\n\n"
+		closed := false
 		select {
-		case <-stream:
+		case _, open := <-stream:
+			closed = !open
 			line = "data: changed\n\n"
 		case <-keepalive.C:
 		case <-request.Context().Done():
+			return
+		}
+		if request.Context().Err() != nil {
 			return
 		}
 		if controller.SetWriteDeadline(time.Now().Add(5*time.Second)) != nil {
 			return
 		}
 		if _, err := io.WriteString(writer, line); err != nil || controller.Flush() != nil {
+			return
+		}
+		if closed {
 			return
 		}
 	}
@@ -123,8 +131,8 @@ func (observer *Observer) handled(writer http.ResponseWriter, request *http.Requ
 	}
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	if observer.unavailable {
-		WriteUnavailable(writer)
+	if observer.failure != nil {
+		writeUnavailable(writer)
 		return
 	}
 	index := slices.IndexFunc(observer.file.Records, func(stored record) bool { return slotID(stored.Key) == input.Slot })
@@ -141,7 +149,7 @@ func (observer *Observer) handled(writer http.ResponseWriter, request *http.Requ
 			file.Records = slices.Clone(file.Records)
 			file.Records[index] = next
 			if observer.save(file) != nil {
-				WriteUnavailable(writer)
+				writeUnavailable(writer)
 				return
 			}
 			observer.publish(false)
@@ -169,10 +177,9 @@ func readBody(writer http.ResponseWriter, request *http.Request, value any) bool
 	return true
 }
 
-// WriteUnavailable answers 503 for notification state that failed to load or
-// save; the hub answers it until the process restarts.
-func WriteUnavailable(writer http.ResponseWriter) {
-	writeError(writer, http.StatusServiceUnavailable, "NotificationsUnavailable", "notification state unavailable; repair its state and restart the skid service")
+// writeUnavailable answers 503 while the observer waits to recover its store.
+func writeUnavailable(writer http.ResponseWriter) {
+	writeError(writer, http.StatusServiceUnavailable, "NotificationsUnavailable", "notification state unavailable; retrying automatically. check hub storage and service logs if this persists.")
 }
 
 func writeError(writer http.ResponseWriter, status int, code, message string) {
