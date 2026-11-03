@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skíðblaðnir</title>
+<meta name="description" content="Every tmux session on every machine you own, on your desktop and your Android phone. The same live terminals, straight over your tailnet. Nothing hosted, no skid account, nothing to migrate.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0C0D0F">
+<link rel="icon" href="assets/ship-mark.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/big-shoulders.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="brand" href="./" aria-current="page">skid</a>
+  <nav aria-label="Site">
+    <a href="design/">Design</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="name">
+    <img class="mark" src="assets/ship-mark.svg" width="132" height="117" alt="">
+    <h1 id="name">Skíðblaðnir</h1>
+    <div class="fret" aria-hidden="true"></div>
+    <p class="say">Skíðblaðnir (SKEETH-blahth-neer). Call it skid.</p>
+    <p class="line">Every tmux session on every machine you own, on your desktop and your Android phone. The same live terminals, straight over your tailnet. Nothing hosted, no skid account, nothing to migrate.</p>
+    <div class="panel code" id="get" role="group" aria-labelledby="get-label">
+      <p id="get-label">Install: read the script, then run it</p>
+      <div class="cmd">
+        <pre><code id="get-cmd">curl -fsSLO https://github.com/<wbr>NielsdaWheelz/<wbr>skidbladnir/<wbr>releases/<wbr>latest/<wbr>download/<wbr>install</code></pre>
+        <button class="copy" type="button" data-copy="get-cmd" aria-label="Copy the download command" hidden>Copy</button>
+      </div>
+      <pre><code>less install</code></pre>
+      <pre><code>bash install</code></pre>
+      <p class="vh" role="status" id="copy-status"></p>
+    </div>
+    <p class="note">Skíðblaðnir is a single-user prototype, built and run by one person (<a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md">calibration</a>).</p>
+  </section>
+
+  <section class="ship" aria-label="Epigraph">
+    <figure class="epigraph">
+      <blockquote>
+        <p>It is so great that all the Æsir may man it, with their weapons and armaments, and it has a favoring wind as soon as the sail is hoisted, whithersoever it is bound; but … it may be folded together like a napkin and kept in one's pouch.</p>
+      </blockquote>
+      <figcaption>— <cite>Gylfaginning</cite> 43, in Arthur Gilchrist Brodeur's 1916 translation of the <cite>Prose Edda</cite></figcaption>
+    </figure>
+    <ul class="clauses">
+      <li><strong>Room for all:</strong> every session on every machine.</li>
+      <li><strong>A fair wind wherever it's bound:</strong> straight over your tailnet, with no relay of ours.</li>
+      <li><strong>Folds into a pouch:</strong> your phone.</li>
+    </ul>
+  </section>
+
+  <section id="demo" aria-labelledby="demo-h">
+    <h2 id="demo-h">One terminal, two screens</h2>
+    <figure class="panel media">
+      <video controls muted playsinline preload="none" poster="assets/continuity.png" width="1920" height="1080" aria-labelledby="demo-h" aria-describedby="demo-d">
+        <source src="assets/continuity.mp4" type="video/mp4">
+        <a href="assets/continuity.mp4">Download the video (MP4)</a>
+      </video>
+      <figcaption id="demo-d">The same terminal on a desktop and a phone: the desktop runs git log and detaches, the phone opens the terminal and runs ls, and the desktop returns to find it.</figcaption>
+    </figure>
+    <p class="note">31 seconds, no sound. Staged with demo sessions, fake repositories and stub agents; no real terminal content. <a href="assets/continuity.mp4">Open the video at full size</a>.</p>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <h2 id="how-h">How it works</h2>
+    <p>Install skid on each of your computers and it runs a small gateway beside that computer's tmux. The session browser (a terminal UI on any of those computers) and the Android app list every session on every computer. From either you open a terminal, or an agent such as Codex or Claude Code, and attach to the same live terminal the other sees; detach, and the work keeps running in tmux.</p>
+    <figure class="panel figure">
+<svg class="diagram" viewBox="0 0 360 324" role="img" aria-labelledby="dg-t dg-d">
+<title id="dg-t">How skid connects a phone to three computers</title>
+<desc id="dg-d">On your tailnet, the phone connects straight to the gateway on each of three computers, and each gateway sits beside that computer's tmux. The laptop is also the hub, the control plane: dashed lines join it to the other computers and to the phone for membership, settings and attention. No terminal traffic passes through the hub.</desc>
+<polygon class="dg-net" points="13,1 347,1 359,13 359,311 347,323 13,323 1,311 1,13"/>
+<text class="dg-muted" x="18" y="26">your tailnet</text>
+<path class="dg-ctl" d="M24 150V58H130M63 270V292H297V270M180 292V270"/>
+<text class="dg-frost" x="180" y="312" text-anchor="middle">membership · settings · attention</text>
+<polygon class="dg-box" points="140,38 220,38 230,48 230,68 220,78 140,78 130,68 130,48"/>
+<text class="dg-bone" x="180" y="62" text-anchor="middle">phone</text>
+<polygon class="dg-box" points="19,150 107,150 117,160 117,260 107,270 19,270 9,260 9,160"/>
+<polygon class="dg-box" points="136,150 224,150 234,160 234,260 224,270 136,270 126,260 126,160"/>
+<polygon class="dg-box" points="253,150 341,150 351,160 351,260 341,270 253,270 243,260 243,160"/>
+<path class="dg-data" d="M180 78V112M63 162V112H297V162M180 112V162"/>
+<text class="dg-muted" x="188" y="102">https :8443</text>
+<polygon class="dg-cell" points="23,162 103,162 107,166 107,188 103,192 23,192 19,188 19,166"/>
+<text class="dg-bone" x="63" y="181" text-anchor="middle">gateway</text>
+<path class="dg-data" d="M63 192V206"/>
+<polygon class="dg-cell" points="23,206 103,206 107,210 107,232 103,236 23,236 19,232 19,210"/>
+<text class="dg-bone" x="63" y="225" text-anchor="middle">tmux</text>
+<text class="dg-muted" x="63" y="256" text-anchor="middle">laptop · <tspan class="dg-frost">hub</tspan></text>
+<polygon class="dg-cell" points="140,162 220,162 224,166 224,188 220,192 140,192 136,188 136,166"/>
+<text class="dg-bone" x="180" y="181" text-anchor="middle">gateway</text>
+<path class="dg-data" d="M180 192V206"/>
+<polygon class="dg-cell" points="140,206 220,206 224,210 224,232 220,236 140,236 136,232 136,210"/>
+<text class="dg-bone" x="180" y="225" text-anchor="middle">tmux</text>
+<text class="dg-muted" x="180" y="256" text-anchor="middle">server</text>
+<polygon class="dg-cell" points="257,162 337,162 341,166 341,188 337,192 257,192 253,188 253,166"/>
+<text class="dg-bone" x="297" y="181" text-anchor="middle">gateway</text>
+<path class="dg-data" d="M297 192V206"/>
+<polygon class="dg-cell" points="257,206 337,206 341,210 341,232 337,236 257,236 253,232 253,210"/>
+<text class="dg-bone" x="297" y="225" text-anchor="middle">tmux</text>
+<text class="dg-muted" x="297" y="256" text-anchor="middle">workstation</text>
+</svg>
+      <figcaption>
+        <p><span class="key key-data"></span>Gold, solid: terminal bytes, from a client straight to the gateway of the computer that runs the session.</p>
+        <p><span class="key key-ctl"></span>Frost, dashed: membership, settings and attention, held by the hub.</p>
+      </figcaption>
+    </figure>
+    <p>Each computer runs one gateway, <code>skid serve</code>, which controls only its own computer's tmux and reaches your tailnet through Tailscale Serve. Clients call each gateway directly; no computer relays another's terminal.</p>
+    <p>The hub is the control plane: the first computer installed, or the last to run <code>skid recover</code>. It holds membership, the accepted <code>config.yaml</code> and notification state, and it issues invitations. tmux is the data plane: it owns every session and process, and skid keeps no session database.</p>
+    <p class="motto">Lose the hub, keep the shells.</p>
+    <p>Every computer caches the membership, so its terminals stay reachable, and only edits, new devices, removals and notifications wait for the hub, or for <code>skid recover</code> on another computer.</p>
+    <p>skid itself hosts nothing and has no account; Tailscale needs an account, and may carry traffic through its encrypted DERP relays when no direct path exists.</p>
+
+    <h3>Five constraints</h3>
+    <p>Most of the <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md">architecture</a> follows from five constraints.</p>
+    <ol class="constraints">
+      <li>tmux is the store and the process supervisor: skid keeps no session database, and a restart re-lists tmux.</li>
+      <li>Every effect is guarded in tmux on an exact lifetime and attempted at most once; a lost completion is unknown, never replayed.</li>
+      <li>Execution is host-local: no gateway acts for another, no computer relays terminal bytes, and one machine's failure fences only its own rows and actions.</li>
+      <li>Status, attention, usage and remote context are sampled inference: evidence for a human, never authority for an effect.</li>
+      <li>One owner, one trust domain: the tailnet plus one bearer per device.</li>
+    </ol>
+  </section>
+
+  <section id="not" aria-labelledby="not-h">
+    <h2 id="not-h">What it is not</h2>
+    <p>These are <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md#non-goals">non-goals</a>, outside the scope by decision:</p>
+    <ul class="list">
+      <li>a chat interface, or provider conversation search, history, inboxes, live targeting or hooks;</li>
+      <li>copied provider history, state derived from transcripts, or claims that a task is done;</li>
+      <li>durable command receipts or replay;</li>
+      <li>scheduling, autonomous orchestration or a task protocol;</li>
+      <li>execution proxying, or moving, broadcasting, failing over or waking across machines, or automatic hub election;</li>
+      <li>a durable inventory, quota enforcement, or git or project discovery;</li>
+      <li>arbitrary host setup or tailnet policy automation, or a terminal embedded in another app;</li>
+      <li>containment between one user's agents, or anything multi-user.</li>
+    </ul>
+  </section>
+
+  <section id="compare" aria-labelledby="compare-h">
+    <h2 id="compare-h">How it compares</h2>
+    <p>Remote access to coding agents sorts on three questions: who carries the bytes, who owns the process, and what the phone shows. skid answers your tailnet, your tmux, and a terminal.</p>
+    <ul class="alts">
+      <li class="panel"><strong>herdr, with droidtty on Android:</strong> the most capable agent-aware multiplexer, and a native Android client for it. skid keeps tmux as the owner of your sessions, so nothing migrates and sessions outlive skid.</li>
+      <li class="panel"><strong>Claude Code Remote Control and Codex remote:</strong> free and first-party; traffic goes through the vendor; one provider each, in a conversation view.</li>
+      <li class="panel"><strong>T3 Code and Happy:</strong> polished multi-provider phone apps, with their own server or relay and a conversation view.</li>
+      <li class="panel"><strong>Termius or Moshi with tmux:</strong> no new software on the host; one host at a time.</li>
+    </ul>
+  </section>
+
+  <section id="install" aria-labelledby="install-h">
+    <h2 id="install-h">Install</h2>
+    <dl class="reqs">
+      <div><dt>Mac</dt><dd>macOS 26 or later on Apple silicon, with Homebrew; bash or zsh.</dd></div>
+      <div><dt>Linux</dt><dd>Ubuntu 24.04 or later, or Arch Linux or a derivative; amd64 with systemd; curl and sudo; bash or zsh. Ubuntu derivatives and Debian are refused.</dd></div>
+      <div><dt>Phone</dt><dd>Android 13 or later with Google Play services, and the Tailscale app on the same tailnet.</dd></div>
+      <div><dt>Remote use</dt><dd>Tailscale, with MagicDNS and HTTPS certificates on, and on Linux with you as Tailscale's operator. <code>skid connect</code> points Tailscale Serve's HTTPS port 8443 at the gateway, replacing whatever it served.</dd></div>
+      <div><dt>Optional</dt><dd>Codex, Claude Code; push notifications through your own Firebase project.</dd></div>
+    </dl>
+    <p>On each computer, run the <a href="#get">install commands</a> at the top of this page.</p>
+    <p>The installer is a short Bash script that carries the release signing key, downloads this computer's archive, checks its signature and hands off to the archive's <code>skid install</code>, which adds tmux and Tailscale when they are missing. The Android app is not on Google Play: each release carries its APK, and Obtainium can track releases. Updates are manual: <code>skid update</code> on each computer, and a new APK on the phone.</p>
+    <p><a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/install.md">Install</a> has every step for a computer, and <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/phone.md">Phone</a> covers sideloading, checking the signer, Obtainium and push.</p>
+  </section>
+
+  <section id="when-not" aria-labelledby="when-not-h">
+    <h2 id="when-not-h">When not to use skid</h2>
+    <ul class="list">
+      <li>You use an iPhone. There is no iOS app.</li>
+      <li>Your computers run Windows, macOS before 26 or on an Intel processor, or Linux on arm64.</li>
+      <li>You are a team. A fleet has one owner, and every device in it can open a shell on every computer.</li>
+      <li>You don't use Tailscale, or you want a hosted relay.</li>
+      <li>You want a chat interface to your agents. The phone shows their terminals.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="foot">
+  <nav aria-label="Project">
+    <a href="https://github.com/NielsdaWheelz/skidbladnir">Repository</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md">Architecture</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/codebase-map.md#reading-path">Reading path</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/history.md">History</a>
+    <a href="design/">Design</a>
+  </nav>
+  <p>Copyright 2026 <a href="https://nielseriknandal.com">Niels-Erik Nandal</a>. Licensed under the <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/LICENSE">Apache License, Version 2.0</a>.</p>
+</footer>
+
+<script>
+for (const button of document.querySelectorAll("[data-copy]")) {
+  const source = document.getElementById(button.dataset.copy);
+  const status = document.getElementById("copy-status");
+  button.hidden = false;
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(source.textContent);
+      button.textContent = status.textContent = "Copied";
+    } catch {
+      button.textContent = status.textContent = "Copy failed";
+    }
+    setTimeout(() => { button.textContent = "Copy"; status.textContent = ""; }, 2000);
+  });
+}
+</script>
+</body>
+</html>

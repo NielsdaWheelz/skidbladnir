@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design language · Skíðblaðnir</title>
+<meta name="description" content="The Skíðblaðnir design language shown in itself: a hall of gold on dark fields, cut corners, the marks, the seals and the sources behind every motif.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0C0D0F">
+<link rel="icon" href="../assets/ship-mark.svg" type="image/svg+xml">
+<link rel="preload" href="../fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/big-shoulders.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="brand" href="../">skid</a>
+  <nav aria-label="Site">
+    <a href="./" aria-current="page">Design</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="design-h">
+    <h1 id="design-h">Design language</h1>
+    <div class="fret" aria-hidden="true"></div>
+    <p class="line">A hall of gold on dark fields: warm metal accents on near-black stone.</p>
+    <p><cite lang="non">Vǫluspá</cite> 37 places a hall of gold of Sindri's line on Niðavellir, the “dark fields”, and the language takes its name from them. Geometry comes first and ornament after: every part must be complete and legible with every ornament deleted, corners are cut and never rounded, and every motif has a primary source.</p>
+    <p class="note">The <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/design-language.md">design language</a> is the full specification; this page shows it.</p>
+  </section>
+
+  <section id="name" aria-labelledby="name-h">
+    <h2 id="name-h">The name</h2>
+    <dl class="names">
+      <div><dt>Old Norse</dt><dd class="specimen" lang="non">Skíðblaðnir</dd></div>
+      <div><dt>Brodeur, 1916</dt><dd class="specimen">Skídbladnir</dd></div>
+      <div><dt>Everyday</dt><dd class="specimen">skid</dd></div>
+    </dl>
+    <p>In the <cite>Prose Edda</cite> it is Freyr's ship, made by dwarves, the sons of Ívaldi: big enough for all the gods, and folded into a pouch when it is not at sea. Arthur Gilchrist Brodeur's 1916 translation spells it Skídbladnir, writing d for ð (<cite>Gylfaginning</cite> XLIII, page 56; <a href="https://en.wikisource.org/wiki/The_Prose_Edda_(1916_translation_by_Arthur_Gilchrist_Brodeur)/Gylfaginning">text</a>). The project's epigraph is his.</p>
+  </section>
+
+  <section id="palette" aria-labelledby="palette-h">
+    <h2 id="palette-h">Palette</h2>
+    <p>Near-black stone carries everything; gold and gem color are rationed the way a hoard is. Elevation is a tonal step, never a shadow.</p>
+
+    <h3>Stone</h3>
+    <ul class="swatches">
+      <li><span class="chip" style="--c:#0C0D0F"></span><b>Ink</b> <code>#0C0D0F</code><span>Background; the terminal's ground</span></li>
+      <li><span class="chip" style="--c:#15171A"></span><b>DeepSurface</b> <code>#15171A</code><span>Cards at rest, dialogs, sheets</span></li>
+      <li><span class="chip" style="--c:#202329"></span><b>RaisedSurface</b> <code>#202329</code><span>Raised elements, the ground of chips</span></li>
+      <li><span class="chip" style="--c:#28231A"></span><b>ForgeGlow</b> <code>#28231A</code><span>The forge sheet and seal, the only firelit surfaces</span></li>
+    </ul>
+
+    <h3>Text and accents</h3>
+    <p class="note">Contrast is the WCAG 2.1 ratio against Ink.</p>
+    <ul class="swatches">
+      <li><span class="chip" style="--c:#F3F0E8"></span><b>Bone</b> <code>#F3F0E8</code><span>Primary text · 17.07</span></li>
+      <li><span class="chip" style="--c:#AAA69D"></span><b>Muted</b> <code>#AAA69D</code><span>Secondary text · 8.01</span></li>
+      <li><span class="chip" style="--c:#D6A85F"></span><b>Gold</b> <code>#D6A85F</code><span>Primary accent, cursor, selected and armed states · 8.91</span></li>
+      <li><span class="chip" style="--c:#CD7F32"></span><b>Bronze</b> <code>#CD7F32</code><span>Warm material accent · 6.18</span></li>
+      <li><span class="chip" style="--c:#E46C55"></span><b>Ember</b> <code>#E46C55</code><span>Error, destructive · 6.09</span></li>
+      <li><span class="chip" style="--c:#76B082"></span><b>Moss</b> <code>#76B082</code><span>Ready, healthy · 7.69</span></li>
+      <li><span class="chip" style="--c:#78A9C6"></span><b>Frost</b> <code>#78A9C6</code><span>Working, informational · 7.67</span></li>
+    </ul>
+
+    <h3>Gem fills</h3>
+    <p class="note">Fill only, never text: a dark stone in a bright metal cell, as garnet sits in cloisonné. Contrast is Bone on the fill.</p>
+    <ul class="swatches">
+      <li><span class="chip" style="--c:#830E0D"></span><b>Garnet</b> <code>#830E0D</code><span>Almandine cloisonné red · 9.07</span></li>
+      <li><span class="chip" style="--c:#6D2114"></span><b>Hematite</b> <code>#6D2114</code><span>Iron-ore red-brown · 9.82</span></li>
+      <li><span class="chip" style="--c:#26619C"></span><b>BlueGlass</b> <code>#26619C</code><span>Sutton Hoo boar-tusk glass · 5.64</span></li>
+    </ul>
+  </section>
+
+  <section id="shapes" aria-labelledby="shapes-h">
+    <h2 id="shapes-h">Cut corners</h2>
+    <p>Corners are cut, not rounded, and every cut is 45°. A card may carry one hairline of Gold at 25% along its top edge, light catching the carved lip, and nothing else.</p>
+    <ul class="shapes">
+      <li class="shape s-card"><b>Card</b><span>10 dp on every corner</span></li>
+      <li class="shape s-chip"><b>Chip</b><span>4 dp, for chips and keys</span></li>
+      <li class="shape s-sheet"><b>Sheet</b><span>12 dp, top corners only</span></li>
+      <li class="shape s-cleft"><b>Cleft</b><span>14 dp top-start, 4 dp elsewhere: destructive commit only</span></li>
+      <li class="shape s-octagon"><b>Octagon</b><span>29% of the side: portrait frames</span></li>
+    </ul>
+  </section>
+
+  <section id="marks" aria-labelledby="marks-h">
+    <h2 id="marks-h">Marks and ornament</h2>
+    <div class="marks">
+      <figure class="panel">
+        <div class="art"><img src="../assets/ship-mark.svg" width="198" height="176" alt="The ship mark: a hull with cut stems, a mast and yard, a square sail in three gores, a row of three Garnet shields and a vane at the masthead"></div>
+        <figcaption><b>The ship mark.</b> Skíðblaðnir under sail, the ship that takes a fair wind once its sail is raised, not a dragon-prowed longship: a square sail in three gores, a Garnet shield row at the sheer, and a vane at the masthead, its one asymmetry.</figcaption>
+      </figure>
+      <figure class="panel">
+        <div class="art"><img src="../assets/valknut.svg" width="176" height="176" alt="The valknut: three interlocked triangles drawn as twelve straight strokes"></div>
+        <figcaption><b>The Hlíðskjálf mark.</b> The tricursal valknut, mark of the seat that overlooks every world: twelve straight segments, its six crossings cut as breaks, its stroke 0.055 of its size, so it stays legible as it shrinks.</figcaption>
+      </figure>
+      <figure class="panel">
+        <div class="art art-fret" role="img" aria-label="The fret band: a repeating chevron in faint Gold, four units at four times size above sixteen at true size"><div class="fret fret-big"></div><div class="fret fret-wide"></div></div>
+        <figcaption><b>The fret band.</b> The only repeating ornament: a monoline chevron in Gold at 40%, in whole units centered across its width, so it never competes with text. Above, four units at four times size; below, true size.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="seals" aria-labelledby="seals-h">
+    <h2 id="seals-h">Seals</h2>
+    <p>Dwarves built the ship, and in skid dwarves crew it. On the phone each session is a dwarf, with a name and a seal from a catalogue of 101 drawn from Norse myth, Tolkien and Wagner.</p>
+    <p>A seal is a pure function of the dwarf's catalogue key. The key's SHA-256 picks a mineral field, a bind-rune of two or three Younger Futhark runes on one shared stave, the beard's teeth and depth, which octagon edges are gilded, and Gold or Bronze for the metal.</p>
+    <ul class="sealset">
+      <li><img src="../assets/seals/norse.modsognir.svg" width="72" height="72" alt=""><b lang="non">Móðsognir</b><code>norse.modsognir</code><span><cite lang="non">Vǫluspá</cite> st. 10</span></li>
+      <li><img src="../assets/seals/norse.nori.svg" width="72" height="72" alt=""><b lang="non">Nóri</b><code>norse.nori</code><span><cite lang="non">Vǫluspá</cite> st. 11</span></li>
+      <li><img src="../assets/seals/norse.thekkr.svg" width="72" height="72" alt=""><b lang="non">Þekkr</b><code>norse.thekkr</code><span><cite lang="non">Vǫluspá</cite> st. 12</span></li>
+      <li><img src="../assets/seals/norse.fili.svg" width="72" height="72" alt=""><b lang="non">Fíli</b><code>norse.fili</code><span><cite lang="non">Vǫluspá</cite> st. 13</span></li>
+      <li><img src="../assets/seals/tolkien.gimli.svg" width="72" height="72" alt=""><b>Gimli</b><code>tolkien.gimli</code><span><cite>The Lord of the Rings</cite>, Appendix A.III</span></li>
+      <li><img src="../assets/seals/germanic-operatic.alberich.svg" width="72" height="72" alt=""><b>Alberich of Nibelheim</b><code>germanic-operatic.alberich</code><span><cite lang="de">Das Rheingold</cite>, Scene 3</span></li>
+    </ul>
+  </section>
+
+  <section id="type" aria-labelledby="type-h">
+    <h2 id="type-h">Type</h2>
+    <div class="faces">
+      <div class="panel face">
+        <p class="specimen specimen-display">SKÍÐBLAÐNIR</p>
+        <h3>Big Shoulders</h3>
+        <p>Display: the wordmark and titles. A condensed industrial gothic, set in caps at weight 650; its flat terminals read as stamped metal.</p>
+        <p class="note">Copyright 2019 The Big Shoulders Project Authors. <a href="../fonts/BigShoulders-OFL.txt">SIL Open Font License 1.1</a>.</p>
+      </div>
+      <div class="panel face">
+        <p class="specimen specimen-mono">ready · 0123456789 · Þþ Ðð Ǫǫ</p>
+        <h3>JetBrains Mono</h3>
+        <p>Data: every machine fact, the voice of the terminal itself, and never prose.</p>
+        <p class="note">Copyright 2020 The JetBrains Mono Project Authors. <a href="../fonts/JetBrainsMono-OFL.txt">SIL Open Font License 1.1</a>.</p>
+      </div>
+    </div>
+    <p>Running text, labels and buttons take the system face, Roboto on Android, which costs nothing to load.</p>
+    <p class="note">Every face carries ð and þ. This site serves subsets of the app's own font files.</p>
+  </section>
+
+  <section id="provenance" aria-labelledby="provenance-h">
+    <h2 id="provenance-h">Provenance</h2>
+    <p>Every motif has a primary-source anchor. A motif without provenance does not ship.</p>
+    <ol class="ledger">
+      <li><b>Gold-on-dark ground</b><span><cite lang="non">Vǫluspá</cite> 37, Sindri's hall on Niðavellir (<a href="https://www.voluspa.org/literal/voluspa.htm">literal text</a>)</span><span class="role">The palette's thesis</span></li>
+      <li><b>Gold-and-garnet cloisonné</b><span>Sutton Hoo shoulder-clasps (<a href="https://www.britishmuseum.org/collection/object/H_1939-1010-4">British Museum</a>); the Staffordshire Hoard</span><span class="role">Gem fills; the gold-line-on-dark card</span></li>
+      <li><b>Angular key and fret</b><span>Pictish stones, Class II–III edges (<a href="https://en.wikipedia.org/wiki/Pictish_stone">overview</a>); Greek-key corner methods (<a href="https://www.theedkins.co.uk/jo/greekkey/corners.htm">Edkins</a>)</span><span class="role">The repeating border family</span></li>
+      <li><b>Chevron banding</b><span>Art Deco and sharp geometry in film-dwarven design (<a href="https://www.cultureoncall.com/the-magic-of-middle-earth-bringing-the-imaginary-to-life/">Culture on Call</a>); the chevron is this language's reading of it</span><span class="role">The simplest member of the fret family; dividers</span></li>
+      <li><b>Faceted planar surfaces</b><span>Iron Hills armor, planar like a cut gemstone (<a href="https://www.nickkellerart.com/projects/1N6G82">Nick Keller</a>)</span><span class="role">The cut-corner shape grammar</span></li>
+      <li><b>Tricursal valknut</b><span>Tängelgårda and Stora Hammars I stones, beside Odin figures (<a href="https://en.wikipedia.org/wiki/Valknut">Valknut</a>)</span><span class="role">The Hlíðskjálf mark</span></li>
+      <li><b>Ship under one square sail</b><span>Gotland picture stones such as Tjängvide I, from Alskog parish (<a href="https://www.gotlandicpicturestones.se/s/index/item/2052">Gotlands Museum catalogue</a>); the sail sewn from unbroken vertical lengths of cloth (<a href="https://www.vikingeskibsmuseet.dk/en/professions/boatyard/experimental-archaeological-research/maritime-crafts/maritime-technology/wool-sailcloth">Viking Ship Museum, Roskilde</a>)</span><span class="role">The ship mark: hull, mast, yard and the sail's three gores</span></li>
+      <li><b>Shield row along the gunwale</b><span>Gokstad ship, built c. 890 and buried c. 900: 32 round shields to each side, painted alternately yellow and black (Museum of the Viking Age, <a href="https://web.archive.org/web/20260924045344/https://www.vikingtidsmuseet.no/english/the-collection/the-gokstad-ship/the-gokstad-ship.html">archived page</a>; <a href="https://www.vikingtidsmuseet.no/english/viking-age/viking-ships/the-gokstad-ship.html">current page</a>)</span><span class="role">The ship mark's Garnet row, as lozenges in one fill</span></li>
+      <li><b>Ship vane</b><span>Söderala vane, gilt bronze, c. 1050, probably worn on a ship before its reuse as a church weathervane (<a href="https://en.wikipedia.org/wiki/S%C3%B6derala_vane">Söderala vane</a>)</span><span class="role">The vane at the ship mark's masthead</span></li>
+      <li><b>Bind-runes on a shared stave</b><span>Runestone and coin monograms (<a href="https://en.wikipedia.org/wiki/Bind_rune">Bind rune</a>)</span><span class="role">The seal's maker's mark</span></li>
+      <li><b>Younger Futhark</b><span>Viking-age script, c. 800–1100, Unicode U+16A0–16FF (<a href="https://en.wikipedia.org/wiki/Runic_(Unicode_block)">Runic block</a>)</span><span class="role">The only runes, and only as ornament</span></li>
+      <li><b>Diminuendo</b><span>Insular initial-to-text size decay, Kells and Lindisfarne (Nordenfalk 1947)</span><span class="role">The typographic hierarchy</span></li>
+    </ol>
+    <p>The forbidden list includes rounded corners, drop shadows, decorative gradients, pure black, beast-headed chrome, Elder Futhark, runes as text, blackletter, Tolkien's scripts, or horned helmets, axes, horns and hammers.</p>
+    <p>The <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/design-language.md#2-provenance-ledger">ledger</a> gives each ruling its reason; the <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/history.md">history</a> gives the project's decisions.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <nav aria-label="Project">
+    <a href="https://github.com/NielsdaWheelz/skidbladnir">Repository</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/design-language.md">Design language</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md">Architecture</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/codebase-map.md#reading-path">Reading path</a>
+    <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/history.md">History</a>
+  </nav>
+  <p>Copyright 2026 <a href="https://nielseriknandal.com">Niels-Erik Nandal</a>. Licensed under the <a href="https://github.com/NielsdaWheelz/skidbladnir/blob/main/LICENSE">Apache License, Version 2.0</a>.</p>
+</footer>
+</body>
+</html>
