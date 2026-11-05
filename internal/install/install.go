@@ -76,6 +76,17 @@ blocks. settings, private state, provider data and shared packages remain.
 `,
 }
 
+// A cleanup failure is a failure even if the operation also requires action.
+func cleanupError(result, cleanup error, operation string) error {
+	if cleanup == nil {
+		return result
+	}
+	if result != nil {
+		return fmt.Errorf("%v; %s: %w", result, operation, cleanup)
+	}
+	return fmt.Errorf("%s: %w", operation, cleanup)
+}
+
 // Run installs, updates or uninstalls skid. Every path it writes is fixed and
 // skid's by name: releases/*, current, bin/skid, the service files and two marked
 // shell blocks. Install overwrites them, uninstall deletes them, and nothing else
@@ -121,7 +132,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err != nil {
 		return err
 	}
-	defer func() { result = errors.Join(result, lock.Close()) }()
+	defer func() { result = cleanupError(result, lock.Close(), "installation lock close failed") }()
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errors.New("another skid installation operation is running")
 	}
@@ -165,7 +176,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	if err != nil {
 		return err
 	}
-	defer func() { result = errors.Join(result, os.RemoveAll(stage)) }()
+	defer func() { result = cleanupError(result, os.RemoveAll(stage), "installation staging cleanup failed") }()
 	if *archive == "" {
 		if *version == "" {
 			if *version, err = latest(ctx); err != nil {
@@ -257,7 +268,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) (result e
 	var restartCheckpoint *sessions.RuntimeRestart
 	defer func() {
 		if restartCheckpoint != nil {
-			result = errors.Join(result, restartCheckpoint.Close())
+			result = cleanupError(result, restartCheckpoint.Close(), "checkpoint writer release failed")
 		}
 	}()
 	if runtimeChange || *restartTerminals {

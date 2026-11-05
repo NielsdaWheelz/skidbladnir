@@ -1204,7 +1204,10 @@ reference: a section for people, then the automation guide, which ends with ever
 command's own help. `skid help COMMAND` and `skid COMMAND --help` print that one
 entry on stdout and exit 0; `skid help install|update|uninstall` runs that
 command's own `-h` (`internal/install`), which owns its text. `skid --version` is
-`skid version`, byte for byte; the installer parses it. dev-server keeps only a
+`skid version`, byte for byte; the installer parses it. install/update/uninstall
+exit 2 for an owner action-required refusal and 1 for an installation failure;
+cleanup failures remain failures. the bootstrap preserves the installer's exit.
+dev-server keeps only a
 pointer to `skid --help`. Ordinary commands are `list`, `info`, `enter`, `read`,
 `send`, `text`, `keys`, `wait`, `stop`, `close`, `start`, `shell` and `group`,
 beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
@@ -2615,8 +2618,9 @@ Mac serve stderr is discarded ([issue](issues/macos-serve-stderr-discarded.md)).
 
 ### Consumers
 
-- dev-server, the owner's provisioner, fetches `scripts/install` at a pinned
-  source SHA, checks its SHA256, runs `bash install VERSION`, and on the hub
+- dev-server, the owner's provisioner, fetches `scripts/install` at a reviewed
+  source SHA, checks its SHA256, runs `bash install` for latest signed stable,
+  preserves action-required exits, and on the hub
   alone writes `config.yaml` (`0600`) from its own source and runs `skid apply`.
   Its next run replaces hand edits, so lasting changes belong in dev-server;
   membership and generated state stay skid's.
