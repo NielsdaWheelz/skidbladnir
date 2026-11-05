@@ -139,6 +139,10 @@ Private files are mode `0600` in `0700` directories. The gateway listens only on
 `skid connect`. Its first start makes this computer the hub of a new fleet of
 one, named after its hostname without `.local`.
 
+native services use a stable utf-8 base locale: `C.UTF-8` on linux and
+`en_US.UTF-8` on macos. the installer's caller locale is not service configuration
+and cannot trigger terminal-runtime replacement. shell startup remains user-owned.
+
 On macOS, the release includes `Skid.app`, which posts skid's desktop
 notifications. It is signed with the project's own certificate, whose SHA-256
 each release's notes list, not with an Apple Developer ID, and it is not
