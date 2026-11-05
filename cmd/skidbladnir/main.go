@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcli"
 	"github.com/NielsdaWheelz/skidbladnir/internal/install"
@@ -78,6 +79,10 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	case "install", "update", "uninstall":
 		if err := install.Run(context.Background(), arguments, stdout, stderr); err != nil {
 			fmt.Fprintf(stderr, "skid %s: %v\n", arguments[0], err)
+			var action *install.ActionRequired
+			if errors.As(err, &action) {
+				return 2
+			}
 			return exitFailure
 		}
 		return 0

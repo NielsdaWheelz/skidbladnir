@@ -21,6 +21,12 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
+// ActionRequired is an expected refusal the owner must resolve before retrying.
+type ActionRequired struct{ Err error }
+
+func (e *ActionRequired) Error() string { return e.Err.Error() }
+func (e *ActionRequired) Unwrap() error { return e.Err }
+
 const drainInstructions = "finish work, close the tmux sessions and pause new session creation while rerunning this operation"
 const conflictInstructions = "the default tmux server was started outside the terminal service. finish work, close its sessions and pause new session creation. stop the empty server, then rerun the installer."
 
@@ -82,13 +88,13 @@ func (i *installer) inspectTerminal(ctx context.Context, drain bool) (tmux.Serve
 	}
 	switch state {
 	case terminalservice.Unmanaged:
-		return observed, present, errors.New(conflictInstructions)
+		return observed, present, &ActionRequired{errors.New(conflictInstructions)}
 	case terminalservice.Unavailable:
-		return observed, present, errors.New("the terminal service is unavailable on this machine; repair terminal-service setup before rerunning this operation")
+		return observed, present, &ActionRequired{errors.New("the terminal service is unavailable on this machine; repair terminal-service setup before rerunning this operation")}
 	case terminalservice.Managed, terminalservice.Absent:
 	}
 	if drain && observed.SessionCount != 0 {
-		return observed, present, errors.New("tmux sessions are still running; " + drainInstructions)
+		return observed, present, &ActionRequired{errors.New("tmux sessions are still running; " + drainInstructions)}
 	}
 	if drain {
 		if err = i.checkCheckpoint(observed, present); err != nil {
