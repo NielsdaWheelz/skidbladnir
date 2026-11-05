@@ -269,6 +269,11 @@ installer itself take effect from the following update; running the new release'
 refused. gateway-only updates preserve tmux sessions and programs; an open `skid`
 session browser keeps its old binary until you reopen it. runtime replacement
 requires a drain or the explicit restart below.
+installer and bootstrap exit 2 for an action-required refusal, including an
+occupied runtime that needs explicit terminal maintenance, an unmanaged server
+or an unavailable terminal service. exit 1 means installation failed. a staging
+or lock cleanup failure remains exit 1 even when the original refusal was an
+action. no terminal shutdown is implied by exit 2.
 After the hub updates, `skid status` lists it at its old version until you run
 `skid connect` on it ([issue](issues/hub-self-report-after-update.md)).
 
