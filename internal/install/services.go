@@ -32,12 +32,9 @@ func systemdQuote(value string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`).Replace(value) + `"`
 }
 func (i *installer) environment() [][2]string {
-	locale := os.Getenv("LANG")
-	if locale == "" {
-		locale = "en_US.UTF-8"
-		if runtime.GOOS == "linux" {
-			locale = "C.UTF-8"
-		}
+	locale := "en_US.UTF-8"
+	if runtime.GOOS == "linux" {
+		locale = "C.UTF-8"
 	}
 	return [][2]string{{"HOME", i.dirs.Home}, {"PATH", os.Getenv("PATH")}, {"LANG", locale}, {"XDG_CONFIG_HOME", filepath.Dir(i.dirs.Config)}, {"XDG_DATA_HOME", filepath.Dir(i.dirs.Data)}, {"XDG_STATE_HOME", filepath.Dir(i.dirs.State)}}
 }
