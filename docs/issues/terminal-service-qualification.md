@@ -6,8 +6,8 @@ verification and directs unavailable native cases to be `NOT_RUN`.
 
 impact: isolated process tests do not establish launchd crash cleanup, mac permission
 attribution or consent persistence. arm64 docker does not qualify supported linux
-amd64 installation. full public installation and real provider resume still require
-the approved native cutover.
+amd64 installation. the devbox cutover below qualifies its observed installation
+and process ownership; provider continuation and the mac cutover remain unverified.
 
 evidence: private tmux probes reproduced unintended sessions with raw `tmux -D` and
 verified collision refusal using `-D -c 'exit 78'`, including concurrent starters.
@@ -36,6 +36,21 @@ checkpointed restart helper/service probes also passed managed and unmanaged sou
 shutdown, exact dummy-target restoration once, refusal before destructive effects,
 and attempted-claim preservation. these are mechanism checks, not real-provider or
 published-install acceptance.
+
+2026-11-05, owner-approved devbox cutover: the signed public installer validated
+the checkpoint, reconstructed seven sessions and seven panes, and requested seven
+native agent resumes.
+the gateway reported recovered, then tracking. tmux became the independent native
+terminal service's main process, in a separate cgroup from the gateway. resume
+dispatch and observed agents do not prove continued turns or matching history.
+
+subsequent ordinary `devbox apply` installed signed v0.24.2 at
+`d4afbfcec963b1f231fc117675120eff1685e881`. public artifact verification passed.
+gateway and terminal services were active; all seven pane pid/start identities and
+the tmux source were unchanged across apply. seven sessions and resume targets
+remained observable, and obsolete skid releases were pruned. this qualifies the
+observed ubuntu amd64 gateway update without terminal restart, not crash, reboot,
+browser, permission or provider-continuation journeys. the mac hold remains.
 
 resolved when: the implementation contract's native ownership, crash cleanup,
 signer/requirement and prior permission grant/denial continuity, clean installation,
