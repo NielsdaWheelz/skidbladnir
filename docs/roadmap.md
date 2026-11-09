@@ -7,8 +7,9 @@ contract; each item's evidence and resolution criteria live in its
 ## Next
 
 qualify the independent [terminal service](issues/terminal-service-qualification.md)
-through the remaining native smoke checks and held mac cutover. the approved
-devbox cutover and subsequent gateway update preserved the reconstructed workspace.
+through the remaining native smoke and mac privacy checks. the approved macbook
+and devbox cutovers and subsequent gateway updates preserved their reconstructed
+workspaces.
 
 1. Carry the [publication campaign](publication.md) to its close.
 2. Measure the macbook's tmux exec cost
