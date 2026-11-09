@@ -6,8 +6,9 @@ verification and directs unavailable native cases to be `NOT_RUN`.
 
 impact: isolated process tests do not establish launchd crash cleanup, mac permission
 attribution or consent persistence. arm64 docker does not qualify supported linux
-amd64 installation. the devbox cutover below qualifies its observed installation
-and process ownership; provider continuation and the mac cutover remain unverified.
+amd64 installation. the macbook and devbox cutovers below qualify their observed
+installation and process ownership; provider continuation and mac privacy remain
+unverified.
 
 evidence: private tmux probes reproduced unintended sessions with raw `tmux -D` and
 verified collision refusal using `-D -c 'exit 78'`, including concurrent starters.
@@ -50,7 +51,17 @@ gateway and terminal services were active; all seven pane pid/start identities a
 the tmux source were unchanged across apply. seven sessions and resume targets
 remained observable, and obsolete skid releases were pruned. this qualifies the
 observed ubuntu amd64 gateway update without terminal restart, not crash, reboot,
-browser, permission or provider-continuation journeys. the mac hold remains.
+browser, permission or provider-continuation journeys.
+
+the approved macbook v0.24.2 cutover reconstructed eight sessions and eight panes
+and requested eight native resumes. recovery reported recovered, then tracking.
+the signed terminal app became tmux's parent in the same process group; the gateway
+has a separate group. an ordinary signed gateway update exited zero with the
+terminal runtime unchanged, preserving the tmux source and all eight pane pid/start
+identities. eight agents and an unattempted eight-target checkpoint were observed.
+the runtime's signature verified under the existing signing identity; obsolete
+skid releases were pruned. these checks do not establish mac privacy attribution,
+grant/denial continuity, crash cleanup, reboot or completed provider turns.
 
 resolved when: the implementation contract's native ownership, crash cleanup,
 signer/requirement and prior permission grant/denial continuity, clean installation,
