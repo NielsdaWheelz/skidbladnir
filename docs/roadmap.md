@@ -81,3 +81,12 @@ Each removes a second owner or a needless hop:
   register the signing key, or say what not registering means.
 - [Terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
   pty; replacement deferred. the ownership cutover retains tmux.
+
+## proposals under review
+
+the [workspace coherence review](issues/workspace-coherence.md) indexes the t3/bb
+research, current-source findings, proposed sequence and candidate acceptance
+journeys. its linked issues retain setup/recovery, phone continuity, launch presets,
+search, accounts, attention, managed collaboration, handoff and customization
+directions, including trade-offs and rejected alternatives. recording them is not
+implementation approval and does not reorder the approved work above.

@@ -24,6 +24,19 @@ evidence: the emulator journey backWhileBusy (api 35, base and after the
 stays set and hidden after its reply; a second Back hides a sending group sheet.
 the robolectric busy journeys keep every sheet displayed, so they do not show it.
 
+the [workspace review](workspace-coherence.md) recommends treating this as ordinary
+interaction correctness before larger redesign work. use the existing sheet/action
+owners for a single title, pending, back/outside/drag, focus-restoration and failure
+contract. the proposed first choice is to keep a pending mutation visibly open and
+non-dismissable; refusing dismissal in the controller alone is insufficient if the
+material sheet has already animated away.
+
+cost: a short operation temporarily retains its modal. the alternative, dismissing
+while work continues, needs another discoverable operation/recovery surface and
+clear retained draft ownership; that is disproportionate until demanded. a failed
+submission must retain recoverable local input. this recommendation does not select
+the remaining visual rulings or amend their existing owner decisions.
+
 resolved when: the owner rules on one title weight, casing, pending indicator,
 busy-dismissal rule, partial-expansion rule and drag-handle shape. the rulings
 then live in `SheetForm` or the sheet call sites, and busy journeys show no
