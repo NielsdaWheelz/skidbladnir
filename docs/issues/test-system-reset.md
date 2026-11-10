@@ -1,4 +1,4 @@
-# No retained behavioral suite
+# no retained behavioral suite
 
 Problem: behavioral suites and harnesses were retired on 2026-09-17 at the
 owner's direction; a change proves itself with temporary tests deleted before
@@ -41,6 +41,28 @@ owner decides.
 Cost: maintained fixtures, and a one-line amendment to AGENTS.md and
 [testing](../rules.md#testing) separating pure-function tests from the retired
 behavioral suite.
+
+## proposed protection for critical observable contracts
+
+the [workspace review](workspace-coherence.md) challenges the blanket removal rule
+as a permanent policy. temporary checks establish a change's behavior today, then
+discard cheap protection against later regression. this is a recommendation for a
+future policy decision, not authorization to restore a suite, alter `scripts/check`
+or retain tests against the current rules.
+
+prefer a small set of observable contract regressions: replacement of an exact
+target must refuse; a lost mutation answer must never replay; a stale response must
+not restore eligibility after an effect; local drafts must survive failed saves.
+keep the existing provider-frame corpus. select the real public/integration boundary
+for each claim instead of assertions that merely mirror implementation or inspect
+guard text. this recommendation differs from some earlier pure-core candidates
+above; choosing the final retained set is still an owner decision.
+
+cost: maintaining and actually running a few sensitive cases, plus explicit changes
+to the testing contract and any selected check composition. avoid a generalized
+harness, test-only production seams, broad gate reconstruction and redundant tests.
+native ownership, phone geometry and provider consumption still need their actual
+boundaries; a green retained suite cannot substitute for those qualifications.
 
 Resolved when: the owner chooses and keeps a small executable suite for the
 important behavioral guarantees, with measured runtime and demonstrated failure
