@@ -1,9 +1,11 @@
 package install
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
+	"debug/macho"
 	_ "embed"
 	"encoding/hex"
 	"errors"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -117,6 +120,9 @@ func sameMacRuntime(ctx context.Context, installed, candidate string) (bool, err
 				if err != nil {
 					return err
 				}
+				if err = normalizeRuntimeBuildMetadata(data); err != nil {
+					return err
+				}
 			}
 			resources[index][relative] = sha256.Sum256(data)
 			return nil
@@ -126,4 +132,52 @@ func sameMacRuntime(ctx context.Context, installed, candidate string) (bool, err
 		}
 	}
 	return maps.Equal(resources[0], resources[1]), nil
+}
+
+// normalizeRuntimeBuildMetadata clears only Go build identity and its Mach-O UUID
+// in the private byte buffer. It performs no I/O and preserves every other byte.
+func normalizeRuntimeBuildMetadata(data []byte) error {
+	image, err := macho.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	text := image.Section("__text")
+	if image.Magic != macho.Magic64 || text == nil {
+		return errors.New("terminal runtime is not a Go Mach-O executable")
+	}
+	if uint64(text.Offset) > uint64(len(data)) || text.Size > uint64(len(data))-uint64(text.Offset) {
+		return errors.New("terminal runtime has an invalid text section")
+	}
+	// Go puts its framed build ID at __text's start and derives LC_UUID
+	// from it. Neither identifies executable behavior; compare all other
+	// bytes, including the metadata's framing and length, unchanged.
+	body := data[text.Offset : uint64(text.Offset)+text.Size]
+	prefix := []byte("\xff Go build ID: \"")
+	if !bytes.HasPrefix(body, prefix) {
+		return errors.New("terminal runtime lacks its Go build ID header")
+	}
+	end := bytes.Index(body[len(prefix):], []byte("\"\n \xff"))
+	if end <= 0 {
+		return errors.New("terminal runtime has an incomplete Go build ID")
+	}
+	if _, err = strconv.Unquote(string(body[len(prefix)-1 : len(prefix)+end+1])); err != nil {
+		return errors.New("terminal runtime has an invalid Go build ID")
+	}
+	clear(body[len(prefix) : len(prefix)+end])
+	offset, uuid := 32, false // Mach-O 64-bit header size.
+	for _, load := range image.Loads {
+		raw := load.Raw()
+		if image.ByteOrder.Uint32(raw) == 0x1b { // LC_UUID
+			if uuid || len(raw) != 24 {
+				return errors.New("terminal runtime has an invalid Mach-O UUID")
+			}
+			clear(data[offset+8 : offset+24])
+			uuid = true
+		}
+		offset += len(raw)
+	}
+	if !uuid {
+		return errors.New("terminal runtime lacks its Mach-O UUID")
+	}
+	return nil
 }

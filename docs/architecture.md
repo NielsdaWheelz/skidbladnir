@@ -2438,6 +2438,9 @@ installation operation runs at a time (`install.lock`).
    gateway-only updates stop only the gateway/notification jobs, switch `current`,
    prove readiness, then prune old releases. an unchanged normalized runtime payload,
    signer/requirement and effective service definition leave its files/job/pid intact.
+   after signature verification, comparison excludes code signatures and the Go
+   build ID/Mach-O UUID metadata in scratch copies only. executable code, data and
+   resources still match exactly; build identity alone does not force a restart.
    runtime artifacts contain no gateway version/source stamps. an actual runtime
    difference requires a drain or explicit checkpoint-preserving restart; no deferred update or second
    implementation. failures name the completed stage and failed component.
