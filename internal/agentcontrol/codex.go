@@ -498,13 +498,13 @@ type codexBand struct {
 // reads the composer (4), the interaction (2.1), the activity (3) and the
 // notice (2.9) from it.
 func codexComposer(screen screen, end int) (reading, bool) {
-	// F, the run of non-blank rows ending at E, holds at most three rows; B,
-	// the blank row above it, is the composer's bottom padding; C is the first
+	// F is the run of non-blank rows ending at E: the status line wraps;
+	// B, the blank row above it, is the composer's bottom padding; C is the first
 	// column-0 row above B over blank and indented rows. The last rule, so a
 	// dropped row this anchoring needs leaves the screen clipped; an
 	// unparseable one is no B or C, so the screen is unrecognized.
 	footerFirst := end
-	for footerFirst > end-2 && footerFirst > 0 && screen.rows[footerFirst-1].presence == rowParsed && !screen.rows[footerFirst-1].blank() {
+	for footerFirst > 0 && screen.rows[footerFirst-1].presence == rowParsed && !screen.rows[footerFirst-1].blank() {
 		footerFirst--
 	}
 	if footerFirst == 0 {
@@ -552,7 +552,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		return reading{}, false
 	}
 
-	// SL and the hint row: two or three footer rows are SL then the hint row;
+	// SL and the hint row: multiple footer rows are SL then the hint row;
 	// one row is SL only when it starts with a run-state word.
 	band.statusLine, band.state = footerFirst, codexReadRunState(screen.rows[footerFirst])
 	hint := end

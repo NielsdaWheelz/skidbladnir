@@ -5,6 +5,8 @@ sections below. [The spec](terminal-observation.md) owns the status contract thi
 grammar feeds. Qualified live for the codex-cli 0.159.2 TUI on Darwin (tmux 3.7c)
 and on Linux (devbox tmux 3.4, arch tmux 3.7c), embedded and against 0.159.2 and
 0.159.3 app-server daemons, as §1 records.
+Wrapped status-line anchoring is additionally observed on Linux codex-cli
+0.169.0 at 80×24; this does not qualify that version's other screen families.
 
 Upstream source: `openai/codex@ff6aec96948b70d94983af2641a6b67c94faeff5`, whose
 workspace `Cargo.toml` says `0.159.2`. Paths below are under `codex-rs/tui/src/`
@@ -250,9 +252,9 @@ Shared anatomy:
 
 Anchoring:
 
-- `F` (footer) = the maximal run of non-blank rows ending at `E`, at most 3 rows;
-  a longer run is no match. Three rows occur only with the transcript find
-  footer (a query row and a status row).
+- `F` (footer) = the maximal run of parsed non-blank rows ending at `E`. The
+  status line wraps across physical rows; the existing bounded screen capture
+  limits the scan. Footer length supplies no activity or composer evidence.
 - `B` = the row above `F`: blank (the composer's bottom padding).
 - Scan upward from `B−1` over blank or indented rows to the first col-0 row `C`.
   none → no match.
@@ -282,11 +284,12 @@ Anchoring:
 
 `SL` and the hint row:
 
-- `F` with 2 or 3 rows: `SL = F[0]`, and the hint row is `F[−1]`.
+- `F` with multiple rows: `SL = F[0]`, and the hint row is `F[−1]`.
 - `F` with 1 row: that row is `SL` when its first item is a run-state word (§3);
   otherwise it is the hint row and there is no `SL`.
-- The known layouts: fullscreen `SL` + hint; `SL` with a blank hint row; hint
-  only without a status line; the inline one-row footer; the find footer.
+- The known layouts: fullscreen `SL` + hint, including wrapped status items;
+  `SL` with a blank hint row; hint only without a status line; the inline
+  one-row footer; the find footer.
 
 Band and *clean band*. The band is the top padding row `C−1`, `C` and its
 continuation rows, and `B`; with remote image rows it also holds those rows
