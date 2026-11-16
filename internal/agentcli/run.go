@@ -155,13 +155,16 @@ var commandHelp = []struct{ names, text string }{
   enters the terminal from this tty; ctrl-] then d detaches. navigation and
   terminal size are shared with every other client of the session.
 `},
-	{"start", `skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--stdin]
+	{"start", `skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
 skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
   creates one session on HOST running a configured profile, or a plain
   terminal, in a directory on HOST (home by default; quote ~ so this shell
   leaves it). skid runs each configured command once after normal shell
   startup. aliases, functions, environment and provider settings remain
   effective.
+  --model and --effort select native provider options for this launch. overrides
+  require a codex/claude profile whose plain command forwards provider arguments.
+  omitted options preserve its configured command; provider acceptance is separate.
   start --stdin sends one literal initial prompt after bounded idle/composer
   checks; start without --stdin makes no input-readiness promise.
   start reports creation and prompt delivery separately; written never proves
@@ -317,7 +320,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
+			case "--config", "--machine", "--ref", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -347,6 +350,10 @@ func parse(args []string) (command, error) {
 					result.request.Machine = argument
 				case "--ref":
 					refArgument = argument
+				case "--model":
+					result.request.Model = &argument
+				case "--effort":
+					result.request.Effort = &argument
 				case "--profile":
 					result.request.Profile = argument
 				case "--cwd":
@@ -455,8 +462,8 @@ func parse(args []string) (command, error) {
 		result.request.Kind = fleetclient.LaunchAgent
 		if seen["--terminal"] {
 			result.request.Kind = fleetclient.LaunchTerminal
-			if result.stdin {
-				return result, errors.New("terminal start rejects initial prompt")
+			if result.stdin || seen["--model"] || seen["--effort"] {
+				return result, errors.New("terminal start rejects initial prompt and provider options")
 			}
 		}
 	}
@@ -512,7 +519,7 @@ func parse(args []string) (command, error) {
 			return result, invalid
 		}
 	}
-	if seen["--max-bytes"] && operation != "read" || (seen["--profile"] || seen["--cwd"]) && operation != "start" {
+	if seen["--max-bytes"] && operation != "read" || (seen["--profile"] || seen["--cwd"] || seen["--model"] || seen["--effort"]) && operation != "start" {
 		return result, invalid
 	}
 	switch operation {

@@ -77,6 +77,10 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
+	command, err := launchCommand(profile, input.Model, input.Effort)
+	if err != nil {
+		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+	}
 	serverObservation, present, err := manager.tmux.InspectServer(ctx)
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
@@ -105,12 +109,12 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	character := selectCharacter(scan.characterUse, server.Epoch+"\x00"+name)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
-	// The launch is the profile's command text, opaque to every hop until
+	// The launch is command text, opaque to every hop until
 	// agent-exec decodes it for the initialized shell (one binary produces and
 	// consumes it).
 	launch := ""
 	if input.Kind == LaunchAgent {
-		launch = base64.RawURLEncoding.EncodeToString([]byte(profile.Command))
+		launch = base64.RawURLEncoding.EncodeToString([]byte(command))
 	}
 	terminal, err := manager.tmux.WithShell(manager.settings.Load().shellPath).TerminalCommand(cwd, launch)
 	if err != nil {

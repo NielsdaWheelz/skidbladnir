@@ -34,6 +34,8 @@ type CreateInput struct {
 	Kind             LaunchKind
 	CWD              string
 	Profile          string
+	Model            *string
+	Effort           *string
 	OptionalTmuxName string
 	Objective        string
 	Group            group.Label
@@ -157,6 +159,7 @@ const (
 	ErrorWorkingDirectoryInvalid     ErrorCode = "WorkingDirectoryInvalid"
 	ErrorWorkingDirectoryUnavailable ErrorCode = "WorkingDirectoryUnavailable"
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
+	ErrorLaunchOptionsInvalid        ErrorCode = "LaunchOptionsInvalid"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
 	ErrorSessionNameChanged          ErrorCode = "SessionNameChanged"

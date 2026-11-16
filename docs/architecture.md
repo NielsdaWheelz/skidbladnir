@@ -51,7 +51,8 @@ terminal beside an existing session; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
 phone; detach without stopping anything; interrupt or close an exact, confirmed
 session; read, write and wait on terminals from the CLI, which is how jarvis drives
-workers; be notified when an agent needs input or is ready again; and rebuild a
+workers; choose native model/effort options for a supported profile launch;
+be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
 
@@ -61,7 +62,7 @@ private checkpoint, using current configured commands.
 - Detach and close are visibly different actions; the browser and the phone
   confirm every close.
 - Creation validates its directory and launches only the configured shell or a
-  configured profile command.
+  configured profile command, with explicitly requested native launch options.
 - Provider credentials stay on their host. They never enter clients, push
   messages or skid state.
 - A gateway or client restart re-lists surviving tmux; it never replays input.
@@ -554,7 +555,8 @@ never null.
 ### Creation
 
 `POST /v1/sessions` takes `{kind:"agent", profile, cwd, optionalTmuxName?,
-objective?, group?}` or the same with `kind:"terminal"` and no profile;
+objective?, group?, model?, effort?}` or the same with `kind:"terminal"` and no
+profile/model/effort;
 `POST /v1/sessions/{tmuxId}/shell` takes `{identityToken}`. Both answer
 `201 {observedAt, session}`. Terminal creation works with zero profiles.
 
@@ -564,7 +566,11 @@ objective?, group?}` or the same with `kind:"terminal"` and no profile;
    current settings, a name matching `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and unused,
    an objective of 1–240 NFC scalars without C0/C1, U+2028/2029 or bidi controls
    ([NFC defect](issues/xtext-nfc-validation.md)), and a canonical group label. A present but empty name, objective or group is
-   invalid; null is absent.
+   invalid; null is absent. Optional model (1–255 UTF-8 bytes) and effort (1–64)
+   reject controls and edge whitespace. With either option, the session manager
+   requires a codex/claude profile and one plain executable command that forwards
+   native arguments; compound commands refuse before tmux with `InvalidRequest`
+   and `not_sent`. Omitted options leave any configured command unchanged.
 2. One `new-session` queue creates the session, stamps the epoch if absent, sets
    `@skid_profile` (agent only), `@skid_auto_name_b64` (omitted name only),
    `@skid_character`, the encoded objective and group when supplied, and prints the
@@ -587,9 +593,14 @@ objective?, group?}` or the same with `kind:"terminal"` and no profile;
    through `agent-exec` and evaluates it once. Re-sourcing and subshells cannot
    replay it. The agent is an ordinary foreground child: its exit, failure or
    `/exit` returns to the same shell; `exec` and `exit` keep their meaning.
-5. skid adds no provider flags, names, account variables, daemons or hooks.
-   Aliases, functions, wrappers and provider settings decide execution; observation
-   metadata never overrides them; a tmux name never reaches a provider.
+5. Explicit launch options append separately shell-quoted native arguments to that
+   forwarding command: codex `--model VALUE` and `-c model_reasoning_effort=STRING`
+   (TOML string encoding first); claude `--model VALUE` and `--effort VALUE`.
+   skid adds no account variables, daemons or hooks. Aliases, functions, wrappers
+   and provider settings retain their authority; the profile command must forward
+   arguments. Native support and entitlement are the provider's verdict after
+   creation; skid validates no provider model catalog or effort enum. Observation
+   metadata never changes execution; a tmux name never reaches a provider.
 6. shell-here reads the source once (lifetime, active pane, its PID and cwd, local
    group), refuses an SSH or mosh foreground or an unavailable cwd with
    `WorkingDirectoryUnavailable`, and creates a terminal there in that group, its
@@ -1237,7 +1248,8 @@ beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
 - **wait** follows [terminal control](#terminal-control), item 4.
 - **stop** interrupts; **close** interrupts, then closes regardless, reporting both;
   `close --terminal-only` closes without interrupting.
-- **start**: `start [NAME] --machine HOST (--profile PROFILE [--stdin] | --terminal)
+- **start**: `start [NAME] --machine HOST (--profile PROFILE [--model MODEL]
+  [--effort EFFORT] [--stdin] | --terminal)
   [--cwd DIR] [--group LABEL]` creates once, then, with `--stdin`, inspects only its captured terminal every 500 ms
   within the one 15 s start budget and sends the prompt once, only when the
   terminal reads idle with no interaction or notice; a request or notice ends it

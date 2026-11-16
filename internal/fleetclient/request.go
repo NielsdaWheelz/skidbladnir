@@ -30,6 +30,8 @@ type Request struct {
 	Ref            Reference // the exact captured target; zero means resolve Handle
 	Kind           LaunchKind
 	Profile        string
+	Model          *string
+	Effort         *string
 	CWD            string
 	Text           string
 	Keys           []string
