@@ -25,6 +25,8 @@ type createSessionRequest struct {
 	OptionalTmuxName *string             `json:"optionalTmuxName"`
 	Objective        *string             `json:"objective"`
 	Group            *string             `json:"group"`
+	Model            *string             `json:"model"`
+	Effort           *string             `json:"effort"`
 }
 
 // identityRequest addresses a session lifetime: shell creation and deletion.
@@ -115,7 +117,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 			return
 		}
 	case sessions.LaunchTerminal:
-		if input.Profile != nil {
+		if input.Profile != nil || input.Model != nil || input.Effort != nil {
 			writeError(writer, errorInvalidRequest)
 			return
 		}
@@ -144,6 +146,8 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		OptionalTmuxName: valueOf(input.OptionalTmuxName),
 		Objective:        valueOf(input.Objective),
 		Group:            label,
+		Model:            input.Model,
+		Effort:           input.Effort,
 	})
 	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
 }

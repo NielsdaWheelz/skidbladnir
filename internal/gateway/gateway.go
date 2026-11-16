@@ -275,6 +275,8 @@ func sessionFailure(err error) apiError {
 		return errorWorkingDirectoryInvalid
 	case sessions.ErrorWorkingDirectoryUnavailable:
 		return errorWorkingDirectoryUnavailable
+	case sessions.ErrorLaunchOptionsInvalid:
+		return apiError{api.Error{Code: "InvalidRequest", Message: sessionError.Message}, http.StatusBadRequest}
 	case sessions.ErrorProfileUnknown:
 		return errorProfileUnknown
 	case sessions.ErrorSessionNameInvalid:

@@ -1,7 +1,11 @@
 package sessions
 
 import (
+	"encoding/json"
 	"regexp"
+	"strconv"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -60,6 +64,9 @@ func (manager *Manager) validateCreate(input CreateInput) (string, agentruntime.
 			return "", agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 		}
 	case LaunchTerminal:
+		if input.Model != nil || input.Effort != nil {
+			return "", agentruntime.Profile{}, newSessionError(ErrorLaunchOptionsInvalid, "terminal launches do not accept model or effort options.")
+		}
 		if input.Profile != "" {
 			panic("terminal launch carries agent options") // justify-defect: creation ingress forbids terminal agent options.
 		}
@@ -76,4 +83,50 @@ func (manager *Manager) validateCreate(input CreateInput) (string, agentruntime.
 	}
 
 	return cwd, profile, nil
+}
+
+// launchCommand keeps configured shell text unchanged unless native options
+// require its single forwarding command to receive literal arguments.
+func launchCommand(profile agentruntime.Profile, model, effort *string) (string, error) {
+	if model == nil && effort == nil {
+		return profile.Command, nil
+	}
+	for _, option := range []struct {
+		name    string
+		value   *string
+		maximum int
+	}{{"model", model, 255}, {"effort", effort, 64}} {
+		if option.value == nil {
+			continue
+		}
+		value := *option.value
+		if value == "" || len(value) > option.maximum || !utf8.ValidString(value) || strings.TrimSpace(value) != value || strings.ContainsFunc(value, unicode.IsControl) {
+			return "", newSessionError(ErrorLaunchOptionsInvalid, "use a "+option.name+" of 1–"+strconv.Itoa(option.maximum)+" UTF-8 bytes, without controls or edge whitespace.")
+		}
+	}
+	if profile.Provider != agentruntime.ProviderCodex && profile.Provider != agentruntime.ProviderClaude {
+		return "", newSessionError(ErrorLaunchOptionsInvalid, "model and effort options require a codex or claude profile.")
+	}
+	if profile.Command == "" || strings.ContainsAny(profile.Command, "\\\"'`$;&|<>(){}[]*?!~=#") || strings.ContainsFunc(profile.Command, func(value rune) bool {
+		return unicode.IsSpace(value) || unicode.IsControl(value)
+	}) {
+		return "", newSessionError(ErrorLaunchOptionsInvalid, "model and effort options require one plain profile command that forwards native provider arguments.")
+	}
+	var arguments []string
+	if model != nil {
+		arguments = append(arguments, "--model", *model)
+	}
+	if effort != nil {
+		if profile.Provider == agentruntime.ProviderCodex {
+			// A JSON string is a TOML basic string; encoding happens before shell quoting.
+			encoded, _ := json.Marshal(*effort)
+			arguments = append(arguments, "-c", "model_reasoning_effort="+string(encoded))
+		} else {
+			arguments = append(arguments, "--effort", *effort)
+		}
+	}
+	for index, argument := range arguments {
+		arguments[index] = "'" + strings.ReplaceAll(argument, "'", "'\\''") + "'"
+	}
+	return profile.Command + " " + strings.Join(arguments, " "), nil
 }
