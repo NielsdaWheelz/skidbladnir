@@ -31,27 +31,96 @@ var (
 	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
 )
 
-type hint struct{ key, label string }
+type role uint8
+
+const (
+	inkRole role = iota
+	quietRole
+	mutedRole
+	goldRole
+	emberRole
+	mossRole
+	frostRole
+	bronzeRole
+)
+
+type span struct {
+	text         string
+	role         role
+	bold, italic bool
+}
+
+type line []span
+
+func (m *model) renderLine(l line) string {
+	var rendered strings.Builder
+	styles := [...]ansi.Style{plain, faint, muted, here, ember, moss, frost, wordmark}
+	for _, part := range l {
+		style := styles[part.role]
+		if part.bold {
+			style = style.Bold()
+		}
+		if part.italic {
+			style = style.Italic(true)
+		}
+		rendered.WriteString(style.Styled(part.text))
+	}
+	return rendered.String()
+}
+
+func statusRole(tone api.StatusTone) role {
+	switch tone {
+	case api.ToneMuted:
+		return mutedRole
+	case api.ToneWorking:
+		return frostRole
+	case api.ToneAttention:
+		return emberRole
+	case api.ToneReady:
+		return mossRole
+	default:
+		panic("invalid status tone")
+	}
+}
 
 func (m *model) View() tea.View {
-	var content string
+	var lines []string
 	if m.tooSmall() {
-		// the outcome still shows, so a refused ctrl-c says why.
-		lines := append(wrapped("80 × 24 minimum; ctrl-c quits", m.width), m.outcomeLines(m.width)...)
-		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
+		// Keep the outcome visible even below the table's size floor.
+		lines = wrapped("80 × 24 minimum; ctrl-c quits", m.width)
+		for _, item := range m.outcomeLines(m.width) {
+			lines = append(lines, m.renderLine(item))
+		}
+		lines = lines[:min(len(lines), max(1, m.height))]
 	} else {
-		footer := m.footerLines()
-		lines := []string{m.header(), ""}
-		lines = append(lines, m.bodyLines(m.height-len(lines)-len(footer))...)
-		for len(lines) < m.height-len(footer) {
+		f := m.frame()
+		lines = []string{m.renderLine(m.header()), ""}
+		if m.page == "" {
+			if len(f.rows) == 0 {
+				lines = append(lines, m.emptyTable())
+			} else {
+				for _, item := range m.tableLines(f) {
+					lines = append(lines, m.renderLine(item))
+				}
+			}
+		} else {
+			lines = append(lines, m.bodyLines(f.body)...)
+		}
+		for len(lines) < f.body+2 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, footer...)
-		for index, line := range lines {
-			lines[index] = " " + line
+		for _, item := range f.notices {
+			lines = append(lines, m.renderLine(item))
 		}
-		content = strings.Join(lines, "\n")
+		lines = append(lines, m.renderLine(f.rule))
+		for _, item := range f.hints {
+			lines = append(lines, m.renderLine(item))
+		}
+		for index, text := range lines {
+			lines[index] = " " + text
+		}
 	}
+	content := strings.Join(lines, "\n")
 	if os.Getenv("NO_COLOR") != "" {
 		content = ansi.Strip(content)
 	}
@@ -61,13 +130,7 @@ func (m *model) View() tea.View {
 	return view
 }
 
-// header is the wordmark, then the strip of views in stepping order.
-// usage omits the table's view strip.
-func (m *model) header() string {
-	if m.page == "usage" {
-		return wordmark.Styled(" skid ")
-	}
-	room := m.width - 2 - 7
+func (m *model) header() line {
 	tabs, current := []tab{}, 0
 	for index, view := range m.viewOptions() {
 		switch view.kind {
@@ -88,7 +151,8 @@ func (m *model) header() string {
 			current = index
 		}
 	}
-	return wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
+	mark := line{{text: "▜", role: bronzeRole}, {text: "skid"}, {text: "▛", role: bronzeRole}, {text: " "}}
+	return append(mark, strip(tabs, current, m.width-9)...)
 }
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
@@ -101,7 +165,7 @@ type tab struct{ fixed, label string }
 // label whole, so stepping between groups keeps the cap. below the floor, the
 // groups farthest from the current view hide behind counted markers. the
 // current label shows whole up to 24 cells.
-func strip(tabs []tab, current, room int, stepping bool) string {
+func strip(tabs []tab, current, room int) line {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
 			return min(ansi.StringWidth(t.label), limit)
@@ -155,13 +219,13 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	if over := width(limit, whole, first, last) - room; over > 0 && current >= 2 {
 		whole = max(1, min(ansi.StringWidth(tabs[current].label), 24)-over)
 	}
-	line := ""
+	var result line
 	for index, t := range tabs {
 		if index >= 2 && (index < first || index > last) {
 			continue
 		}
 		if index == first && first > 2 {
-			line += " ←" + strconv.Itoa(first-2) + " "
+			result = append(result, span{text: " ←" + strconv.Itoa(first-2) + " ", role: quietRole})
 		}
 		size := limit
 		if index == current {
@@ -171,73 +235,57 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 		if t.label != "" {
 			text = ansi.Truncate(t.label, size, "…")
 		}
-		switch {
-		case index == current && stepping:
-			line += here.Styled("‹") + bold.Styled(text) + here.Styled("›")
-		case index == current:
-			line += " " + bold.Styled(text) + " "
-		default:
-			line += " " + text + " "
+		if index == current {
+			result = append(result, span{text: "‹", role: goldRole}, span{text: text, bold: true}, span{text: "›", role: goldRole})
+		} else {
+			result = append(result, span{text: " " + text + " "})
 		}
 	}
 	if last < len(tabs)-1 {
-		line += " " + strconv.Itoa(len(tabs)-1-last) + "→ "
+		result = append(result, span{text: " " + strconv.Itoa(len(tabs)-1-last) + "→ ", role: quietRole})
 	}
-	return line
+	return result
 }
 
-// footerLines holds notices, quota context, the content boundary, and the keys.
-// Only pages name a captured target in the boundary.
-func (m *model) footerLines() []string {
-	width := m.width - 2
-	notices := m.noticeLines(width)
-	usage := m.usageSummary()
-	keys := keyLines(width, m.hints()...)
-	legend, end := "", ""
+func (m *model) pageCaption(width int) string {
 	switch m.page {
-	case "":
-		if m.selectedRow() != nil {
-			layout := m.tableLayout(width)
-			height := m.height - 3 - len(usage) - len(notices) - len(keys)
-			if m.top > 0 || layout.viewport(m.top, height).end < len(m.rows) {
-				end = faint.Styled(fmt.Sprintf(" %d of %d", m.cursor+1, len(m.rows)))
-			}
+	case "keys":
+		if row := m.selectedRow(); row != nil {
+			return target(row.Session.Name, row.Label, width-5)
 		}
 	case "confirm":
-		legend = target(m.pendingName, m.pendingLabel, width)
+		return target(m.pendingName, m.pendingLabel, width-5)
 	case "details", "group-edit", "name-edit":
-		legend = target(m.pageRow.Session.Name, m.pageRow.Label, width)
+		return target(m.pageRow.Session.Name, m.pageRow.Label, width-5)
 	case "quick-create":
-		legend = "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width/2, "…")
+		return "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width-21, "…")
 	case "create":
-		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[formMachine]), width/2, "…")
+		return "new session on " + ansi.Truncate(attention.SingleLine(m.form[formMachine]), width-20, "…")
 	}
-	lines := append(notices, usage...)
-	lines = append(lines, rule(legend, end, width))
-	return append(lines, keys...)
+	return ""
 }
 
 // outcomeLines is the notice, wrapped, in its tone.
-func (m *model) outcomeLines(width int) []string {
-	lines := []string{}
+func (m *model) outcomeLines(width int) []line {
+	var lines []line
 	if m.notice == "" {
 		return lines
 	}
-	style := plain
+	role := inkRole
 	if m.noticeFailure {
-		style = ember
+		role = emberRole
 	}
-	for _, line := range wrapped(m.notice, width) {
-		lines = append(lines, style.Styled(line))
+	for _, text := range wrapped(m.notice, width) {
+		lines = append(lines, line{{text: text, role: role}})
 	}
 	return lines
 }
 
-func (m *model) noticeLines(width int) []string {
+func (m *model) noticeLines(width int) []line {
 	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
 	lines := m.outcomeLines(width)
 	if m.notificationFailed {
-		lines = append(lines, faint.Styled("notifications unavailable"))
+		lines = append(lines, line{{text: "notifications unavailable", role: quietRole}})
 	}
 	// A peer without an error is unobserved or being checked, not unavailable.
 	for _, peer := range m.peers {
@@ -246,28 +294,31 @@ func (m *model) noticeLines(width int) []string {
 			if len(peer.Sessions) > 0 {
 				suffix += "; showing its last observation"
 			}
-			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
+			text := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…") + suffix
+			lines = append(lines, line{{text: ansi.Truncate(text, width, "…")}})
 		} else if checking(peer) && len(peer.Sessions) == 0 {
 			suffix := ": checking inventory"
 			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
-			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
+			lines = append(lines, line{{text: ansi.Truncate(host+suffix, width, "…"), role: quietRole}})
 		}
 		peer.OK = peer.Error == nil
 		text, failure := fleetview.RecoveryNotice(peer)
 		if text != "" {
-			style := muted
+			role := mutedRole
 			if failure {
-				style = ember
+				role = emberRole
 			}
-			for _, line := range wrapped(text, width) {
-				lines = append(lines, style.Styled(line))
+			for _, part := range wrapped(text, width) {
+				lines = append(lines, line{{text: part, role: role}})
 			}
 		}
 	}
 	return lines
 }
 
-func (m *model) hints() [][]hint {
+type hint struct{ key, label string }
+
+func (m *model) pageHints() [][]hint {
 	switch m.page {
 	case "confirm":
 		effect := "interrupt and close terminal"
@@ -322,73 +373,64 @@ func (m *model) hints() [][]hint {
 	case "usage":
 		return [][]hint{{{"q escape", "back"}}}
 	}
-	session := []hint{}
-	global := []hint{{"n", "quick terminal"}, {"N", "new terminal options"}}
-	if row := m.selectedRow(); row != nil {
-		if m.rowAttachable(*row) {
-			session = append(session, hint{"enter", "attach"})
-		}
-		session = append(session, hint{"space", "info"})
-		if m.rowAvailable(*row) {
-			session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
-			if !m.busy && row.Session.Connection == nil {
-				global = append(global, hint{"T", "new terminal here"})
-			}
-		}
-	}
-	global = append(global, hint{"u", "usage"}, hint{"q", "quit"})
-	return [][]hint{session, global}
+	return nil
 }
 
-// keyLines keeps each group on one line when it fits, otherwise wraps it by
-// whole hints, so a key never separates from its label.
-func keyLines(width int, groups ...[]hint) []string {
-	lines := []string{}
+// Legacy pages use their own keys until each becomes a fold.
+func keyLines(width int, groups ...[]hint) []line {
+	var lines []line
 	for _, group := range groups {
-		items := []string{}
+		var result line
+		used := 0
 		for _, hint := range group {
-			items = append(items, bold.Styled(hint.key)+" "+hint.label)
-		}
-		if len(items) == 0 {
-			continue
-		}
-		joined := strings.Join(items, "  ")
-		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+4+ansi.StringWidth(joined) <= width {
-			lines[last] += "    " + joined
-			continue
-		}
-		line := ""
-		for _, item := range items {
-			if line != "" && ansi.StringWidth(line)+2+ansi.StringWidth(item) > width {
-				lines, line = append(lines, line), ""
+			cells := ansi.StringWidth(hint.key) + 1 + ansi.StringWidth(hint.label)
+			if used != 0 && used+2+cells > width {
+				lines = append(lines, result)
+				result, used = nil, 0
 			}
-			if line != "" {
-				line += "  "
+			if used != 0 {
+				result = append(result, span{text: "  "})
+				used += 2
 			}
-			line += item
+			result = append(result, span{text: hint.key, bold: true}, span{text: " " + hint.label, role: quietRole})
+			used += cells
 		}
-		lines = append(lines, line)
+		if len(result) != 0 {
+			lines = append(lines, result)
+		}
 	}
 	return lines
 }
 
-// rule separates content and controls. A page legend names its target; the
-// table's styled end carries its scrolled position.
-func rule(legend, end string, width int) string {
-	if end != "" {
-		end += faint.Styled(" ──")
+func rule(caption, quota string, width int) line {
+	var result line
+	room := width - ansi.StringWidth(caption) - ansi.StringWidth(quota)
+	edge := 1
+	if room >= 10 {
+		edge = 2
 	}
-	fill := width - ansi.StringWidth(end)
-	if legend == "" {
-		return faint.Styled(strings.Repeat("─", fill)) + end
+	end := strings.Repeat("─", edge)
+	if caption != "" {
+		result = append(result, span{text: end + " ", role: quietRole}, span{text: caption}, span{text: " "})
+		room -= edge + 2
 	}
-	legend = ansi.Truncate(legend, max(1, fill-5), "…")
-	return faint.Styled("── ") + legend + " " + faint.Styled(strings.Repeat("─", max(0, fill-4-ansi.StringWidth(legend)))) + end
+	if quota != "" {
+		room -= edge + 2
+	}
+	result = append(result, span{text: strings.Repeat("─", room), role: quietRole})
+	if quota != "" {
+		result = append(result, span{text: " "}, span{text: quota}, span{text: " " + end, role: quietRole})
+	}
+	return result
 }
 
 func target(name, machine string, width int) string {
-	half := max(1, (width-10)/2)
-	return bold.Styled(ansi.Truncate(attention.SingleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(attention.SingleLine(machine), half, "…")
+	name, machine = attention.SingleLine(name), attention.SingleLine(machine)
+	if ansi.StringWidth(name+" on "+machine) <= width {
+		return name + " on " + machine
+	}
+	machine = ansi.Truncate(machine, (width-4)/2, "…")
+	return ansi.Truncate(name, width-4-ansi.StringWidth(machine), "…") + " on " + machine
 }
 
 func (m *model) confirmationContent() (fixed, facts []string) {
@@ -415,7 +457,7 @@ func (m *model) bodyLines(height int) []string {
 	case "confirm":
 		fixed, facts := m.confirmationContent()
 		fixed = fixed[:min(len(fixed), height)]
-		capacity := min(m.pageCapacity(), height-len(fixed))
+		capacity := height - len(fixed)
 		offset := min(max(0, m.offset), max(0, len(facts)-capacity))
 		return append(fixed, facts[offset:min(len(facts), offset+capacity)]...)
 	case "group-edit", "name-edit":
@@ -575,23 +617,36 @@ func (m *model) bodyLines(height int) []string {
 	case "usage":
 		return m.usageBody(height)
 	}
-	if len(m.rows) == 0 {
-		partial := false
-		for _, peer := range m.peers {
-			partial = partial || !peer.OK
+	if m.page == "keys" {
+		lines := m.keyMap()
+		rendered := make([]string, min(len(lines), height))
+		for index := range rendered {
+			rendered[index] = m.renderLine(lines[index])
 		}
-		switch {
-		case !m.initialInventorySettled():
-			return []string{"checking inventory"}
-		case m.view.kind == viewNeedsInput:
-			return []string{"no sessions currently need input in this view"}
-		case partial:
-			return []string{"no matching sessions in available inventory"}
-		}
-		return []string{"no sessions in this view"}
+		return rendered
 	}
-	layout := m.tableLayout(width)
-	return m.tableLines(layout, layout.viewport(m.top, height))
+	return nil
+}
+
+func (m *model) emptyTable() string {
+	if !m.initialInventorySettled() {
+		return "checking inventory"
+	}
+	if m.view.kind == viewNeedsInput {
+		return "no sessions currently need input in this view"
+	}
+	total, partial := 0, false
+	for _, peer := range m.peers {
+		total += len(peer.Sessions)
+		partial = partial || !peer.OK
+	}
+	if total == 0 && !partial {
+		return "no sessions"
+	}
+	if partial {
+		return "no matching sessions in available inventory"
+	}
+	return "no sessions in this view"
 }
 
 // window keeps a form's focused field visible; a field taller than the page
@@ -681,21 +736,26 @@ func (m *model) detailLines() []string {
 	return lines
 }
 
-func (m *model) pageCapacity() int {
-	if m.page == "confirm" {
+func (m *model) pageCapacity(body int) int {
+	switch m.page {
+	case "confirm":
 		fixed, _ := m.confirmationContent()
-		return max(0, m.height-2-len(m.footerLines())-len(fixed))
+		return max(0, body-len(fixed))
+	case "usage":
+		return max(0, body-3)
+	default:
+		return max(1, body-2)
 	}
-	if m.page == "usage" {
-		return max(0, m.height-5-len(m.footerLines()))
-	}
-	return max(1, m.height-4-len(m.footerLines()))
 }
 
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a good read of the hub's notification state.
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	view := fleetview.ProjectStatus(row.Session, row.Available || m.hostChecking(row), row.Available && m.notificationQualified && m.notificationReady(row.Session))
+	return m.projectStatus(row, row.Available || m.hostChecking(row))
+}
+
+func (m *model) projectStatus(row fleetclient.Row, fresh bool) fleetview.StatusView {
+	view := fleetview.ProjectStatus(row.Session, fresh, row.Available && m.notificationQualified && m.notificationReady(row.Session))
 	if m.heldReady(row) {
 		view.Label, view.Tone, view.Queue, view.QueueDetail = "ready", api.ToneReady, fleetview.QueueReady, ""
 	}
@@ -715,41 +775,6 @@ func (m *model) hostChecking(row fleetclient.Row) bool {
 
 func (m *model) rowAvailable(row fleetclient.Row) bool {
 	return row.Available && !m.heldReady(row)
-}
-
-// tableStatus is a row's status cell. a checking row makes no status claim and
-// reads faint `checking`; any other row reads the projected label in its tone,
-// so a row whose host failed a read reads its last observation. an errored
-// host also keeps its notice.
-func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
-	if m.hostChecking(row) || m.heldReady(row) {
-		return "checking", faint
-	}
-	view := m.statusView(row)
-	switch view.Tone {
-	case api.ToneMuted:
-		return view.Label, muted
-	case api.ToneWorking:
-		return view.Label, frost
-	case api.ToneAttention:
-		return view.Label, ember
-	case api.ToneReady:
-		return view.Label, moss
-	}
-	panic("invalid status tone")
-}
-
-// tail keeps the end of a path, where directories differ.
-func tail(text string, width int) string {
-	if ansi.StringWidth(text) <= width {
-		return text
-	}
-	// TruncateLeft keeps a wide character that straddles the cut, so widen it.
-	cut := ansi.StringWidth(text) - width + 1
-	for ansi.StringWidth(ansi.TruncateLeft(text, cut, "")) > width-1 {
-		cut++
-	}
-	return "…" + ansi.TruncateLeft(text, cut, "")
 }
 
 func groupDraftDisplay(draft string) string {

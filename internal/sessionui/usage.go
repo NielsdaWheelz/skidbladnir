@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -424,29 +425,52 @@ func (m *model) usageDeclarationState() string {
 	}
 	return "profile declarations unavailable"
 }
-func (m *model) usageSummary() []string {
-	if !m.usageVisible() || m.page != "" {
-		return nil
+func (m *model) weeklyQuota(room int) string {
+	if !m.usageVisible() || room <= 0 {
+		return ""
 	}
 	rows := m.usageRows(time.Now())
 	if len(rows) == 0 {
-		return []string{m.usageDeclarationState()}
+		state := m.usageDeclarationState()
+		if ansi.StringWidth(state) <= room {
+			return state
+		}
+		return ""
 	}
-	lines := []string{}
+	selectedProfile := ""
+	if selected := m.selectedRow(); selected != nil {
+		if agent := m.current(selected).Agent; agent != nil {
+			selectedProfile = agent.Profile
+		}
+	}
+	var items []string
+	selected := ""
 	for _, row := range rows {
 		text, status := row.windowPresentation(row.text.sevenDay)
-		item := attention.SingleLine(row.profile.Key) + " 7d " + text.remaining
-		if status != "" {
+		profile := attention.SingleLine(row.profile.Key)
+		item := profile + " " + text.remaining
+		one := item + " of 7d left"
+		switch status {
+		case "", "native", "terminal":
+		default:
 			item += " " + status
+			one = item
 		}
-		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+3+ansi.StringWidth(item) <= m.width-2 {
-			lines[last] += " · " + item
-		} else {
-			lines = append(lines, item)
+		items = append(items, item)
+		if row.profile.Key == selectedProfile {
+			selected = one
 		}
 	}
-	return lines
+	all := "7d left  " + strings.Join(items, "  ")
+	if ansi.StringWidth(all) <= room {
+		return all
+	}
+	if ansi.StringWidth(selected) <= room {
+		return selected
+	}
+	return ""
 }
+
 func (m *model) usageLines() []string {
 	rows := m.usageRows(time.Now())
 	if len(rows) == 0 {
@@ -474,7 +498,7 @@ func (m *model) usageBody(height int) []string {
 		return headings[:max(0, height)]
 	}
 	lines := m.usageLines()
-	capacity := m.pageCapacity()
+	capacity := height - len(headings)
 	offset := min(m.offset, max(0, len(lines)-capacity))
 	return append(headings, lines[offset:min(len(lines), offset+capacity)]...)
 }
@@ -485,6 +509,6 @@ func (m *model) usageKey(key string) {
 	case "up":
 		m.offset = max(0, m.offset-1)
 	case "down":
-		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity()), m.offset+1)
+		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity(m.frame().body)), m.offset+1)
 	}
 }

@@ -29,11 +29,11 @@ func (m *model) openMetadata(operation string) {
 	}
 	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
 	if row == nil {
-		m.refuseRow(m.pageRow, operation)
+		m.fail(m.rowRefusal(m.pageRow, operation))
 		return
 	}
 	if !m.rowAvailable(*row) {
-		m.refuseRow(*row, operation)
+		m.fail(m.rowRefusal(*row, operation))
 		return
 	}
 	if m.metadata != nil && m.metadata.request.Operation == operation {
@@ -122,11 +122,11 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 		}
 		current := m.rowForReference(editor.request.Ref)
 		if current == nil {
-			m.refuseRow(m.pageRow, editor.request.Operation)
+			m.fail(m.rowRefusal(m.pageRow, editor.request.Operation))
 			return nil
 		}
 		if !m.rowAvailable(*current) {
-			m.refuseRow(*current, editor.request.Operation)
+			m.fail(m.rowRefusal(*current, editor.request.Operation))
 			return nil
 		}
 		if editor.request.Operation == "group" {

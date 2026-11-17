@@ -195,14 +195,19 @@ func (m *model) settle(previousPage string, wasVisible bool) tea.Cmd {
 		}
 		command = m.refreshUsage(false)
 	}
-	if m.page == "usage" && !m.tooSmall() {
-		m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity()))
+	if m.tooSmall() {
+		return command
 	}
-	if m.page == "confirm" && !m.tooSmall() {
+	f := m.frame()
+	switch m.page {
+	case "usage":
+		m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity(f.body)))
+	case "confirm":
 		_, facts := m.confirmationContent()
-		m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity()))
+		m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity(f.body)))
+	case "":
+		m.top = f.top
 	}
-	m.fitViewports()
 	return command
 }
 
