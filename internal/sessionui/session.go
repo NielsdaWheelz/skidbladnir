@@ -43,10 +43,7 @@ type searchMsg struct {
 	revision int
 	result   fleetclient.Result
 }
-type attachedMsg struct {
-	err             error
-	notificationErr error
-}
+type attachedMsg struct{}
 type model struct {
 	ctx                       context.Context
 	client                    *fleetclient.Client
@@ -55,6 +52,7 @@ type model struct {
 	peers                     []fleetclient.Peer
 	rows                      []fleetclient.Row
 	cursor                    int
+	guest                     bool
 	busy                      bool
 	width, height             int
 	notice, page              string
@@ -82,14 +80,13 @@ type model struct {
 	notifications         attention.State
 	notificationFailed    bool
 	notificationQualified bool
-	// attached: a terminal owns the screen, so no lane reads.
-	attached         bool
-	inventoryLanes   []inventoryLane
-	contextLanes     []lane
-	notificationLane lane
-	usageLane        lane
-	usagePeers       []usagePeer
-	usageNext        time.Time
+	attachment            *attachment
+	inventoryLanes        []inventoryLane
+	contextLanes          []lane
+	notificationLane      lane
+	usageLane             lane
+	usagePeers            []usagePeer
+	usageNext             time.Time
 }
 
 // Run browses until quit. Its cancel aborts every read and search still in
@@ -125,9 +122,8 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 		}
 	}
 	if index := m.peerIndex(machine); index >= 0 {
-		m.fenceInventory(index)
+		m.checkInventory(index)
 		m.inventoryLanes[index].writing = true
-		m.peers[index].OK, m.peers[index].Error = false, nil
 		m.rebuild()
 	}
 	ctx, client := m.ctx, m.client
@@ -138,7 +134,16 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	wasVisible, previousPage := m.usageVisible(), m.page
-	var command tea.Cmd
+	var returned, command tea.Cmd
+	if visit := m.attachment; visit != nil && visit.finished {
+		m.attachment = nil
+		if visit.err != nil {
+			m.fail(visit.err.Error())
+		} else {
+			m.inform("detached from " + visit.name + " on " + visit.machine + ".")
+		}
+		returned = m.refresh(true)
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = message.Width, message.Height
@@ -163,14 +168,16 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		command = m.onAction(message)
 	case searchMsg:
 		command = m.onSearch(message)
-	case attachedMsg:
-		command = m.onAttached(message)
 	case tea.PasteMsg:
-		command = m.onPaste(message)
+		if m.attachment == nil {
+			command = m.onPaste(message)
+		}
 	case tea.KeyPressMsg:
-		command = m.onKey(message)
+		if m.attachment == nil {
+			command = m.onKey(message)
+		}
 	}
-	return m, tea.Batch(command, m.settle(previousPage, wasVisible))
+	return m, tea.Batch(returned, command, m.settle(previousPage, wasVisible))
 }
 
 // settle follows every message: a change of page or usage disclosure retires
@@ -201,10 +208,14 @@ func (m *model) settle(previousPage string, wasVisible bool) tea.Cmd {
 
 func (m *model) onFleet() tea.Cmd {
 	m.fleetPending = false
-	m.reconcileFleet()
+	if !m.reconcileFleet() {
+		return nil
+	}
 	commands := []tea.Cmd{m.refreshUsage(false)}
-	for index := range m.peers {
-		commands = append(commands, m.refreshInventory(index, false))
+	for index, lane := range m.inventoryLanes {
+		if !lane.settled {
+			commands = append(commands, m.refreshInventory(index, false))
+		}
 	}
 	return tea.Batch(commands...)
 }
@@ -267,6 +278,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		default:
 			text = "interrupt key sent; terminal closed. work shared elsewhere or running remotely may continue."
 		}
+		text = m.pendingName + " on " + m.pendingLabel + ": " + text
 		if result.ExitCode("close") != 0 {
 			m.fail(text)
 		} else {
@@ -321,7 +333,7 @@ func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.C
 	}
 	m.rebuild()
 	if row := slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return isCreated(row.Session) }); row >= 0 {
-		m.cursor = row
+		m.selectRow(row)
 	}
 	m.inform("opening terminal on " + value.Label + "…")
 	return m.enter(created)
@@ -364,18 +376,6 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 	return nil
 }
 
-func (m *model) onAttached(message attachedMsg) tea.Cmd {
-	m.attached = false
-	m.notificationFailed = m.notificationFailed || message.notificationErr != nil
-	m.rebuild()
-	if message.err != nil {
-		m.fail(message.err.Error())
-	} else {
-		m.inform("detached; work continues")
-	}
-	return m.refresh(true)
-}
-
 // A notice's tone travels with its text: failures read as ember, all else plain.
 func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
@@ -402,7 +402,9 @@ func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 		return
 	}
 	m.fenceInventory(index)
+	m.forgetContext(index)
 	m.inventoryLanes[index].trailing = true
+	m.inventoryLanes[index].ready = nil
 	m.peers[index].OK, m.peers[index].Error = false, failure
 	if m.page == "create" && m.form[formMachine] == m.peers[index].Label {
 		m.clearDirectorySearch()
@@ -418,26 +420,33 @@ func (m *model) selectedRow() *fleetclient.Row {
 
 // enter pauses the browser while this exact terminal owns input and output.
 func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
-	m.attached = true
+	row := m.rowForReference(ref)
+	visit := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output, name: row.Session.Name, machine: row.Label}
+	m.attachment = visit
 	m.usageLane.fence()
 	m.cancelObservations()
+	m.rebuild()
 	m.clearDirectorySearch()
-	a := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output}
-	return tea.Exec(a, func(err error) tea.Msg { return attachedMsg{err: err, notificationErr: a.notificationErr} })
+	return tea.Exec(visit, func(err error) tea.Msg {
+		// Bubble Tea's blocking Exec evaluates the callback on the update
+		// loop before sending its message, which can arrive after a key.
+		visit.err, visit.finished = err, true
+		return attachedMsg{}
+	})
 }
 
 type attachment struct {
-	ctx             context.Context
-	client          *fleetclient.Client
-	ref             fleetclient.Reference
-	input, output   *os.File
-	notificationErr error
+	ctx           context.Context
+	client        *fleetclient.Client
+	ref           fleetclient.Reference
+	input, output *os.File
+	name, machine string
+	err           error
+	finished      bool
 }
 
 func (a *attachment) Run() error {
-	result := terminalclient.Run(a.ctx, a.client, a.ref, a.input, a.output)
-	a.notificationErr = result.NotificationErr
-	return result.Err
+	return terminalclient.Run(a.ctx, a.client, a.ref, a.input, a.output).Err
 }
 func (a *attachment) SetStdin(io.Reader)  {}
 func (a *attachment) SetStdout(io.Writer) {}

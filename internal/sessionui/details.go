@@ -10,9 +10,6 @@ import (
 // current is where the session's work runs: this host, a resolved remote host,
 // or an unresolved remote connection.
 func (m *model) current(row *fleetclient.Row) fleetclient.ExecutionContext {
-	if !row.Available && row.Session.Connection != nil {
-		return fleetclient.ExecutionContext{Kind: "remoteUnknown"}
-	}
 	if index := m.peerIndex(row.Machine); index >= 0 {
 		return row.Session.Current(m.peers[index])
 	}
@@ -26,7 +23,7 @@ func (m *model) rowFooter(row fleetclient.Row) string {
 	if current.Agent == nil {
 		return ""
 	}
-	if current.Kind == "local" && row.Available && row.Session.TerminalFooter != nil {
+	if current.Kind == "local" && row.Session.TerminalFooter != nil {
 		return string(*row.Session.TerminalFooter)
 	}
 	return "—"
@@ -83,9 +80,9 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
 	facts = append(facts, [2]string{"observed", row.ObservedAt}, [2]string{"reference", value.Ref.Encode()})
-	if !row.Available {
+	if !m.rowAvailable(*row) {
 		availability := "unavailable"
-		if m.hostChecking(*row) {
+		if (m.hostChecking(*row) || m.heldReady(*row)) && m.rowForReference(row.Session.Ref.Reference) != nil {
 			availability = "checking"
 		}
 		facts = append(facts, [2]string{"availability", availability})

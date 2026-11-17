@@ -301,8 +301,8 @@ func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageR
 			unavailable = unavailable || peer.Profiles == nil && peer.Error != nil
 			continue
 		}
-		if !peer.OK {
-			unavailable = unavailable || peer.Error != nil
+		if peer.Error != nil {
+			unavailable = true
 			continue
 		}
 		absent = true

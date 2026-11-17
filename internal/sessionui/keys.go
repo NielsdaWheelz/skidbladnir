@@ -94,8 +94,12 @@ func (m *model) confirmKey(key string) tea.Cmd {
 		m.offset += m.pageCapacity()
 	case "y", "enter":
 		current := m.rowForReference(m.pending.Ref)
-		if current == nil || !current.Available {
-			m.inform("session unavailable; refresh before confirming")
+		if current == nil {
+			m.fail(m.pendingName + " on " + m.pendingLabel + " is no longer listed; nothing was sent.")
+			return nil
+		}
+		if !m.rowAvailable(*current) {
+			m.refuseRow(*current, m.pending.Operation)
 			return nil
 		}
 		request := m.pending
@@ -176,10 +180,23 @@ func (m *model) tableKey(key string) tea.Cmd {
 		m.pageRow = *row
 		return nil
 	}
-	if !row.Available {
+	ref := row.Session.Ref.Reference
+	if key == "enter" && m.rowAttachable(*row) {
+		return m.enter(ref)
+	}
+	if !m.rowAvailable(*row) {
+		switch key {
+		case "enter":
+			m.refuseRow(*row, "attach")
+		case "T":
+			m.refuseRow(*row, "terminal here")
+		case "s":
+			m.refuseRow(*row, "interrupt")
+		case "x":
+			m.refuseRow(*row, "close")
+		}
 		return nil
 	}
-	ref := row.Session.Ref.Reference
 	switch key {
 	case "T":
 		if row.Session.Connection != nil {
@@ -188,8 +205,6 @@ func (m *model) tableKey(key string) tea.Cmd {
 		}
 		m.inform("opening terminal on " + row.Label + "…")
 		return m.execute(fleetclient.Request{Operation: "shell", Ref: ref})
-	case "enter":
-		return m.enter(ref)
 	case "s", "x":
 		m.pending = fleetclient.Request{Operation: "stop", Ref: ref}
 		if key == "x" {
@@ -199,4 +214,18 @@ func (m *model) tableKey(key string) tea.Cmd {
 		m.page, m.offset = "confirm", 0
 	}
 	return nil
+}
+
+func (m *model) rowAttachable(row fleetclient.Row) bool {
+	return row.Available || m.hostChecking(row) && (!m.guest || m.rowForReference(row.Session.Ref.Reference) != nil)
+}
+
+func (m *model) refuseRow(row fleetclient.Row, action string) {
+	reason := "unavailable"
+	if m.rowForReference(row.Session.Ref.Reference) == nil {
+		reason = "no longer listed"
+	} else if m.hostChecking(row) || m.heldReady(row) {
+		reason = "being checked"
+	}
+	m.fail(row.Session.Name + " on " + row.Label + " is " + reason + "; " + action + " is disabled.")
 }

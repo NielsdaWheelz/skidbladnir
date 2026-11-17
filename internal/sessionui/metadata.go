@@ -28,8 +28,12 @@ func (m *model) openMetadata(operation string) {
 		return
 	}
 	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
-	if row == nil || !row.Available {
-		m.inform("session unavailable; refresh before editing")
+	if row == nil {
+		m.refuseRow(m.pageRow, operation)
+		return
+	}
+	if !m.rowAvailable(*row) {
+		m.refuseRow(*row, operation)
 		return
 	}
 	if m.metadata != nil && m.metadata.request.Operation == operation {
@@ -117,8 +121,12 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 			editor.request.Group = label
 		}
 		current := m.rowForReference(editor.request.Ref)
-		if current == nil || !current.Available {
-			m.inform("session unavailable; refresh before saving")
+		if current == nil {
+			m.refuseRow(m.pageRow, editor.request.Operation)
+			return nil
+		}
+		if !m.rowAvailable(*current) {
+			m.refuseRow(*current, editor.request.Operation)
 			return nil
 		}
 		if editor.request.Operation == "group" {

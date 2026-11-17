@@ -1,6 +1,7 @@
 package sessionui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -28,9 +29,26 @@ type tableViewport struct {
 
 func (m *model) tableLayout(width int) tableLayout {
 	layout := tableLayout{width: width, headings: make([]bool, len(m.rows))}
+	neutralGuest, previous := -1, -1
+	if m.view.kind == viewAll && m.guest {
+		before, after := m.rows[:m.cursor], m.rows[m.cursor+1:]
+		label := m.rows[m.cursor].Session.Group
+		adjacentBefore := len(before) > 0 && before[len(before)-1].Session.Group == label
+		adjacentAfter := len(after) > 0 && after[0].Session.Group == label
+		if !adjacentBefore && !adjacentAfter {
+			sameGroup := func(row fleetclient.Row) bool { return row.Session.Group == label }
+			splitsGroup := len(before) > 0 && len(after) > 0 && before[len(before)-1].Session.Group == after[0].Session.Group
+			if splitsGroup || slices.ContainsFunc(before, sameGroup) || slices.ContainsFunc(after, sameGroup) {
+				neutralGuest = m.cursor
+			}
+		}
+	}
 	for index, row := range m.rows {
 		layout.name = max(layout.name, ansi.StringWidth(attention.SingleLine(row.Session.Name)))
-		layout.headings[index] = m.opensGroup(index)
+		if m.view.kind == viewAll && index != neutralGuest {
+			layout.headings[index] = previous < 0 || m.rows[previous].Session.Group != row.Session.Group
+			previous = index
+		}
 	}
 	layout.name = min(layout.name, 28)
 	return layout
@@ -124,28 +142,8 @@ func (m *model) fitViewports() {
 	layout := m.tableLayout(m.width - 2)
 	m.top = min(max(0, m.top), m.cursor)
 	height := m.height - 2 - len(m.footerLines())
-	if height < 1 {
-		m.top = m.cursor
-		return
-	}
-	if layout.viewport(0, height).end == len(m.rows) {
-		m.top = 0
-		return
-	}
-	end := layout.viewport(m.top, height).end
-	anchor := m.cursor
-	if end == len(m.rows) {
-		anchor = end - 1
-	} else if m.cursor < end {
-		return
-	}
-	// Choose the earliest top whose actual forward plan includes the anchor;
-	// group boundaries and the optional first heading need no backward credits.
-	for first := 0; first <= m.cursor; first++ {
-		if layout.viewport(first, height).end > anchor {
-			m.top = first
-			return
-		}
+	for m.top < m.cursor && layout.viewport(m.top, height).end <= m.cursor {
+		m.top++
 	}
 }
 
@@ -163,7 +161,7 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 			lines = append(lines, faint.Styled(heading))
 		}
 		gutter, nameStyle := "  ", plain
-		if !row.Available {
+		if !m.rowAttachable(row) {
 			nameStyle = faint
 		}
 		if index == m.cursor {
@@ -172,9 +170,17 @@ func (m *model) tableLines(layout tableLayout, viewport tableViewport) []string 
 		name := attention.SingleLine(row.Session.Name)
 		name = ansi.Truncate(name, layout.name, "…")
 		printed, statusStyle := m.tableStatus(row)
+		guest := m.guest && index == m.cursor
+		if guest {
+			printed, statusStyle = m.guestNote(row), muted.Italic(true)
+		}
 		printed = attention.SingleLine(printed)
 		line := gutter + nameStyle.Styled(name) + strings.Repeat(" ", max(0, layout.name-ansi.StringWidth(name)))
 		line += "  " + statusStyle.Styled(printed)
+		if guest {
+			lines = append(lines, line)
+			continue
+		}
 		used := 2 + layout.name + 2 + ansi.StringWidth(printed)
 		provider, profile, footer := m.rowMetadata(row)
 		metadata := []string{}

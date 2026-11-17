@@ -247,11 +247,12 @@ func (m *model) noticeLines(width int) []string {
 				suffix += "; showing its last observation"
 			}
 			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
-		} else if checking(peer) {
+		} else if checking(peer) && len(peer.Sessions) == 0 {
 			suffix := ": checking inventory"
 			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
 			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
 		}
+		peer.OK = peer.Error == nil
 		text, failure := fleetview.RecoveryNotice(peer)
 		if text != "" {
 			style := muted
@@ -287,7 +288,7 @@ func (m *model) hints() [][]hint {
 			return [][]hint{keys}
 		}
 		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && row.Session.NameMode == "manual" {
+		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && m.rowAvailable(*row) && row.Session.NameMode == "manual" {
 			keys = append(keys, hint{"ctrl-a", "use automatic title"})
 		}
 		return [][]hint{keys}
@@ -314,7 +315,7 @@ func (m *model) hints() [][]hint {
 		return [][]hint{hints}
 	case "details":
 		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
+		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && m.rowAvailable(*row) && (m.metadata == nil || !m.metadata.checking) {
 			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
 		}
 		return [][]hint{keys}
@@ -323,14 +324,17 @@ func (m *model) hints() [][]hint {
 	}
 	session := []hint{}
 	global := []hint{{"n", "quick terminal"}, {"N", "new terminal options"}}
-	if row := m.selectedRow(); row != nil && row.Available {
-		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
-		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
-		if !m.busy && row.Session.Connection == nil {
-			global = append(global, hint{"T", "new terminal here"})
+	if row := m.selectedRow(); row != nil {
+		if m.rowAttachable(*row) {
+			session = append(session, hint{"enter", "attach"})
 		}
-	} else if row != nil {
 		session = append(session, hint{"space", "info"})
+		if m.rowAvailable(*row) {
+			session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
+			if !m.busy && row.Session.Connection == nil {
+				global = append(global, hint{"T", "new terminal here"})
+			}
+		}
 	}
 	global = append(global, hint{"u", "usage"}, hint{"q", "quit"})
 	return [][]hint{session, global}
@@ -458,7 +462,7 @@ func (m *model) bodyLines(height int) []string {
 			status = "saving; delivery will be reported"
 		case editor.checking:
 			status = "checking inventory; escape returns to info"
-		case current == nil || !current.Available:
+		case current == nil || !m.rowAvailable(*current):
 			status = "session unavailable; save disabled"
 		case m.page == "group-edit":
 			value, err := group.ParseDraft(editor.draft)
@@ -654,7 +658,7 @@ func (m *model) detailLines() []string {
 	axis := 16
 	for index := range facts {
 		label := facts[index][0]
-		if row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
+		if row != nil && m.rowAvailable(*row) && (m.metadata == nil || !m.metadata.checking) {
 			if label == "name" {
 				label += " [r]"
 			} else if label == "group" {
@@ -688,19 +692,13 @@ func (m *model) pageCapacity() int {
 	return max(1, m.height-4-len(m.footerLines()))
 }
 
-func (m *model) headings() bool {
-	return m.view.kind == viewAll
-}
-
-// opensGroup reports whether a group heading precedes this row.
-func (m *model) opensGroup(index int) bool {
-	return m.headings() && (index == 0 || m.rows[index].Session.Group != m.rows[index-1].Session.Group)
-}
-
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a good read of the hub's notification state.
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	view := fleetview.ProjectStatus(row.Session, row.Available, m.notificationQualified && m.notificationReady(row.Session))
+	view := fleetview.ProjectStatus(row.Session, row.Available || m.hostChecking(row), row.Available && m.notificationQualified && m.notificationReady(row.Session))
+	if m.heldReady(row) {
+		view.Label, view.Tone, view.Queue, view.QueueDetail = "ready", api.ToneReady, fleetview.QueueReady, ""
+	}
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail
@@ -711,11 +709,12 @@ func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
 // hostChecking reports a row without remote actions whose host has not failed a
 // read: its host is unobserved or being re-read after a metadata change.
 func (m *model) hostChecking(row fleetclient.Row) bool {
-	if row.Available {
-		return false
-	}
 	index := m.peerIndex(row.Machine)
-	return index < 0 || m.peers[index].Error == nil
+	return !row.Available && index >= 0 && checking(m.peers[index])
+}
+
+func (m *model) rowAvailable(row fleetclient.Row) bool {
+	return row.Available && !m.heldReady(row)
 }
 
 // tableStatus is a row's status cell. a checking row makes no status claim and
@@ -723,7 +722,7 @@ func (m *model) hostChecking(row fleetclient.Row) bool {
 // so a row whose host failed a read reads its last observation. an errored
 // host also keeps its notice.
 func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
-	if m.hostChecking(row) {
+	if m.hostChecking(row) || m.heldReady(row) {
 		return "checking", faint
 	}
 	view := m.statusView(row)
