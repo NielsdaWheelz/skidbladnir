@@ -225,7 +225,7 @@ func (m *model) keys() []key {
 				if row.Session.Connection != nil {
 					return row.Session.Name + " on " + row.Label + " has a remote connection; use n to choose a machine."
 				}
-				return ""
+				return m.ground.attachRefusal("T")
 			},
 			act: func(m *model) tea.Cmd {
 				row := m.selectedRow()
@@ -257,7 +257,10 @@ func rowGuard(action string, attach bool) func(*model) string {
 		if row == nil {
 			return "no session selected; nothing was sent."
 		}
-		if attach && m.rowAttachable(*row) || !attach && m.rowAvailable(*row) {
+		if attach && m.rowAttachable(*row) {
+			return m.ground.attachRefusal("enter")
+		}
+		if !attach && m.rowAvailable(*row) {
 			return ""
 		}
 		return m.rowRefusal(*row, action)

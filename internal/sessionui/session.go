@@ -15,6 +15,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
+	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 type inventoryMsg struct {
@@ -45,6 +47,7 @@ type searchMsg struct {
 }
 type attachedMsg struct{}
 type model struct {
+	ground                    ground
 	ctx                       context.Context
 	client                    *fleetclient.Client
 	fleetPending              bool
@@ -95,7 +98,15 @@ func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File
 	browserContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m := newModel(browserContext, client, input, output)
-	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output)).Run()
+	m.ground.noColor = os.Getenv("NO_COLOR") != ""
+	if m.ground.noColor {
+		m.ground.profile = colorprofile.ASCII
+		m.ground.note = "colours: plain; NO_COLOR requested."
+	} else {
+		// The device reply can arrive before Bubble Tea's initial profile message.
+		m.ground.profile = colorprofile.Detect(output, os.Environ())
+	}
+	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output), tea.WithColorProfile(m.ground.profile)).Run()
 	return err
 }
 func newModel(ctx context.Context, client *fleetclient.Client, input, output *os.File) *model {
@@ -108,7 +119,11 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, inventoryLanes: make([]inventoryLane, len(peers)), contextLanes: make([]lane, len(peers))}
 }
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(false), m.refreshUsage(false), tick())
+	var query tea.Cmd
+	if !m.ground.noColor {
+		query = tea.Raw(groundQuery)
+	}
+	return tea.Batch(query, m.refresh(false), m.refreshUsage(false), tick())
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
@@ -145,6 +160,36 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		returned = m.refresh(true)
 	}
 	switch message := message.(type) {
+	case tea.RawMsg:
+		if m.ground.note == "" && message.Msg == groundQuery {
+			ctx := m.ctx
+			command = func() tea.Msg {
+				timer := time.NewTimer(time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					return groundExpired{}
+				case <-ctx.Done():
+					return nil
+				}
+			}
+		}
+	case tea.ForegroundColorMsg:
+		if m.ground.note == "" {
+			m.ground.ink = message.Color
+		}
+	case tea.BackgroundColorMsg:
+		if m.ground.note == "" {
+			m.ground.base = message.Color
+		}
+	case uv.PrimaryDeviceAttributesEvent:
+		if m.ground.note == "" {
+			m.ground.settle(true)
+		}
+	case groundExpired:
+		if m.ground.note == "" {
+			m.ground.settle(false)
+		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = message.Width, message.Height
 	case tea.BlurMsg:

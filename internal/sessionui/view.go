@@ -3,7 +3,6 @@ package sessionui
 import (
 	"fmt"
 	"image/color"
-	"os"
 	"strconv"
 	"strings"
 
@@ -45,6 +44,7 @@ const (
 )
 
 type span struct {
+	background   color.Color
 	text         string
 	role         role
 	bold, italic bool
@@ -57,6 +57,15 @@ func (m *model) renderLine(l line) string {
 	styles := [...]ansi.Style{plain, faint, muted, here, ember, moss, frost, wordmark}
 	for _, part := range l {
 		style := styles[part.role]
+		if m.ground.raise != nil {
+			style = plain
+			if pigment := m.ground.pigments[part.role]; pigment != nil {
+				style = style.ForegroundColor(pigment)
+			}
+		}
+		if part.background != nil {
+			style = style.BackgroundColor(part.background)
+		}
 		if part.bold {
 			style = style.Bold()
 		}
@@ -121,7 +130,7 @@ func (m *model) View() tea.View {
 		}
 	}
 	content := strings.Join(lines, "\n")
-	if os.Getenv("NO_COLOR") != "" {
+	if m.ground.noColor {
 		content = ansi.Strip(content)
 	}
 	view := tea.NewView(content)
@@ -152,7 +161,7 @@ func (m *model) header() line {
 		}
 	}
 	mark := line{{text: "▜", role: bronzeRole}, {text: "skid"}, {text: "▛", role: bronzeRole}, {text: " "}}
-	return append(mark, strip(tabs, current, m.width-9)...)
+	return append(mark, strip(tabs, current, m.width-9, m.ground.raise)...)
 }
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
@@ -165,7 +174,7 @@ type tab struct{ fixed, label string }
 // label whole, so stepping between groups keeps the cap. below the floor, the
 // groups farthest from the current view hide behind counted markers. the
 // current label shows whole up to 24 cells.
-func strip(tabs []tab, current, room int) line {
+func strip(tabs []tab, current, room int, raise color.Color) line {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
 			return min(ansi.StringWidth(t.label), limit)
@@ -236,7 +245,7 @@ func strip(tabs []tab, current, room int) line {
 			text = ansi.Truncate(t.label, size, "…")
 		}
 		if index == current {
-			result = append(result, span{text: "‹", role: goldRole}, span{text: text, bold: true}, span{text: "›", role: goldRole})
+			result = append(result, span{text: "‹", role: goldRole, background: raise}, span{text: text, bold: true, background: raise}, span{text: "›", role: goldRole, background: raise})
 		} else {
 			result = append(result, span{text: " " + text + " "})
 		}

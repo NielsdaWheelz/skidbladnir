@@ -74,6 +74,10 @@ func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
 		if peer == nil || !peer.OK {
 			return nil
 		}
+		if refusal := m.ground.attachRefusal("enter"); refusal != "" {
+			m.fail(refusal)
+			return nil
+		}
 		request := m.pending
 		m.page = ""
 		m.inform("opening terminal on " + request.Machine + "…")
@@ -135,6 +139,10 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			if m.targetChecking(m.form[formMachine]) {
 				m.inform("checking inventory; refresh before creating")
 			}
+			return nil
+		}
+		if refusal := m.ground.attachRefusal("enter"); refusal != "" {
+			m.fail(refusal)
 			return nil
 		}
 		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[formMachine], Profile: m.form[formLaunch], Name: m.form[formName], CWD: cwd, Group: label}

@@ -318,6 +318,9 @@ func (m *model) tableLines(f frame) []line {
 				}
 			}
 		}
+		if selected {
+			finished = finished.filled(m.ground.raise, f.width)
+		}
 		lines[placement.line] = finished
 	}
 	return lines
