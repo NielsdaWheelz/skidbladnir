@@ -37,8 +37,8 @@ type notificationMsg struct {
 type fleetMsg struct{}
 type tickMsg struct{}
 type actionMsg struct {
-	machine string
-	result  fleetclient.Result
+	machine, subject string
+	result           fleetclient.Result
 }
 type searchMsg struct {
 	machine  string
@@ -47,31 +47,28 @@ type searchMsg struct {
 }
 type attachedMsg struct{}
 type model struct {
-	ground                    ground
-	ctx                       context.Context
-	client                    *fleetclient.Client
-	fleetPending              bool
-	input, output             *os.File
-	peers                     []fleetclient.Peer
-	rows                      []fleetclient.Row
-	cursor                    int
-	guest                     bool
-	busy                      bool
-	width, height             int
-	notice, page              string
-	noticeFailure             bool
-	offset                    int
-	pending                   fleetclient.Request
-	pendingLabel, pendingName string
-	form                      [5]string
-	field                     int
-	groupSelection            groupSelection
-	view                      selectedView
-	metadata                  *metadataEditor
-	top                       int
-	// pageRow is info's captured lifetime as last observed; refresh follows it
-	// without retargeting.
-	pageRow               fleetclient.Row
+	ground                ground
+	ctx                   context.Context
+	client                *fleetclient.Client
+	fleetPending          bool
+	input, output         *os.File
+	peers                 []fleetclient.Peer
+	rows                  []fleetclient.Row
+	cursor                int
+	guest                 bool
+	busy                  bool
+	width, height         int
+	notice, page          string
+	noticeFailure         bool
+	offset                int
+	pending               fleetclient.Request
+	fold                  fold
+	form                  [5]string
+	field                 int
+	groupSelection        groupSelection
+	view                  selectedView
+	metadata              *metadataEditor
+	top                   int
 	searchRevision        int
 	searchCancel          context.CancelFunc
 	searchState           directorySearchState
@@ -127,7 +124,7 @@ func (m *model) Init() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
-func (m *model) execute(request fleetclient.Request) tea.Cmd {
+func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 	m.pending = request
 	m.busy = true
 	machine := request.Ref.Machine
@@ -143,7 +140,7 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	}
 	ctx, client := m.ctx, m.client
 	return func() tea.Msg {
-		return actionMsg{machine: machine, result: client.Execute(ctx, request)}
+		return actionMsg{machine: machine, subject: subject, result: client.Execute(ctx, request)}
 	}
 }
 
@@ -247,9 +244,6 @@ func (m *model) settle(previousPage string, wasVisible bool) tea.Cmd {
 	switch m.page {
 	case "usage":
 		m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity(f.body)))
-	case "confirm":
-		_, facts := m.confirmationContent()
-		m.offset = min(max(0, m.offset), max(0, len(facts)-m.pageCapacity(f.body)))
 	case "":
 		m.top = f.top
 	}
@@ -296,7 +290,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 	}
 	if !result.OK {
 		m.invalidateAccess(machine, result.Error)
-		m.onActionFailure(operation, result.Error)
+		m.onActionFailure(operation, message.subject, result.Error)
 		refresh := m.refreshMutation(index)
 		if machine != message.machine {
 			if actual := m.peerIndex(machine); actual >= 0 {
@@ -307,7 +301,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 	}
 	switch operation {
 	case "start", "shell":
-		m.page = ""
+		m.page, m.fold = "", fold{}
 		value := result.Value.(fleetclient.ObservedSession)
 		if createdIndex := m.peerIndex(value.Machine); createdIndex >= 0 {
 			return m.adoptCreated(createdIndex, value)
@@ -316,7 +310,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.metadata.checking = true
 		m.metadata.acknowledged = true
 		m.invalidatePendingPeer()
-		m.inform("metadata saved; checking inventory")
+		m.inform(message.subject + ": metadata saved; checking inventory")
 	case "close":
 		receipt := result.Value.(api.CloseResult)
 		var text string
@@ -328,7 +322,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		default:
 			text = "interrupt key sent; terminal closed. work shared elsewhere or running remotely may continue."
 		}
-		text = m.pendingName + " on " + m.pendingLabel + ": " + text
+		text = message.subject + ": " + text
 		if result.ExitCode("close") != 0 {
 			m.fail(text)
 		} else {
@@ -336,7 +330,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		}
 	default:
 		receipt := result.Value.(api.WriteResult)
-		text := fleetview.WriteText(operation, receipt)
+		text := message.subject + ": " + fleetview.WriteText(operation, receipt)
 		if receipt.Outcome == "unknown" {
 			m.fail(text)
 		} else {
@@ -346,13 +340,10 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 	return m.refreshMutation(index)
 }
 
-func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) {
-	text := fleetview.ErrorMessage(*failure, m.pending)
-	if operation == "start" {
-		text = m.pending.Machine + ": " + text
-		if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
-			m.focusForm(formDirectory)
-		}
+func (m *model) onActionFailure(operation, subject string, failure *fleetclient.Failure) {
+	text := subject + ": " + fleetview.ErrorMessage(*failure, m.pending)
+	if operation == "start" && m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
+		m.focusForm(formDirectory)
 	}
 	m.fail(text)
 	if operation == "group" || operation == "rename" {
@@ -470,6 +461,7 @@ func (m *model) selectedRow() *fleetclient.Row {
 
 // enter pauses the browser while this exact terminal owns input and output.
 func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
+	m.fold = fold{}
 	row := m.rowForReference(ref)
 	visit := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output, name: row.Session.Name, machine: row.Label}
 	m.attachment = visit

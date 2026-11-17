@@ -16,11 +16,8 @@ func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
 	if m.busy || m.tooSmall() {
 		return nil
 	}
-	if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking && !m.metadata.saveFocused {
-		m.metadata.draft += message.Content
-		if m.page == "group-edit" {
-			m.metadata.selection.reset(m.metadata.draft, m.groupChoices(m.metadata.draft))
-		}
+	if (m.fold.kind == foldGroup || m.fold.kind == foldRename) && !m.metadata.checking && !m.metadata.saveFocused {
+		m.editMetadataText(m.metadata.draft + message.Content)
 	}
 	if m.page == "create" && m.field >= formName && m.field < formCreate {
 		if m.field == formDirectory || m.field == formGroup {
@@ -38,60 +35,51 @@ func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
 	return nil
 }
 
-// onKey refuses keys while an action is in flight, quits on ctrl-c from any
-// page, and below the minimum size admits only each page's way out.
+// onKey applies the same admission rule used by the hint and verdict.
 func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
-	key := message.String()
+	pressed := message.String()
 	if m.busy {
 		m.inform("operation in flight; delivery will be reported")
 		return nil
 	}
-	if key == "ctrl+c" {
+	if pressed == "ctrl+c" {
 		return tea.Quit
 	}
-	if m.tooSmall() {
-		cancel := key == "esc"
-		switch m.page {
-		case "details", "usage", "quick-create":
-			cancel = cancel || key == "q"
-		case "confirm":
-			cancel = cancel || key == "q" || key == "n"
-		case "keys":
-			cancel = cancel || key == "q" || key == "?"
+
+	switch m.page {
+	case "create", "quick-create", "usage":
+		if m.tooSmall() && pressed != "esc" && (m.page == "create" || pressed != "q") {
+			return nil
 		}
-		if !cancel {
+		if pressed == "ctrl+r" {
+			return tea.Batch(m.refresh(true), m.refreshUsage(true))
+		}
+		switch m.page {
+		case "create":
+			return m.editForm(message)
+		case "quick-create":
+			return m.editQuickCreate(message)
+		case "usage":
+			m.usageKey(pressed)
+			return nil
+		}
+	case "keys":
+		if pressed == "esc" || pressed == "?" || pressed == "q" {
+			m.page = ""
 			return nil
 		}
 	}
-	if m.page == "usage" {
-		m.usageKey(key)
-		return nil
-	}
-	if key == "ctrl+r" && m.page != "" && m.page != "keys" {
-		return m.refresh(true)
-	}
-	switch m.page {
-	case "group-edit", "name-edit":
-		return m.editMetadata(message)
-	case "confirm":
-		return m.confirmKey(key)
-	case "create":
-		return m.editForm(message)
-	case "quick-create":
-		return m.editQuickCreate(message)
-	case "details":
-		m.detailsKey(key)
-		return nil
-	}
-	if m.page == "keys" && (key == "esc" || key == "?" || key == "q") {
-		m.page = ""
-		return nil
-	}
 	for _, entry := range m.keys() {
-		if !slices.Contains(entry.keys, key) {
+		if !slices.Contains(entry.keys, pressed) {
 			continue
 		}
+		if m.tooSmall() && !entry.closes {
+			return nil
+		}
 		if refusal := entry.refusal(m); refusal != "" {
+			if entry.onRefusal != nil {
+				entry.onRefusal(m)
+			}
 			m.fail(refusal)
 			return nil
 		}
@@ -100,66 +88,28 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 		}
 		return entry.act(m)
 	}
-	return nil
-}
-
-func (m *model) confirmKey(key string) tea.Cmd {
-	switch key {
-	case "up", "k":
-		m.offset--
-	case "down", "j":
-		m.offset++
-	case "pgup":
-		m.offset -= m.pageCapacity(m.frame().body)
-	case "pgdown":
-		m.offset += m.pageCapacity(m.frame().body)
-	case "y", "enter":
-		current := m.rowForReference(m.pending.Ref)
-		if current == nil {
-			m.fail(m.pendingName + " on " + m.pendingLabel + " is no longer listed; nothing was sent.")
-			return nil
-		}
-		if !m.rowAvailable(*current) {
-			m.fail(m.rowRefusal(*current, m.pending.Operation))
-			return nil
-		}
-		request := m.pending
-		m.page = ""
-		m.inform(request.Operation + " in progress")
-		return m.execute(request)
-	case "n", "q", "esc":
-		m.page = ""
+	if m.tooSmall() {
+		return nil
+	}
+	if pressed == "ctrl+r" {
+		return tea.Batch(m.refresh(true), m.refreshUsage(true))
+	}
+	if (m.fold.kind == foldRename || m.fold.kind == foldGroup) &&
+		!m.metadata.checking && !m.metadata.saveFocused && message.Text != "" {
+		m.editMetadataText(m.metadata.draft + message.Text)
 	}
 	return nil
-}
-
-func (m *model) detailsKey(key string) {
-	switch key {
-	case "r":
-		m.openMetadata("rename")
-	case "g":
-		m.openMetadata("group")
-	case "q", "esc":
-		m.page = ""
-	case "up", "k":
-		m.offset = max(0, m.offset-1)
-	case "down", "j":
-		m.offset = min(max(0, len(m.detailLines())-m.pageCapacity(m.frame().body)), m.offset+1)
-	case "pgup":
-		m.offset = max(0, m.offset-m.pageCapacity(m.frame().body))
-	case "pgdown":
-		m.offset = min(max(0, len(m.detailLines())-m.pageCapacity(m.frame().body)), m.offset+m.pageCapacity(m.frame().body))
-	}
 }
 
 type key struct {
-	keys        []string
-	show, label string
-	group       string
-	rank        int
-	keep        bool
-	can         func(*model) string
-	act         func(*model) tea.Cmd
+	keys         []string
+	show, label  string
+	group        string
+	rank         int
+	keep, closes bool
+	can          func(*model) string
+	onRefusal    func(*model)
+	act          func(*model) tea.Cmd
 }
 
 func (k key) refusal(m *model) string {
@@ -169,8 +119,32 @@ func (k key) refusal(m *model) string {
 	return ""
 }
 
-// The table is the authority for input, visible hints and the key map.
 func (m *model) keys() []key {
+	switch m.fold.kind {
+	case foldOpen:
+		return m.openKeys()
+	case foldConfirm:
+		return []key{
+			{keys: []string{"enter", "y"}, show: "enter", label: "send", rank: 1,
+				can: (*model).confirmRefusal,
+				act: func(m *model) tea.Cmd {
+					question := m.fold
+					m.fold = fold{}
+					subject := question.name + " on " + question.machine
+					m.inform(subject + ": " + question.request.Operation + " in progress")
+					return m.execute(question.request, subject)
+				}},
+			{keys: []string{"esc", "n", "q"}, show: "escape", label: "cancel", keep: true, closes: true,
+				act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
+		}
+	case foldRename, foldGroup:
+		return m.metadataKeys()
+	}
+	return m.tableKeys()
+}
+
+// The table is the authority for input, visible hints and the key map.
+func (m *model) tableKeys() []key {
 	defaultIndex := m.peerIndex(m.client.DefaultMachine().Handle)
 	return []key{
 		{keys: []string{"enter"}, show: "enter", label: "attach", group: "session", rank: 1,
@@ -184,7 +158,7 @@ func (m *model) keys() []key {
 				return ""
 			},
 			act: func(m *model) tea.Cmd {
-				m.page, m.offset, m.pageRow = "details", 0, *m.selectedRow()
+				m.fold = fold{kind: foldOpen}
 				return nil
 			}},
 		{keys: []string{"tab"}, show: "tab", label: "next needing input", group: "session", rank: 3,
@@ -230,7 +204,7 @@ func (m *model) keys() []key {
 			act: func(m *model) tea.Cmd {
 				row := m.selectedRow()
 				m.inform("opening terminal on " + row.Label + "…")
-				return m.execute(fleetclient.Request{Operation: "shell", Ref: row.Session.Ref.Reference})
+				return m.execute(fleetclient.Request{Operation: "shell", Ref: row.Session.Ref.Reference}, row.Session.Name+" on "+row.Label)
 			}},
 		{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: 10,
 			act: func(m *model) tea.Cmd { m.page, m.offset = "usage", 0; return nil }},
@@ -270,9 +244,10 @@ func rowGuard(action string, attach bool) func(*model) string {
 func confirmAction(operation string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		row := m.selectedRow()
-		m.pending = fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference}
-		m.pendingName, m.pendingLabel = row.Session.Name, row.Label
-		m.page, m.offset = "confirm", 0
+		m.fold = fold{
+			kind: foldConfirm, request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference},
+			name: row.Session.Name, machine: row.Label,
+		}
 		return nil
 	}
 }
@@ -300,6 +275,9 @@ func markedGuard(direction int) func(*model) string {
 func markedMove(direction int) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		m.selectRow(m.nextMarked(direction))
+		if m.fold.kind == foldOpen {
+			m.fold.facts = false
+		}
 		return nil
 	}
 }
@@ -312,6 +290,7 @@ func (m *model) keyHints(width int) line {
 		return line{{text: "escape", bold: true}, {text: " close", role: quietRole}}
 	}
 	entries := m.keys()
+	slices.SortStableFunc(entries, func(a, b key) int { return a.rank - b.rank })
 	for _, entry := range entries {
 		if entry.keep {
 			width -= ansi.StringWidth(entry.show+" "+entry.label) + 2
@@ -348,7 +327,7 @@ func (m *model) keyMap() []line {
 		columns[index] = append(columns[index], span{text: group, bold: true})
 	}
 	rows := 0
-	for _, entry := range m.keys() {
+	for _, entry := range m.tableKeys() {
 		if entry.show == "" {
 			continue
 		}
@@ -383,11 +362,16 @@ func (m *model) rowAttachable(row fleetclient.Row) bool {
 }
 
 func (m *model) rowRefusal(row fleetclient.Row, action string) string {
-	reason := "unavailable"
-	if m.rowForReference(row.Session.Ref.Reference) == nil {
-		reason = "no longer listed"
-	} else if m.hostChecking(row) || m.heldReady(row) {
-		reason = "being checked"
-	}
+	reason := m.rowUnavailability(m.rowForReference(row.Session.Ref.Reference))
 	return row.Session.Name + " on " + row.Label + " is " + reason + "; " + action + " is disabled."
+}
+
+func (m *model) rowUnavailability(row *fleetclient.Row) string {
+	if row == nil {
+		return "no longer listed"
+	}
+	if m.hostChecking(*row) || m.heldReady(*row) {
+		return "being checked"
+	}
+	return "unavailable"
 }

@@ -34,14 +34,15 @@ type tableColumns struct {
 }
 
 type tablePlacement struct {
-	index, line int
-	heading     bool
+	index, line, heading int
 }
 
 type frame struct {
 	width, body, top int
 	columns          tableColumns
 	rows             []tablePlacement
+	foldAt           int
+	fold             []line
 	notices, hints   []line
 	rule             line
 }
@@ -54,8 +55,8 @@ func (m *model) frame() frame {
 	} else {
 		f.hints = keyLines(f.width, m.pageHints()...)
 	}
-	// Keep a table row even when the lowest-priority notices cannot all fit.
-	f.notices = f.notices[:min(len(f.notices), max(0, m.height-4-len(f.hints)))]
+	// Leave room for the selected row and an inline fold on either key state.
+	f.notices = f.notices[:min(len(f.notices), max(0, m.height-5-len(f.hints)))]
 	f.body = m.height - 3 - len(f.notices) - len(f.hints)
 	caption := m.pageCaption(f.width)
 	if m.page == "" {
@@ -70,7 +71,10 @@ func (m *model) frame() frame {
 				}
 				f.top++
 			}
-			hidden := f.top > 0 || f.rows[len(f.rows)-1].index+1 < len(m.rows)
+			if m.fold.kind != foldNone {
+				f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), f.width-3))
+			}
+			hidden := f.rows[0].index > 0 || f.rows[len(f.rows)-1].index+1 < len(m.rows)
 			caption = m.tableCaption(f, hidden)
 		}
 	}
@@ -119,13 +123,14 @@ func tableViewport(first, height int, headings []bool) []tablePlacement {
 	var rows []tablePlacement
 	y := 0
 	for index := first; index < len(headings); index++ {
-		heading := headings[index] && (index != first || height > 1)
+		heading := -1
 		rowLine := y
-		if heading {
+		if headings[index] && (index != first || height > 1) {
 			rowLine++
 			if index != first {
 				rowLine++
 			}
+			heading = rowLine - 1
 		}
 		if rowLine >= height {
 			break
@@ -250,13 +255,13 @@ func (m *model) tableLines(f frame) []line {
 	for _, placement := range f.rows {
 		index := placement.index
 		row := m.rows[index]
-		if placement.heading {
+		if placement.heading >= 0 {
 			heading := ansi.Truncate(attention.SingleLine(fleetview.GroupHeading(row.Session.Group)), f.width, "…")
 			role := inkRole
 			if row.Session.Group.IsUnassigned() {
 				role = quietRole
 			}
-			lines[placement.line-1] = line{{text: heading, role: role, bold: true}}
+			lines[placement.heading] = line{{text: heading, role: role, bold: true}}
 		}
 		selected := index == m.cursor
 		status := m.statusView(row)

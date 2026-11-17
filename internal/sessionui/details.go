@@ -32,22 +32,30 @@ func (m *model) rowFooter(row fleetclient.Row) string {
 func (m *model) details(row *fleetclient.Row) [][2]string {
 	value := row.Session
 	current := m.current(row)
-	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetview.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine}, {"terminal handle", value.TerminalHandle}}
-	switch current.Kind {
-	case "remote":
-		facts = append(facts, [2]string{"running on", current.Label})
-	case "remoteUnknown":
-		facts = append(facts, [2]string{"running on", "remote context unknown"})
-	}
-	if current.Kind != "remoteUnknown" {
-		cwd := current.CWD
-		if cwd == "" {
-			cwd = "directory unavailable"
+	view := m.statusView(*row)
+	availability := "available"
+	if !m.rowAvailable(*row) {
+		availability = "unavailable"
+		if m.rowForReference(row.Session.Ref.Reference) == nil {
+			view = fleetview.ProjectStatus(row.Session, false, false)
+		} else if m.hostChecking(*row) || m.heldReady(*row) {
+			availability, view.Detail = "checking", "checking"
 		}
-		facts = append(facts, [2]string{"directory", cwd})
 	}
-	facts = append(facts, [2]string{"command", value.ActiveCommand},
-		[2]string{"attached clients", strconv.Itoa(value.AttachedClients)})
+	machine, cwd := current.Label, current.CWD
+	if current.Kind == "remoteUnknown" {
+		machine = "remote context unknown"
+	}
+	if cwd == "" {
+		cwd = "directory unavailable"
+	}
+	facts := [][2]string{
+		{"state", view.Detail}, {"availability", availability}, {"name", value.Name},
+		{"running on", machine}, {"directory", cwd}, {"terminal handle", value.TerminalHandle},
+		{"naming", value.NameMode}, {"group", fleetview.GroupHeading(value.Group)},
+		{"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine},
+		{"command", value.ActiveCommand}, {"attached clients", strconv.Itoa(value.AttachedClients)},
+	}
 	if current.Agent == nil && current.Kind != "remoteUnknown" {
 		facts = append(facts, [2]string{"agent", "not detected"})
 	}
@@ -74,19 +82,11 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 		facts = append(facts, [2]string{"", explanation})
 	}
 
-	view := m.statusView(*row)
-	facts = append(facts, [2]string{"state", view.Detail}, [2]string{"status reason", view.Reason})
+	facts = append(facts, [2]string{"status reason", view.Reason})
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
 	facts = append(facts, [2]string{"observed", row.ObservedAt}, [2]string{"reference", value.Ref.Encode()})
-	if !m.rowAvailable(*row) {
-		availability := "unavailable"
-		if (m.hostChecking(*row) || m.heldReady(*row)) && m.rowForReference(row.Session.Ref.Reference) != nil {
-			availability = "checking"
-		}
-		facts = append(facts, [2]string{"availability", availability})
-	}
 	return facts
 }
 
@@ -103,15 +103,4 @@ func (m *model) rowForReference(ref fleetclient.Reference) *fleetclient.Row {
 		}
 	}
 	return nil
-}
-
-// refreshInfo follows info's lifetime through each inventory. A lifetime that
-// leaves inventory keeps its last observed facts and their time,
-// labelled unavailable.
-func (m *model) refreshInfo() {
-	if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil {
-		m.pageRow = *row
-		return
-	}
-	m.pageRow.Available = false
 }

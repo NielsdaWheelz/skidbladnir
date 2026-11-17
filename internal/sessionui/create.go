@@ -81,7 +81,7 @@ func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
 		request := m.pending
 		m.page = ""
 		m.inform("opening terminal on " + request.Machine + "…")
-		return m.execute(request)
+		return m.execute(request, request.Machine)
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		if m.form[formLaunch] == "terminal" {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
 		}
-		return m.execute(request)
+		return m.execute(request, request.Machine)
 	case "shift+tab":
 		return m.focusForm((m.field + formCreate) % (formCreate + 1))
 	case "left", "right":

@@ -104,6 +104,7 @@ func (m *model) selectView(view selectedView) {
 	if m.view == view {
 		return
 	}
+	m.fold = fold{}
 	m.view = view
 	m.rebuild()
 	// keep a surviving selection; otherwise begin at the first row of the view.

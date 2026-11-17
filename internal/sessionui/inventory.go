@@ -120,9 +120,6 @@ func (m *model) afterInventory(machine string, generation uint64) {
 			m.reconcileMetadata()
 		}
 	}
-	if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
-		m.refreshInfo()
-	}
 }
 
 func (m *model) initialInventorySettled() bool {
@@ -184,9 +181,6 @@ func (m *model) acceptContext(message contextMsg) tea.Cmd {
 	if current && m.peers[index].OK && m.observing() {
 		m.peers[index].Sessions = message.peer.Sessions
 		m.rebuild()
-		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
-			m.refreshInfo()
-		}
 	}
 	return m.readContext(index)
 }

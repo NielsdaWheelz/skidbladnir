@@ -10,7 +10,7 @@ import (
 )
 
 // A metadata editor owns its draft and exact target through post-write reads,
-// including when escape returns to info before reconciliation completes.
+// including when escape returns to the open row before reconciliation completes.
 type metadataEditor struct {
 	request      fleetclient.Request
 	draft        string
@@ -22,41 +22,36 @@ type metadataEditor struct {
 	failure      *fleetclient.Failure
 }
 
-func (m *model) openMetadata(operation string) {
-	if m.metadata != nil && m.metadata.checking {
-		m.inform("checking previous metadata change; refresh before editing")
-		return
-	}
-	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
-	if row == nil {
-		m.fail(m.rowRefusal(m.pageRow, operation))
-		return
-	}
-	if !m.rowAvailable(*row) {
-		m.fail(m.rowRefusal(*row, operation))
-		return
-	}
-	if m.metadata != nil && m.metadata.request.Operation == operation {
-		if m.metadata.request.Ref.SessionEqual(row.Session.Ref.Reference) {
-			m.page = "group-edit"
-			if operation == "rename" {
-				m.page = "name-edit"
-			}
-			if m.metadata.acknowledged {
-				m.fail("metadata changed after saving. review and save again.")
-			} else if m.metadata.failure != nil {
-				m.fail(fleetview.ErrorMessage(*m.metadata.failure, m.metadata.request))
-			}
-			return
+func editGuard(operation string) func(*model) string {
+	return func(m *model) string {
+		if m.metadata != nil && m.metadata.checking {
+			row := m.selectedRow()
+			return row.Session.Name + " on " + row.Label + ": checking previous metadata change; refresh before editing"
 		}
+		return rowGuard(operation, false)(m)
+	}
+}
+
+func (m *model) openMetadata(operation string) {
+	row := m.selectedRow()
+	m.fold.kind = foldGroup
+	if operation == "rename" {
+		m.fold.kind = foldRename
+	}
+	if editor := m.metadata; editor != nil && editor.request.Operation == operation && editor.request.Ref.SessionEqual(row.Session.Ref.Reference) {
+		subject := row.Session.Name + " on " + row.Label + ": "
+		if editor.acknowledged {
+			m.fail(subject + "metadata changed after saving. review and save again.")
+		} else if editor.failure != nil {
+			m.fail(subject + fleetview.ErrorMessage(*editor.failure, editor.request))
+		}
+		return
 	}
 	editor := &metadataEditor{request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference}, draft: row.Session.Group.String()}
-	m.page = "group-edit"
 	if operation == "rename" {
 		naming := row.Session.Naming()
 		editor.request.ExpectedNaming = &naming
 		editor.draft = row.Session.Name
-		m.page = "name-edit"
 	} else {
 		editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
 	}
@@ -64,112 +59,124 @@ func (m *model) openMetadata(operation string) {
 	m.inform("")
 }
 
-func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
+func (m *model) metadataKeys() []key {
 	editor := m.metadata
-	if key.String() == "esc" {
-		m.page = "details"
-		if !editor.checking {
-			m.metadata = nil
-		}
-		return nil
-	}
+	entries := []key{{keys: []string{"esc"}, show: "escape", label: "open", keep: true, closes: true,
+		act: func(m *model) tea.Cmd {
+			m.fold.kind = foldOpen
+			if !editor.checking {
+				m.metadata = nil
+			}
+			return nil
+		}}}
 	if editor.checking {
-		return nil
+		return entries
 	}
-	previousDraft := editor.draft
-	if editor.request.Operation == "group" {
-		switch key.String() {
-		case "tab", "enter":
-			if !editor.saveFocused {
-				draft, err := editor.selection.accept(editor.draft, m.groupChoices(editor.draft))
-				if err != nil {
-					m.fail(group.ErrInvalid.Error())
-					return nil
+	save := func(automatic bool) key {
+		request, refusal, invalidGroup := m.metadataRequest(automatic)
+		entry := key{keys: []string{"enter", "ctrl+s"}, show: "enter", label: "save", rank: 1,
+			can: func(*model) string { return refusal },
+			act: func(m *model) tea.Cmd {
+				editor.request, editor.failure, editor.acknowledged = request, nil, false
+				row := m.selectedRow()
+				return m.execute(request, row.Session.Name+" on "+row.Label)
+			}}
+		if invalidGroup {
+			entry.onRefusal = func(*model) { editor.saveFocused = false }
+		}
+		return entry
+	}
+	commit := save(false)
+	if m.fold.kind == foldRename {
+		automatic := save(true)
+		automatic.keys, automatic.show, automatic.label, automatic.rank = []string{"ctrl+a"}, "ctrl-a", "use automatic title", 2
+		entries = append(entries, commit, automatic,
+			key{keys: []string{"ctrl+u"}, act: func(m *model) tea.Cmd { m.editMetadataText(""); return nil }})
+	} else {
+		toggle := key{keys: []string{"shift+tab"}, show: "shift-tab", label: "back", rank: 4,
+			act: func(m *model) tea.Cmd {
+				editor.saveFocused = !editor.saveFocused
+				if !editor.saveFocused {
+					editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
 				}
-				editor.draft, editor.saveFocused = draft, true
-				editor.selection.prefill(draft, m.groupChoices(draft))
 				return nil
-			}
-			if key.String() == "tab" {
-				editor.saveFocused = false
-				editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
-				return nil
-			}
-		case "shift+tab":
-			editor.saveFocused = !editor.saveFocused
-			if !editor.saveFocused {
-				editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
-			}
-			return nil
+			}}
+		if editor.saveFocused {
+			toggle.keys = append(toggle.keys, "tab")
+			return append(entries, toggle, commit)
 		}
-		if editor.saveFocused && key.String() != "enter" && key.String() != "ctrl+s" {
-			return nil
-		}
-	}
-	switch key.String() {
-	case "enter", "ctrl+s", "ctrl+a":
-		if editor.request.Operation == "group" {
-			if key.String() == "ctrl+a" {
-				return nil
-			}
-			label, err := group.ParseDraft(editor.draft)
-			if err != nil {
-				editor.saveFocused = false
-				m.fail(group.ErrInvalid.Error())
-				return nil
-			}
-			editor.request.Group = label
-		}
-		current := m.rowForReference(editor.request.Ref)
-		if current == nil {
-			m.fail(m.rowRefusal(m.pageRow, editor.request.Operation))
-			return nil
-		}
-		if !m.rowAvailable(*current) {
-			m.fail(m.rowRefusal(*current, editor.request.Operation))
-			return nil
-		}
-		if editor.request.Operation == "group" {
-			if current.Session.Group == editor.request.Group {
-				return nil
-			}
-		} else {
-			naming := fleetclient.Naming{Mode: "manual", Name: editor.draft}
-			if key.String() == "ctrl+a" {
-				if current.Session.NameMode != "manual" {
+		commit.keys, commit.show, commit.label = []string{"ctrl+s"}, "ctrl-s", "save draft"
+		choices := m.groupChoices(editor.draft)
+		draft, err := editor.selection.accept(editor.draft, choices)
+		entries = append(entries, toggle, commit,
+			key{keys: []string{"tab", "enter"}, show: "enter", label: "use and continue", rank: 2,
+				can: func(*model) string {
+					if err != nil {
+						return group.ErrInvalid.Error()
+					}
+					return ""
+				},
+				act: func(*model) tea.Cmd {
+					editor.draft, editor.saveFocused = draft, true
+					editor.selection.prefill(draft, choices)
 					return nil
-				}
-				naming = fleetclient.Naming{Mode: "automatic"}
-			} else if !fleetclient.ValidSessionName(editor.draft) {
-				m.fail(fleetview.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request))
-				return nil
-			}
-			if current.Session.Naming() == naming {
-				return nil
-			}
-			editor.request.Naming = &naming
-		}
-		editor.failure = nil
-		editor.acknowledged = false
-		return m.execute(editor.request)
-	case "ctrl+u":
-		editor.draft = ""
-	case "left", "right":
-		if editor.request.Operation == "group" {
-			editor.selection.cycle(m.groupChoices(editor.draft), key.String() == "left")
-		}
-	case "backspace":
-		if editor.draft != "" {
-			_, size := utf8.DecodeLastRuneInString(editor.draft)
-			editor.draft = editor.draft[:len(editor.draft)-size]
-		}
-	default:
-		editor.draft += key.Text
+				}},
+			key{keys: []string{"left"}, show: "←→", label: "choose", rank: 3,
+				act: func(*model) tea.Cmd { editor.selection.cycle(choices, true); return nil }},
+			key{keys: []string{"right"}, act: func(*model) tea.Cmd { editor.selection.cycle(choices, false); return nil }},
+			key{keys: []string{"ctrl+u"}, show: "ctrl-u", label: "unassigned", rank: 5,
+				act: func(m *model) tea.Cmd { m.editMetadataText(""); return nil }})
 	}
-	if editor.request.Operation == "group" && (editor.draft != previousDraft || key.String() == "ctrl+u") {
-		editor.selection.reset(editor.draft, m.groupChoices(editor.draft))
+	return append(entries,
+		key{keys: []string{"backspace"}, act: func(m *model) tea.Cmd {
+			_, bytes := utf8.DecodeLastRuneInString(editor.draft)
+			m.editMetadataText(editor.draft[:len(editor.draft)-bytes])
+			return nil
+		}})
+}
+
+func (m *model) editMetadataText(draft string) {
+	editor := m.metadata
+	editor.draft = draft
+	if m.fold.kind == foldGroup {
+		editor.selection.reset(draft, m.groupChoices(draft))
 	}
-	return nil
+}
+
+func (m *model) metadataRequest(automatic bool) (request fleetclient.Request, refusal string, invalidGroup bool) {
+	editor := m.metadata
+	request = editor.request
+	if editor.checking {
+		return request, "checking inventory", false
+	}
+	if m.fold.kind == foldGroup {
+		label, err := group.ParseDraft(editor.draft)
+		if err != nil {
+			return request, group.ErrInvalid.Error(), true
+		}
+		request.Group = label
+	}
+	current := m.rowForReference(request.Ref)
+	if current == nil || !m.rowAvailable(*current) {
+		return request, m.rowRefusal(*m.selectedRow(), "save"), false
+	}
+	if m.fold.kind == foldGroup {
+		if current.Session.Group == request.Group {
+			return request, "unchanged; save disabled", false
+		}
+		return request, "", false
+	}
+	naming := fleetclient.Naming{Mode: "manual", Name: editor.draft}
+	if automatic {
+		naming = fleetclient.Naming{Mode: "automatic"}
+	} else if !fleetclient.ValidSessionName(editor.draft) {
+		return request, fleetview.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, request), false
+	}
+	if automatic && current.Session.NameMode != "manual" || current.Session.Naming() == naming {
+		return request, "unchanged; save disabled", false
+	}
+	request.Naming = &naming
+	return request, "", false
 }
 
 func (m *model) reconcileMetadata() {
@@ -178,15 +185,16 @@ func (m *model) reconcileMetadata() {
 		return
 	}
 	row := m.rowForReference(editor.request.Ref)
-	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && editor.request.Ref.SessionEqual(m.pageRow.Session.Ref.Reference)
+	selected := m.selectedRow()
+	visible := m.fold.kind != foldNone && m.fold.kind != foldConfirm && selected != nil && editor.request.Ref.SessionEqual(selected.Session.Ref.Reference)
 	if row == nil {
 		if index := m.peerIndex(editor.request.Ref.Machine); index >= 0 && m.peers[index].OK {
-			if m.page == "name-edit" || m.page == "group-edit" {
-				m.page = "details"
+			if visible && (m.fold.kind == foldRename || m.fold.kind == foldGroup) {
+				m.fold.kind = foldOpen
 			}
 			m.metadata = nil
 			if visible {
-				m.fail("session unavailable; editor closed")
+				m.fail(selected.Session.Name + " on " + selected.Label + " is no longer listed; editor closed")
 			}
 		}
 		return
@@ -202,29 +210,30 @@ func (m *model) reconcileMetadata() {
 		}
 		uncertain := editor.failure != nil && editor.failure.Dispatch == "unknown"
 		if matches && (editor.acknowledged || uncertain) {
-			if m.page == "name-edit" || m.page == "group-edit" {
-				m.page = "details"
+			if visible && (m.fold.kind == foldRename || m.fold.kind == foldGroup) {
+				m.fold.kind = foldOpen
 			}
 			m.metadata = nil
 			if !visible {
 				return
 			}
+			subject := row.Session.Name + " on " + row.Label + ": "
 			if uncertain {
-				m.fail("request outcome unknown; requested metadata observed")
+				m.fail(subject + "request outcome unknown; requested metadata observed")
 			} else if editor.request.Operation == "rename" {
-				m.inform("name saved")
+				m.inform(subject + "name saved")
 				if editor.request.Naming.Mode == "automatic" {
-					m.inform("automatic naming enabled")
+					m.inform(subject + "automatic naming enabled")
 				}
 			} else if editor.request.Group.IsUnassigned() {
-				m.inform("group cleared")
+				m.inform(subject + "group cleared")
 			} else {
-				m.inform("group assigned")
+				m.inform(subject + "group assigned")
 			}
 			return
 		}
 		if editor.acknowledged && visible {
-			m.fail("metadata changed after saving. review and save again.")
+			m.fail(row.Session.Name + " on " + row.Label + ": metadata changed after saving. review and save again.")
 		}
 	}
 	if editor.request.Operation == "rename" {
@@ -232,7 +241,7 @@ func (m *model) reconcileMetadata() {
 		if naming != *editor.request.ExpectedNaming {
 			editor.request.ExpectedNaming = &naming
 			if editor.failure == nil && visible {
-				m.fail("the session name changed. review and save again.")
+				m.fail(row.Session.Name + " on " + row.Label + ": the session name changed. review and save again.")
 			}
 		}
 	}

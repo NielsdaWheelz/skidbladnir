@@ -27,7 +27,6 @@ var (
 	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
 	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
 	ember    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
-	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
 )
 
 type role uint8
@@ -103,30 +102,33 @@ func (m *model) View() tea.View {
 		lines = lines[:min(len(lines), max(1, m.height))]
 	} else {
 		f := m.frame()
-		lines = []string{m.renderLine(m.header()), ""}
+		lines = []string{" " + m.renderLine(m.header()), ""}
 		if m.page == "" {
 			if len(f.rows) == 0 {
-				lines = append(lines, m.emptyTable())
+				lines = append(lines, " "+m.emptyTable())
 			} else {
-				for _, item := range m.tableLines(f) {
-					lines = append(lines, m.renderLine(item))
+				for index, item := range m.tableLines(f) {
+					if index >= f.foldAt && index < f.foldAt+len(f.fold) {
+						lines = append(lines, m.renderLine(f.fold[index-f.foldAt]))
+					} else {
+						lines = append(lines, " "+m.renderLine(item))
+					}
 				}
 			}
 		} else {
-			lines = append(lines, m.bodyLines(f.body)...)
+			for _, text := range m.bodyLines(f.body) {
+				lines = append(lines, " "+text)
+			}
 		}
 		for len(lines) < f.body+2 {
 			lines = append(lines, "")
 		}
 		for _, item := range f.notices {
-			lines = append(lines, m.renderLine(item))
+			lines = append(lines, " "+m.renderLine(item))
 		}
-		lines = append(lines, m.renderLine(f.rule))
+		lines = append(lines, " "+m.renderLine(f.rule))
 		for _, item := range f.hints {
-			lines = append(lines, m.renderLine(item))
-		}
-		for index, text := range lines {
-			lines[index] = " " + text
+			lines = append(lines, " "+m.renderLine(item))
 		}
 	}
 	content := strings.Join(lines, "\n")
@@ -262,10 +264,6 @@ func (m *model) pageCaption(width int) string {
 		if row := m.selectedRow(); row != nil {
 			return target(row.Session.Name, row.Label, width-5)
 		}
-	case "confirm":
-		return target(m.pendingName, m.pendingLabel, width-5)
-	case "details", "group-edit", "name-edit":
-		return target(m.pageRow.Session.Name, m.pageRow.Label, width-5)
 	case "quick-create":
 		return "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width-21, "…")
 	case "create":
@@ -329,29 +327,6 @@ type hint struct{ key, label string }
 
 func (m *model) pageHints() [][]hint {
 	switch m.page {
-	case "confirm":
-		effect := "interrupt and close terminal"
-		if m.pending.Operation == "stop" {
-			effect = "send interrupt"
-		}
-		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"enter", effect}, {"escape", "cancel"}}}
-	case "group-edit", "name-edit":
-		if m.metadata.checking {
-			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
-		}
-		if m.page == "group-edit" {
-			keys := []hint{{"enter", "save"}, {"tab", "group"}, {"shift-tab", "back"}, {"ctrl-s", "save draft"}, {"escape", "cancel"}}
-			if !m.metadata.saveFocused {
-				keys[0].label, keys[1].label = "uses and continues", "uses and continues"
-				keys = append([]hint{{"←→", "choose"}, {"ctrl-u", "unassigned"}}, keys...)
-			}
-			return [][]hint{keys}
-		}
-		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && m.rowAvailable(*row) && row.Session.NameMode == "manual" {
-			keys = append(keys, hint{"ctrl-a", "use automatic title"})
-		}
-		return [][]hint{keys}
 	case "quick-create":
 		return [][]hint{{{"←→", "machine"}, {"enter", "open terminal"}, {"ctrl-r", "refresh"}, {"escape", "cancel"}}}
 	case "create":
@@ -373,12 +348,6 @@ func (m *model) pageHints() [][]hint {
 			hints = append(hints, hint{"ctrl-u", "unassigned"})
 		}
 		return [][]hint{hints}
-	case "details":
-		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && m.rowAvailable(*row) && (m.metadata == nil || !m.metadata.checking) {
-			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
-		}
-		return [][]hint{keys}
 	case "usage":
 		return [][]hint{{{"q escape", "back"}}}
 	}
@@ -442,101 +411,12 @@ func target(name, machine string, width int) string {
 	return ansi.Truncate(name, width-4-ansi.StringWidth(machine), "…") + " on " + machine
 }
 
-func (m *model) confirmationContent() (fixed, facts []string) {
-	width := m.width - 2
-	action, effect := "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
-	if m.pending.Operation == "stop" {
-		action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
-	}
-	fixed = []string{danger.Styled(action + "?"), ""}
-	fixed = append(fixed, wrapped(effect, width)...)
-	fixed = append(fixed, "")
-	facts = append(facts, field("session name", m.pendingName, false, false, 13, width)...)
-	facts = append(facts, field("terminal host", m.pendingLabel, false, false, 13, width)...)
-	facts = append(facts, field("selected pane", m.pending.Ref.PaneID, false, false, 13, width)...)
-	return fixed, facts
-}
-
 func (m *model) bodyLines(height int) []string {
 	if height <= 0 {
 		return nil
 	}
 	width := m.width - 2
 	switch m.page {
-	case "confirm":
-		fixed, facts := m.confirmationContent()
-		fixed = fixed[:min(len(fixed), height)]
-		capacity := height - len(fixed)
-		offset := min(max(0, m.offset), max(0, len(facts)-capacity))
-		return append(fixed, facts[offset:min(len(facts), offset+capacity)]...)
-	case "group-edit", "name-edit":
-		editor := m.metadata
-		title, label, draft, axis := "group", "group", groupDraftDisplay(editor.draft), 7
-		if m.page == "name-edit" {
-			title, label, draft, axis = "rename session", "session name", editor.draft, 12
-			if !fleetclient.ValidSessionName(draft) {
-				draft = strconv.QuoteToASCII(draft)
-			}
-		}
-		lines := []string{bold.Styled(title), ""}
-		if editor.failure != nil {
-			lines = append(lines, wrapped(fleetview.ErrorMessage(*editor.failure, editor.request), width)...)
-			lines = append(lines, "")
-		}
-		current := m.rowForReference(editor.request.Ref)
-		if current != nil {
-			value := fleetview.GroupHeading(current.Session.Group)
-			if m.page == "name-edit" {
-				value = current.Session.Name + " (" + current.Session.NameMode + ")"
-			}
-			lines = append(lines, field("current", value, false, false, axis, width)...)
-		}
-		focusStart := len(lines)
-		lines = append(lines, field(label, draft, !editor.checking && !m.busy && !editor.saveFocused, false, axis, width)...)
-		focusEnd := len(lines)
-		status := "enter saves"
-		if m.page == "group-edit" {
-			if editor.saveFocused {
-				focusStart = len(lines)
-			} else {
-				lines = append(lines, m.groupPreview(editor.draft, &editor.selection, axis, width)...)
-				focusEnd = len(lines)
-				status = "left/right chooses; enter uses and continues"
-			}
-			lines = append(lines, field("", "save", editor.saveFocused && !editor.checking && !m.busy, false, axis, width)...)
-			if editor.saveFocused {
-				focusEnd = len(lines)
-			}
-		}
-		switch {
-		case m.busy:
-			status = "saving; delivery will be reported"
-		case editor.checking:
-			status = "checking inventory; escape returns to info"
-		case current == nil || !m.rowAvailable(*current):
-			status = "session unavailable; save disabled"
-		case m.page == "group-edit":
-			value, err := group.ParseDraft(editor.draft)
-			if err != nil {
-				status = group.ErrInvalid.Error()
-			} else if current.Session.Group == value {
-				status = "unchanged; save disabled"
-			}
-		case !fleetclient.ValidSessionName(editor.draft):
-			status = fleetview.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
-		case current.Session.NameMode == "manual" && current.Session.Name == editor.draft:
-			status = "unchanged; save disabled"
-		}
-		lines = append(lines, "")
-		lines = append(lines, wrapped(status, width)...)
-		lines = append(lines, "")
-		if m.page == "name-edit" {
-			lines = append(lines, "saving a name stops automatic naming.")
-			if current != nil && current.Session.NameMode == "automatic" {
-				lines = append(lines, "follows the active pane's terminal title.")
-			}
-		}
-		return window(lines, focusStart, focusEnd, height)
 	case "quick-create":
 		lines := []string{bold.Styled("quick terminal"), ""}
 		focusStart := len(lines)
@@ -617,12 +497,6 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
 		return window(lines, focusStart, focusEnd, height)
-	case "details":
-		title := bold.Styled("info")
-		// The title stays pinned; only the captured snapshot scrolls.
-		body := m.detailLines()
-		offset := min(m.offset, max(0, len(body)-(height-2)))
-		return append([]string{title, ""}, body[offset:min(len(body), offset+max(0, height-2))]...)
 	case "usage":
 		return m.usageBody(height)
 	}
@@ -715,46 +589,8 @@ func (m *model) groupPreview(draft string, selection *groupSelection, axis, widt
 	return append(lines, field("use", preview, false, false, axis, width)...)
 }
 
-func (m *model) detailLines() []string {
-	width := m.width - 2
-	facts := m.details(&m.pageRow)
-	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
-	axis := 16
-	for index := range facts {
-		label := facts[index][0]
-		if row != nil && m.rowAvailable(*row) && (m.metadata == nil || !m.metadata.checking) {
-			if label == "name" {
-				label += " [r]"
-			} else if label == "group" {
-				label += " [g]"
-			}
-		}
-		facts[index][0] = label
-		axis = max(axis, ansi.StringWidth(attention.SingleLine(label)))
-	}
-	lines := []string{}
-	for _, fact := range facts {
-		if fact[0] == "" {
-			for _, line := range wrapped(fact[1], max(1, width-axis-8)) {
-				lines = append(lines, strings.Repeat(" ", axis+4)+line)
-			}
-			continue
-		}
-		lines = append(lines, field(fact[0], fact[1], false, false, axis, width)...)
-	}
-	return lines
-}
-
 func (m *model) pageCapacity(body int) int {
-	switch m.page {
-	case "confirm":
-		fixed, _ := m.confirmationContent()
-		return max(0, body-len(fixed))
-	case "usage":
-		return max(0, body-3)
-	default:
-		return max(1, body-2)
-	}
+	return max(0, body-3)
 }
 
 // statusView projects a row's terminal status. A row without remote actions
