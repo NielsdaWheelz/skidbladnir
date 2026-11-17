@@ -29,23 +29,19 @@ type usageMsg struct {
 	peers      []fleetclient.ProfileUsagePeer
 }
 
-func (m *model) usageVisible() bool {
-	return m.observing() && (m.page == "" || m.page == "usage")
-}
-
-// refreshUsage never asks to trail: a manual refresh during a read is dropped.
+// Explicit reads coalesce to one successor while a read holds the lane.
 func (m *model) refreshUsage(manual bool) tea.Cmd {
 	now := time.Now()
-	if !m.usageVisible() || !manual && now.Before(m.usageNext) {
+	if !m.observing() || !manual && !m.usageLane.trailing && now.Before(m.usageNext) {
 		return nil
 	}
 	client := m.client
-	command := m.usageLane.read(m.ctx, false, func(ctx context.Context, generation uint64) tea.Msg {
+	command := m.usageLane.read(m.ctx, manual, func(ctx context.Context, generation uint64) tea.Msg {
 		return usageMsg{generation: generation, peers: client.ProfileUsage(ctx)}
 	})
 	if command != nil {
 		// The existing browser tick reads the full native quota scope every
-		// minute from attempt start; forms, attachment and quit cancel it.
+		// minute from attempt start while the browser owns the screen.
 		m.usageNext = now.Add(time.Minute)
 	}
 	return command
@@ -55,7 +51,7 @@ func (m *model) acceptUsage(message usageMsg) tea.Cmd {
 	if !landed {
 		return nil
 	}
-	if !current || !m.usageVisible() {
+	if !current || !m.observing() {
 		if m.usageLane.trailing { // a fence retired this read and asked for its successor
 			return m.refreshUsage(false)
 		}
@@ -87,6 +83,9 @@ func (m *model) acceptUsage(message usageMsg) tea.Cmd {
 			profiles[profileIndex] = value
 		}
 		peer.profiles = profiles
+	}
+	if m.usageLane.trailing {
+		return m.refreshUsage(false)
 	}
 	return nil
 }
@@ -426,7 +425,7 @@ func (m *model) usageDeclarationState() string {
 	return "profile declarations unavailable"
 }
 func (m *model) weeklyQuota(room int) string {
-	if !m.usageVisible() || room <= 0 {
+	if room <= 0 {
 		return ""
 	}
 	rows := m.usageRows(time.Now())
@@ -492,23 +491,19 @@ func (m *model) usageLines() []string {
 	}
 	return lines
 }
-func (m *model) usageBody(height int) []string {
-	headings := []string{bold.Styled("usage"), "", cell("profile", 11) + "  " + cell("window", 24) + "  " + cell("reset (utc)", 19) + "  in (d:hh:mm:ss)"}
-	if height < len(headings) {
-		return headings[:max(0, height)]
+func (m *model) usageFold(height int) ([]line, int) {
+	lines := []line{
+		{{text: "usage", bold: true}},
+		{{text: cell("profile", 11) + "  " + cell("window", 24) + "  " + cell("reset (utc)", 19) + "  in (d:hh:mm:ss)", role: quietRole}},
 	}
-	lines := m.usageLines()
-	capacity := height - len(headings)
-	offset := min(m.offset, max(0, len(lines)-capacity))
-	return append(headings, lines[offset:min(len(lines), offset+capacity)]...)
-}
-func (m *model) usageKey(key string) {
-	switch key {
-	case "q", "esc":
-		m.page = ""
-	case "up":
-		m.offset = max(0, m.offset-1)
-	case "down":
-		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity(m.frame().body)), m.offset+1)
+	if height <= len(lines) {
+		return lines[:height], 0
 	}
+	items := m.usageLines()
+	capacity := height - len(lines)
+	offset := min(m.fold.offset, max(0, len(items)-capacity))
+	for _, text := range items[offset:min(len(items), offset+capacity)] {
+		lines = append(lines, line{{text: text}})
+	}
+	return lines, offset
 }

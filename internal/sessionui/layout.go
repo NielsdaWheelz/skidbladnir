@@ -43,46 +43,48 @@ type frame struct {
 	rows             []tablePlacement
 	foldAt           int
 	fold             []line
-	notices, hints   []line
-	rule             line
+	notices          []line
+	rule, hints      line
+	usageOffset      int
 }
 
 func (m *model) frame() frame {
 	f := frame{width: m.width - 2, top: m.top}
-	f.notices = m.noticeLines(f.width)
-	if m.page == "" || m.page == "keys" {
-		f.hints = []line{m.keyHints(f.width)}
-	} else {
-		f.hints = keyLines(f.width, m.pageHints()...)
-	}
+	f.notices, f.hints = m.noticeLines(f.width), m.keyHints(f.width)
 	// Leave room for the selected row and an inline fold on either key state.
-	f.notices = f.notices[:min(len(f.notices), max(0, m.height-5-len(f.hints)))]
-	f.body = m.height - 3 - len(f.notices) - len(f.hints)
-	caption := m.pageCaption(f.width)
-	if m.page == "" {
-		f.columns = m.measureColumns(f.width)
-		if m.cursor >= 0 {
-			f.top = min(max(0, f.top, m.cursor-f.body+1), m.cursor)
-			headings := m.tableHeadings()
-			for {
-				f.rows = tableViewport(f.top, f.body, headings)
-				if f.rows[len(f.rows)-1].index >= m.cursor {
-					break
-				}
-				f.top++
+	f.notices = f.notices[:min(len(f.notices), max(0, m.height-6))]
+	f.body = m.height - 4 - len(f.notices)
+	f.columns = m.measureColumns(f.width)
+	if m.cursor >= 0 {
+		f.top = min(max(0, f.top, m.cursor-f.body+1), m.cursor)
+		headings := m.tableHeadings()
+		for {
+			f.rows = tableViewport(f.top, f.body, headings)
+			if f.rows[len(f.rows)-1].index >= m.cursor {
+				break
 			}
-			if m.fold.kind != foldNone {
-				f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), f.width-3))
-			}
-			hidden := f.rows[0].index > 0 || f.rows[len(f.rows)-1].index+1 < len(m.rows)
-			caption = m.tableCaption(f, hidden)
+			f.top++
 		}
 	}
-	quota := ""
-	if m.page == "" || m.page == "keys" {
-		room := f.width - ansi.StringWidth(caption) - 6
-		quota = m.weeklyQuota(room)
+	width := f.width - 3
+	if m.fold.foot() {
+		lines, offset := m.foldLines(f.body*11/20, width)
+		f.usageOffset = offset
+		f.composeFoot(lines)
+	} else if m.fold.kind != foldNone && m.cursor >= 0 {
+		lines, _ := m.foldLines(max(1, min(16, (f.body-1)/2)), width)
+		f.composeInline(m.cursor, lines)
 	}
+	caption := ""
+	switch {
+	case m.fold.kind == foldTerminal:
+		caption = "new terminal on " + ansi.Truncate(attention.SingleLine(m.fold.request.Machine), f.width-21, "…")
+	case m.fold.kind == foldDraft && !m.fold.seeded:
+		caption = "new session on " + ansi.Truncate(attention.SingleLine(m.form.machine), f.width-20, "…")
+	case m.cursor >= 0:
+		caption = m.tableCaption(f, len(f.rows) < len(m.rows))
+	}
+	quota := m.weeklyQuota(f.width - ansi.StringWidth(caption) - 6)
 	f.rule = rule(caption, quota, f.width)
 	return f
 }

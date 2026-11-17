@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/charmbracelet/x/ansi"
@@ -19,18 +18,8 @@ func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
 	if (m.fold.kind == foldGroup || m.fold.kind == foldRename) && !m.metadata.checking && !m.metadata.saveFocused {
 		m.editMetadataText(m.metadata.draft + message.Content)
 	}
-	if m.page == "create" && m.field >= formName && m.field < formCreate {
-		if m.field == formDirectory || m.field == formGroup {
-			m.form[m.field] += message.Content
-		} else {
-			m.form[m.field] += attention.SingleLine(message.Content)
-		}
-		if m.field == formDirectory {
-			return m.searchDirectory()
-		}
-		if m.field == formGroup {
-			m.groupSelection.reset(m.form[formGroup], m.groupChoices(m.form[formGroup]))
-		}
+	if m.fold.kind == foldDraft && m.field >= formName && m.field < formCreate {
+		return m.setDraftText(m.draftText() + message.Content)
 	}
 	return nil
 }
@@ -46,29 +35,6 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	}
 
-	switch m.page {
-	case "create", "quick-create", "usage":
-		if m.tooSmall() && pressed != "esc" && (m.page == "create" || pressed != "q") {
-			return nil
-		}
-		if pressed == "ctrl+r" {
-			return tea.Batch(m.refresh(true), m.refreshUsage(true))
-		}
-		switch m.page {
-		case "create":
-			return m.editForm(message)
-		case "quick-create":
-			return m.editQuickCreate(message)
-		case "usage":
-			m.usageKey(pressed)
-			return nil
-		}
-	case "keys":
-		if pressed == "esc" || pressed == "?" || pressed == "q" {
-			m.page = ""
-			return nil
-		}
-	}
 	for _, entry := range m.keys() {
 		if !slices.Contains(entry.keys, pressed) {
 			continue
@@ -83,8 +49,8 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 			m.fail(refusal)
 			return nil
 		}
-		if m.page == "keys" {
-			m.page = ""
+		if m.fold.kind == foldKeys {
+			m.fold = fold{}
 		}
 		return entry.act(m)
 	}
@@ -97,6 +63,9 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 	if (m.fold.kind == foldRename || m.fold.kind == foldGroup) &&
 		!m.metadata.checking && !m.metadata.saveFocused && message.Text != "" {
 		m.editMetadataText(m.metadata.draft + message.Text)
+	}
+	if m.fold.kind == foldDraft && m.field >= formName && m.field < formCreate && message.Text != "" {
+		return m.setDraftText(m.draftText() + message.Text)
 	}
 	return nil
 }
@@ -139,6 +108,29 @@ func (m *model) keys() []key {
 		}
 	case foldRename, foldGroup:
 		return m.metadataKeys()
+	case foldDraft:
+		return m.draftKeys()
+	case foldTerminal:
+		return m.terminalKeys()
+	case foldUsage:
+		return []key{
+			{keys: []string{"up"}, show: "↑↓", label: "scroll", rank: 1,
+				act: func(m *model) tea.Cmd { m.fold.offset = max(0, m.fold.offset-1); return nil }},
+			{keys: []string{"down"}, act: func(m *model) tea.Cmd { m.fold.offset++; return nil }},
+			{keys: []string{"esc", "q", "u"}, show: "escape", label: "close", keep: true, closes: true,
+				act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
+		}
+	case foldKeys:
+		close := key{keys: []string{"esc", "q", "?"}, show: "escape", label: "close", keep: true, closes: true,
+			act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }}
+		entries := []key{close}
+		for _, entry := range m.tableKeys() {
+			if entry.keys[0] != "q" && entry.keys[0] != "?" {
+				entry.rank = 0
+				entries = append(entries, entry)
+			}
+		}
+		return entries
 	}
 	return m.tableKeys()
 }
@@ -165,26 +157,25 @@ func (m *model) tableKeys() []key {
 			can: markedGuard(1), act: markedMove(1)},
 		{keys: []string{"x"}, show: "x", label: "interrupt and close…", group: "session", rank: 4,
 			can: rowGuard("close", false), act: confirmAction("close")},
+		{keys: []string{"c"}, show: "c", label: "another like this…", group: "create", rank: 5,
+			can: localRowGuard("create"), act: (*model).seededDraft},
 		{keys: []string{"N"}, show: "N", label: "new session…", group: "create", rank: 6,
 			can: func(m *model) string {
 				if defaultIndex < 0 {
-					return "target unavailable; refresh before creating."
+					return m.hostRefusal(m.client.DefaultMachine().Label)
 				}
 				return ""
 			},
 			act: func(m *model) tea.Cmd {
 				peer := m.peers[defaultIndex]
-				m.page, m.field = "create", formMachine
-				m.clearDirectorySearch()
-				m.form = [5]string{formMachine: peer.Label, formLaunch: "terminal", formGroup: m.view.label.String()}
-				m.groupSelection.prefill(m.form[formGroup], m.groupChoices(m.form[formGroup]))
-				m.inform("")
-				return nil
+				return m.openDraft(createDraft{machine: peer.Label, launch: launchChoice{kind: fleetclient.LaunchTerminal}, group: m.view.label.String()}, formMachine, false)
 			}},
 		{keys: []string{"n"}, show: "n", label: "new terminal…", group: "create", rank: 7,
 			act: func(m *model) tea.Cmd {
-				m.page = "quick-create"
-				m.pending = fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: m.client.DefaultMachine().Label, CWD: "~", Group: m.view.label}
+				m.fold = fold{kind: foldTerminal, request: fleetclient.Request{
+					Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: m.client.DefaultMachine().Label,
+					CWD: "~", Group: m.view.label,
+				}}
 				m.inform("")
 				return nil
 			}},
@@ -192,12 +183,8 @@ func (m *model) tableKeys() []key {
 			can: rowGuard("interrupt", false), act: confirmAction("stop")},
 		{keys: []string{"T"}, show: "T", label: "terminal here", group: "create", rank: 9,
 			can: func(m *model) string {
-				if refusal := rowGuard("terminal here", false)(m); refusal != "" {
+				if refusal := localRowGuard("terminal here")(m); refusal != "" {
 					return refusal
-				}
-				row := m.selectedRow()
-				if row.Session.Connection != nil {
-					return row.Session.Name + " on " + row.Label + " has a remote connection; use n to choose a machine."
 				}
 				return m.ground.attachRefusal("T")
 			},
@@ -207,9 +194,9 @@ func (m *model) tableKeys() []key {
 				return m.execute(fleetclient.Request{Operation: "shell", Ref: row.Session.Ref.Reference}, row.Session.Name+" on "+row.Label)
 			}},
 		{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: 10,
-			act: func(m *model) tea.Cmd { m.page, m.offset = "usage", 0; return nil }},
+			act: func(m *model) tea.Cmd { m.fold = fold{kind: foldUsage}; return m.refreshUsage(true) }},
 		{keys: []string{"?"}, show: "?", label: "keys", group: "browser", keep: true,
-			act: func(m *model) tea.Cmd { m.page = "keys"; return nil }},
+			act: func(m *model) tea.Cmd { m.fold = fold{kind: foldKeys}; return nil }},
 		{keys: []string{"q"}, show: "q", label: "quit", group: "browser", keep: true,
 			act: func(*model) tea.Cmd { return tea.Quit }},
 		{keys: []string{"up", "k"}, show: "↑↓ jk", label: "move", group: "browser",
@@ -238,6 +225,20 @@ func rowGuard(action string, attach bool) func(*model) string {
 			return ""
 		}
 		return m.rowRefusal(*row, action)
+	}
+}
+
+func localRowGuard(action string) func(*model) string {
+	available := rowGuard(action, false)
+	return func(m *model) string {
+		if refusal := available(m); refusal != "" {
+			return refusal
+		}
+		row := m.selectedRow()
+		if row.Session.Connection != nil {
+			return row.Session.Name + " on " + row.Label + " has a remote connection; nothing was sent. use n to choose a machine."
+		}
+		return ""
 	}
 }
 
@@ -286,9 +287,7 @@ func (m *model) keyHints(width int) line {
 	if m.busy {
 		return nil
 	}
-	if m.page == "keys" {
-		return line{{text: "escape", bold: true}, {text: " close", role: quietRole}}
-	}
+
 	entries := m.keys()
 	slices.SortStableFunc(entries, func(a, b key) int { return a.rank - b.rank })
 	for _, entry := range entries {
@@ -319,10 +318,10 @@ func appendHint(hints line, entry key) line {
 	return append(hints, span{text: entry.show, bold: true}, span{text: " " + entry.label, role: quietRole})
 }
 
-func (m *model) keyMap() []line {
+func (m *model) keyMap(width int) []line {
 	groups := []string{"session", "create", "browser"}
 	columns := make([][]span, len(groups))
-	width := (m.width - 2) / len(groups)
+	columnWidth := width / len(groups)
 	for index, group := range groups {
 		columns[index] = append(columns[index], span{text: group, bold: true})
 	}
@@ -340,21 +339,36 @@ func (m *model) keyMap() []line {
 		columns[col] = append(columns[col], span{text: text, role: role})
 		rows = max(rows, len(columns[col]))
 	}
-	lines := []line{{{text: "keys", bold: true}}, nil}
+	lines := []line{{{text: "keys", bold: true}}}
 	for row := 0; row < rows; row++ {
 		var keyRow line
 		for _, col := range columns {
 			if row >= len(col) {
-				keyRow = append(keyRow, span{text: strings.Repeat(" ", width)})
+				keyRow = append(keyRow, span{text: strings.Repeat(" ", columnWidth)})
 				continue
 			}
 			part := col[row]
-			part.text = cell(part.text, width)
+			part.text = cell(part.text, columnWidth)
 			keyRow = append(keyRow, part)
 		}
 		lines = append(lines, keyRow)
 	}
-	return append(lines, nil, line{{text: "ctrl-] d detach  ctrl-] ctrl-] send ctrl-]", role: quietRole}})
+	shortcuts := line{{text: "ctrl-] d detach  ctrl-] ctrl-] send ctrl-]", role: quietRole}}
+	for _, entry := range m.openKeys() {
+		switch entry.show {
+		case "i", "r", "g":
+			label := entry.label
+			if entry.show == "i" {
+				label = "facts"
+			}
+			shortcuts = append(shortcuts, span{text: "  " + entry.show + " " + label, role: quietRole})
+		}
+	}
+	note := m.ground.note
+	if note == "" {
+		note = "colours: reading the terminal's own."
+	}
+	return append(lines, shortcuts, line{{text: note, role: quietRole}})
 }
 
 func (m *model) rowAttachable(row fleetclient.Row) bool {

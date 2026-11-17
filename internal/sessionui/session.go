@@ -58,12 +58,11 @@ type model struct {
 	guest                 bool
 	busy                  bool
 	width, height         int
-	notice, page          string
+	notice                string
 	noticeFailure         bool
-	offset                int
 	pending               fleetclient.Request
 	fold                  fold
-	form                  [5]string
+	form                  createDraft
 	field                 int
 	groupSelection        groupSelection
 	view                  selectedView
@@ -145,7 +144,6 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	wasVisible, previousPage := m.usageVisible(), m.page
 	var returned, command tea.Cmd
 	if visit := m.attachment; visit != nil && visit.finished {
 		m.attachment = nil
@@ -191,7 +189,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = message.Width, message.Height
 	case tea.BlurMsg:
 		m.blurred = true
-		m.clearDirectorySearch()
+		if m.searchState != directorySearchIdle {
+			m.clearDirectorySearch()
+		}
 	case tea.FocusMsg:
 		m.blurred = false
 	case tickMsg:
@@ -219,35 +219,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			command = m.onKey(message)
 		}
 	}
-	return m, tea.Batch(returned, command, m.settle(previousPage, wasVisible))
+	m.settle()
+	return m, tea.Batch(returned, command)
 }
 
-// settle follows every message: a change of page or usage disclosure retires
-// the usage read and asks for a prompt successor; pages clamp their scroll;
-// the table keeps its cursor in view.
-func (m *model) settle(previousPage string, wasVisible bool) tea.Cmd {
-	var command tea.Cmd
-	if previousPage != m.page || wasVisible != m.usageVisible() {
-		m.usageLane.fence()
-		m.usageLane.trailing = true
-		// disclosure changes read immediately. a hidden form or
-		// fullscreen visit retires work while preserving the attempt cadence.
-		if previousPage == "usage" || m.page == "usage" {
-			m.usageNext = time.Time{}
-		}
-		command = m.refreshUsage(false)
-	}
-	if m.tooSmall() {
-		return command
-	}
-	f := m.frame()
-	switch m.page {
-	case "usage":
-		m.offset = min(max(0, m.offset), max(0, len(m.usageLines())-m.pageCapacity(f.body)))
-	case "":
+// settle follows every message so the table keeps the cursor in view.
+func (m *model) settle() {
+	if !m.tooSmall() {
+		f := m.frame()
 		m.top = f.top
+		if m.fold.kind == foldUsage {
+			m.fold.offset = f.usageOffset
+		}
 	}
-	return command
 }
 
 func (m *model) onFleet() tea.Cmd {
@@ -265,7 +249,7 @@ func (m *model) onFleet() tea.Cmd {
 }
 
 // onAction reports a finished action. Keys and paste are refused while busy,
-// so the action's pending request and page are still the ones that sent it.
+// so the action's pending request and fold still own its result.
 func (m *model) onAction(message actionMsg) tea.Cmd {
 	operation, result := m.pending.Operation, message.result
 	if (operation == "start" || operation == "shell") && m.ctx.Err() != nil {
@@ -301,11 +285,12 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 	}
 	switch operation {
 	case "start", "shell":
-		m.page, m.fold = "", fold{}
+		m.fold = fold{}
 		value := result.Value.(fleetclient.ObservedSession)
 		if createdIndex := m.peerIndex(value.Machine); createdIndex >= 0 {
 			return m.adoptCreated(createdIndex, value)
 		}
+		m.clearDirectorySearch()
 	case "group", "rename":
 		m.metadata.checking = true
 		m.metadata.acknowledged = true
@@ -342,7 +327,7 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 
 func (m *model) onActionFailure(operation, subject string, failure *fleetclient.Failure) {
 	text := subject + ": " + fleetview.ErrorMessage(*failure, m.pending)
-	if operation == "start" && m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
+	if operation == "start" && m.fold.kind == foldDraft && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
 		m.focusForm(formDirectory)
 	}
 	m.fail(text)
@@ -381,7 +366,7 @@ func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.C
 }
 
 func (m *model) onSearch(message searchMsg) tea.Cmd {
-	if m.page != "create" || m.form[formMachine] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
+	if m.fold.kind != foldDraft || m.form.machine != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
 		return nil
 	}
 	if m.searchCancel != nil {
@@ -447,7 +432,7 @@ func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 	m.inventoryLanes[index].trailing = true
 	m.inventoryLanes[index].ready = nil
 	m.peers[index].OK, m.peers[index].Error = false, failure
-	if m.page == "create" && m.form[formMachine] == m.peers[index].Label {
+	if m.fold.kind == foldDraft && m.form.machine == m.peers[index].Label && m.searchState != directorySearchIdle {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()
@@ -466,6 +451,7 @@ func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
 	visit := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output, name: row.Session.Name, machine: row.Label}
 	m.attachment = visit
 	m.usageLane.fence()
+	m.usageLane.trailing = false
 	m.cancelObservations()
 	m.rebuild()
 	m.clearDirectorySearch()

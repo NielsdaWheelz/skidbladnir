@@ -106,12 +106,12 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 }
 
 func (m *model) afterInventory(machine string, generation uint64) {
-	if m.page == "create" && !m.directoryAvailable() {
+	if m.fold.kind == foldDraft && m.searchState != directorySearchIdle && !m.directoryAvailable() {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()
 	observed := fleetclient.ObservedGroups(m.peers)
-	m.groupSelection.retain(groupChoices(m.form[formGroup], observed))
+	m.groupSelection.retain(groupChoices(m.form.group, observed))
 	if editor := m.metadata; editor != nil {
 		if editor.request.Operation == "group" {
 			editor.selection.retain(groupChoices(editor.draft, observed))

@@ -66,7 +66,7 @@ this computer
   notifications    set up macos notifications
 
 skid help COMMAND, or skid COMMAND --help, explains one command;
-skid help browser lists the browser's keys.
+the browser lists its keys in ?.
 
 automation guide
 
@@ -119,26 +119,9 @@ commands
 // lines, then what it does. names are the commands an entry answers for.
 var commandHelp = []struct{ names, text string }{
 	{"browser", `skid
-  opens the session browser, which needs stdin and stdout ttys of at least 80x24.
-  up/down (j/k) selects; left/right (h/l) steps through the views on the top row
-  n quick terminal: choose machine with left/right; enter creates and opens at home
-  initial choice is configured default; selected named group, otherwise unassigned
-  N new terminal options: choose machine, launch, name, directory and group
-  enter attaches; space opens info
-  u opens usage; up/down scroll; q/escape returns
-  quota shows remaining; ~ marks claude's estimate; updates are automatic
-  info: r edits name; g edits group; escape returns to the table
-  name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
-  directory/group: left/right chooses; tab/enter uses and continues
-  directory: type search words (150 ms), ~, ~/path or /path; blank means home
-  shift-tab returns without accepting; ctrl-u clears to home/unassigned
-  create/save: enter submits; group editor ctrl-s saves the typed draft
-  T new terminal here (shift+t): create and enter on the selected session's machine,
-  in its current directory and group; unavailable for ssh/mosh; source keeps running
-  s sends interrupt; x interrupts and closes terminal
-  ctrl-r refreshes inventory outside usage; on the table, account usage too
-  escape closes a page; q quits from the table
-  ctrl-c quits from the table or any page unless an operation is in flight
+  browses the fleet's sessions and opens their terminals. stdin and stdout
+  need ttys of at least 80x24. ctrl-] then d detaches from an attached terminal.
+  ctrl-] twice sends a literal ctrl-]. ? lists the browser's keys.
 `},
 	{"list", `skid list [--machine HOST] [--group LABEL | --unassigned]
   sessions on every machine, or only on HOST: machine, session, terminal

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -19,13 +20,18 @@ const (
 	foldConfirm
 	foldRename
 	foldGroup
+	foldDraft
+	foldTerminal
+	foldUsage
+	foldKeys
 )
 
 type fold struct {
 	kind          foldKind
 	request       fleetclient.Request
 	name, machine string
-	facts         bool
+	facts, seeded bool
+	offset        int
 }
 
 func (m *model) openKeys() []key {
@@ -116,8 +122,24 @@ func (f *frame) composeInline(cursor int, lines []line) {
 	f.rows = visible
 }
 
-func (m *model) foldLines(capacity, width int) []line {
+func (f fold) foot() bool {
+	return f.kind == foldTerminal || f.kind == foldUsage || f.kind == foldKeys || f.kind == foldDraft && !f.seeded
+}
+
+func (f *frame) composeFoot(lines []line) {
+	if len(lines) == 0 {
+		return
+	}
+	f.foldAt, f.fold = f.body-len(lines), lines
+	if covered := slices.IndexFunc(f.rows, func(row tablePlacement) bool { return row.line >= f.foldAt }); covered >= 0 {
+		f.rows = f.rows[:covered]
+	}
+}
+
+func (m *model) foldLines(capacity, width int) ([]line, int) {
 	var lines []line
+	offset := 0
+	background := m.ground.raise
 	switch m.fold.kind {
 	case foldConfirm:
 		action, effect := "interrupt and close", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
@@ -196,12 +218,7 @@ func (m *model) foldLines(capacity, width int) []line {
 			limit := (width - 7) / 2
 			draft = ansi.Truncate(attention.SingleLine(groupDraftDisplay(draft)), limit, "…")
 			lines = append(lines, line{{text: "group  ", role: quietRole}, {text: draft, bold: editing}})
-			preview := editor.selection.preview(m.groupChoices(editor.draft), func(choice groupChoice) string {
-				if choice.label.IsUnassigned() {
-					return "unassigned"
-				}
-				return choice.label.String()
-			})
+			preview := m.groupChoicePreview(editor.draft, &editor.selection)
 			rest := width - ansi.StringWidth(draft) - 13
 			pickerRole := quietRole
 			if editing {
@@ -217,6 +234,23 @@ func (m *model) foldLines(capacity, width int) []line {
 		if notice != "" {
 			lines = append(lines, line{{text: notice, role: quietRole}})
 		}
+	case foldDraft:
+		background = m.ground.forge
+		lines = m.draftLines(capacity)
+	case foldTerminal:
+		lines = []line{
+			{{text: "new terminal", bold: true}},
+			{{text: "machine  ", role: quietRole}, {text: "‹ " + m.fold.request.Machine + " ›", role: goldRole, bold: true}},
+			{{text: "directory  ", role: quietRole}, {text: "home (~)"}},
+			{{text: "group  ", role: quietRole}, {text: fleetview.GroupHeading(m.fold.request.Group)}},
+		}
+		if refusal := m.terminalRefusal(); refusal != "" {
+			lines = append(lines, line{{text: refusal, role: quietRole}})
+		}
+	case foldUsage:
+		lines, offset = m.usageFold(capacity)
+	case foldKeys:
+		lines = m.keyMap(width)
 	}
 	lines = lines[:min(capacity, len(lines))]
 	for index := range lines {
@@ -226,7 +260,97 @@ func (m *model) foldLines(capacity, width int) []line {
 			item.text = ansi.Truncate(attention.SingleLine(item.text), max(0, room), "…")
 			room -= ansi.StringWidth(item.text)
 		}
-		lines[index] = append(line{{text: "▌", role: goldRole}, {text: "   "}}, lines[index]...).filled(m.ground.raise, width+4)
+		lines[index] = append(line{{text: "▌", role: goldRole}, {text: "   "}}, lines[index]...).filled(background, width+4)
 	}
-	return lines
+	return lines, offset
+}
+
+func (m *model) groupChoicePreview(draft string, selection *groupSelection) string {
+	return selection.preview(m.groupChoices(draft), func(choice groupChoice) string {
+		if choice.label.IsUnassigned() {
+			return "unassigned"
+		}
+		return choice.label.String()
+	})
+}
+
+func (m *model) draftLines(capacity int) []line {
+	var title []line
+	if !m.fold.seeded {
+		title = []line{{{text: "new session", bold: true}}}
+		capacity--
+	}
+	names := [...]string{"machine", "launch", "name", "directory", "group"}
+	values := [...]string{m.form.machine, m.form.launch.label(), m.form.name, m.form.directory, m.form.group}
+	lines := make([]line, 0, formCreate+2)
+	note := ""
+	noteRole := quietRole
+	for field, name := range names {
+		value := values[field]
+		focused := m.field == field
+		role := inkRole
+		switch field {
+		case formMachine, formLaunch:
+			if value == "" {
+				value = "choose"
+			}
+			if focused {
+				value, role = "‹ "+value+" ›", goldRole
+			}
+		case formName:
+			if value == "" {
+				value = "—"
+				if focused {
+					note = "blank: follows the terminal title"
+				}
+			}
+		case formDirectory:
+			if focused {
+				note = m.directoryStatus()
+				if choice, _, selected := m.directorySelection.current(m.searchDirectories); selected {
+					preview := "‹ " + choice + " ›"
+					if note != "" {
+						preview += "  " + note
+					}
+					note, noteRole = preview, goldRole
+				}
+			}
+			if value == "" {
+				value = "home (~)"
+			}
+		case formGroup:
+			if focused {
+				note, noteRole = m.groupChoicePreview(value, &m.groupSelection), goldRole
+			}
+			if value == "" {
+				value = "unassigned"
+			} else {
+				value = groupDraftDisplay(value)
+			}
+		}
+		lines = append(lines, line{{text: fmt.Sprintf("%-9s  ", name), role: quietRole}, {text: value, role: role, bold: focused}})
+	}
+	lines = append(lines, line{{text: "create", bold: m.field == formCreate}})
+	switch {
+	case m.busy:
+		note, noteRole = "operation in flight; delivery will be reported", quietRole
+	case m.noticeFailure:
+		note, noteRole = m.notice, quietRole
+	case m.field == formCreate:
+		_, note, _ = m.draftRequest()
+	case m.field == formLaunch && m.fold.seeded && m.form.launch.kind == "":
+		note = m.selectedRow().Session.Name + " does not say how it was started"
+	}
+	if note != "" {
+		lines = append(lines, line{{text: note, role: noteRole}})
+	}
+	if capacity <= 0 {
+		return title
+	}
+	focus := m.field
+	if note != "" && capacity > 1 && focus == formCreate {
+		focus++
+	}
+	start := max(0, focus-capacity+1)
+	return append(title, lines[start:min(len(lines), start+capacity)]...)
 }
