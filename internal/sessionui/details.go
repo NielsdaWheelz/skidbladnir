@@ -13,10 +13,8 @@ func (m *model) current(row *fleetclient.Row) fleetclient.ExecutionContext {
 	if !row.Available && row.Session.Connection != nil {
 		return fleetclient.ExecutionContext{Kind: "remoteUnknown"}
 	}
-	for _, peer := range m.peers {
-		if peer.Machine == row.Machine {
-			return row.Session.Current(peer)
-		}
+	if index := m.peerIndex(row.Machine); index >= 0 {
+		return row.Session.Current(m.peers[index])
 	}
 	return row.Session.Current(fleetclient.Peer{Label: row.Label, Machine: row.Machine})
 }
@@ -96,12 +94,15 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 }
 
 func (m *model) rowForReference(ref fleetclient.Reference) *fleetclient.Row {
-	for _, peer := range m.peers {
-		for _, session := range peer.Sessions {
-			if session.Ref.SessionEqual(ref) {
-				row := peer.Row(session)
-				return &row
-			}
+	index := m.peerIndex(ref.Machine)
+	if index < 0 {
+		return nil
+	}
+	peer := m.peers[index]
+	for _, session := range peer.Sessions {
+		if session.Ref.SessionEqual(ref) {
+			row := peer.Row(session)
+			return &row
 		}
 	}
 	return nil

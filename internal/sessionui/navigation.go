@@ -52,11 +52,11 @@ func (m *model) rebuild() {
 				filter, _ = group.NamedFilter(m.view.label)
 			}
 		}
-		for _, group := range fleetclient.Groups(m.peers, filter) {
-			m.rows = append(m.rows, group.Rows...)
+		for _, section := range fleetclient.Groups(m.peers, filter) {
+			m.rows = append(m.rows, section.Rows...)
 		}
 	default:
-		panic("invalid selected view") // justify-defect: only the closed view kinds populate the model.
+		panic("invalid selected view")
 	}
 	m.cursor = -1
 	for index, row := range m.rows {

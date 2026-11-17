@@ -43,8 +43,8 @@ func (m *model) refreshUsage(manual bool) tea.Cmd {
 		return usageMsg{generation: generation, peers: client.ProfileUsage(ctx)}
 	})
 	if command != nil {
-		// justify-polling: the existing browser tick reads the full native quota
-		// scope every minute from attempt start; forms/attachment/quit cancel it.
+		// The existing browser tick reads the full native quota scope every
+		// minute from attempt start; forms, attachment and quit cancel it.
 		m.usageNext = now.Add(time.Minute)
 	}
 	return command
@@ -61,33 +61,31 @@ func (m *model) acceptUsage(message usageMsg) tea.Cmd {
 		return nil
 	}
 	for _, received := range message.peers {
-		for index := range m.usagePeers {
-			peer := &m.usagePeers[index]
-			if peer.machine.Handle != received.Machine {
-				continue
-			}
-			peer.failure = received.Error
-			m.invalidateAccess(peer.machine.Label, received.Error)
-			if !received.OK {
-				break
-			}
-			profiles := make([]usageProfile, len(received.Profiles))
-			for profileIndex, profile := range received.Profiles {
-				value := usageProfile{profile: profile, observedAt: received.ObservedAt, receivedAt: received.ReceivedAt}
-				if profile.ReadState == "unavailable" {
-					for _, previous := range peer.profiles {
-						if previous.profile.Profile == profile.Profile && previous.profile.Report != nil {
-							value.profile.Report = previous.profile.Report
-							value.observedAt, value.receivedAt = previous.observedAt, previous.receivedAt
-							break
-						}
+		index := m.peerIndex(received.Machine)
+		if index < 0 {
+			continue
+		}
+		peer := &m.usagePeers[index]
+		peer.failure = received.Error
+		m.invalidateAccess(received.Machine, received.Error)
+		if !received.OK {
+			continue
+		}
+		profiles := make([]usageProfile, len(received.Profiles))
+		for profileIndex, profile := range received.Profiles {
+			value := usageProfile{profile: profile, observedAt: received.ObservedAt, receivedAt: received.ReceivedAt}
+			if profile.ReadState == "unavailable" {
+				for _, previous := range peer.profiles {
+					if previous.profile.Profile == profile.Profile && previous.profile.Report != nil {
+						value.profile.Report = previous.profile.Report
+						value.observedAt, value.receivedAt = previous.observedAt, previous.receivedAt
+						break
 					}
 				}
-				profiles[profileIndex] = value
 			}
-			peer.profiles = profiles
-			break
+			profiles[profileIndex] = value
 		}
+		peer.profiles = profiles
 	}
 	return nil
 }
@@ -226,20 +224,12 @@ func (row usageRow) windowPresentation(window *windowText) (windowText, string) 
 func usageLater(receivedAt time.Time, machine string, previous time.Time, previousMachine string) bool {
 	return receivedAt.After(previous) || receivedAt.Equal(previous) && machine < previousMachine
 }
-func (m *model) usageAccessRejected(machine string) bool {
-	for _, peer := range m.peers {
-		if peer.Machine == machine {
-			return accessRejected(peer.Error)
-		}
-	}
-	return false
-}
 func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
 	var expired *usageProfile
 	var expiredMachine fleetclient.Machine
 	expiredFailed, unavailable, absent := false, false, false
-	for _, peer := range m.usagePeers {
+	for index, peer := range m.usagePeers {
 		relevant := peer.profiles == nil
 		for _, value := range peer.profiles {
 			relevant = relevant || value.profile.Key == profile.Key && value.profile.Provider == profile.Provider
@@ -247,7 +237,7 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		if !relevant {
 			continue
 		}
-		if m.usageAccessRejected(peer.machine.Handle) {
+		if accessRejected(m.peers[index].Error) {
 			unavailable = true
 			continue
 		}

@@ -88,7 +88,7 @@ func rowDirectory(current fleetclient.ExecutionContext, width int) (string, bool
 		}
 		return text, true
 	default:
-		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
+		panic("invalid execution context")
 	}
 	prefix := machine + " · "
 	if current.CWD == "" {

@@ -185,22 +185,11 @@ func (m *model) cancelObservations() {
 	m.notificationQualified = false
 }
 
-func (m *model) mutationPeer(request fleetclient.Request) int {
-	for index, peer := range m.peers {
-		if peer.Machine == request.Ref.Machine || request.Ref.IsZero() && peer.Label == request.Machine {
-			return index
-		}
-	}
-	return -1
-}
-
-func (m *model) refreshMutation() tea.Cmd {
-	index := m.mutationPeer(m.pending)
+func (m *model) refreshMutation(index int) tea.Cmd {
 	if index < 0 {
 		return nil
 	}
 	m.fenceInventory(index)
-	m.inventoryLanes[index].writing = false
 	if editor := m.metadata; editor != nil && editor.checking {
 		editor.readAfter = m.inventoryLanes[index].generation
 	}
@@ -215,7 +204,9 @@ func (m *model) refreshFleet() tea.Cmd {
 	m.fleetPending = true
 	client := m.client
 	return func() tea.Msg {
-		_ = client.Refresh() // justify-ignore-error: an unreadable fleet.json keeps the last adopted roster; direct inventories own visible availability.
+		// An unreadable fleet.json keeps the last adopted roster;
+		// direct inventories own visible availability.
+		_ = client.Refresh()
 		return fleetMsg{}
 	}
 }
@@ -240,16 +231,12 @@ func (m *model) reconcileFleet() {
 	for index, machine := range machines {
 		peers[index] = fleetclient.Peer{Label: machine.Label, Machine: machine.Handle}
 		usages[index] = usagePeer{machine: machine}
-		for old, peer := range m.peers {
-			if peer.Machine != machine.Handle {
-				continue
-			}
-			peers[index], inventories[index], contexts[index] = peer, m.inventoryLanes[old], m.contextLanes[old]
+		if old := m.peerIndex(machine.Handle); old >= 0 {
+			peers[index], inventories[index], contexts[index] = m.peers[old], m.inventoryLanes[old], m.contextLanes[old]
 			peers[index].Label = machine.Label
 			usages[index] = m.usagePeers[old]
 			usages[index].machine = machine
 			retained[machine.Handle] = true
-			break
 		}
 	}
 	for index, peer := range m.peers {

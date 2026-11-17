@@ -82,7 +82,7 @@ func (m *model) header() string {
 				tabs = append(tabs, tab{label: attention.SingleLine(view.label.String())})
 			}
 		default:
-			panic("invalid selected view") // justify-defect: viewOptions emits only the closed view kinds.
+			panic("invalid selected view")
 		}
 		if view == m.view {
 			current = index
@@ -700,7 +700,7 @@ func (m *model) opensGroup(index int) bool {
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a good read of the hub's notification state.
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	view := fleetview.ProjectStatus(row.Session, row.Available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.Session))
+	view := fleetview.ProjectStatus(row.Session, row.Available, m.notificationQualified && m.notificationReady(row.Session))
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail
@@ -714,12 +714,8 @@ func (m *model) hostChecking(row fleetclient.Row) bool {
 	if row.Available {
 		return false
 	}
-	for _, peer := range m.peers {
-		if peer.Machine == row.Machine && peer.Error != nil {
-			return false
-		}
-	}
-	return true
+	index := m.peerIndex(row.Machine)
+	return index < 0 || m.peers[index].Error == nil
 }
 
 // tableStatus is a row's status cell. a checking row makes no status claim and
@@ -741,7 +737,7 @@ func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
 	case api.ToneReady:
 		return view.Label, moss
 	}
-	panic("invalid status tone") // justify-defect: StatusTone is a closed set.
+	panic("invalid status tone")
 }
 
 // tail keeps the end of a path, where directories differ.

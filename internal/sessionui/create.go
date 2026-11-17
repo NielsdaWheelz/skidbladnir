@@ -56,7 +56,6 @@ func (m *model) editQuickCreate(key tea.KeyPressMsg) tea.Cmd {
 	switch key.String() {
 	case "esc", "q":
 		m.page = ""
-		m.pending = fleetclient.Request{}
 	case "left", "right":
 		machines := m.client.Machines()
 		for index, machine := range machines {
@@ -368,6 +367,6 @@ func (m *model) directoryStatus() string {
 		}
 		return ""
 	default:
-		panic("invalid directory search state") // justify-defect: only these four states populate the model.
+		panic("invalid directory search state")
 	}
 }

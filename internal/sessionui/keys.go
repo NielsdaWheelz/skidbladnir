@@ -104,7 +104,6 @@ func (m *model) confirmKey(key string) tea.Cmd {
 		return m.execute(request)
 	case "n", "q", "esc":
 		m.page = ""
-		m.pending = fleetclient.Request{}
 	}
 	return nil
 }
@@ -134,7 +133,6 @@ func (m *model) tableKey(key string) tea.Cmd {
 		return tea.Quit
 	case "u":
 		m.page, m.offset = "usage", 0
-		m.pending = fleetclient.Request{}
 		return nil
 	case "esc":
 		// escape closes pages; the table is its floor, never an exit.
@@ -157,14 +155,14 @@ func (m *model) tableKey(key string) tea.Cmd {
 		m.inform("")
 		return nil
 	case "N":
-		peer := m.creationPeer()
-		if peer == nil {
+		index := m.peerIndex(m.client.DefaultMachine().Handle)
+		if index < 0 {
 			m.inform("target unavailable; refresh before creating")
 			return nil
 		}
 		m.page, m.field = "create", formMachine
 		m.clearDirectorySearch()
-		m.form = [5]string{formMachine: peer.Label, formLaunch: "terminal", formGroup: m.view.label.String()}
+		m.form = [5]string{formMachine: m.peers[index].Label, formLaunch: "terminal", formGroup: m.view.label.String()}
 		m.groupSelection.prefill(m.form[formGroup], m.groupChoices(m.form[formGroup]))
 		m.inform("")
 		return nil

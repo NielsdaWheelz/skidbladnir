@@ -35,8 +35,8 @@ type notificationMsg struct {
 type fleetMsg struct{}
 type tickMsg struct{}
 type actionMsg struct {
-	operation string
-	result    fleetclient.Result
+	machine string
+	result  fleetclient.Result
 }
 type searchMsg struct {
 	machine  string
@@ -115,21 +115,16 @@ func (m *model) Init() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
-// creationPeer is the configured default, never the selected or first reachable host.
-func (m *model) creationPeer() *fleetclient.Peer {
-	handle := m.client.DefaultMachine().Handle
-	for index := range m.peers {
-		if m.peers[index].Machine == handle {
-			return &m.peers[index]
-		}
-	}
-	return nil
-}
-
 func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	m.pending = request
 	m.busy = true
-	if index := m.mutationPeer(request); index >= 0 {
+	machine := request.Ref.Machine
+	if request.Ref.IsZero() {
+		if peer := m.peerLabeled(request.Machine); peer != nil {
+			machine = peer.Machine
+		}
+	}
+	if index := m.peerIndex(machine); index >= 0 {
 		m.fenceInventory(index)
 		m.inventoryLanes[index].writing = true
 		m.peers[index].OK, m.peers[index].Error = false, nil
@@ -137,7 +132,7 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	}
 	ctx, client := m.ctx, m.client
 	return func() tea.Msg {
-		return actionMsg{operation: request.Operation, result: client.Execute(ctx, request)}
+		return actionMsg{machine: machine, result: client.Execute(ctx, request)}
 	}
 }
 
@@ -217,16 +212,19 @@ func (m *model) onFleet() tea.Cmd {
 // onAction reports a finished action. Keys and paste are refused while busy,
 // so the action's pending request and page are still the ones that sent it.
 func (m *model) onAction(message actionMsg) tea.Cmd {
-	operation, result := message.operation, message.result
+	operation, result := m.pending.Operation, message.result
 	if (operation == "start" || operation == "shell") && m.ctx.Err() != nil {
 		return nil // the browser is closing: never enter what it created
 	}
 	m.busy = false
-	if index := m.mutationPeer(m.pending); index >= 0 {
+	index := m.peerIndex(message.machine)
+	if index >= 0 {
 		m.inventoryLanes[index].writing = false
 	}
+	machine := message.machine
 	if operation == "start" && result.OK {
 		created := result.Value.(fleetclient.StartResult)
+		machine = created.Machine
 		if created.Failure != nil {
 			failure := *created.Failure
 			failure.Target = created.Target
@@ -236,11 +234,23 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		}
 	}
 	if !result.OK {
-		return m.onActionFailure(operation, result.Error)
+		m.invalidateAccess(machine, result.Error)
+		m.onActionFailure(operation, result.Error)
+		refresh := m.refreshMutation(index)
+		if machine != message.machine {
+			if actual := m.peerIndex(machine); actual >= 0 {
+				return tea.Batch(refresh, m.refreshInventory(actual, true))
+			}
+		}
+		return refresh
 	}
 	switch operation {
 	case "start", "shell":
-		return m.adoptCreated(result.Value.(fleetclient.ObservedSession))
+		m.page = ""
+		value := result.Value.(fleetclient.ObservedSession)
+		if createdIndex := m.peerIndex(value.Machine); createdIndex >= 0 {
+			return m.adoptCreated(createdIndex, value)
+		}
 	case "group", "rename":
 		m.metadata.checking = true
 		m.metadata.acknowledged = true
@@ -271,14 +281,13 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 			m.inform(text)
 		}
 	}
-	return m.refreshMutation()
+	return m.refreshMutation(index)
 }
 
-func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) tea.Cmd {
+func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) {
 	text := fleetview.ErrorMessage(*failure, m.pending)
 	if operation == "start" {
 		text = m.pending.Machine + ": " + text
-		m.invalidateAccess(m.pending.Machine, failure)
 		if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
 			m.focusForm(formDirectory)
 		}
@@ -292,21 +301,14 @@ func (m *model) onActionFailure(operation string, failure *fleetclient.Failure) 
 			m.invalidatePendingPeer()
 		}
 	}
-	return m.refreshMutation()
 }
 
-// adoptCreated reveals a confirmed creation in its group, selects it and
-// enters it. A peer the roster dropped meanwhile leaves the row to inventory.
-func (m *model) adoptCreated(value fleetclient.ObservedSession) tea.Cmd {
+// adoptCreated reveals a confirmed creation in its group, selects it and enters it.
+func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.Cmd {
 	// Creation is a separate sample. Do not attach its observation metadata
 	// to this peer's earlier inventory receipt.
 	value.Session.TerminalUsage = nil
 	value.Session.TerminalFooter = nil
-	m.page = ""
-	index := m.peerIndex(value.Machine)
-	if index < 0 {
-		return m.refreshMutation()
-	}
 	if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
 		m.view = selectedView{kind: viewGroup, label: value.Session.Group}
 	}
@@ -329,7 +331,6 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 	if m.page != "create" || m.form[formMachine] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
 		return nil
 	}
-	initial := m.searchState == directorySearchLoading
 	if m.searchCancel != nil {
 		m.searchCancel()
 		m.searchCancel = nil
@@ -345,14 +346,13 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 			problem = fleetview.ErrorMessage(*failure, fleetclient.Request{})
 		}
 		m.searchProblem = problem
-		m.invalidateAccess(message.machine, failure)
+		m.invalidateAccess(m.peerLabeled(message.machine).Machine, failure)
 		m.fail(problem)
 		return nil
 	}
 	value := message.result.Value.(workdir.SearchResult)
 	m.searchState, m.searchDirectories, m.searchOmitted = directorySearchReady, value.Directories, value.Omitted
-	m.directorySelection.retain(value.Directories)
-	if initial && len(value.Directories) > 0 {
+	if len(value.Directories) > 0 {
 		m.directorySelection.choice = &value.Directories[0]
 	}
 	m.inform("")
@@ -381,10 +381,8 @@ func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
 func (m *model) invalidatePendingPeer() {
-	for index := range m.peers {
-		if m.peers[index].Machine == m.pending.Ref.Machine {
-			m.peers[index].OK = false
-		}
+	if index := m.peerIndex(m.pending.Ref.Machine); index >= 0 {
+		m.peers[index].OK = false
 	}
 	m.rebuild()
 }
@@ -395,18 +393,18 @@ func accessRejected(failure *fleetclient.Failure) bool {
 }
 
 // Auth and identity failures are authoritative even before the next inventory.
-func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
+func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 	if !accessRejected(failure) {
 		return
 	}
-	for index := range m.peers {
-		if m.peers[index].Label == label {
-			m.fenceInventory(index)
-			m.inventoryLanes[index].trailing = true
-			m.peers[index].OK, m.peers[index].Error = false, failure
-		}
+	index := m.peerIndex(machine)
+	if index < 0 {
+		return
 	}
-	if m.page == "create" && m.form[formMachine] == label {
+	m.fenceInventory(index)
+	m.inventoryLanes[index].trailing = true
+	m.peers[index].OK, m.peers[index].Error = false, failure
+	if m.page == "create" && m.form[formMachine] == m.peers[index].Label {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()

@@ -172,16 +172,13 @@ func (m *model) reconcileMetadata() {
 	row := m.rowForReference(editor.request.Ref)
 	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && editor.request.Ref.SessionEqual(m.pageRow.Session.Ref.Reference)
 	if row == nil {
-		for _, peer := range m.peers {
-			if peer.Machine == editor.request.Ref.Machine && peer.OK {
-				if m.page == "name-edit" || m.page == "group-edit" {
-					m.page = "details"
-				}
-				m.metadata = nil
-				if visible {
-					m.fail("session unavailable; editor closed")
-				}
-				return
+		if index := m.peerIndex(editor.request.Ref.Machine); index >= 0 && m.peers[index].OK {
+			if m.page == "name-edit" || m.page == "group-edit" {
+				m.page = "details"
+			}
+			m.metadata = nil
+			if visible {
+				m.fail("session unavailable; editor closed")
 			}
 		}
 		return
