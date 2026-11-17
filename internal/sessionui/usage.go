@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -28,23 +30,19 @@ type usageMsg struct {
 	peers      []fleetclient.ProfileUsagePeer
 }
 
-func (m *model) usageVisible() bool {
-	return m.observing() && (m.page == "" || m.page == "usage")
-}
-
-// refreshUsage never asks to trail: a manual refresh during a read is dropped.
+// Explicit reads coalesce to one successor while a read holds the lane.
 func (m *model) refreshUsage(manual bool) tea.Cmd {
 	now := time.Now()
-	if !m.usageVisible() || !manual && now.Before(m.usageNext) {
+	if !m.observing() || !manual && !m.usageLane.trailing && now.Before(m.usageNext) {
 		return nil
 	}
 	client := m.client
-	command := m.usageLane.read(m.ctx, false, func(ctx context.Context, generation uint64) tea.Msg {
+	command := m.usageLane.read(m.ctx, manual, func(ctx context.Context, generation uint64) tea.Msg {
 		return usageMsg{generation: generation, peers: client.ProfileUsage(ctx)}
 	})
 	if command != nil {
-		// justify-polling: the existing browser tick reads the full native quota
-		// scope every minute from attempt start; forms/attachment/quit cancel it.
+		// The existing browser tick reads the full native quota scope every
+		// minute from attempt start while the browser owns the screen.
 		m.usageNext = now.Add(time.Minute)
 	}
 	return command
@@ -54,89 +52,77 @@ func (m *model) acceptUsage(message usageMsg) tea.Cmd {
 	if !landed {
 		return nil
 	}
-	if !current || !m.usageVisible() {
+	if !current || !m.observing() {
 		if m.usageLane.trailing { // a fence retired this read and asked for its successor
 			return m.refreshUsage(false)
 		}
 		return nil
 	}
 	for _, received := range message.peers {
-		for index := range m.usagePeers {
-			peer := &m.usagePeers[index]
-			if peer.machine.Handle != received.Machine {
-				continue
-			}
-			peer.failure = received.Error
-			m.invalidateAccess(peer.machine.Label, received.Error)
-			if !received.OK {
-				break
-			}
-			profiles := make([]usageProfile, len(received.Profiles))
-			for profileIndex, profile := range received.Profiles {
-				value := usageProfile{profile: profile, observedAt: received.ObservedAt, receivedAt: received.ReceivedAt}
-				if profile.ReadState == "unavailable" {
-					for _, previous := range peer.profiles {
-						if previous.profile.Profile == profile.Profile && previous.profile.Report != nil {
-							value.profile.Report = previous.profile.Report
-							value.observedAt, value.receivedAt = previous.observedAt, previous.receivedAt
-							break
-						}
+		index := m.peerIndex(received.Machine)
+		if index < 0 {
+			continue
+		}
+		peer := &m.usagePeers[index]
+		peer.failure = received.Error
+		m.invalidateAccess(received.Machine, received.Error)
+		if !received.OK {
+			continue
+		}
+		profiles := make([]usageProfile, len(received.Profiles))
+		for profileIndex, profile := range received.Profiles {
+			value := usageProfile{profile: profile, observedAt: received.ObservedAt, receivedAt: received.ReceivedAt}
+			if profile.ReadState == "unavailable" {
+				for _, previous := range peer.profiles {
+					if previous.profile.Profile == profile.Profile && previous.profile.Report != nil {
+						value.profile.Report = previous.profile.Report
+						value.observedAt, value.receivedAt = previous.observedAt, previous.receivedAt
+						break
 					}
 				}
-				profiles[profileIndex] = value
 			}
-			peer.profiles = profiles
-			break
+			profiles[profileIndex] = value
 		}
+		peer.profiles = profiles
+	}
+	if m.usageLane.trailing {
+		return m.refreshUsage(false)
 	}
 	return nil
 }
 
 // Full inventories own current descriptors. A change clears only that host's
 // changed Codex reports and retires any whole-fleet read of the preceding table.
-func (m *model) reconcileUsageProfiles(received fleetclient.Peer) bool {
-	for index := range m.usagePeers {
-		peer := &m.usagePeers[index]
-		if peer.machine.Handle != received.Machine {
-			continue
+func (m *model) reconcileUsageProfiles(index int, received fleetclient.Peer) bool {
+	peer := &m.usagePeers[index]
+	declared := []fleetclient.Profile{}
+	for _, profile := range received.Profiles {
+		if profile.Provider == "Codex" {
+			declared = append(declared, profile)
 		}
-		declared := []fleetclient.Profile{}
-		for _, profile := range received.Profiles {
-			if profile.Provider == "Codex" {
-				declared = append(declared, profile)
-			}
-		}
-		known := peer.profiles != nil
-		same := known && len(peer.profiles) == len(declared)
-		if same {
-			for index, profile := range declared {
-				if peer.profiles[index].profile.Profile != profile {
-					same = false
-					break
-				}
-			}
-		}
-		if same {
-			return false
-		}
-		profiles := make([]usageProfile, len(declared))
-		for index, profile := range declared {
-			profiles[index] = usageProfile{profile: fleetclient.ProfileUsage{Profile: profile, ReadState: "ok"}}
-			for _, previous := range peer.profiles {
-				if previous.profile.Profile == profile {
-					profiles[index] = previous
-					break
-				}
-			}
-		}
-		peer.profiles = profiles
-		if known || m.usageLane.flight != 0 {
-			m.usageLane.fence()
-			m.usageLane.trailing = true
-			m.usageNext = time.Time{}
-			return true
-		}
+	}
+	known := peer.profiles != nil
+	if known && slices.EqualFunc(peer.profiles, declared, func(previous usageProfile, profile fleetclient.Profile) bool {
+		return previous.profile.Profile == profile
+	}) {
 		return false
+	}
+	profiles := make([]usageProfile, len(declared))
+	for index, profile := range declared {
+		profiles[index] = usageProfile{profile: fleetclient.ProfileUsage{Profile: profile, ReadState: "ok"}}
+		for _, previous := range peer.profiles {
+			if previous.profile.Profile == profile {
+				profiles[index] = previous
+				break
+			}
+		}
+	}
+	peer.profiles = profiles
+	if known || m.usageLane.flight != 0 {
+		m.usageLane.fence()
+		m.usageLane.trailing = true
+		m.usageNext = time.Time{}
+		return true
 	}
 	return false
 }
@@ -226,20 +212,12 @@ func (row usageRow) windowPresentation(window *windowText) (windowText, string) 
 func usageLater(receivedAt time.Time, machine string, previous time.Time, previousMachine string) bool {
 	return receivedAt.After(previous) || receivedAt.Equal(previous) && machine < previousMachine
 }
-func (m *model) usageAccessRejected(machine string) bool {
-	for _, peer := range m.peers {
-		if peer.Machine == machine {
-			return accessRejected(peer.Error)
-		}
-	}
-	return false
-}
 func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
 	var expired *usageProfile
 	var expiredMachine fleetclient.Machine
 	expiredFailed, unavailable, absent := false, false, false
-	for _, peer := range m.usagePeers {
+	for index, peer := range m.usagePeers {
 		relevant := peer.profiles == nil
 		for _, value := range peer.profiles {
 			relevant = relevant || value.profile.Key == profile.Key && value.profile.Provider == profile.Provider
@@ -247,7 +225,7 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 		if !relevant {
 			continue
 		}
-		if m.usageAccessRejected(peer.machine.Handle) {
+		if accessRejected(m.peers[index].Error) {
 			unavailable = true
 			continue
 		}
@@ -311,8 +289,8 @@ func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageR
 			unavailable = unavailable || peer.Profiles == nil && peer.Error != nil
 			continue
 		}
-		if !peer.OK {
-			unavailable = unavailable || peer.Error != nil
+		if peer.Error != nil {
+			unavailable = true
 			continue
 		}
 		absent = true
@@ -417,8 +395,10 @@ func (m *model) usageRows(now time.Time) []usageRow {
 	return rows
 }
 func (m *model) usageDeclarationState() string {
-	full, completed, failed := true, false, false
-	for _, peer := range m.peers {
+	full, completed, failed, pending := true, false, false, false
+	for index, peer := range m.peers {
+		lane := m.inventoryLanes[index]
+		pending = pending || lane.flight != 0 || lane.writing || lane.trailing
 		full = full && peer.Profiles != nil
 		completed = completed || peer.Profiles != nil || peer.Error != nil
 		failed = failed || peer.Error != nil
@@ -429,40 +409,63 @@ func (m *model) usageDeclarationState() string {
 	for _, peer := range m.usagePeers {
 		completed = completed || peer.profiles != nil || peer.failure != nil
 	}
-	if !completed || m.inventoryPending() && !failed {
+	if !completed || pending && !failed {
 		return "checking usage"
 	}
 	return "profile declarations unavailable"
 }
-func (m *model) usageSummary() []string {
-	if !m.usageVisible() || m.page != "" {
-		return nil
+func (m *model) weeklyQuota(room int) string {
+	if room <= 0 {
+		return ""
 	}
 	rows := m.usageRows(time.Now())
 	if len(rows) == 0 {
-		return []string{m.usageDeclarationState()}
+		state := m.usageDeclarationState()
+		if ansi.StringWidth(state) <= room {
+			return state
+		}
+		return ""
 	}
-	lines := []string{}
+	selectedProfile := ""
+	if selected := m.selectedRow(); selected != nil {
+		if agent := m.current(selected).Agent; agent != nil {
+			selectedProfile = agent.Profile
+		}
+	}
+	var items []string
+	selected := ""
 	for _, row := range rows {
 		text, status := row.windowPresentation(row.text.sevenDay)
-		item := attention.SingleLine(row.profile.Key) + " 7d " + text.remaining
-		if status != "" {
+		profile := attention.SingleLine(row.profile.Key)
+		item := profile + " " + text.remaining
+		one := item + " of 7d left"
+		switch status {
+		case "", "native", "terminal":
+		default:
 			item += " " + status
+			one = item
 		}
-		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+3+ansi.StringWidth(item) <= m.width-2 {
-			lines[last] += " · " + item
-		} else {
-			lines = append(lines, item)
+		items = append(items, item)
+		if row.profile.Key == selectedProfile {
+			selected = one
 		}
 	}
-	return lines
+	all := "7d left  " + strings.Join(items, "  ")
+	if ansi.StringWidth(all) <= room {
+		return all
+	}
+	if ansi.StringWidth(selected) <= room {
+		return selected
+	}
+	return ""
 }
-func (m *model) usageLines() []string {
+
+func (m *model) usageLines() []line {
 	rows := m.usageRows(time.Now())
 	if len(rows) == 0 {
-		return []string{m.usageDeclarationState()}
+		return []line{{{text: m.usageDeclarationState()}}}
 	}
-	lines := []string{}
+	var lines []line
 	for _, row := range rows {
 		for index, window := range []*windowText{row.text.sevenDay, row.text.fiveHour} {
 			profile, label := row.profile.Key, "7d"
@@ -473,28 +476,21 @@ func (m *model) usageLines() []string {
 				profile, label = "", "5h"
 			}
 			text, status := row.windowPresentation(window)
-			lines = append(lines, cell(profile, 11)+"  "+fmt.Sprintf("%-2s %5s %-15s", label, text.remaining, status)+"  "+cell(text.resetsAt, 19)+"  "+text.resetsIn)
+			lines = append(lines, line{{text: cell(profile, 11) + "  " + fmt.Sprintf("%-2s %5s %-15s", label, text.remaining, status) + "  " + cell(text.resetsAt, 19) + "  " + text.resetsIn}})
 		}
 	}
 	return lines
 }
-func (m *model) usageBody(height int) []string {
-	headings := []string{bold.Styled("usage"), "", cell("profile", 11) + "  " + cell("window", 24) + "  " + cell("reset (utc)", 19) + "  in (d:hh:mm:ss)"}
-	if height < len(headings) {
-		return headings[:max(0, height)]
+func (m *model) usageFold(height int) ([]line, int) {
+	lines := []line{
+		{{text: "usage", bold: true}},
+		{{text: cell("profile", 11) + "  " + cell("window", 24) + "  " + cell("reset (utc)", 19) + "  in (d:hh:mm:ss)", role: quietRole}},
 	}
-	lines := m.usageLines()
-	capacity := m.pageCapacity()
-	offset := min(m.offset, max(0, len(lines)-capacity))
-	return append(headings, lines[offset:min(len(lines), offset+capacity)]...)
-}
-func (m *model) usageKey(key string) {
-	switch key {
-	case "q", "esc":
-		m.page = ""
-	case "up":
-		m.offset = max(0, m.offset-1)
-	case "down":
-		m.offset = min(max(0, len(m.usageLines())-m.pageCapacity()), m.offset+1)
+	if height <= len(lines) {
+		return lines[:height], 0
 	}
+	items := m.usageLines()
+	capacity := height - len(lines)
+	offset := min(m.fold.offset, max(0, len(items)-capacity))
+	return append(lines, items[offset:min(len(items), offset+capacity)]...), offset
 }

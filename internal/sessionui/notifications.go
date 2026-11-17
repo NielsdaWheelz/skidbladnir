@@ -2,6 +2,7 @@ package sessionui
 
 import (
 	"context"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -26,12 +27,25 @@ func (m *model) acceptNotifications(message notificationMsg) tea.Cmd {
 	}
 	if current && m.observing() {
 		m.notifications, m.notificationFailed, m.notificationQualified = message.state, message.err != nil, message.err == nil
+		for index, peer := range m.peers {
+			if peer.OK || m.notificationFailed {
+				m.inventoryLanes[index].ready = nil
+			}
+		}
 		m.rebuild()
 	}
 	if m.notificationLane.trailing {
 		return m.refreshNotifications(false)
 	}
 	return nil
+}
+
+func (m *model) heldReady(row fleetclient.Row) bool {
+	if m.notificationFailed || row.Available && m.notificationQualified {
+		return false
+	}
+	index := m.peerIndex(row.Machine)
+	return index >= 0 && slices.ContainsFunc(m.inventoryLanes[index].ready, row.Session.Ref.SessionEqual)
 }
 
 // notificationReady reports the hub's pending ready for this exact lifetime and

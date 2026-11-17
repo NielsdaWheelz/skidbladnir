@@ -458,6 +458,9 @@ fill/de-emphasis slots (ANSI black, brightBlack), which never carry prose, and
 the cold Forge seal (§8). Reduced-motion fallbacks per §12. Ornament is always
 `contentDescription`-silent decoration.
 
+the browser's derived roles and fills keep that floor. its plain path uses the
+operator's terminal palette and the roles in [§17](#17-terminal-browser).
+
 The phone has no screen-reader support (owner cut). It ships no curated
 narration, custom actions, roles, headings, live regions, traversal order,
 state descriptions or terminal wheel actions; TalkBack gets only Compose's
@@ -488,39 +491,46 @@ code; fonts outside §9's table without a license entry here.
 
 ## 17. Terminal browser
 
-The desktop browser is this language with every ornament deleted (§1.2), drawn
-in the operator's own terminal. The operator's theme supplies the ground and
-default ink; the browser paints no background. Its behavior is the
-[architecture's](architecture.md#browser).
+the browser draws in the owner's terminal, with the layout in
+[architecture](architecture.md#browser). it queries default foreground and
+background and primary device attributes once at startup. no query or styling
+under `NO_COLOR`. otherwise it settles on the attributes reply or after one
+second. the full path needs truecolor, both colours before that reply and
+default ink with at least 4.5:1 contrast on both fills. all other cases use plain.
 
-| Intensity | SGR | Carries |
-| --- | --- | --- |
-| Reverse | 7 | The `skid` wordmark; the form caret |
-| Bold | 1 | The cursor row's name, the current view's label, keys, page titles, the rule's target |
-| Plain | — | Everything that must be read: names, status words, key labels, notices, the exclusive `needs input` view label |
-| Faint | 2 | What may recede: group headings/cells, provider/profile/model text, every row's machine/path, omission markers, the rule, names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
+raise mixes seven percent default ink into the ground. it fills the cursor row,
+open folds and the current view label. forge mixes ten percent gold into the
+ground for drafts. a ground darker than its ink uses the dark pigments below.
+quiet takes the first one-percent step from raise toward ink with 4.5:1 contrast
+on both fills and at least half the default ink's contrast on raise. adjust
+each pigment toward white on dark ground, black on light ground, in one-percent
+steps until it clears both fills.
 
-| Accent | Slot | Its one meaning |
-| --- | --- | --- |
-| Gold | Bright yellow | You are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
-| Ember | Bright red | A request or error status, a failed outcome, the stop/kill question |
-| Frost | RGB `#78A9C6` | starting, working |
-| Moss | RGB `#76B082` | ready |
-| Muted | RGB `#AAA69D` | Every other status |
+| role | carries | dark | light | plain |
+| --- | --- | --- | --- | --- |
+| ink | names, labels, notices, focused input | default | default | default |
+| quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned | derived | derived | faint |
+| muted | other status and client notes | quiet | quiet | `#AAA69D` |
+| gold | lip, current view chevrons, focused chooser | `#D6A85F` | `#8A6416` | bright yellow |
+| ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
+| moss | ready | `#76B082` | `#3B7448` | `#76B082` |
+| frost | starting and working | `#78A9C6` | `#2C6688` | `#78A9C6` |
+| bronze | wordmark block | `#CD7F32` | `#94561A` | reverse video |
 
-Status colour follows the projected tone (§5), never the printed word. A stale
-row's status cell reads Muted `last observed: <label>` and is never ready, even
-while its failed host is re-read; a row of any other host being re-read reads
-faint `checking`; both names recede faint. Ember never appears in hints, so
-requests and shown errors stay the table's only red statuses and are found at a
-glance. Colour never carries meaning alone: every status is a word; the cursor
-is a glyph plus bold; the current view is bold, between Gold `‹ ›` at the table;
-form chevrons stay faint because the `▌` gutter marks focus. `NO_COLOR` strips
-styling and preserves every label. Faint varies by terminal and disappears
-under mosh. Section and session hierarchy and omission survive complete style
-stripping; one content line identifies each session, with gaps only at group
-boundaries. One rule separates content from controls. No boxes, fret, runes,
-icons or motion.
+roles belong to text spans. every span and the padding carry the fill of their
+line. bold identifies the cursor's name, names that need input, the current view,
+headings, keys, titles, the focused field and the question. client notes are
+italic and stale names are quiet. the `◼` mark takes the projected status tone.
+the gold `▌` lip marks every fold line. text begins in column 5. one rule heads
+the open row's screen and another separates the body from controls. hints use
+ink and quiet.
+
+copy is lowercase and literal. preserve the host's words for status and the
+shared desktop outcome words. browser copy names the session and listing host,
+reports only what was sampled or completed, and names the refused action and
+reason. label ellipses mean a pending confirmation before sending. fit within
+78 cells or wrap whole. words and marks survive stripping every style. no boxes,
+fret, runes, icons or motion.
 
 ## 18. Dvergatal curation
 

@@ -1,9 +1,7 @@
 package sessionui
 
 import (
-	"fmt"
 	"image/color"
-	"os"
 	"strconv"
 	"strings"
 
@@ -20,7 +18,6 @@ import (
 // accents. Labels remain complete without color.
 var (
 	plain    = ansi.Style{}
-	bold     = ansi.Style{}.Bold()
 	faint    = ansi.Style{}.Faint()
 	wordmark = ansi.Style{}.Reverse(true)
 	here     = ansi.Style{}.ForegroundColor(ansi.BrightYellow)
@@ -28,31 +25,101 @@ var (
 	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
 	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
 	ember    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
-	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
 )
 
-type hint struct{ key, label string }
+type role uint8
+
+const (
+	inkRole role = iota
+	quietRole
+	mutedRole
+	goldRole
+	emberRole
+	mossRole
+	frostRole
+	bronzeRole
+)
+
+type span struct {
+	background   color.Color
+	text         string
+	role         role
+	bold, italic bool
+}
+
+type line []span
+
+func (m *model) renderLine(l line) string {
+	var rendered strings.Builder
+	styles := [...]ansi.Style{plain, faint, muted, here, ember, moss, frost, wordmark}
+	for _, part := range l {
+		style := styles[part.role]
+		if m.ground.raise != nil {
+			style = plain
+			if pigment := m.ground.pigments[part.role]; pigment != nil {
+				style = style.ForegroundColor(pigment)
+			}
+		}
+		if part.background != nil {
+			style = style.BackgroundColor(part.background)
+		}
+		if part.bold {
+			style = style.Bold()
+		}
+		if part.italic {
+			style = style.Italic(true)
+		}
+		rendered.WriteString(style.Styled(part.text))
+	}
+	return rendered.String()
+}
+
+func statusRole(tone api.StatusTone) role {
+	switch tone {
+	case api.ToneMuted:
+		return mutedRole
+	case api.ToneWorking:
+		return frostRole
+	case api.ToneAttention:
+		return emberRole
+	case api.ToneReady:
+		return mossRole
+	default:
+		panic("invalid status tone")
+	}
+}
 
 func (m *model) View() tea.View {
-	var content string
+	var lines []string
 	if m.tooSmall() {
-		// the outcome still shows, so a refused ctrl-c says why.
-		lines := append(wrapped("80 × 24 minimum; ctrl-c quits", m.width), m.outcomeLines(m.width)...)
-		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
+		// Keep the outcome visible even below the table's size floor.
+		lines = wrapped("80 × 24 minimum; ctrl-c quits", m.width)
+		for _, item := range m.outcomeLines(m.width) {
+			lines = append(lines, m.renderLine(item))
+		}
+		lines = lines[:min(len(lines), max(1, m.height))]
 	} else {
-		footer := m.footerLines()
-		lines := []string{m.header(), ""}
-		lines = append(lines, m.bodyLines(m.height-len(lines)-len(footer))...)
-		for len(lines) < m.height-len(footer) {
-			lines = append(lines, "")
+		f := m.frame()
+		lines = []string{" " + m.renderLine(m.header()), ""}
+		body := m.tableLines(f)
+		if len(m.rows) == 0 {
+			body[0] = line{{text: m.emptyTable()}}
 		}
-		lines = append(lines, footer...)
-		for index, line := range lines {
-			lines[index] = " " + line
+		for index, item := range body {
+			if index >= f.foldAt && index < f.foldAt+len(f.fold) {
+				lines = append(lines, m.renderLine(f.fold[index-f.foldAt]))
+			} else {
+				lines = append(lines, " "+m.renderLine(item))
+			}
 		}
-		content = strings.Join(lines, "\n")
+		for _, item := range f.notices {
+			lines = append(lines, " "+m.renderLine(item))
+		}
+		lines = append(lines, " "+m.renderLine(f.rule))
+		lines = append(lines, " "+m.renderLine(f.hints))
 	}
-	if os.Getenv("NO_COLOR") != "" {
+	content := strings.Join(lines, "\n")
+	if m.ground.noColor {
 		content = ansi.Strip(content)
 	}
 	view := tea.NewView(content)
@@ -61,13 +128,7 @@ func (m *model) View() tea.View {
 	return view
 }
 
-// header is the wordmark, then the strip of views in stepping order.
-// usage omits the table's view strip.
-func (m *model) header() string {
-	if m.page == "usage" {
-		return wordmark.Styled(" skid ")
-	}
-	room := m.width - 2 - 7
+func (m *model) header() line {
 	tabs, current := []tab{}, 0
 	for index, view := range m.viewOptions() {
 		switch view.kind {
@@ -82,13 +143,14 @@ func (m *model) header() string {
 				tabs = append(tabs, tab{label: attention.SingleLine(view.label.String())})
 			}
 		default:
-			panic("invalid selected view") // justify-defect: viewOptions emits only the closed view kinds.
+			panic("invalid selected view")
 		}
 		if view == m.view {
 			current = index
 		}
 	}
-	return wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
+	mark := line{{text: "▜", role: bronzeRole}, {text: "skid"}, {text: "▛", role: bronzeRole}, {text: " "}}
+	return append(mark, strip(tabs, current, m.width-9, m.ground.raise)...)
 }
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
@@ -101,7 +163,7 @@ type tab struct{ fixed, label string }
 // label whole, so stepping between groups keeps the cap. below the floor, the
 // groups farthest from the current view hide behind counted markers. the
 // current label shows whole up to 24 cells.
-func strip(tabs []tab, current, room int, stepping bool) string {
+func strip(tabs []tab, current, room int, raise color.Color) line {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
 			return min(ansi.StringWidth(t.label), limit)
@@ -155,13 +217,13 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	if over := width(limit, whole, first, last) - room; over > 0 && current >= 2 {
 		whole = max(1, min(ansi.StringWidth(tabs[current].label), 24)-over)
 	}
-	line := ""
+	var result line
 	for index, t := range tabs {
 		if index >= 2 && (index < first || index > last) {
 			continue
 		}
 		if index == first && first > 2 {
-			line += " ←" + strconv.Itoa(first-2) + " "
+			result = append(result, span{text: " ←" + strconv.Itoa(first-2) + " ", role: quietRole})
 		}
 		size := limit
 		if index == current {
@@ -171,73 +233,38 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 		if t.label != "" {
 			text = ansi.Truncate(t.label, size, "…")
 		}
-		switch {
-		case index == current && stepping:
-			line += here.Styled("‹") + bold.Styled(text) + here.Styled("›")
-		case index == current:
-			line += " " + bold.Styled(text) + " "
-		default:
-			line += " " + text + " "
+		if index == current {
+			result = append(result, span{text: "‹", role: goldRole, background: raise}, span{text: text, bold: true, background: raise}, span{text: "›", role: goldRole, background: raise})
+		} else {
+			result = append(result, span{text: " " + text + " "})
 		}
 	}
 	if last < len(tabs)-1 {
-		line += " " + strconv.Itoa(len(tabs)-1-last) + "→ "
+		result = append(result, span{text: " " + strconv.Itoa(len(tabs)-1-last) + "→ ", role: quietRole})
 	}
-	return line
+	return result
 }
 
-// footerLines holds notices, quota context, the content boundary, and the keys.
-// Only pages name a captured target in the boundary.
-func (m *model) footerLines() []string {
-	width := m.width - 2
-	notices := m.noticeLines(width)
-	usage := m.usageSummary()
-	keys := keyLines(width, m.hints()...)
-	legend, end := "", ""
-	switch m.page {
-	case "":
-		if m.selectedRow() != nil {
-			layout := m.tableLayout(width)
-			height := m.height - 3 - len(usage) - len(notices) - len(keys)
-			if m.top > 0 || layout.viewport(m.top, height).end < len(m.rows) {
-				end = faint.Styled(fmt.Sprintf(" %d of %d", m.cursor+1, len(m.rows)))
-			}
-		}
-	case "confirm":
-		legend = target(m.pendingName, m.pendingLabel, width)
-	case "details", "group-edit", "name-edit":
-		legend = target(m.pageRow.Session.Name, m.pageRow.Label, width)
-	case "quick-create":
-		legend = "new terminal on " + ansi.Truncate(attention.SingleLine(m.pending.Machine), width/2, "…")
-	case "create":
-		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[formMachine]), width/2, "…")
-	}
-	lines := append(notices, usage...)
-	lines = append(lines, rule(legend, end, width))
-	return append(lines, keys...)
-}
-
-// outcomeLines is the notice, wrapped, in its tone.
-func (m *model) outcomeLines(width int) []string {
-	lines := []string{}
+func (m *model) outcomeLines(width int) []line {
+	var lines []line
 	if m.notice == "" {
 		return lines
 	}
-	style := plain
+	role := inkRole
 	if m.noticeFailure {
-		style = ember
+		role = emberRole
 	}
-	for _, line := range wrapped(m.notice, width) {
-		lines = append(lines, style.Styled(line))
+	for _, text := range wrapped(m.notice, width) {
+		lines = append(lines, line{{text: text, role: role}})
 	}
 	return lines
 }
 
-func (m *model) noticeLines(width int) []string {
+func (m *model) noticeLines(width int) []line {
 	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
 	lines := m.outcomeLines(width)
 	if m.notificationFailed {
-		lines = append(lines, faint.Styled("notifications unavailable"))
+		lines = append(lines, line{{text: "notifications unavailable", role: quietRole}})
 	}
 	// A peer without an error is unobserved or being checked, not unavailable.
 	for _, peer := range m.peers {
@@ -246,461 +273,91 @@ func (m *model) noticeLines(width int) []string {
 			if len(peer.Sessions) > 0 {
 				suffix += "; showing its last observation"
 			}
-			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
-		} else if checking(peer) {
+			text := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…") + suffix
+			lines = append(lines, line{{text: ansi.Truncate(text, width, "…")}})
+		} else if checking(peer) && len(peer.Sessions) == 0 {
 			suffix := ": checking inventory"
 			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
-			lines = append(lines, faint.Styled(ansi.Truncate(host+suffix, width, "…")))
+			lines = append(lines, line{{text: ansi.Truncate(host+suffix, width, "…"), role: quietRole}})
 		}
+		peer.OK = peer.Error == nil
 		text, failure := fleetview.RecoveryNotice(peer)
 		if text != "" {
-			style := muted
+			role := mutedRole
 			if failure {
-				style = ember
+				role = emberRole
 			}
-			for _, line := range wrapped(text, width) {
-				lines = append(lines, style.Styled(line))
+			for _, part := range wrapped(text, width) {
+				lines = append(lines, line{{text: part, role: role}})
 			}
 		}
 	}
 	return lines
 }
 
-func (m *model) hints() [][]hint {
-	switch m.page {
-	case "confirm":
-		effect := "interrupt and close terminal"
-		if m.pending.Operation == "stop" {
-			effect = "send interrupt"
-		}
-		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"enter", effect}, {"escape", "cancel"}}}
-	case "group-edit", "name-edit":
-		if m.metadata.checking {
-			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
-		}
-		if m.page == "group-edit" {
-			keys := []hint{{"enter", "save"}, {"tab", "group"}, {"shift-tab", "back"}, {"ctrl-s", "save draft"}, {"escape", "cancel"}}
-			if !m.metadata.saveFocused {
-				keys[0].label, keys[1].label = "uses and continues", "uses and continues"
-				keys = append([]hint{{"←→", "choose"}, {"ctrl-u", "unassigned"}}, keys...)
-			}
-			return [][]hint{keys}
-		}
-		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && row.Session.NameMode == "manual" {
-			keys = append(keys, hint{"ctrl-a", "use automatic title"})
-		}
-		return [][]hint{keys}
-	case "quick-create":
-		return [][]hint{{{"←→", "machine"}, {"enter", "open terminal"}, {"ctrl-r", "refresh"}, {"escape", "cancel"}}}
-	case "create":
-		enter := hint{"enter", "next"}
-		next := hint{"tab", "next"}
-		if m.field == formCreate {
-			enter.label = "create"
-		} else if m.field == formGroup {
-			enter.label = "uses and continues"
-			next.label = "uses and continues"
-		}
-		hints := []hint{next, {"shift-tab", "back"}, enter, {"escape", "cancel"}}
-		if m.field == formMachine || m.field == formLaunch || m.field == formDirectory || m.field == formGroup {
-			hints = append([]hint{{"←→", "choose"}}, hints...)
-		}
-		if m.field == formDirectory {
-			hints = append(hints, hint{"ctrl-u", "home"})
-		} else if m.field == formGroup {
-			hints = append(hints, hint{"ctrl-u", "unassigned"})
-		}
-		return [][]hint{hints}
-	case "details":
-		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
-		if row := m.rowForReference(m.pageRow.Session.Ref.Reference); row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
-			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
-		}
-		return [][]hint{keys}
-	case "usage":
-		return [][]hint{{{"q escape", "back"}}}
+func rule(caption, quota string, width int) line {
+	var result line
+	room := width - ansi.StringWidth(caption) - ansi.StringWidth(quota)
+	edge := 1
+	if room >= 10 {
+		edge = 2
 	}
-	session := []hint{}
-	global := []hint{{"n", "quick terminal"}, {"N", "new terminal options"}}
-	if row := m.selectedRow(); row != nil && row.Available {
-		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
-		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
-		if !m.busy && row.Session.Connection == nil {
-			global = append(global, hint{"T", "new terminal here"})
-		}
-	} else if row != nil {
-		session = append(session, hint{"space", "info"})
+	end := strings.Repeat("─", edge)
+	if caption != "" {
+		result = append(result, span{text: end + " ", role: quietRole}, span{text: caption}, span{text: " "})
+		room -= edge + 2
 	}
-	global = append(global, hint{"u", "usage"}, hint{"q", "quit"})
-	return [][]hint{session, global}
-}
-
-// keyLines keeps each group on one line when it fits, otherwise wraps it by
-// whole hints, so a key never separates from its label.
-func keyLines(width int, groups ...[]hint) []string {
-	lines := []string{}
-	for _, group := range groups {
-		items := []string{}
-		for _, hint := range group {
-			items = append(items, bold.Styled(hint.key)+" "+hint.label)
-		}
-		if len(items) == 0 {
-			continue
-		}
-		joined := strings.Join(items, "  ")
-		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+4+ansi.StringWidth(joined) <= width {
-			lines[last] += "    " + joined
-			continue
-		}
-		line := ""
-		for _, item := range items {
-			if line != "" && ansi.StringWidth(line)+2+ansi.StringWidth(item) > width {
-				lines, line = append(lines, line), ""
-			}
-			if line != "" {
-				line += "  "
-			}
-			line += item
-		}
-		lines = append(lines, line)
+	if quota != "" {
+		room -= edge + 2
 	}
-	return lines
-}
-
-// rule separates content and controls. A page legend names its target; the
-// table's styled end carries its scrolled position.
-func rule(legend, end string, width int) string {
-	if end != "" {
-		end += faint.Styled(" ──")
+	result = append(result, span{text: strings.Repeat("─", room), role: quietRole})
+	if quota != "" {
+		result = append(result, span{text: " "}, span{text: quota}, span{text: " " + end, role: quietRole})
 	}
-	fill := width - ansi.StringWidth(end)
-	if legend == "" {
-		return faint.Styled(strings.Repeat("─", fill)) + end
-	}
-	legend = ansi.Truncate(legend, max(1, fill-5), "…")
-	return faint.Styled("── ") + legend + " " + faint.Styled(strings.Repeat("─", max(0, fill-4-ansi.StringWidth(legend)))) + end
+	return result
 }
 
 func target(name, machine string, width int) string {
-	half := max(1, (width-10)/2)
-	return bold.Styled(ansi.Truncate(attention.SingleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(attention.SingleLine(machine), half, "…")
+	name, machine = attention.SingleLine(name), attention.SingleLine(machine)
+	if ansi.StringWidth(name+" on "+machine) <= width {
+		return name + " on " + machine
+	}
+	machine = ansi.Truncate(machine, (width-4)/2, "…")
+	return ansi.Truncate(name, width-4-ansi.StringWidth(machine), "…") + " on " + machine
 }
 
-func (m *model) confirmationContent() (fixed, facts []string) {
-	width := m.width - 2
-	action, effect := "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
-	if m.pending.Operation == "stop" {
-		action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
+func (m *model) emptyTable() string {
+	for _, lane := range m.inventoryLanes {
+		if !lane.settled {
+			return "checking inventory"
+		}
 	}
-	fixed = []string{danger.Styled(action + "?"), ""}
-	fixed = append(fixed, wrapped(effect, width)...)
-	fixed = append(fixed, "")
-	facts = append(facts, field("session name", m.pendingName, false, false, 13, width)...)
-	facts = append(facts, field("terminal host", m.pendingLabel, false, false, 13, width)...)
-	facts = append(facts, field("selected pane", m.pending.Ref.PaneID, false, false, 13, width)...)
-	return fixed, facts
+	if m.view.kind == viewNeedsInput {
+		return "no sessions currently need input in this view"
+	}
+	total, partial := 0, false
+	for _, peer := range m.peers {
+		total += len(peer.Sessions)
+		partial = partial || !peer.OK
+	}
+	if total == 0 && !partial {
+		return "no sessions"
+	}
+	if partial {
+		return "no matching sessions in available inventory"
+	}
+	return "no sessions in this view"
 }
 
-func (m *model) bodyLines(height int) []string {
-	if height <= 0 {
-		return nil
-	}
-	width := m.width - 2
-	switch m.page {
-	case "confirm":
-		fixed, facts := m.confirmationContent()
-		fixed = fixed[:min(len(fixed), height)]
-		capacity := min(m.pageCapacity(), height-len(fixed))
-		offset := min(max(0, m.offset), max(0, len(facts)-capacity))
-		return append(fixed, facts[offset:min(len(facts), offset+capacity)]...)
-	case "group-edit", "name-edit":
-		editor := m.metadata
-		title, label, draft, axis := "group", "group", groupDraftDisplay(editor.draft), 7
-		if m.page == "name-edit" {
-			title, label, draft, axis = "rename session", "session name", editor.draft, 12
-			if !fleetclient.ValidSessionName(draft) {
-				draft = strconv.QuoteToASCII(draft)
-			}
-		}
-		lines := []string{bold.Styled(title), ""}
-		if editor.failure != nil {
-			lines = append(lines, wrapped(fleetview.ErrorMessage(*editor.failure, editor.request), width)...)
-			lines = append(lines, "")
-		}
-		current := m.rowForReference(editor.request.Ref)
-		if current != nil {
-			value := fleetview.GroupHeading(current.Session.Group)
-			if m.page == "name-edit" {
-				value = current.Session.Name + " (" + current.Session.NameMode + ")"
-			}
-			lines = append(lines, field("current", value, false, false, axis, width)...)
-		}
-		focusStart := len(lines)
-		lines = append(lines, field(label, draft, !editor.checking && !m.busy && !editor.saveFocused, false, axis, width)...)
-		focusEnd := len(lines)
-		status := "enter saves"
-		if m.page == "group-edit" {
-			if editor.saveFocused {
-				focusStart = len(lines)
-			} else {
-				lines = append(lines, m.groupPreview(editor.draft, &editor.selection, axis, width)...)
-				focusEnd = len(lines)
-				status = "left/right chooses; enter uses and continues"
-			}
-			lines = append(lines, field("", "save", editor.saveFocused && !editor.checking && !m.busy, false, axis, width)...)
-			if editor.saveFocused {
-				focusEnd = len(lines)
-			}
-		}
-		switch {
-		case m.busy:
-			status = "saving; delivery will be reported"
-		case editor.checking:
-			status = "checking inventory; escape returns to info"
-		case current == nil || !current.Available:
-			status = "session unavailable; save disabled"
-		case m.page == "group-edit":
-			value, err := group.ParseDraft(editor.draft)
-			if err != nil {
-				status = group.ErrInvalid.Error()
-			} else if current.Session.Group == value {
-				status = "unchanged; save disabled"
-			}
-		case !fleetclient.ValidSessionName(editor.draft):
-			status = fleetview.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request)
-		case current.Session.NameMode == "manual" && current.Session.Name == editor.draft:
-			status = "unchanged; save disabled"
-		}
-		lines = append(lines, "")
-		lines = append(lines, wrapped(status, width)...)
-		lines = append(lines, "")
-		if m.page == "name-edit" {
-			lines = append(lines, "saving a name stops automatic naming.")
-			if current != nil && current.Session.NameMode == "automatic" {
-				lines = append(lines, "follows the active pane's terminal title.")
-			}
-		}
-		return window(lines, focusStart, focusEnd, height)
-	case "quick-create":
-		lines := []string{bold.Styled("quick terminal"), ""}
-		focusStart := len(lines)
-		lines = append(lines, field("machine", m.pending.Machine, true, true, 7, width)...)
-		focusEnd := len(lines)
-		context := "home (~) · unassigned"
-		if !m.pending.Group.IsUnassigned() {
-			context = "home (~) · group: " + m.pending.Group.String()
-		}
-		lines = append(lines, wrapped(context, width)...)
-		if peer := m.peerLabeled(m.pending.Machine); peer == nil || !peer.OK {
-			status := attention.SingleLine(m.pending.Machine) + " unavailable; opening disabled"
-			if m.targetChecking(m.pending.Machine) {
-				status = "checking inventory; opening disabled"
-			}
-			lines = append(lines, "")
-			lines = append(lines, wrapped(status, width)...)
-		}
-		return window(lines, focusStart, focusEnd, height)
-	case "create":
-		lines := []string{bold.Styled("new session"), ""}
-		focusStart, focusEnd := 0, 0
-		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
-			value := m.form[index]
-			if index == formDirectory {
-				if _, _, problem := parseDirectoryDraft(value); problem != "" {
-					value = strconv.QuoteToASCII(value)
-				}
-				if value == "" && m.field != formDirectory {
-					value = "home (~)"
-				}
-			}
-			if index == formGroup {
-				value = groupDraftDisplay(value)
-			}
-			if index == m.field {
-				focusStart = len(lines)
-			}
-			lines = append(lines, field(label, value, index == m.field, index < formName, 9, width)...)
-			if index == formDirectory && m.field == formDirectory {
-				if value == "" {
-					lines[len(lines)-1] += faint.Styled(" home (~); type to search")
-				}
-				if len(m.searchDirectories) > 0 {
-					preview := m.directorySelection.preview(m.searchDirectories, func(path string) string { return path })
-					lines = append(lines, field("use", preview, false, false, 9, width)...)
-				}
-				if status := m.directoryStatus(); status != "" {
-					lines = append(lines, field("", status, false, false, 9, width)...)
-				}
-			}
-			if index == formGroup && m.field == formGroup {
-				lines = append(lines, m.groupPreview(m.form[formGroup], &m.groupSelection, 9, width)...)
-			}
-			if index == m.field {
-				focusEnd = len(lines)
-			}
-		}
-		if m.field == formCreate {
-			focusStart = len(lines)
-		}
-		lines = append(lines, field("", "create", m.field == formCreate, false, 9, width)...)
-		if m.field == formCreate {
-			focusEnd = len(lines)
-		}
-		lines = append(lines, "", "name: leave blank to follow the terminal title.")
-		if m.field == formDirectory {
-			lines = append(lines, "type search words or a path (/… or ~/…); tab uses the match.")
-		}
-		if !m.createAvailable() {
-			status := "host unavailable; create disabled"
-			if m.targetChecking(m.form[formMachine]) {
-				status = "checking inventory; create disabled"
-			}
-			lines = append(lines, status)
-		}
-		if _, err := group.ParseDraft(m.form[formGroup]); err != nil {
-			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
-		}
-		return window(lines, focusStart, focusEnd, height)
-	case "details":
-		title := bold.Styled("info")
-		// The title stays pinned; only the captured snapshot scrolls.
-		body := m.detailLines()
-		offset := min(m.offset, max(0, len(body)-(height-2)))
-		return append([]string{title, ""}, body[offset:min(len(body), offset+max(0, height-2))]...)
-	case "usage":
-		return m.usageBody(height)
-	}
-	if len(m.rows) == 0 {
-		partial := false
-		for _, peer := range m.peers {
-			partial = partial || !peer.OK
-		}
-		switch {
-		case !m.initialInventorySettled():
-			return []string{"checking inventory"}
-		case m.view.kind == viewNeedsInput:
-			return []string{"no sessions currently need input in this view"}
-		case partial:
-			return []string{"no matching sessions in available inventory"}
-		}
-		return []string{"no sessions in this view"}
-	}
-	layout := m.tableLayout(width)
-	return m.tableLines(layout, layout.viewport(m.top, height))
-}
-
-// window keeps a form's focused field visible; a field taller than the page
-// keeps its label and current tail, without a second editor.
-func window(lines []string, focusStart, focusEnd, height int) []string {
-	start := 0
-	if focusEnd > height {
-		start = focusEnd - height
-		if focusEnd-focusStart > height {
-			return append([]string{lines[focusStart]}, lines[focusEnd-height+1:focusEnd]...)
-		}
-	}
-	return lines[start:min(len(lines), start+height)]
-}
-
-// field right-aligns its label so a form reads down one axis; long values wrap
-// under the value column. focused choices show ‹ › and focused text a caret.
-func field(label, value string, focused, choice bool, labelWidth, width int) []string {
-	gutter, name := "  ", faint.Styled(fmt.Sprintf("%*s", labelWidth, label))
-	if focused {
-		gutter, name = here.Styled("▌")+" ", bold.Styled(fmt.Sprintf("%*s", labelWidth, label))
-	}
-	indent := strings.Repeat(" ", labelWidth+4)
-	valueWidth := max(1, width-labelWidth-4-4)
-	if focused && choice {
-		return []string{gutter + name + "  " + faint.Styled("‹ ") + bold.Styled(ansi.Truncate(attention.SingleLine(value), valueWidth, "…")) + faint.Styled(" ›")}
-	}
-	if value == "" && !focused {
-		return []string{gutter + name + "  " + faint.Styled("—")}
-	}
-	parts := strings.Split(ansi.Hardwrap(attention.SingleLine(value), valueWidth, true), "\n")
-	if focused {
-		parts[len(parts)-1] += wordmark.Styled(" ")
-	}
-	lines := []string{gutter + name + "  " + parts[0]}
-	for _, part := range parts[1:] {
-		lines = append(lines, indent+part)
-	}
-	return lines
-}
-
-func (m *model) groupPreview(draft string, selection *groupSelection, axis, width int) []string {
-	choices := m.groupChoices(draft)
-	lines := field("", "observed groups", false, false, axis, width)
-	if choices[0].literal || choices[0].label.IsUnassigned() {
-		lines = append(lines, field("", "no observed matches", false, false, axis, width)...)
-	}
-	preview := selection.preview(choices, func(choice groupChoice) string {
-		value := "label: " + choice.label.String()
-		if choice.label.IsUnassigned() {
-			value = "unassigned (no membership)"
-		} else if choice.literal {
-			value = "use label: " + choice.label.String()
-		}
-		return value
-	})
-	return append(lines, field("use", preview, false, false, axis, width)...)
-}
-
-func (m *model) detailLines() []string {
-	width := m.width - 2
-	facts := m.details(&m.pageRow)
-	row := m.rowForReference(m.pageRow.Session.Ref.Reference)
-	axis := 16
-	for index := range facts {
-		label := facts[index][0]
-		if row != nil && row.Available && (m.metadata == nil || !m.metadata.checking) {
-			if label == "name" {
-				label += " [r]"
-			} else if label == "group" {
-				label += " [g]"
-			}
-		}
-		facts[index][0] = label
-		axis = max(axis, ansi.StringWidth(attention.SingleLine(label)))
-	}
-	lines := []string{}
-	for _, fact := range facts {
-		if fact[0] == "" {
-			for _, line := range wrapped(fact[1], max(1, width-axis-8)) {
-				lines = append(lines, strings.Repeat(" ", axis+4)+line)
-			}
-			continue
-		}
-		lines = append(lines, field(fact[0], fact[1], false, false, axis, width)...)
-	}
-	return lines
-}
-
-func (m *model) pageCapacity() int {
-	if m.page == "confirm" {
-		fixed, _ := m.confirmationContent()
-		return max(0, m.height-2-len(m.footerLines())-len(fixed))
-	}
-	if m.page == "usage" {
-		return max(0, m.height-5-len(m.footerLines()))
-	}
-	return max(1, m.height-4-len(m.footerLines()))
-}
-
-func (m *model) headings() bool {
-	return m.view.kind == viewAll
-}
-
-// opensGroup reports whether a group heading precedes this row.
-func (m *model) opensGroup(index int) bool {
-	return m.headings() && (index == 0 || m.rows[index].Session.Group != m.rows[index-1].Session.Group)
-}
-
-// statusView projects a row's terminal status. A row without remote actions
-// is stale; readiness also requires a good read of the hub's notification state.
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	view := fleetview.ProjectStatus(row.Session, row.Available, m.notificationQualified && !m.notificationFailed && m.notificationReady(row.Session))
+	return m.projectStatus(row, row.Available || m.hostChecking(row))
+}
+
+func (m *model) projectStatus(row fleetclient.Row, fresh bool) fleetview.StatusView {
+	view := fleetview.ProjectStatus(row.Session, fresh, row.Available && m.notificationQualified && m.notificationReady(row.Session))
+	if m.heldReady(row) {
+		view.Label, view.Tone, view.Queue, view.QueueDetail = "ready", api.ToneReady, fleetview.QueueReady, ""
+	}
 	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
 		view.Label += " · " + view.QueueDetail
 		view.Detail += " · " + view.QueueDetail
@@ -711,50 +368,12 @@ func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
 // hostChecking reports a row without remote actions whose host has not failed a
 // read: its host is unobserved or being re-read after a metadata change.
 func (m *model) hostChecking(row fleetclient.Row) bool {
-	if row.Available {
-		return false
-	}
-	for _, peer := range m.peers {
-		if peer.Machine == row.Machine && peer.Error != nil {
-			return false
-		}
-	}
-	return true
+	index := m.peerIndex(row.Machine)
+	return !row.Available && index >= 0 && checking(m.peers[index])
 }
 
-// tableStatus is a row's status cell. a checking row makes no status claim and
-// reads faint `checking`; any other row reads the projected label in its tone,
-// so a row whose host failed a read reads its last observation. an errored
-// host also keeps its notice.
-func (m *model) tableStatus(row fleetclient.Row) (string, ansi.Style) {
-	if m.hostChecking(row) {
-		return "checking", faint
-	}
-	view := m.statusView(row)
-	switch view.Tone {
-	case api.ToneMuted:
-		return view.Label, muted
-	case api.ToneWorking:
-		return view.Label, frost
-	case api.ToneAttention:
-		return view.Label, ember
-	case api.ToneReady:
-		return view.Label, moss
-	}
-	panic("invalid status tone") // justify-defect: StatusTone is a closed set.
-}
-
-// tail keeps the end of a path, where directories differ.
-func tail(text string, width int) string {
-	if ansi.StringWidth(text) <= width {
-		return text
-	}
-	// TruncateLeft keeps a wide character that straddles the cut, so widen it.
-	cut := ansi.StringWidth(text) - width + 1
-	for ansi.StringWidth(ansi.TruncateLeft(text, cut, "")) > width-1 {
-		cut++
-	}
-	return "…" + ansi.TruncateLeft(text, cut, "")
+func (m *model) rowAvailable(row fleetclient.Row) bool {
+	return row.Available && !m.heldReady(row)
 }
 
 func groupDraftDisplay(draft string) string {

@@ -1,9 +1,8 @@
-# unrun acceptance of shipped releases
+# unrun acceptance
 
-problem: these checks were specified for shipped releases and never observed.
-they are unobserved journeys, not known defects. each line names the release
-the check was specified against and the former record, in parentheses, whose
-procedure and evidence remain in git at
+these acceptance journeys still need observation. versioned entries name the
+shipped release and the former record, in parentheses. its procedure and
+evidence remain in git at
 [docs/issues as of `12b1516`](https://github.com/NielsdaWheelz/skidbladnir/tree/12b15163d9faf529416d486e0156b8b83821fa4a/docs/issues),
 or at [`ba60841`](https://github.com/NielsdaWheelz/skidbladnir/tree/ba60841d3eeefde94eda0aea623f81f4133e88e2/docs/issues)
 where marked.
@@ -29,7 +28,12 @@ desktop:
 - v0.11.0: live `s`/`x` provider and tmux closure, and [a6](https://github.com/NielsdaWheelz/skidbladnir/blob/ba60841d3eeefde94eda0aea623f81f4133e88e2/docs/desktop-browser.md#7-acceptance-and-delivery) info editing (takeover/reset, naming conflicts, lost acknowledgements, replaced targets) through a real gateway (desktop-browser-runtime-acceptance).
 - v0.18.0: installed production terminal entry/greeting on desktop and phone; needs an owner exception to the default-server guardrail (desktop-browser-runtime-acceptance).
 - v0.14.0: `start --stdin` on the installed fleet: cold startup to the first prompt, and each supported startup-dialog layout refused without blind input (jarvis-launch-readiness, jarvis-launch-receipts, at `ba60841`).
-- v0.17.3: owner readability review of single-line rows at 80×24 and 160×24 (desktop-single-line-rows).
+- browser fold owner pass on the installed fleet (`NOT_RUN`, waived by the owner
+  for this release). the pass covers copy and
+  appearance in dark and light ghostty. attach, detach, next and attach without
+  waiting or entering an unchosen row. judge whether the screen answers what
+  the session is doing more often than not. decide whether the port's third ink
+  is wanted. check legibility over mosh and under `NO_COLOR`.
 - v0.11.0: live stale and checking cells: a failed host's rows muted `last observed` and never ready, re-read hosts `checking`, pending ready restored after recovery (terminal-observation-stale-live).
 
 phone:

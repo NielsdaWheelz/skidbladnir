@@ -25,11 +25,7 @@ type selectedView struct {
 }
 
 func (m *model) rebuild() {
-	var selected fleetclient.Reference
-	if row := m.selectedRow(); row != nil {
-		selected = row.Session.Ref.Reference
-	}
-	previous := m.cursor
+	previous, selected := m.cursor, m.selectedRow()
 	m.rows = nil
 	switch m.view.kind {
 	case viewNeedsInput:
@@ -52,22 +48,30 @@ func (m *model) rebuild() {
 				filter, _ = group.NamedFilter(m.view.label)
 			}
 		}
-		for _, group := range fleetclient.Groups(m.peers, filter) {
-			m.rows = append(m.rows, group.Rows...)
+		for _, section := range fleetclient.Groups(m.peers, filter) {
+			m.rows = append(m.rows, section.Rows...)
 		}
 	default:
-		panic("invalid selected view") // justify-defect: only the closed view kinds populate the model.
+		panic("invalid selected view")
 	}
-	m.cursor = -1
-	for index, row := range m.rows {
-		if row.Session.Ref.SessionEqual(selected) {
-			m.cursor = index
-			break
-		}
+	m.guest = false
+	if selected == nil {
+		m.cursor = min(0, len(m.rows)-1)
+		return
 	}
-	if m.cursor < 0 && len(m.rows) > 0 {
-		m.cursor = min(max(0, previous), len(m.rows)-1)
+	ref := selected.Session.Ref.Reference
+	m.cursor = slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return row.Session.Ref.SessionEqual(ref) })
+	if m.cursor >= 0 {
+		return
 	}
+	guest := *selected
+	if row := m.rowForReference(ref); row != nil {
+		guest = *row
+	} else {
+		guest.Available = false
+	}
+	m.cursor, m.guest = min(previous, len(m.rows)), true
+	m.rows = slices.Insert(m.rows, m.cursor, guest)
 }
 
 // viewOptions includes every group observed in the fleet plus the selected group,
@@ -93,28 +97,45 @@ func (m *model) viewOptions() []selectedView {
 func (m *model) step(delta int) {
 	options := m.viewOptions()
 	index := slices.Index(options, m.view)
-	m.selectView(options[min(max(0, index+delta), len(options)-1)])
-}
-
-func (m *model) selectView(view selectedView) {
+	view := options[min(max(0, index+delta), len(options)-1)]
 	if m.view == view {
 		return
 	}
-	var selected fleetclient.Reference
-	if row := m.selectedRow(); row != nil {
-		selected = row.Session.Ref.Reference
-	}
+	m.fold = fold{}
 	m.view = view
 	m.rebuild()
 	// keep a surviving selection; otherwise begin at the first row of the view.
-	if row := m.selectedRow(); row != nil && !row.Session.Ref.SessionEqual(selected) {
-		m.cursor = 0
+	if m.guest {
+		m.selectRow(0)
 	}
 	m.top = 0
 }
 
 func (m *model) move(delta int) {
-	if len(m.rows) > 0 {
-		m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
+	next := m.cursor + delta
+	if next >= 0 && next < len(m.rows) {
+		m.selectRow(next)
 	}
+}
+
+// selectRow uses the drawn index before removing the guest.
+func (m *model) selectRow(index int) {
+	if m.guest {
+		m.rows = slices.Delete(m.rows, m.cursor, m.cursor+1)
+		if index > m.cursor {
+			index--
+		}
+		m.guest = false
+	}
+	m.cursor = min(index, len(m.rows)-1)
+}
+
+func (m *model) guestNote(row fleetclient.Row) string {
+	if m.rowForReference(row.Session.Ref.Reference) == nil {
+		return "no longer listed"
+	}
+	if m.view.kind == viewGroup {
+		return "left this group"
+	}
+	return "left the queue: " + fleetview.ProjectStatus(row.Session, true, false).Label
 }
