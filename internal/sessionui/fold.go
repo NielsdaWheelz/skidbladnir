@@ -56,6 +56,8 @@ func (m *model) openKeys() []key {
 			entry.rank = 2
 		case "ctrl+r":
 			entry.rank, entry.label = 4, "read again"
+			refresh := entry.act
+			entry.act = func(m *model) tea.Cmd { return tea.Batch(refresh(m), m.askScreen()) }
 		case "x":
 			entry.rank = 7
 		case "s":
@@ -196,6 +198,7 @@ func (m *model) foldLines(capacity, width int) ([]line, int) {
 			for _, part := range parts[:min(2, len(parts))] {
 				lines = append(lines, line{{text: part}})
 			}
+			lines = append(lines, m.screenLines(row, capacity-len(lines), width)...)
 		}
 	case foldRename, foldGroup:
 		editor := m.metadata

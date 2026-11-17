@@ -97,10 +97,7 @@ func (m *model) viewOptions() []selectedView {
 func (m *model) step(delta int) {
 	options := m.viewOptions()
 	index := slices.Index(options, m.view)
-	m.selectView(options[min(max(0, index+delta), len(options)-1)])
-}
-
-func (m *model) selectView(view selectedView) {
+	view := options[min(max(0, index+delta), len(options)-1)]
 	if m.view == view {
 		return
 	}

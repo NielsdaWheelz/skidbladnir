@@ -84,6 +84,8 @@ type model struct {
 	contextLanes          []lane
 	notificationLane      lane
 	usageLane             lane
+	screen                screen
+	screenLane            lane
 	usagePeers            []usagePeer
 	usageNext             time.Time
 }
@@ -93,7 +95,13 @@ type model struct {
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
 	browserContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m := newModel(browserContext, client, input, output)
+	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30}
+	for _, machine := range client.Machines() {
+		m.peers = append(m.peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
+		m.usagePeers = append(m.usagePeers, usagePeer{machine: machine})
+	}
+	m.inventoryLanes = make([]inventoryLane, len(m.peers))
+	m.contextLanes = make([]lane, len(m.peers))
 	m.ground.noColor = os.Getenv("NO_COLOR") != ""
 	if m.ground.noColor {
 		m.ground.profile = colorprofile.ASCII
@@ -104,15 +112,6 @@ func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File
 	}
 	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output), tea.WithColorProfile(m.ground.profile)).Run()
 	return err
-}
-func newModel(ctx context.Context, client *fleetclient.Client, input, output *os.File) *model {
-	peers := []fleetclient.Peer{}
-	usagePeers := []usagePeer{}
-	for _, machine := range client.Machines() {
-		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
-		usagePeers = append(usagePeers, usagePeer{machine: machine})
-	}
-	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, inventoryLanes: make([]inventoryLane, len(peers)), contextLanes: make([]lane, len(peers))}
 }
 func (m *model) Init() tea.Cmd {
 	var query tea.Cmd
@@ -198,6 +197,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		command = tea.Batch(m.refresh(false), m.refreshUsage(false), tick())
 	case fleetMsg:
 		command = m.onFleet()
+	case screenMsg:
+		command = m.acceptScreen(message)
 	case usageMsg:
 		command = m.acceptUsage(message)
 	case inventoryMsg:
@@ -225,6 +226,12 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 // settle follows every message so the table keeps the cursor in view.
 func (m *model) settle() {
+	if ref := m.screen.ref; !ref.IsZero() {
+		row := m.selectedRow()
+		if m.fold.kind != foldOpen || row == nil || row.Session.Ref.Reference != ref || m.peerIndex(ref.Machine) < 0 {
+			m.forgetScreen()
+		}
+	}
 	if !m.tooSmall() {
 		f := m.frame()
 		m.top = f.top
@@ -432,6 +439,9 @@ func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 	m.inventoryLanes[index].trailing = true
 	m.inventoryLanes[index].ready = nil
 	m.peers[index].OK, m.peers[index].Error = false, failure
+	if m.screen.ref.Machine == machine {
+		m.forgetScreen()
+	}
 	if m.fold.kind == foldDraft && m.form.machine == m.peers[index].Label && m.searchState != directorySearchIdle {
 		m.clearDirectorySearch()
 	}

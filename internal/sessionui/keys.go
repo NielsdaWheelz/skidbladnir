@@ -151,7 +151,7 @@ func (m *model) tableKeys() []key {
 			},
 			act: func(m *model) tea.Cmd {
 				m.fold = fold{kind: foldOpen}
-				return nil
+				return m.askScreen()
 			}},
 		{keys: []string{"tab"}, show: "tab", label: "next needing input", group: "session", rank: 3,
 			can: markedGuard(1), act: markedMove(1)},
@@ -278,6 +278,7 @@ func markedMove(direction int) func(*model) tea.Cmd {
 		m.selectRow(m.nextMarked(direction))
 		if m.fold.kind == foldOpen {
 			m.fold.facts = false
+			return m.askScreen()
 		}
 		return nil
 	}

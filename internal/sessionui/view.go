@@ -327,8 +327,10 @@ func target(name, machine string, width int) string {
 }
 
 func (m *model) emptyTable() string {
-	if !m.initialInventorySettled() {
-		return "checking inventory"
+	for _, lane := range m.inventoryLanes {
+		if !lane.settled {
+			return "checking inventory"
+		}
 	}
 	if m.view.kind == viewNeedsInput {
 		return "no sessions currently need input in this view"

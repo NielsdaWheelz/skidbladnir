@@ -65,14 +65,14 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 	if !landed {
 		return nil
 	}
-	var usage tea.Cmd
+	var usage, screen tea.Cmd
 	if current && m.observing() {
 		lane.settled = true
 		m.cancelContext(index)
 		if message.result.OK {
 			received := message.result.Value.(fleetclient.Peer)
 			received.Label = m.peers[index].Label
-			if m.reconcileUsageProfiles(received) {
+			if m.reconcileUsageProfiles(index, received) {
 				usage = m.refreshUsage(false)
 			}
 			previous := m.peers[index]
@@ -81,28 +81,34 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 					continue
 				}
 				m.contextLanes[index].trailing = true
-				for _, old := range previous.Sessions {
-					if old.Ref == session.Ref && old.Connection != nil && old.Connection.ID == session.Connection.ID {
-						received.Sessions[i].Execution = old.Execution
-						break
-					}
+				previousIndex := slices.IndexFunc(previous.Sessions, func(old fleetclient.Session) bool {
+					return old.Ref == session.Ref && old.Connection != nil && old.Connection.ID == session.Connection.ID
+				})
+				if previousIndex >= 0 {
+					received.Sessions[i].Execution = previous.Sessions[previousIndex].Execution
 				}
 			}
 			m.peers[index] = received
 		} else {
 			m.peers[index].OK, m.peers[index].Error = false, message.result.Error
 			m.forgetContext(index)
+			if m.screen.ref.Machine == message.machine && accessRejected(message.result.Error) {
+				m.forgetScreen()
+			}
 		}
 		if !message.result.OK || m.notificationQualified || m.notificationFailed {
 			lane.ready = nil
 		}
 		m.afterInventory(message.machine, message.generation)
+		if message.result.OK && m.screen.ref.Machine == message.machine {
+			screen = m.readScreen()
+		}
 	}
 	var trailing tea.Cmd
 	if lane.trailing {
 		trailing = m.refreshInventory(index, false)
 	}
-	return tea.Batch(usage, trailing, m.readContext(index))
+	return tea.Batch(usage, screen, trailing, m.readContext(index))
 }
 
 func (m *model) afterInventory(machine string, generation uint64) {
@@ -120,24 +126,6 @@ func (m *model) afterInventory(machine string, generation uint64) {
 			m.reconcileMetadata()
 		}
 	}
-}
-
-func (m *model) initialInventorySettled() bool {
-	for _, lane := range m.inventoryLanes {
-		if !lane.settled {
-			return false
-		}
-	}
-	return true
-}
-
-func (m *model) inventoryPending() bool {
-	for _, lane := range m.inventoryLanes {
-		if lane.flight != 0 || lane.writing || lane.trailing {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *model) cancelContext(index int) {
@@ -244,14 +232,9 @@ func (m *model) refreshFleet() tea.Cmd {
 
 func (m *model) reconcileFleet() bool {
 	machines := m.client.Machines()
-	same := len(machines) == len(m.peers)
-	for index, machine := range machines {
-		if index >= len(m.peers) || m.peers[index].Machine != machine.Handle || m.peers[index].Label != machine.Label {
-			same = false
-			break
-		}
-	}
-	if same {
+	if slices.EqualFunc(machines, m.peers, func(machine fleetclient.Machine, peer fleetclient.Peer) bool {
+		return machine.Handle == peer.Machine && machine.Label == peer.Label
+	}) {
 		return false
 	}
 	peers := make([]fleetclient.Peer, len(machines))
