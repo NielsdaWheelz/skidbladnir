@@ -50,8 +50,8 @@ or a configured profile's agent, on an explicit machine and directory, or a
 terminal beside an existing session; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
 phone; detach without stopping anything; interrupt or close an exact, confirmed
-session; read, write and wait on terminals from the CLI, which is how jarvis drives
-workers; choose native model/effort options for a supported profile launch;
+session; read a session's screen in the browser and read, write and wait on terminals
+from the CLI, which is how jarvis drives workers; choose native model/effort options for a supported profile launch;
 be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
@@ -1094,16 +1094,16 @@ creation and inventory report terminal-service unavailability as 503.
 
 ## 11. Desktop clients
 
-The desktop is four Go packages over the same gateways the phone uses. There is no
-desktop daemon and no desktop state on disk: every fact comes from a gateway
-inventory, the hub's notification state or `fleet.json`, and is rebuilt each run.
+the desktop uses the same gateways as the phone. there is no desktop daemon or
+desktop state on disk. each run reads gateway inventory, the hub's notification
+state and `fleet.json`. the browser also reads an open row's screen on request.
 
 | Owner | Owns |
 | --- | --- |
 | `internal/fleetclient` | Peer routing from `fleet.json`, one HTTP/WebSocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution |
 | `internal/fleetview` | The shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `RecoveryNotice`, `GroupHeading`) |
 | `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes |
-| `internal/sessionui` | The browser: one Bubble Tea model holding peers, one selected view, one cursor, one page and at most one pending operation |
+| `internal/sessionui` | The browser: one Bubble Tea model holding peers, one selected view, one cursor, one fold and at most one pending operation |
 | `internal/terminalclient` | Lending the local TTY to one exact session over the terminal WebSocket, and acknowledging that visit |
 
 ### Desktop concepts
@@ -1116,10 +1116,13 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
 - **Execution context**: where a row's work runs: `local` (this host's pane cwd and
   agent), `remote` (the host that answers for an SSH/mosh connection chain) or
   `remoteUnknown`.
-- **Status view**: the host's copy plus two client overlays: stale
-  (`last observed: <label>`, muted, never ready) and ready.
-- **Captured target**: the reference and display names a page pins when it opens
-  (confirmation, info, editors, creation drafts).
+- **status view**: host status with browser overlays for ready, checking, and
+  last observed. checking preserves the row's last queue class and evidence.
+- **guest**: the selected lifetime after it leaves the view. a listed guest keeps
+  live facts and action admission. an unlisted guest retains its last facts.
+- **captured target**: a confirmation or editor retains its exact reference, and
+  a confirmation retains the name and listing host shown in its question. an
+  open row follows the cursor.
 
 ### Desktop invariants
 
@@ -1130,10 +1133,9 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
    write.
 2. Exact targets. Every effect is addressed by a captured reference. Names, labels,
    row positions, rendered or shortened paths and provider text never become
-   identities, mutation inputs or inferred facts. Pages keep their captured target
-   through refresh, rename, reorder and pane change; an unavailable or replaced
-   lifetime disables the action instead of retargeting it; the gateway rechecks
-   lifetime and pane.
+   identities, mutation inputs or inferred facts. folds keep captured targets
+   through refresh, rename, reorder and pane change. an unavailable or replaced
+   lifetime disables its action. the gateway rechecks lifetime and pane.
 3. One resolution. A handle resolves once per invocation over one complete
    inventory of its scope (`--machine` narrows it). An exact reference needs no
    inventory, except `info`, which reports its row.
@@ -1143,33 +1145,38 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
    closed enums (status, name mode, provider, read state, write and close
    outcomes). A failed check rejects the whole document as `protocol_error`, a lost
    response: the peer reads unavailable and a possibly sent write is unknown.
-5. Availability. Only the owning peer's current successful inventory admits a
-   row's actions. A mutation fences its peer's reads (a **fence** makes every
-   reply sampled before it stale) until the mutation's own post-write read, so a
-   reply sampled before the write cannot restore eligibility; that peer's rows
-   read `checking` meanwhile. `Unauthenticated` or `MachineIdentityMismatch` from
-   any call invalidates the whole host at once.
-6. One read per stream. Per peer at most one inventory read and one remote-context
-   pass are in flight; the browser also has one hub notification read and one
-   usage read. A manual refresh during a read owes one trailing read; ticks skip
-   busy streams. Entering a terminal fences and cancels every browser read.
-7. Fleet-wide views. Every view, group suggestion and failure notice uses the full
-   retained fleet; there is no machine scope. A failed host's rows stay as last
-   observed, also while it is re-read, and its notice shows in every view. A host
-   not yet observed, or re-read after the browser's own write, reads `checking`,
-   never `unavailable`.
-8. Ready is the hub's verdict. A row reads `ready` only if its host renders it idle
-   without interaction, its inventory is fresh, the last hub read succeeded after
-   the browser last regained the screen, and the hub's pending ready names the same
-   foreground (provider, PID, start identity). The CLI keeps no notification state
-   and never prints `ready`.
-9. Creation. Confirmed creation (`n`, `N`, `T`) reveals and selects the returned
-   lifetime, leaving needs input or a non-matching group for its actual group,
-   then attaches it. Failed or unknown creation changes no view or selection and
-   is never retried; attachment failure leaves the new terminal selected, and retry
-   means attach. A closing browser never enters what it created.
-10. Return. Detach resumes the same view, selection and scroll, then refreshes.
-    Restarting skid begins at `all`, first row.
+5. availability. attachment needs a listed lifetime and no failed read from
+   its listing host. a checking row admits attach and local inspection. effects
+   need a current successful host inventory and any hub read still owed for that
+   row. a write fences its host's reads until the post-write inventory. a reply
+   sampled before the write cannot restore eligibility. a typed access or machine
+   identity rejection invalidates its host immediately.
+6. one read per stream. each peer has at most one inventory and one remote-context
+   pass in flight. the browser has a hub read, a usage read and one screen read
+   on explicit request. busy reads can owe one successor. ticks skip occupied
+   lanes. entering a terminal fences browser reads and clears the open fold.
+7. fleet-wide views. views and suggestions use retained fleet inventory. failed
+   hosts keep last observed rows and a notice. a healthy host is checking before
+   its first read, after the browser writes to it and after a terminal visit.
+   checking changes the status word while the prior evidence remains visible.
+8. ready is the hub's verdict for an idle row with the same observed foreground
+   (provider, pid and start identity). after a visit a previously ready row
+   checks until its host and hub have answered. a failed hub read removes ready
+   and a visit's acknowledgement error leaves the browser's hub evidence intact.
+   the cli keeps no notification state.
+9. creation. `n`, `N`, `T` and `c` reveal and select the returned lifetime before
+   attaching. from needs input or a non-matching group, adoption selects the new
+   session's group. failed or unknown creation preserves view and selection, and
+   a later attach to a created row does not repeat creation. a closing browser
+   does not enter a session it created.
+10. return and selection. detach keeps the view, exact lifetime and table scroll,
+    prints the session and listing host, then refreshes. a rebuild follows the
+    selected lifetime through reorder. a departing row stays as a guest at its
+    previous index, bounded by the rows available, until cursor movement, a view
+    change or adoption. `j` and `k` leave a guest for the next and previous drawn
+    row. an unlisted guest cannot attach or mutate. before post-close inventory,
+    an attach still addresses the original lifetime and the gateway refuses it.
+    restart begins at the first row of `all`.
 11. Display text. Every external string is sanitized with `attention.SingleLine`
     and measured in display cells before styling. Styled fragments never pass back
     through sanitization, which maps ESC to a space. Colour never carries meaning
@@ -1194,6 +1201,9 @@ inventory, the hub's notification state or `fleet.json`, and is rebuilt each run
   Request bodies are at most 64 KiB; responses at most 64 KiB, inventories 1 MiB.
   An operation has 15 s, a directory search 2 s, a remote-context pass 2 s, a hub
   call 3 s. No proxy; redirects are never followed.
+- **browser screen** uses the existing exact-pane terminal `read` with a
+  4,096-byte budget. the gateway supplies visible alternate screen or retained
+  history. the same fold renders either as screen evidence.
 - **Remote context**: for an SSH/mosh row the client follows the connection chain
   through `GET /v1/terminal-contexts/{id}` on every unfailed peer
   ([remote context](#remote-context), item 4).
@@ -1276,8 +1286,9 @@ distinct: views are typed values, never indices or label text.
 Needs input holds fresh local agents in two tiers. Ready ([desktop invariant 8](#desktop-invariants),
 [phone](#phone-invariants)) comes first; then action: any request, or a current
 error or interruption notice, whatever the activity. A request or notice outranks
-a stored ready. A menu alone, quiet idle, starting, working, unknown, stale or
-checking rows, terminals and remote agents stay out. A menu that hides a
+a stored ready. A menu alone, quiet idle, starting, working, unknown, stale rows,
+terminals and remote agents stay out. a browser row checking after a visit or a
+write keeps its last queue membership while it checks. A menu that hides a
 qualifying notice keeps `menu open` and appends the notice (`· error shown`), so
 its inclusion is visible. Ties keep each client's stable session order. Membership
 derives from typed facts, never rendered strings or colours.
@@ -1285,11 +1296,12 @@ derives from typed facts, never rendered strings or colours.
 A row leaves when its last reason ends: ready when a visit's output acknowledges it
 or fresh non-idle replaces it; a request or notice when a fresh observation no
 longer shows it. A replaced foreground never inherits ready. Selecting, opening
-info, changing views and failed entry acknowledge nothing; opening a terminal never
+a row, changing views and failed entry acknowledge nothing; opening a terminal never
 answers a request or clears a notice; there is no manual dismiss; tmux visits
 outside skid acknowledge nothing. `all` and group views keep group, then session
 order, and include terminals and stale rows; only `all` draws group headings.
-Group choices come from the complete retained inventory, not the queue. A hub read
+a selected browser guest can remain in a view it has left. group choices come
+from complete retained inventory. A hub read
 failure hides ready, keeps requests and notices, and shows
 `notifications unavailable` outside every view. The queue is a human view, never
 control admission: `wait --state needs-input` stays the explicit-request
@@ -1297,103 +1309,118 @@ predicate.
 
 ### Browser
 
-Row 1 is the reversed ` skid ` wordmark and the view strip; below the body come
-notices, the usage summary, one rule and key hints. Visual values are in
-[design language §17](design-language.md#17-terminal-browser). The minimum is
-80×24; below it the browser keeps all state, draws only the size notice and the
-outcome, and admits only `ctrl-c` and the keys that close or cancel the page.
+the view strip and `▜skid▛` occupy line 1. line 2 is blank. the table and any
+fold share the body, followed by notices, the caption and quota rule, and one
+hint line. the table scrolls only as needed to keep the selected row visible
+when selection, inventory, view, window size or footer height changes. below
+80×24 only the size notice and outcome draw. only `ctrl-c` and the current
+fold's closing keys act there.
 
-**Strip.** `needs input`, `all` and the current label never hide or truncate.
-Other group labels share one cap, 24 cells down to 7, chosen so stepping between
-groups never changes it; past the floor the groups farthest from the current view
-hide behind counted `←n` and `n→`. From 80 columns row 1 fits one line. Left and
-right step through it and clamp, never wrap; a new view keeps the selected session
-if it holds it, else selects its first row; a refresh follows the exact lifetime,
-else clamps the former index.
+**strip.** `needs input`, `all` and the current label stay visible. other group
+labels share a cap, from 24 to 7 cells. when the floor no longer fits, the
+farthest groups hide behind counted `←n` and `n→`. left and right clamp. a view
+change keeps a lifetime present in the new view, otherwise selects its first row.
 
-**Rows.** One session per line at every supported size. The owner fixed this
-priority, which is also the display order: `name → status → group → provider →
-profile → model/effort → machine/path`. Lower fields are omitted whole before
-higher ones shrink, and a nonfitting field is never skipped to rescue a later one;
-a faint `…` at the right edge means a present field was omitted, while ordinary
-elision of a name, group or path does not.
+**table.** each session occupies one line. fixed columns measure last observations
+across all listed rows for the current view. `all` and group views share widths.
+needs input adds group and its queue status copy. columns are name (28 cells),
+mark, status, group (16), provider,
+profile, model/effort, machine (16) and path (at least eight). two spaces separate
+columns. trailing columns drop whole for everyone. the shared layout indicates
+which columns fit. machine and path drop together
+and an unresolved remote uses both for `remote context unknown`. name and status
+stay. the layout reserves space for `checking`. a `◼` marks every row whose typed
+queue class is ready or action.
 
-- Names share one width across the whole collection (at most 28 cells, end
-  ellipsis); tmux names may be any length, and info shows them whole.
-- Status is never clipped. The widest cell, `last observed: status unavailable`, is
-  33 cells, so name and status take at most 65 of the 78-cell body at 80 columns,
-  68 with the marker; a status vocabulary change must recheck this bound.
-- Group appears only in needs input; provider, profile (`unknown` when not
-  attributed) and displayed model/effort are whole or omitted. Model/effort reads
-  `—` for a recognized agent without a footer and is absent for terminals and
-  unresolved remotes.
-- Location is the execution context's machine (at most 16 cells) and the cwd's
-  last two components, taken lexically (no lookup, home substitution or
-  normalization), shown only when at least `min(8, width of the shortened path)`
-  cells remain for it; never provider footer text, which may repeat the cwd as a
-  separate observation. An unresolved or stale remote row reads
-  `remote context unknown`.
-- A group heading never dangles: an interior transition admits gap, heading and
-  first session together.
+the path is the last two lexical components, with `…/` for earlier components.
+when it is too wide, it keeps `…/` and as much of the last component as fits.
+client notes do not set column widths. `checking` replaces only the status word.
+a stale row's `last observed: <label>` and a guest's `left the queue: <label>`,
+`left this group` or `no longer listed` run from the status position, suppress
+group and agent metadata, and keep place only if it fits. only `all` draws group
+headings, with their first row. the complete status and client notes fit at 80
+columns. a guest displaced from its old group keeps its index without splitting
+a heading.
 
-**Keys.** Escape closes or cancels a page and does nothing on the table; `q` quits
-from the table; `ctrl-c` quits from any page, discarding drafts. While an operation
-is in flight every key, `ctrl-c` included, is refused with
-`operation in flight; delivery will be reported`. `ctrl-r` refreshes inventory, and
-on the table also usage. The rest is in the help text.
+the rule names the session and listing host, then any dropped execution place
+and position that fit. a foot draft or terminal chooser names its selected host.
+notices put the outcome first, then hub and host failures and retained recovery
+notices. a checking host shows `checking inventory` only when it has no listed
+row. at extreme notice heights the visible footer keeps the highest-priority
+notices and room for the table.
 
-**Actions.**
-- `s` and `x` open a confirmation pinned to the captured name, host and pane. Its
-  title and literal effect stay fixed while the facts scroll; it promises no stop.
-  Enter dispatches at any scroll offset if the lifetime is still available.
-- `T` (available local rows only) sends `shell` with the captured reference; the
-  host samples the source's cwd and group. A remote row refuses, without dispatch
-  or fallback, pointing at `n`.
-- `n` opens a machine-only chooser at the configured default, never the cursor's
-  host, the last choice or the first reachable one. It cycles every configured
-  machine in order, unavailable ones included; refresh changes availability, never
-  the choice. Enter sends `{kind: terminal, cwd: "~", group?}` (the current named
-  view's label, omitted otherwise) only to an available machine; checking and
-  unavailable refuse in place, a known error taking precedence. The host expands
-  home and names the session; `201` proves creation, not shell readiness.
-- `N` offers machine (available ones only), launch, name (blank follows the
-  terminal title), directory and group, then an explicit `create`. Directory:
-  empty is home; `/…` and `~…` are literal; other text is search words sent to the
-  host after 150 ms. Typing supplies choices, ←→ cycles, Tab or Enter accepts and
-  advances without dispatch, Shift-Tab returns without accepting, `ctrl-u` clears
-  to home or unassigned. A highlighted choice enters the draft only when accepted,
-  and only an accepted match or literal can be submitted. Editing, machine change,
-  focus loss or cancellation invalidates a pending search, so a late reply never
-  fills another draft. Group suggestions come from observed labels, ranked as on
-  the [phone](#creation-sheet). The group editor's `ctrl-s` saves the typed draft.
+**folds.** one fold at a time. space opens any selected row, including a stale
+row or guest. inline folds stay beside that row, moving later lines down or
+earlier lines up without moving the selected row or table scroll. their cap is
+`max(1, min(16, (body − 1) / 2))` in whole lines. foot folds cover at
+most 11/20 of the body's last lines, including the title. they can cover the
+cursor but cannot cover a notice. a clipped fold keeps its focused line visible.
 
-**Info and editing.** Space opens info on the selected row, available or not. Info
-pins its lifetime independently of the table; refresh updates its facts without
-retargeting. When the session leaves inventory or its host fails, info keeps the
-last facts with `state: last observed: …` and `availability: unavailable` (or
-`checking`). `r` and `g` edit from info only. An editor resolves its lifetime from
-full inventory, sends one write and returns to info after the post-write read;
-views never change. While it checks, its draft and uncertainty survive escape to
-info and block another edit; `N` stays available. A matching fresh state resolves
-it (an unknown write says `request outcome unknown; requested metadata observed`);
-a differing state keeps the draft for review; a definite rejection never becomes
-success because another writer matched. Saving a name selects manual naming, even
-for unchanged text; `ctrl-a` restores automatic naming; automatic reconciliation
-compares ownership, never a predicted title; a changed name or ownership keeps the
-draft with a conflict notice and a fresh expectation. Creation results attach to
-an older peer receipt without usage or footer; the next inventory supplies them.
+open shows handle, pane, directory, command and any attached clients, then the
+sampled screen. `i` switches to facts, with state and availability first, then
+full name, execution host, directory and handle. the short view counts facts it
+cannot show. screen reads come only from opening, carry with tab or shift-tab,
+or explicit refresh. an unavailable row's request waits for its own next
+inventory and can start once while still on that row. closing, moving, entering a
+terminal, changing panes, roster removal or access rejection retires the sample.
+the fold shows the client's receipt age; a failed inventory dates retained
+screen evidence and names the unavailable host. screen and status are independent
+samples. the fold sanitizes terminal lines, drops blank and drawing-only lines,
+and shows the latest lines that fit.
 
-**Notices.** The outcome notice comes first, then `notifications unavailable`, then
-each failed host (`<host> unavailable (<code>)`), each checking host and recovery
-notices. A host failure never replaces the outcome, so an unknown result stays
-visible. Start failures prefix the chosen host.
+`x` and `s` open an inline question naming the captured session and host above
+the literal effect. enter or `y` sends once if the captured lifetime is available.
+escape, `n` and `q` cancel. sending or canceling returns to the table. a refused
+send explains why. `r` and `g` open
+inline editors from an open row. a write's draft and uncertainty survive until a
+fresh read settles them. pending reconciliation blocks another edit. matching
+fresh metadata resolves an acknowledged write or reports observation after an
+unknown outcome, then returns to the open row. conflicting metadata keeps the
+draft for review. a definite rejection cannot become success because a separate
+writer matched. name edits retain their expected naming state. saving an unchanged
+automatic title claims manual naming, while `ctrl-a` restores automatic ownership.
+
+`n` opens the terminal chooser at the configured default. it cycles every
+configured machine and sends terminal, home and the selected view's group only
+to an available host. `T` creates beside an available local row, asking the host
+to sample cwd and group. `N` opens a foot draft. `c` seeds an inline draft from
+an available local row's listing machine, group and cwd. the recorded launch is
+eligible while that machine declares it. the shell and a declared profile named
+`terminal` are distinct choices. a shell with neither agent nor recorded
+launch seeds terminal. a missing launch needs a choice before create. a seeded
+draft with a known launch opens on create.
+
+drafts keep machine, launch, name, directory, group and create in focus order.
+blank name follows the terminal title. the directory chooser first offers the
+draft value, home, and up to four directories from that machine's sessions by
+frequency. typed absolute paths and home paths are literal. other text starts
+a directory search after 150 ms. left and right preview values, tab or enter
+accepts and advances, shift-tab returns without accepting and `ctrl-u` clears
+to home or unassigned. edits, machine change, focus loss and cancellation retire
+old search replies. group suggestions use observed labels. the group editor's
+`ctrl-s` saves the typed draft.
+
+**keys.** the same entries drive dispatch, hints and the `?` map. the map shows
+session, create and browser keys, attach chords, open-row keys and the colour
+path. unavailable entries are quiet. an admitted listed key closes the map and
+acts. the hint line takes admitted entries by rank when they fit and ends with
+its kept close or quit entries. tab and shift-tab wrap through marked rows and
+carry an open fold.
+movement keys close an open fold before navigating. arrow and letter keys inside
+an editor or chooser belong to that field. escape closes a fold, returning an
+editor to open. `q` quits from the table, closes open, confirm, terminal, usage
+and keys, and types in a text field. `ctrl-r` refreshes inventory and usage in
+every fold and reads the open row's screen. `ctrl-c` quits from any fold. a
+write in flight refuses every key until its result lands. see `?` for the
+remaining keys and the [design language](design-language.md#17-terminal-browser)
+for the palette.
 
 ### Desktop usage
 
 - Two streams, both blind to views: inventory (every 5 s) carries each session's
   terminal usage; the native stream reads `GET /v1/profile-usage` on every peer
-  each minute, immediately on opening or leaving the usage page, and only while the
-  table or usage page shows. Neither clears the other's facts.
+  each minute while the browser owns the screen, and once when the usage fold
+  opens. neither clears the other's facts.
 - One whole observation per profile, never windows spliced from several; a newer
   partial report replaces an older complete one. Codex: a fresh native report with
   a live window, else fresh terminal evidence, else the retained native report as
@@ -1409,8 +1436,10 @@ visible. Start failures prefix the chosen host.
   stale numbers are hidden. Resets count down from host timestamps plus client
   monotonic time, never comparing host clocks; at or past reset a window reads
   `awaiting update` and never infers replenishment.
-- The footer shows each profile's weekly window; the usage page hides the view
-  strip and adds the 5h window when reported; `ctrl-r` is ignored there.
+- when all weekly remainders fit, the rule shows them together. in less room it
+  shows the selected row's profile if that fits. a declaration state stands
+  alone. the usage fold keeps the strip and adds the 5h window when reported.
+  only usage scrolls inside its fold.
 
 ### Desktop errors
 
@@ -1432,7 +1461,7 @@ visible. Start failures prefix the chosen host.
 - While attached the browser's chrome and status are gone; navigation needs detach.
 - `ctrl-c` is refused in flight for up to 15 s; a held `ctrl-c` then quits as soon
   as the outcome lands, possibly unread, and a restart keeps no record. After `n`,
-  `N` or `T` the new terminal still attaches: detach, then quit. A reflexive
+  `N`, `T` or `c` the new terminal still attaches: detach, then quit. A reflexive
   `ctrl-c` after `ctrl-] d` quits skid.
 - Duplicate suppression lasts only while an action is in flight; a later `n`
   creates another terminal. There is no exactly-once creation or remote
@@ -1440,10 +1469,23 @@ visible. Start failures prefix the chosen host.
 - `n` restarts at the default and costs an Enter even with one machine;
   unavailable machines stay in its cycle; first creation waits for inventory, with
   no optimistic bypass.
-- Strict field priority can hide machine and path and leave cells unused; the
-  shared name width spends cells on short names; end ellipsis and two-component
-  paths let prefix twins collide (info resolves them); secondary columns do not
-  align.
+- wide values anywhere can drop columns for every row. at 80 columns place
+  usually survives only for the selected session, in the caption. short names
+  share the longest listed name's width. bounded names and paths can collide
+  visually. the open facts and `skid info` carry full identity.
+- a returning browser temporarily changes status words to `checking` and admits
+  attach only while it awaits the required observations. a guest costs one
+  movement after closing or regrouping one's own session. reorder within a view
+  moves the selected lifetime with its row.
+- a foot fold can cover the cursor. short windows cut facts and field notes.
+  the refusal carries the field's full reason. a confirmation contains only
+  its question and effect. a tight question shortens both names independently
+  to keep the session and host visible. foot caps can clip the end of the key map
+  when notices crowd the body.
+- one screen read costs a direct peer call and a bounded tmux capture, on a key.
+  a retained idle tail can consist mostly of the agent's composer. usage reads
+  each minute while the browser has the screen.
+
 - Group views hide other groups and do not sort by urgency; labels share one cap,
   can read like built-in views, and may differ only in invisible characters.
 - Ready and the queue are sampled inference: unknown can hide a request; a notice
@@ -1453,11 +1495,17 @@ visible. Start failures prefix the chosen host.
 - Claude quota loses sub-percent precision (up to one point optimistic) and has no
   resets or provider age, so recently captured old values look fresh; whole
   replacement can discard an older complete window; countdowns step every 5 s.
-- Refresh shows no progress; hints are written per page and can drift from
-  dispatch.
-- Faint varies by terminal and vanishes under mosh; bright yellow is weak on light
-  themes; `▌`, `←`, `→` and `…` are east-asian-ambiguous, so such a terminal can
-  wrap row 1.
+- the first frame uses the plain palette. a terminal that does not answer the
+  device query can delay first attach by one second. a later reply can reach
+  an attached session. the browser samples the theme once, so theme changes need
+  restart. on the full path the pigments are fixed by the design language.
+- the plain path keeps faint and bright yellow. faint varies by terminal and
+  vanishes under mosh. bright yellow can be weak on light themes. `▌`, `▜`,
+  `▛`, `←`, `→` and `…` have ambiguous east-asian width and can wrap a frame.
+- browser help points to the live key map. visits still join the bounded hub
+  acknowledgement before returning the tty. the
+  [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
+
 - A cancelled browser can race its input reader
   ([issue](issues/bubbletea-canceled-input-race.md)); SIGTERM can be ignored
   ([issue](issues/tui-sigterm-hang.md)).
@@ -1468,8 +1516,9 @@ visible. Start failures prefix the chosen host.
   same rows with its own cursor; the strip gives left and right a visible referent
   and names views, never sessions. Digits or Tab cycling would name different
   views on different days, since tabs come from observed labels.
-- No badges, counters or attention row: status is sampled and incomplete, so a
-  missing badge would claim that nothing needs you.
+- folds preserve the table and put an answer or question beside its subject.
+  `◼` repeats typed attention on the same row. an absent mark makes no claim
+  about a row beyond the current sample.
 - Escape never quits because Codex and Claude train a reflexive escape, often
   right after `ctrl-] d`.
 - Styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision
