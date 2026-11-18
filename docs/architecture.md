@@ -1310,11 +1310,11 @@ predicate.
 ### Browser
 
 the view strip and `▜skid▛` occupy line 1. line 2 is blank. the table and any
-fold share the body, followed by notices, the caption and quota rule, and one
-hint line. the table scrolls only as needed to keep the selected row visible
-when selection, inventory, view, window size or footer height changes. below
-80×24 only the size notice and outcome draw. only `ctrl-c` and the current
-fold's closing keys act there.
+fold share the body, followed by notices, the caption and quota rule, the usage
+band while shown, and one hint line. the table scrolls only as needed to keep
+the selected row visible when selection, inventory, view, window size or footer
+height changes. below 80×24 only the size notice and outcome draw. only
+`ctrl-c` and the current fold's closing keys act there.
 
 **strip.** `needs input`, `all` and the current label stay visible. other group
 labels share a cap, from 24 to 7 cells. when the floor no longer fits, the
@@ -1408,10 +1408,13 @@ its kept close or quit entries. tab and shift-tab wrap through marked rows and
 carry an open fold.
 movement keys close an open fold before navigating. arrow and letter keys inside
 an editor or chooser belong to that field. escape closes a fold, returning an
-editor to open. `q` quits from the table, closes open, confirm, terminal, usage
-and keys, and types in a text field. `ctrl-r` refreshes inventory and usage in
-every fold and reads the open row's screen. `ctrl-c` quits from any fold. a
-write in flight refuses every key until its result lands. see `?` for the
+editor to open. `q` quits from the table, closes open, confirm, terminal and
+keys, and types in a text field. `u` shows and hides the usage band on the
+table, in an open row and in a confirm. it waits for the terminal's colours
+as attach does. the band starts hidden in each run and only `u` changes it.
+`ctrl-r` refreshes inventory and usage in every fold and reads the open row's
+screen. `ctrl-c` quits from any fold. a write in flight refuses every key until
+its result lands. see `?` for the
 remaining keys and the [design language](design-language.md#17-terminal-browser)
 for the palette.
 
@@ -1419,8 +1422,8 @@ for the palette.
 
 - Two streams, both blind to views: inventory (every 5 s) carries each session's
   terminal usage; the native stream reads `GET /v1/profile-usage` on every peer
-  each minute while the browser owns the screen, and once when the usage fold
-  opens. neither clears the other's facts.
+  each minute while the browser owns the screen, band shown or hidden, and on
+  `ctrl-r`; `u` reads nothing. neither clears the other's facts.
 - One whole observation per profile, never windows spliced from several; a newer
   partial report replaces an older complete one. Codex: a fresh native report with
   a live window, else fresh terminal evidence, else the retained native report as
@@ -1436,10 +1439,36 @@ for the palette.
   stale numbers are hidden. Resets count down from host timestamps plus client
   monotonic time, never comparing host clocks; at or past reset a window reads
   `awaiting update` and never infers replenishment.
-- when all weekly remainders fit, the rule shows them together. in less room it
-  shows the selected row's profile if that fits. a declaration state stands
-  alone. the usage fold keeps the strip and adds the 5h window when reported.
-  only usage scrolls inside its fold.
+- while no band line is drawn, the rule carries quota: `7d quota left` and
+  every profile's weekly remainder when they fit, else the selected row's
+  profile as `personal 7d 72% left` if that fits. a declaration state stands
+  alone.
+- the band is a header and one line per profile in at most half of the body
+  that notices leave. past that its last line is `… n more profiles in a
+  taller window`, cut from the end of the display order. with room for fewer
+  than three lines it is not drawn and keeps its state.
+- one layout at every width, 78 cells: the profile name at 0 in 11, end
+  ellipsis, bold when the selected row draws from it; the 7d slot at 13 and
+  the 5h slot at 47, each a 16-cell gauge, the number right-aligned in 5 and
+  the countdown in 7. the header is `usage`, `7d` and `5h` over their slots
+  (`5h` only when a drawn profile reports one). the legend ends at cell 78:
+  `━ quota left  ┴ time left`, with `═` on the plain path. each part appears
+  only when its mark appears on a drawn line. a half-cell counts as quota.
+- a gauge draws the printed integer in 32 half cells, `round(left × 32 / 100)`,
+  at least 1 above 0 and at most 31 below 100: heavy `━` for what is left, `╾`
+  where it ends mid-cell, light `─` for what is spent. a window with a reset
+  carries a stem in cell `clamp(⌈time left × 16⌉ − 1, 0, 15)`, time left being
+  the share of the window still to run: `┷` on heavy, `┵` on the end, `┴` on
+  light. the plain path draws 16 whole cells, `round(left × 16 / 100)` at
+  least 1 above 0 and at most 15 below 100, heavy as `═` with its stem `╧`.
+- the countdown is whole minutes to reset, rounded down, in the two largest
+  units: `2d 4h`, `3h 12m`, `41m`, `<1m`. a profile's word (`checking`,
+  `unavailable`) prints once, in its 7d slot; a window's word (`stale`,
+  `awaiting update`) in that window's slot, alone. with no word and no 7d
+  window the slot prints `—`; a 5h never reported prints nothing. with no
+  profile the band is `usage` and the declaration state at column 13.
+- the band redraws when a sample changes a drawn value and when the clock
+  changes a countdown, a stem's cell, `stale` or `awaiting update`.
 
 ### Desktop errors
 
@@ -1481,7 +1510,23 @@ for the palette.
   the refusal carries the field's full reason. a confirmation contains only
   its question and effect. a tight question shortens both names independently
   to keep the session and host visible. foot caps can clip the end of the key map
-  when notices crowd the body.
+  when notices or the usage band crowd the body.
+- the usage band takes body lines while it shows: 5 of 20 at 80×24 with four
+  profiles and 10 with twelve, so an open row's fold falls from 9 lines to 7
+  or 4 and a foot fold from 11 to 8 or 5. showing it can scroll the table;
+  hiding it does not scroll back. profiles past its cap show nowhere while it
+  shows, the selected row's own among them. names sharing their first ten cells
+  can read alike. `u` cannot hide the band from an editor, a draft or the
+  terminal chooser. on the table, `q` quits with it shown. it opens on a sample
+  up to 65 s old between successful reads. the browser gives up the exact reset
+  instant and seconds countdown. `40m` can mean 40 m 59 s. the all-profiles
+  rule is six cells longer and gives way sooner. the band is 78 cells at every
+  width. the selected profile's bold is its only link to the table and vanishes
+  under `NO_COLOR`.
+- the stem sets quota left against time left, an even-spending norm for work
+  that comes in bursts: a fresh window reads behind after one burst. it
+  resolves 6.25 points and states no rate or forecast, though the eye will
+  read one.
 - one screen read costs a direct peer call and a bounded tmux capture, on a key.
   a retained idle tail can consist mostly of the agent's composer. usage reads
   each minute while the browser has the screen.
@@ -1494,14 +1539,15 @@ for the palette.
   an empty queue is not health. Tie order differs between clients.
 - Claude quota loses sub-percent precision (up to one point optimistic) and has no
   resets or provider age, so recently captured old values look fresh; whole
-  replacement can discard an older complete window; countdowns step every 5 s.
+  replacement can discard an older complete window; countdowns lag up to 5 s.
 - the first frame uses the plain palette. a terminal that does not answer the
   device query can delay first attach by one second. a later reply can reach
   an attached session. the browser samples the theme once, so theme changes need
   restart. on the full path the pigments are fixed by the design language.
 - the plain path keeps faint and bright yellow. faint varies by terminal and
   vanishes under mosh. bright yellow can be weak on light themes. `▌`, `▜`,
-  `▛`, `←`, `→` and `…` have ambiguous east-asian width and can wrap a frame.
+  `▛`, `←`, `→`, `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═` and `╧` have
+  ambiguous east-asian width and can wrap a frame.
 - browser help points to the live key map. visits still join the bounded hub
   acknowledgement before returning the tty. the
   [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
@@ -1519,6 +1565,9 @@ for the palette.
 - folds preserve the table and put an answer or question beside its subject.
   `◼` repeats typed attention on the same row. an absent mark makes no claim
   about a row beyond the current sample.
+- usage is a band, not a fold: quota is evidence one keeps in view while
+  working, and a fold is the one fold open, takes the keys and locks the
+  table. the band is the rule's quota opened out, so it hangs under the rule.
 - Escape never quits because Codex and Claude train a reflexive escape, often
   right after `ctrl-] d`.
 - Styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision

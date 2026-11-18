@@ -22,7 +22,6 @@ const (
 	foldGroup
 	foldDraft
 	foldTerminal
-	foldUsage
 	foldKeys
 )
 
@@ -31,7 +30,6 @@ type fold struct {
 	request       fleetclient.Request
 	name, machine string
 	facts, seeded bool
-	offset        int
 }
 
 func (m *model) openKeys() []key {
@@ -51,7 +49,7 @@ func (m *model) openKeys() []key {
 	}
 	for _, entry := range m.tableKeys() {
 		switch entry.keys[0] {
-		case "enter", "shift+tab":
+		case "enter", "shift+tab", "u":
 		case "tab":
 			entry.rank = 2
 		case "ctrl+r":
@@ -125,7 +123,7 @@ func (f *frame) composeInline(cursor int, lines []line) {
 }
 
 func (f fold) foot() bool {
-	return f.kind == foldTerminal || f.kind == foldUsage || f.kind == foldKeys || f.kind == foldDraft && !f.seeded
+	return f.kind == foldTerminal || f.kind == foldKeys || f.kind == foldDraft && !f.seeded
 }
 
 func (f *frame) composeFoot(lines []line) {
@@ -138,9 +136,8 @@ func (f *frame) composeFoot(lines []line) {
 	}
 }
 
-func (m *model) foldLines(capacity, width int) ([]line, int) {
+func (m *model) foldLines(capacity, width int) []line {
 	var lines []line
-	offset := 0
 	background := m.ground.raise
 	switch m.fold.kind {
 	case foldConfirm:
@@ -250,8 +247,6 @@ func (m *model) foldLines(capacity, width int) ([]line, int) {
 		if refusal := m.terminalRefusal(); refusal != "" {
 			lines = append(lines, line{{text: refusal, role: quietRole}})
 		}
-	case foldUsage:
-		lines, offset = m.usageFold(capacity)
 	case foldKeys:
 		lines = m.keyMap(width)
 	}
@@ -265,7 +260,7 @@ func (m *model) foldLines(capacity, width int) ([]line, int) {
 		}
 		lines[index] = append(line{{text: "▌", role: goldRole}, {text: "   "}}, lines[index]...).filled(background, width+4)
 	}
-	return lines, offset
+	return lines
 }
 
 func (m *model) groupChoicePreview(draft string, selection *groupSelection) string {

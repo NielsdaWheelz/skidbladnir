@@ -116,6 +116,9 @@ func (m *model) View() tea.View {
 			lines = append(lines, " "+m.renderLine(item))
 		}
 		lines = append(lines, " "+m.renderLine(f.rule))
+		for _, item := range f.band {
+			lines = append(lines, " "+m.renderLine(item))
+		}
 		lines = append(lines, " "+m.renderLine(f.hints))
 	}
 	content := strings.Join(lines, "\n")

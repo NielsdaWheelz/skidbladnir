@@ -43,9 +43,8 @@ type frame struct {
 	rows             []tablePlacement
 	foldAt           int
 	fold             []line
-	notices          []line
+	notices, band    []line
 	rule, hints      line
-	usageOffset      int
 }
 
 func (m *model) frame() frame {
@@ -54,6 +53,10 @@ func (m *model) frame() frame {
 	// Leave room for the selected row and an inline fold on either key state.
 	f.notices = f.notices[:min(len(f.notices), max(0, m.height-6))]
 	f.body = m.height - 4 - len(f.notices)
+	if m.band {
+		f.band = m.usageBand(f.body / 2)
+		f.body -= len(f.band)
+	}
 	f.columns = m.measureColumns(f.width)
 	if m.cursor >= 0 {
 		f.top = min(max(0, f.top, m.cursor-f.body+1), m.cursor)
@@ -68,12 +71,9 @@ func (m *model) frame() frame {
 	}
 	width := f.width - 3
 	if m.fold.foot() {
-		lines, offset := m.foldLines(f.body*11/20, width)
-		f.usageOffset = offset
-		f.composeFoot(lines)
+		f.composeFoot(m.foldLines(f.body*11/20, width))
 	} else if m.fold.kind != foldNone && m.cursor >= 0 {
-		lines, _ := m.foldLines(max(1, min(16, (f.body-1)/2)), width)
-		f.composeInline(m.cursor, lines)
+		f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), width))
 	}
 	caption := ""
 	switch {
@@ -84,7 +84,10 @@ func (m *model) frame() frame {
 	case m.cursor >= 0:
 		caption = m.tableCaption(f, len(f.rows) < len(m.rows))
 	}
-	quota := m.weeklyQuota(f.width - ansi.StringWidth(caption) - 6)
+	quota := ""
+	if len(f.band) == 0 {
+		quota = m.weeklyQuota(f.width - ansi.StringWidth(caption) - 6)
+	}
 	f.rule = rule(caption, quota, f.width)
 	return f
 }

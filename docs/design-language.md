@@ -508,8 +508,8 @@ steps until it clears both fills.
 
 | role | carries | dark | light | plain |
 | --- | --- | --- | --- | --- |
-| ink | names, labels, notices, focused input | default | default | default |
-| quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned | derived | derived | faint |
+| ink | names, labels, notices, focused input; the band's names, numbers, heavy line and stems | default | default | default |
+| quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned; the band's heads, legend words, countdowns and light line | derived | derived | faint |
 | muted | other status and client notes | quiet | quiet | `#AAA69D` |
 | gold | lip, current view chevrons, focused chooser | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
@@ -519,11 +519,12 @@ steps until it clears both fills.
 
 roles belong to text spans. every span and the padding carry the fill of their
 line. bold identifies the cursor's name, names that need input, the current view,
-headings, keys, titles, the focused field and the question. client notes are
-italic and stale names are quiet. the `◼` mark takes the projected status tone.
+headings, keys, titles, the focused field, the question and the selected row's
+profile in the usage band. client notes are italic and stale names are quiet.
+the `◼` mark takes the projected status tone.
 the gold `▌` lip marks every fold line. text begins in column 5. one rule heads
-the open row's screen and another separates the body from controls. hints use
-ink and quiet.
+the open row's screen and another separates the body from the usage band, while
+shown, and the controls. hints use ink and quiet.
 
 copy is lowercase and literal. preserve the host's words for status and the
 shared desktop outcome words. browser copy names the session and listing host,

@@ -62,6 +62,7 @@ type model struct {
 	noticeFailure         bool
 	pending               fleetclient.Request
 	fold                  fold
+	band                  bool
 	form                  createDraft
 	field                 int
 	groupSelection        groupSelection
@@ -233,11 +234,7 @@ func (m *model) settle() {
 		}
 	}
 	if !m.tooSmall() {
-		f := m.frame()
-		m.top = f.top
-		if m.fold.kind == foldUsage {
-			m.fold.offset = f.usageOffset
-		}
+		m.top = m.frame().top
 	}
 }
 
