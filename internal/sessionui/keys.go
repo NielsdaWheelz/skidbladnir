@@ -3,6 +3,7 @@ package sessionui
 import (
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
@@ -105,6 +106,7 @@ func (m *model) keys() []key {
 				}},
 			{keys: []string{"esc", "n", "q"}, show: "escape", label: "cancel", keep: true, closes: true,
 				act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
+			m.usageKey(0),
 		}
 	case foldRename, foldGroup:
 		return m.metadataKeys()
@@ -112,14 +114,6 @@ func (m *model) keys() []key {
 		return m.draftKeys()
 	case foldTerminal:
 		return m.terminalKeys()
-	case foldUsage:
-		return []key{
-			{keys: []string{"up"}, show: "↑↓", label: "scroll", rank: 1,
-				act: func(m *model) tea.Cmd { m.fold.offset = max(0, m.fold.offset-1); return nil }},
-			{keys: []string{"down"}, act: func(m *model) tea.Cmd { m.fold.offset++; return nil }},
-			{keys: []string{"esc", "q", "u"}, show: "escape", label: "close", keep: true, closes: true,
-				act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
-		}
 	case foldKeys:
 		close := key{keys: []string{"esc", "q", "?"}, show: "escape", label: "close", keep: true, closes: true,
 			act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }}
@@ -193,8 +187,7 @@ func (m *model) tableKeys() []key {
 				m.inform("opening terminal on " + row.Label + "…")
 				return m.execute(fleetclient.Request{Operation: "shell", Ref: row.Session.Ref.Reference}, row.Session.Name+" on "+row.Label)
 			}},
-		{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: 10,
-			act: func(m *model) tea.Cmd { m.fold = fold{kind: foldUsage}; return m.refreshUsage(true) }},
+		m.usageKey(10),
 		{keys: []string{"?"}, show: "?", label: "keys", group: "browser", keep: true,
 			act: func(m *model) tea.Cmd { m.fold = fold{kind: foldKeys}; return nil }},
 		{keys: []string{"q"}, show: "q", label: "quit", group: "browser", keep: true,
@@ -210,6 +203,21 @@ func (m *model) tableKeys() []key {
 		{keys: []string{"ctrl+r"}, show: "ctrl-r", label: "refresh", group: "browser",
 			act: func(m *model) tea.Cmd { return tea.Batch(m.refresh(true), m.refreshUsage(true)) }},
 	}
+}
+
+func (m *model) usageKey(rank int) key {
+	return key{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: rank,
+		can: func(m *model) string { return m.ground.attachRefusal("u") },
+		act: func(m *model) tea.Cmd {
+			m.band = !m.band
+			m.revealGeneration++
+			if m.band && m.ground.raise != nil {
+				m.reveal = m.now
+				return m.revealTick()
+			}
+			m.reveal = time.Time{}
+			return nil
+		}}
 }
 
 func rowGuard(action string, attach bool) func(*model) string {

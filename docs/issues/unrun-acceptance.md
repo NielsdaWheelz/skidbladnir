@@ -28,6 +28,10 @@ desktop:
 - v0.11.0: live `s`/`x` provider and tmux closure, and [a6](https://github.com/NielsdaWheelz/skidbladnir/blob/ba60841d3eeefde94eda0aea623f81f4133e88e2/docs/desktop-browser.md#7-acceptance-and-delivery) info editing (takeover/reset, naming conflicts, lost acknowledgements, replaced targets) through a real gateway (desktop-browser-runtime-acceptance).
 - v0.18.0: installed production terminal entry/greeting on desktop and phone; needs an owner exception to the default-server guardrail (desktop-browser-runtime-acceptance).
 - v0.14.0: `start --stdin` on the installed fleet: cold startup to the first prompt, and each supported startup-dialog layout refused without blind input (jarvis-launch-readiness, jarvis-launch-receipts, at `ba60841`).
+- usage band reveal, owner look in ghostty (`NOT_RUN`, waived by the owner for
+  this release): how `◕` and `●` sit beside ghostty's own lines and whether
+  they pulse; the speed, 7.5 cells a second; the stem's legibility; a light
+  theme.
 - browser fold owner pass on the installed fleet (`NOT_RUN`, waived by the owner
   for this release). the pass covers copy and
   appearance in dark and light ghostty. attach, detach, next and attach without
@@ -61,7 +65,7 @@ notifications and push:
 - v0.14.0: delivery to a locked phone in proved deep idle; android rejected forced idle at `inactive` (native-notifications-doze).
 - v0.14.0: audible default notification sound on the phone, which stayed muted (native-notifications-phone-sound).
 - v0.14.0: mac popup, sound and exact-session click from the current signed app at its installed path (native-notifications, generalization-installed-cutover).
-- v0.22.0: the desktop usage page shows `ok` for each codex profile whose daemon runs; the go quota client was proven only against a fake app-server (attention-cutover, at `b9c9806`).
+- v0.22.0: the desktop usage band shows a number for each codex profile whose daemon runs; the go quota client was proven only against a fake app-server (attention-cutover, at `b9c9806`).
 - v0.13.1: sustained idle/offline/setup energy of the mac notification helper; only short captures exist and the original heat report is unattributed (native-notifications-mac-energy).
 - v0.19.0: optional push installed round trip: ordinary apk and user hub credential, pairing confirmation, background current-attention delivery, offline and process-death recovery, project change, rotation/removal, delayed hints (android-optional-push-qualification).
 - v0.19.0: two physical phones: independent pairing, discovery, rotation and removal, and shared acknowledgement; owner-deferred for lack of a second phone (android-two-phone-push-acceptance).
