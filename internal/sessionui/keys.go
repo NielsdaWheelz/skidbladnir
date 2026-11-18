@@ -3,6 +3,7 @@ package sessionui
 import (
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
@@ -207,7 +208,16 @@ func (m *model) tableKeys() []key {
 func (m *model) usageKey(rank int) key {
 	return key{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: rank,
 		can: func(m *model) string { return m.ground.attachRefusal("u") },
-		act: func(m *model) tea.Cmd { m.band = !m.band; return nil }}
+		act: func(m *model) tea.Cmd {
+			m.band = !m.band
+			m.revealGeneration++
+			if m.band && m.ground.raise != nil {
+				m.reveal = m.now
+				return m.revealTick()
+			}
+			m.reveal = time.Time{}
+			return nil
+		}}
 }
 
 func rowGuard(action string, attach bool) func(*model) string {

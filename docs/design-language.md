@@ -531,7 +531,10 @@ shared desktop outcome words. browser copy names the session and listing host,
 reports only what was sampled or completed, and names the refused action and
 reason. label ellipses mean a pending confirmation before sending. fit within
 78 cells or wrap whole. words and marks survive stripping every style. no boxes,
-fret, runes, icons or motion.
+fret, runes, icons or motion, with one exception by the owner's ruling: the
+usage band's reveal, a gold chomper that crosses each gauge's spent part once
+when `u` shows the band ([architecture](architecture.md#desktop-usage)). it stands
+against §1.4, §1.6, §12, §14, §15 and gold's row, which are otherwise unchanged.
 
 ## 18. Dvergatal curation
 

@@ -423,7 +423,7 @@ func (m *model) weeklyQuota(room int) string {
 	if room <= 0 {
 		return ""
 	}
-	rows := m.usageRows(time.Now())
+	rows := m.usageRows(m.now)
 	if len(rows) == 0 {
 		state := m.usageDeclarationState()
 		if ansi.StringWidth(state) <= room {
@@ -469,7 +469,7 @@ func (m *model) usageBand(limit int) []line {
 	if limit < 3 {
 		return nil
 	}
-	rows := m.usageRows(time.Now())
+	rows := m.usageRows(m.now)
 	head := line{{text: cell("usage", usageName+2), role: quietRole, bold: true}}
 	if len(rows) == 0 {
 		return []line{append(head, span{text: m.usageDeclarationState(), role: mutedRole, italic: true})}
@@ -481,12 +481,16 @@ func (m *model) usageBand(limit int) []line {
 	}
 	lines := []line{head}
 	selected := m.selectedProfile()
+	frame := -1
+	if !m.reveal.IsZero() {
+		frame = int(m.now.Sub(m.reveal) / revealFrame)
+	}
 	five, heavy, timed := "", "", false
 	for _, row := range rows {
 		name := span{text: cell(row.profile.Key, usageName) + "  ", bold: row.profile.Key == selected}
-		entry := append(line{name}, m.usageWindow(row, row.text.sevenDay, true)...)
+		entry := append(line{name}, m.usageWindow(row, row.text.sevenDay, true, frame)...)
 		entry = append(entry, span{text: "   "})
-		entry = append(entry, m.usageWindow(row, row.text.fiveHour, false)...)
+		entry = append(entry, m.usageWindow(row, row.text.fiveHour, false, frame)...)
 		lines = append(lines, entry)
 		if row.text.fiveHour != nil {
 			five = "5h"
@@ -525,7 +529,7 @@ func (m *model) usageBand(limit int) []line {
 	return lines
 }
 
-func (m *model) usageWindow(row usageRow, window *windowText, weekly bool) line {
+func (m *model) usageWindow(row usageRow, window *windowText, weekly bool, frame int) line {
 	text, word := row.windowPresentation(window)
 	if text.left < 0 {
 		if !weekly && (window == nil || row.state != "") {
@@ -552,16 +556,28 @@ func (m *model) usageWindow(row usageRow, window *windowText, weekly bool) line 
 	if text.share >= 0 {
 		stem = min(max(0, int(math.Ceil(text.share*usageGauge))-1), usageGauge-1)
 	}
+	firstSpent, chomper := (halves+1)/2, -1
+	if frame >= 0 {
+		chomper = usageGauge - 1 - frame/2
+	}
 	var gauge line
 	for index := range usageGauge {
 		glyph, stemGlyph, ink := "─", "┴", quietRole
 		if index < halves/2 {
 			glyph, stemGlyph, ink = heavy, heavyStem, inkRole
-		} else if 2*index < halves {
+		} else if index < firstSpent {
 			glyph, stemGlyph, ink = "╾", "┵", inkRole
 		}
-		if index == stem {
+		switch {
+		case index == chomper && index >= firstSpent:
+			glyph, ink = "◕", goldRole
+			if frame%2 == 1 && index > firstSpent {
+				glyph = "●"
+			}
+		case index == stem:
 			glyph, ink = stemGlyph, inkRole
+		case index >= firstSpent && index < chomper:
+			glyph = "╍"
 		}
 		if last := len(gauge) - 1; last >= 0 && gauge[last].role == ink {
 			gauge[last].text += glyph

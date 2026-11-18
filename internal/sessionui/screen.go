@@ -103,7 +103,7 @@ func (m *model) screenLines(row *fleetclient.Row, capacity, width int) []line {
 		suffix = ": reading"
 		showSample = false
 	case showSample:
-		age, elapsed := "just now", time.Since(s.at)
+		age, elapsed := "just now", m.now.Sub(s.at)
 		if elapsed >= time.Minute {
 			age = fmt.Sprintf("%dm ago", elapsed/time.Minute)
 		} else if elapsed >= 5*time.Second {

@@ -28,6 +28,10 @@ desktop:
 - v0.11.0: live `s`/`x` provider and tmux closure, and [a6](https://github.com/NielsdaWheelz/skidbladnir/blob/ba60841d3eeefde94eda0aea623f81f4133e88e2/docs/desktop-browser.md#7-acceptance-and-delivery) info editing (takeover/reset, naming conflicts, lost acknowledgements, replaced targets) through a real gateway (desktop-browser-runtime-acceptance).
 - v0.18.0: installed production terminal entry/greeting on desktop and phone; needs an owner exception to the default-server guardrail (desktop-browser-runtime-acceptance).
 - v0.14.0: `start --stdin` on the installed fleet: cold startup to the first prompt, and each supported startup-dialog layout refused without blind input (jarvis-launch-readiness, jarvis-launch-receipts, at `ba60841`).
+- usage band reveal, owner look in ghostty (`NOT_RUN`, waived by the owner for
+  this release): how `◕` and `●` sit beside ghostty's own lines and whether
+  they pulse; the speed, 7.5 cells a second; the stem's legibility; a light
+  theme.
 - browser fold owner pass on the installed fleet (`NOT_RUN`, waived by the owner
   for this release). the pass covers copy and
   appearance in dark and light ghostty. attach, detach, next and attach without

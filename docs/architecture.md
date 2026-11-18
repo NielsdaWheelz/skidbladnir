@@ -1469,6 +1469,21 @@ for the palette.
   profile the band is `usage` and the declaration state at column 13.
 - the band redraws when a sample changes a drawn value and when the clock
   changes a countdown, a stem's cell, `stale` or `awaiting update`.
+  nothing else moves in it but the reveal.
+- showing the band with `u` on the full path starts the reveal. a sample or
+  return from a terminal never starts it. time since `u` counts in frames of
+  1/15 s. a gold chomper crosses every gauge from its last cell at two frames
+  per cell, `◕` then `●`. wholly spent cells ahead of it are quiet `╍`, except
+  for a stem. cells behind it are settled. it holds `◕` for both frames on the
+  first wholly spent cell and then leaves. a gauge without a wholly spent cell
+  stays settled throughout.
+- every other gauge cell keeps its settled glyph. if the discs cover the only
+  visible stems, the time legend disappears until a stem is visible again.
+  the frame depends only on elapsed time and the current samples. a new profile
+  joins at the current position, and a changed number can add or remove a
+  chomper. an exhausted gauge settles at frame 32. the reveal's own tick chain
+  ends at frame 33. toggling the band or entering a terminal advances its
+  generation and retires any outstanding tick.
 
 ### Desktop errors
 
@@ -1527,6 +1542,11 @@ for the palette.
   that comes in bursts: a fresh window reads behind after one burst. it
   resolves 6.25 points and states no rate or forecast, though the eye will
   read one.
+- the full-path reveal repaints fifteen times a second for 2.2 s. the font
+  supplies its discs. another font may draw `◕` and `●` larger, smaller or not
+  at all. in MesloLGS NF their sizes differ, so the chew can read as a pulse.
+  its look in ghostty is unrun. the design language's §1.4, §1.6, §12, §14,
+  §15 and gold's row stand as written against it.
 - one screen read costs a direct peer call and a bounded tmux capture, on a key.
   a retained idle tail can consist mostly of the agent's composer. usage reads
   each minute while the browser has the screen.
@@ -1546,8 +1566,8 @@ for the palette.
   restart. on the full path the pigments are fixed by the design language.
 - the plain path keeps faint and bright yellow. faint varies by terminal and
   vanishes under mosh. bright yellow can be weak on light themes. `▌`, `▜`,
-  `▛`, `←`, `→`, `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═` and `╧` have
-  ambiguous east-asian width and can wrap a frame.
+  `▛`, `←`, `→`, `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧` and `●`
+  have ambiguous east-asian width and can wrap a frame.
 - browser help points to the live key map. visits still join the bounded hub
   acknowledgement before returning the tty. the
   [restore resize race](issues/bubbletea-return-resize-race.md) remains open.

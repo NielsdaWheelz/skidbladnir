@@ -46,6 +46,8 @@ type searchMsg struct {
 	result   fleetclient.Result
 }
 type attachedMsg struct{}
+type revealMsg struct{ generation int }
+
 type model struct {
 	ground                ground
 	ctx                   context.Context
@@ -63,6 +65,9 @@ type model struct {
 	pending               fleetclient.Request
 	fold                  fold
 	band                  bool
+	reveal                time.Time // start of the active reveal
+	now                   time.Time // shared by every projection of this update
+	revealGeneration      int
 	form                  createDraft
 	field                 int
 	groupSelection        groupSelection
@@ -96,7 +101,7 @@ type model struct {
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
 	browserContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30}
+	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30, now: time.Now()}
 	for _, machine := range client.Machines() {
 		m.peers = append(m.peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 		m.usagePeers = append(m.usagePeers, usagePeer{machine: machine})
@@ -123,6 +128,19 @@ func (m *model) Init() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
+// The reveal is the browser's one motion: fifteen frames a second from u until
+// the longest chew has ended. Hiding the band or entering a terminal retires it.
+const (
+	revealFrame  = time.Second / 15
+	revealFrames = 2*usageGauge + 1
+)
+
+func (m *model) revealTick() tea.Cmd {
+	generation := m.revealGeneration
+	delay := revealFrame - m.now.Sub(m.reveal)%revealFrame
+	return tea.Tick(delay, func(time.Time) tea.Msg { return revealMsg{generation} })
+}
+
 func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 	m.pending = request
 	m.busy = true
@@ -145,6 +163,7 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var returned, command tea.Cmd
+	m.now = time.Now()
 	if visit := m.attachment; visit != nil && visit.finished {
 		m.attachment = nil
 		if visit.err != nil {
@@ -196,6 +215,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurred = false
 	case tickMsg:
 		command = tea.Batch(m.refresh(false), m.refreshUsage(false), tick())
+	case revealMsg:
+		if message.generation == m.revealGeneration && !m.reveal.IsZero() {
+			if m.now.Sub(m.reveal) < revealFrames*revealFrame {
+				command = m.revealTick()
+			} else {
+				m.reveal = time.Time{}
+			}
+		}
 	case fleetMsg:
 		command = m.onFleet()
 	case screenMsg:
@@ -453,7 +480,8 @@ func (m *model) selectedRow() *fleetclient.Row {
 
 // enter pauses the browser while this exact terminal owns input and output.
 func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
-	m.fold = fold{}
+	m.fold, m.reveal = fold{}, time.Time{}
+	m.revealGeneration++
 	row := m.rowForReference(ref)
 	visit := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output, name: row.Session.Name, machine: row.Label}
 	m.attachment = visit
