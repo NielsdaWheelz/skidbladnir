@@ -16,7 +16,6 @@ type metadataEditor struct {
 	draft        string
 	selection    groupSelection
 	saveFocused  bool
-	readAfter    uint64
 	checking     bool
 	acknowledged bool
 	failure      *fleetclient.Failure
@@ -34,7 +33,7 @@ func editGuard(operation string) func(*model) string {
 
 func (m *model) openMetadata(operation string) {
 	row := m.selectedRow()
-	m.fold.kind = foldGroup
+	m.fold.kind, m.fold.name, m.fold.machine = foldGroup, row.Session.Name, row.Label
 	if operation == "rename" {
 		m.fold.kind = foldRename
 	}
@@ -43,7 +42,7 @@ func (m *model) openMetadata(operation string) {
 		if editor.acknowledged {
 			m.fail(subject + "metadata changed after saving. review and save again.")
 		} else if editor.failure != nil {
-			m.fail(subject + fleetview.ErrorMessage(*editor.failure, editor.request))
+			m.fail(subject + editor.failureText())
 		}
 		return
 	}
@@ -78,8 +77,7 @@ func (m *model) metadataKeys() []key {
 			can: func(*model) string { return refusal },
 			act: func(m *model) tea.Cmd {
 				editor.request, editor.failure, editor.acknowledged = request, nil, false
-				row := m.selectedRow()
-				return m.execute(request, row.Session.Name+" on "+row.Label)
+				return m.execute(request, m.fold.name+" on "+m.fold.machine)
 			}}
 		if invalidGroup {
 			entry.onRefusal = func(*model) { editor.saveFocused = false }
@@ -157,8 +155,8 @@ func (m *model) metadataRequest(automatic bool) (request fleetclient.Request, re
 		request.Group = label
 	}
 	current := m.rowForReference(request.Ref)
-	if current == nil || !m.rowAvailable(*current) {
-		return request, m.rowRefusal(*m.selectedRow(), "save"), false
+	if !m.rowAvailable(*current) {
+		return request, m.rowRefusal(*current, "save"), false
 	}
 	if m.fold.kind == foldGroup {
 		if current.Session.Group == request.Group {
@@ -179,29 +177,45 @@ func (m *model) metadataRequest(automatic bool) (request fleetclient.Request, re
 	return request, "", false
 }
 
-func (m *model) reconcileMetadata() {
+func (m *model) completeMetadata(subject string, failure *fleetclient.Failure) {
 	editor := m.metadata
-	if editor == nil || m.busy {
+	editor.failure = failure
+	editor.acknowledged = failure == nil
+	editor.checking = m.fold.loss == "" && (failure == nil || failure.Dispatch == "unknown" || accessRejected(failure) ||
+		failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" ||
+		failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged")
+	if failure != nil {
+		m.fail(subject + ": " + editor.failureText())
+		return
+	}
+	m.inform(subject + ": metadata saved")
+}
+
+func (editor *metadataEditor) failureText() string {
+	if editor.failure.Dispatch == "unknown" {
+		return "metadata change outcome unknown."
+	}
+	return fleetview.ErrorMessage(*editor.failure, editor.request)
+}
+
+func (m *model) reconcileMetadata(machine string, observed []group.Label) {
+	editor := m.metadata
+	editing := m.fold.metadata()
+	if editor == nil || editing && m.fold.loss != "" {
+		return
+	}
+	if editor.request.Operation == "group" {
+		editor.selection.retain(groupChoices(editor.draft, observed))
+	}
+	if m.busy || editor.request.Ref.Machine != machine {
 		return
 	}
 	row := m.rowForReference(editor.request.Ref)
-	selected := m.selectedRow()
-	visible := m.fold.kind != foldNone && m.fold.kind != foldConfirm && selected != nil && editor.request.Ref.SessionEqual(selected.Session.Ref.Reference)
-	if row == nil {
-		if index := m.peerIndex(editor.request.Ref.Machine); index >= 0 && m.peers[index].OK {
-			if visible && (m.fold.kind == foldRename || m.fold.kind == foldGroup) {
-				m.fold.kind = foldOpen
-			}
-			m.metadata = nil
-			if visible {
-				m.fail(selected.Session.Name + " on " + selected.Label + " is no longer listed; editor closed")
-			}
-		}
-		return
-	}
 	if !row.Available {
 		return
 	}
+	selected := m.selectedRow()
+	visible := m.fold.kind != foldNone && m.fold.kind != foldConfirm && selected != nil && editor.request.Ref.SessionEqual(selected.Session.Ref.Reference)
 	if editor.checking {
 		editor.checking = false
 		matches := row.Session.Group == editor.request.Group
@@ -210,7 +224,7 @@ func (m *model) reconcileMetadata() {
 		}
 		uncertain := editor.failure != nil && editor.failure.Dispatch == "unknown"
 		if matches && (editor.acknowledged || uncertain) {
-			if visible && (m.fold.kind == foldRename || m.fold.kind == foldGroup) {
+			if visible && editing {
 				m.fold.kind = foldOpen
 			}
 			m.metadata = nil

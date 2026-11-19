@@ -30,6 +30,46 @@ type fold struct {
 	request       fleetclient.Request
 	name, machine string
 	facts, seeded bool
+	loss          string
+}
+
+func (f fold) metadata() bool {
+	return f.kind == foldRename || f.kind == foldGroup
+}
+
+// A disabled prompt keeps its first loss, even if the target reappears.
+func (m *model) reconcileRowLoss(lostMachine string) {
+	if lostMachine != "" {
+		switch m.fold.kind {
+		case foldOpen:
+			m.fold = fold{}
+		case foldConfirm, foldRename, foldGroup:
+			if m.fold.loss == "" {
+				m.fold.loss = "session no longer listed"
+				if m.peerIndex(lostMachine) < 0 {
+					m.fold.loss = "machine removed from fleet"
+				}
+			}
+		case foldDraft:
+			m.fold.seeded = false
+		}
+	}
+	if m.fold.metadata() {
+		if m.fold.loss != "" {
+			m.metadata.checking = false
+		}
+		return
+	}
+	if editor := m.metadata; editor != nil && m.rowForReference(editor.request.Ref) == nil {
+		m.metadata = nil
+	}
+}
+
+func (f fold) confirmationAction() string {
+	if f.request.Operation == "stop" {
+		return "interrupt"
+	}
+	return "interrupt and close"
 }
 
 func (m *model) openKeys() []key {
@@ -77,8 +117,8 @@ func (m *model) openKeys() []key {
 func (m *model) confirmRefusal() string {
 	f := m.fold
 	current := m.rowForReference(f.request.Ref)
-	if current == nil || !m.rowAvailable(*current) {
-		return f.name + " on " + f.machine + " is " + m.rowUnavailability(current) + "; nothing was sent."
+	if !m.rowAvailable(*current) {
+		return f.name + " on " + f.machine + " is " + m.rowUnavailability(*current) + "; nothing was sent."
 	}
 	return ""
 }
@@ -139,11 +179,29 @@ func (f *frame) composeFoot(lines []line) {
 func (m *model) foldLines(capacity, width int) []line {
 	var lines []line
 	background := m.ground.raise
-	switch m.fold.kind {
-	case foldConfirm:
-		action, effect := "interrupt and close", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
+	switch {
+	case m.fold.loss != "":
+		var action, field, verdict string
+		if m.fold.metadata() {
+			action, verdict = m.metadata.request.Operation, "save disabled"
+			field = "name"
+			if m.fold.kind == foldGroup {
+				field = "group"
+			}
+		} else {
+			action, verdict = m.fold.confirmationAction(), "nothing sent"
+		}
+		title := action + " " + target(m.fold.name, m.fold.machine, width-ansi.StringWidth(action)-1)
+		lines = append(lines, line{{text: title, bold: true, role: emberRole}})
+		if field != "" {
+			lines = append(lines, line{{text: field + "  ", role: quietRole}, {text: m.metadataDraftDisplay()}})
+		}
+		lines = append(lines, line{{text: m.fold.loss + " · " + verdict, role: quietRole}})
+	case m.fold.kind == foldConfirm:
+		action := m.fold.confirmationAction()
+		effect := "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
 		if m.fold.request.Operation == "stop" {
-			action, effect = "interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
+			effect = "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
 		}
 		question := wrapped(action+" "+m.fold.name+" on "+m.fold.machine+"?", width)
 		if len(question) > min(capacity, 5) || slices.ContainsFunc(question, func(part string) bool { return ansi.StringWidth(part) > width }) {
@@ -156,7 +214,7 @@ func (m *model) foldLines(capacity, width int) []line {
 			lines = append(lines, line{{text: part}})
 		}
 		lines = lines[:min(5, len(lines))]
-	case foldOpen:
+	case m.fold.kind == foldOpen:
 		row := m.selectedRow()
 		if m.fold.facts {
 			facts := m.details(row)
@@ -197,18 +255,15 @@ func (m *model) foldLines(capacity, width int) []line {
 			}
 			lines = append(lines, m.screenLines(row, capacity-len(lines), width)...)
 		}
-	case foldRename, foldGroup:
+	case m.fold.metadata():
 		editor := m.metadata
 		notice := m.notice
-		if notice == "" && editor.checking {
+		if editor.checking {
 			notice = "checking inventory"
 		}
-		draft := editor.draft
+		draft := m.metadataDraftDisplay()
 		editing := !m.busy && !editor.checking && !editor.saveFocused
 		if m.fold.kind == foldRename {
-			if !fleetclient.ValidSessionName(draft) {
-				draft = strconv.QuoteToASCII(draft)
-			}
 			value := ansi.Truncate(attention.SingleLine(draft), width-6, "…")
 			lines = append(lines, line{{text: "name  ", role: quietRole}, {text: value, bold: editing}})
 			if notice == "" {
@@ -216,7 +271,7 @@ func (m *model) foldLines(capacity, width int) []line {
 			}
 		} else {
 			limit := (width - 7) / 2
-			draft = ansi.Truncate(attention.SingleLine(groupDraftDisplay(draft)), limit, "…")
+			draft = ansi.Truncate(attention.SingleLine(draft), limit, "…")
 			lines = append(lines, line{{text: "group  ", role: quietRole}, {text: draft, bold: editing}})
 			preview := m.groupChoicePreview(editor.draft, &editor.selection)
 			rest := width - ansi.StringWidth(draft) - 13
@@ -234,10 +289,10 @@ func (m *model) foldLines(capacity, width int) []line {
 		if notice != "" {
 			lines = append(lines, line{{text: notice, role: quietRole}})
 		}
-	case foldDraft:
+	case m.fold.kind == foldDraft:
 		background = m.ground.forge
 		lines = m.draftLines(capacity)
-	case foldTerminal:
+	case m.fold.kind == foldTerminal:
 		lines = []line{
 			{{text: "new terminal", bold: true}},
 			{{text: "machine  ", role: quietRole}, {text: "‹ " + m.fold.request.Machine + " ›", role: goldRole, bold: true}},
@@ -247,7 +302,7 @@ func (m *model) foldLines(capacity, width int) []line {
 		if refusal := m.terminalRefusal(); refusal != "" {
 			lines = append(lines, line{{text: refusal, role: quietRole}})
 		}
-	case foldKeys:
+	case m.fold.kind == foldKeys:
 		lines = m.keyMap(width)
 	}
 	lines = lines[:min(capacity, len(lines))]
@@ -261,6 +316,17 @@ func (m *model) foldLines(capacity, width int) []line {
 		lines[index] = append(line{{text: "▌", role: goldRole}, {text: "   "}}, lines[index]...).filled(background, width+4)
 	}
 	return lines
+}
+
+func (m *model) metadataDraftDisplay() string {
+	draft := m.metadata.draft
+	if m.fold.kind == foldGroup {
+		return groupDraftDisplay(draft)
+	}
+	if !fleetclient.ValidSessionName(draft) {
+		return strconv.QuoteToASCII(draft)
+	}
+	return draft
 }
 
 func (m *model) groupChoicePreview(draft string, selection *groupSelection) string {

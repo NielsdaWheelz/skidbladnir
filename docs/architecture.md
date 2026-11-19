@@ -1118,11 +1118,10 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
   `remoteUnknown`.
 - **status view**: host status with browser overlays for ready, checking, and
   last observed. checking preserves the row's last queue class and evidence.
-- **guest**: the selected lifetime after it leaves the view. a listed guest keeps
-  live facts and action admission. an unlisted guest retains its last facts.
-- **captured target**: a confirmation or editor retains its exact reference, and
-  a confirmation retains the name and listing host shown in its question. an
-  open row follows the cursor.
+- **guest**: the selected lifetime when fleet inventory still lists it but its
+  group or queue view excludes it. it keeps live facts and action admission.
+- **captured target**: a confirmation or editor retains its exact reference,
+  session name and listing host. an open details fold follows the cursor.
 
 ### Desktop invariants
 
@@ -1154,7 +1153,9 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
 6. one read per stream. each peer has at most one inventory and one remote-context
    pass in flight. the browser has a hub read, a usage read and one screen read
    on explicit request. busy reads can owe one successor. ticks skip occupied
-   lanes. entering a terminal fences browser reads and clears the open fold.
+   lanes. inventory and remote context replies must belong to the current read
+   and the same continuous roster membership. entering a terminal fences
+   browser reads and clears the open fold.
 7. fleet-wide views. views and suggestions use retained fleet inventory. failed
    hosts keep last observed rows and a notice. a healthy host is checking before
    its first read, after the browser writes to it and after a terminal visit.
@@ -1169,13 +1170,18 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
    session's group. failed or unknown creation preserves view and selection, and
    a later attach to a created row does not repeat creation. a closing browser
    does not enter a session it created.
-10. return and selection. detach keeps the view, exact lifetime and table scroll,
-    prints the session and listing host, then refreshes. a rebuild follows the
-    selected lifetime through reorder. a departing row stays as a guest at its
-    previous index, bounded by the rows available, until cursor movement, a view
-    change or adoption. `j` and `k` leave a guest for the next and previous drawn
-    row. an unlisted guest cannot attach or mutate. before post-close inventory,
-    an attach still addresses the original lifetime and the gateway refuses it.
+10. return and selection. detach keeps the view and cursor, prints the session
+    and listing host, then refreshes. every drawn row has a retained lifetime.
+    a close receipt with `terminal: closed` removes that lifetime immediately,
+    independent of the interrupt result. a successful inventory replaces its
+    peer's rows. a roster removal drops the peer's rows. a rebuild follows a
+    surviving selection, including its guest if the view now excludes it.
+    after removal, pick the first surviving successor in the old view order,
+    then the nearest surviving predecessor. if only new rows remain, pick the
+    first. an empty view has no selection. movement, a view change or adoption
+    ends a guest. a view change keeps a common lifetime or starts at the first
+    row. an old enrollment's close receipt can still prove exact loss after
+    re-add. fence the replacement's earlier reads when adopting that receipt.
     restart begins at the first row of `all`.
 11. Display text. Every external string is sanitized with `attention.SingleLine`
     and measured in display cells before styling. Styled fragments never pass back
@@ -1335,12 +1341,10 @@ queue class is ready or action.
 the path is the last two lexical components, with `…/` for earlier components.
 when it is too wide, it keeps `…/` and as much of the last component as fits.
 client notes do not set column widths. `checking` replaces only the status word.
-a stale row's `last observed: <label>` and a guest's `left the queue: <label>`,
-`left this group` or `no longer listed` run from the status position, suppress
-group and agent metadata, and keep place only if it fits. only `all` draws group
-headings, with their first row. the complete status and client notes fit at 80
-columns. a guest displaced from its old group keeps its index without splitting
-a heading.
+a stale row's `last observed: <label>` and a guest's `left the queue: <label>`
+or `left this group` run from the status position, suppress group and agent
+metadata, and keep place only if it fits. only `all` draws group headings,
+with their first row. the complete status and client notes fit at 80 columns.
 
 the rule names the session and listing host, then any dropped execution place
 and position that fit. a foot draft or terminal chooser names its selected host.
@@ -1379,6 +1383,16 @@ unknown outcome, then returns to the open row. conflicting metadata keeps the
 draft for review. a definite rejection cannot become success because a separate
 writer matched. name edits retain their expected naming state. saving an unchanged
 automatic title claims manual naming, while `ctrl-a` restores automatic ownership.
+
+removing the subject collapses open details. a confirmation or editor moves to
+a disabled foot fold naming the captured subject and reason. an unanswered
+question says `nothing sent`. an editor keeps its frozen draft. a sent edit's
+reply reports against its captured subject and ends checking if the subject is
+gone. the disabled fold and the successor or empty state keep space even when
+notices crowd the table. escape dismisses the fold. while idle, `ctrl-c`
+quits and `ctrl-r` refreshes. every other key and paste belongs to the disabled
+fold and has no effect. reappearance cannot rearm it. a seeded creation draft
+becomes standalone and keeps its fields, focus and any valid search.
 
 `n` opens the terminal chooser at the configured default. it cycles every
 configured machine and sends terminal, home and the selected view's group only
@@ -1517,11 +1531,12 @@ for the palette.
   usually survives only for the selected session, in the caption. short names
   share the longest listed name's width. bounded names and paths can collide
   visually. the open facts and `skid info` carry full identity.
-- a returning browser temporarily changes status words to `checking` and admits
-  attach only while it awaits the required observations. a guest costs one
-  movement after closing or regrouping one's own session. reorder within a view
-  moves the selected lifetime with its row.
-- a foot fold can cover the cursor. short windows cut facts and field notes.
+- a returning browser temporarily shows `checking` and admits attach and local
+  inspection while it awaits observations. an external close waits for a
+  successful read. a guest keeps context after leaving a filter.
+  reorder can move the cursor with the selected lifetime or its old successor.
+- a regular foot fold can cover the cursor. a disabled draft can clip long text
+  and takes one escape to dismiss. short windows cut facts and field notes.
   the refusal carries the field's full reason. a confirmation contains only
   its question and effect. a tight question shortens both names independently
   to keep the session and host visible. foot caps can clip the end of the key map

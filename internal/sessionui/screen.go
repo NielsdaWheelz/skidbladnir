@@ -122,7 +122,7 @@ func (m *model) screenLines(row *fleetclient.Row, capacity, width int) []line {
 	case !row.Available && m.rowAttachable(*row):
 		suffix = ": checking"
 	case !row.Available:
-		suffix = ": " + m.rowUnavailability(m.rowForReference(row.Session.Ref.Reference))
+		suffix = ": " + m.rowUnavailability(*row)
 	}
 	suffix = attention.SingleLine(suffix)
 	name := ansi.Truncate(attention.SingleLine(row.Session.Name), max(1, width-3-ansi.StringWidth(prefix+suffix)), "…")

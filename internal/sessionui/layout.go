@@ -2,7 +2,6 @@ package sessionui
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
@@ -49,28 +48,36 @@ type frame struct {
 
 func (m *model) frame() frame {
 	f := frame{width: m.width - 2, top: m.top}
+	width := f.width - 3
+	f.body = m.height - 4
+	if m.fold.loss != "" {
+		f.fold = m.foldLines(f.body-1, width)
+	}
+	reserved := len(f.fold)
 	f.notices, f.hints = m.noticeLines(f.width), m.keyHints(f.width)
-	// Leave room for the selected row and an inline fold on either key state.
-	f.notices = f.notices[:min(len(f.notices), max(0, m.height-6))]
-	f.body = m.height - 4 - len(f.notices)
+	// Leave room for the disabled prompt and the selected row or empty state.
+	f.notices = f.notices[:min(len(f.notices), f.body-reserved-2)]
+	f.body -= len(f.notices)
 	if m.band {
-		f.band = m.usageBand(f.body / 2)
+		f.band = m.usageBand((f.body - reserved) / 2)
 		f.body -= len(f.band)
 	}
+	tableHeight := f.body - reserved
 	f.columns = m.measureColumns(f.width)
 	if m.cursor >= 0 {
-		f.top = min(max(0, f.top, m.cursor-f.body+1), m.cursor)
+		f.top = min(max(0, f.top, m.cursor-tableHeight+1), m.cursor)
 		headings := m.tableHeadings()
 		for {
-			f.rows = tableViewport(f.top, f.body, headings)
+			f.rows = tableViewport(f.top, tableHeight, headings)
 			if f.rows[len(f.rows)-1].index >= m.cursor {
 				break
 			}
 			f.top++
 		}
 	}
-	width := f.width - 3
-	if m.fold.foot() {
+	if reserved != 0 {
+		f.foldAt = tableHeight
+	} else if m.fold.foot() {
 		f.composeFoot(m.foldLines(f.body*11/20, width))
 	} else if m.fold.kind != foldNone && m.cursor >= 0 {
 		f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), width))
@@ -97,27 +104,8 @@ func (m *model) tableHeadings() []bool {
 	if m.view.kind != viewAll {
 		return headings
 	}
-	// A removed guest may now be between unrelated rows. It keeps its
-	// original group without splitting another group's heading.
-	neutralGuest, previous := -1, -1
-	if m.guest {
-		before, after := m.rows[:m.cursor], m.rows[m.cursor+1:]
-		label := m.rows[m.cursor].Session.Group
-		adjacentBefore := len(before) > 0 && before[len(before)-1].Session.Group == label
-		adjacentAfter := len(after) > 0 && after[0].Session.Group == label
-		if !adjacentBefore && !adjacentAfter {
-			sameGroup := func(row fleetclient.Row) bool { return row.Session.Group == label }
-			splitsGroup := len(before) > 0 && len(after) > 0 && before[len(before)-1].Session.Group == after[0].Session.Group
-			if splitsGroup || slices.ContainsFunc(before, sameGroup) || slices.ContainsFunc(after, sameGroup) {
-				neutralGuest = m.cursor
-			}
-		}
-	}
 	for index, row := range m.rows {
-		if index != neutralGuest {
-			headings[index] = previous < 0 || m.rows[previous].Session.Group != row.Session.Group
-			previous = index
-		}
+		headings[index] = index == 0 || m.rows[index-1].Session.Group != row.Session.Group
 	}
 	return headings
 }

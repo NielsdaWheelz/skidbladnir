@@ -13,10 +13,10 @@ import (
 
 // onPaste appends to the focused text: a metadata draft or a create field.
 func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
-	if m.busy || m.tooSmall() {
+	if m.busy || m.tooSmall() || m.fold.loss != "" {
 		return nil
 	}
-	if (m.fold.kind == foldGroup || m.fold.kind == foldRename) && !m.metadata.checking && !m.metadata.saveFocused {
+	if m.fold.metadata() && !m.metadata.checking && !m.metadata.saveFocused {
 		m.editMetadataText(m.metadata.draft + message.Content)
 	}
 	if m.fold.kind == foldDraft && m.field >= formName && m.field < formCreate {
@@ -61,8 +61,7 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 	if pressed == "ctrl+r" {
 		return tea.Batch(m.refresh(true), m.refreshUsage(true))
 	}
-	if (m.fold.kind == foldRename || m.fold.kind == foldGroup) &&
-		!m.metadata.checking && !m.metadata.saveFocused && message.Text != "" {
+	if m.fold.loss == "" && m.fold.metadata() && !m.metadata.checking && !m.metadata.saveFocused && message.Text != "" {
 		m.editMetadataText(m.metadata.draft + message.Text)
 	}
 	if m.fold.kind == foldDraft && m.field >= formName && m.field < formCreate && message.Text != "" {
@@ -90,6 +89,16 @@ func (k key) refusal(m *model) string {
 }
 
 func (m *model) keys() []key {
+	if m.fold.loss != "" {
+		return []key{{keys: []string{"esc"}, show: "escape", label: "dismiss", keep: true, closes: true,
+			act: func(m *model) tea.Cmd {
+				if m.fold.metadata() {
+					m.metadata = nil
+				}
+				m.fold = fold{}
+				return nil
+			}}}
+	}
 	switch m.fold.kind {
 	case foldOpen:
 		return m.openKeys()
@@ -381,19 +390,16 @@ func (m *model) keyMap(width int) []line {
 }
 
 func (m *model) rowAttachable(row fleetclient.Row) bool {
-	return row.Available || m.hostChecking(row) && (!m.guest || m.rowForReference(row.Session.Ref.Reference) != nil)
+	return row.Available || m.hostChecking(row)
 }
 
 func (m *model) rowRefusal(row fleetclient.Row, action string) string {
-	reason := m.rowUnavailability(m.rowForReference(row.Session.Ref.Reference))
+	reason := m.rowUnavailability(row)
 	return row.Session.Name + " on " + row.Label + " is " + reason + "; " + action + " is disabled."
 }
 
-func (m *model) rowUnavailability(row *fleetclient.Row) string {
-	if row == nil {
-		return "no longer listed"
-	}
-	if m.hostChecking(*row) || m.heldReady(*row) {
+func (m *model) rowUnavailability(row fleetclient.Row) string {
+	if m.hostChecking(row) || m.heldReady(row) {
 		return "being checked"
 	}
 	return "unavailable"
