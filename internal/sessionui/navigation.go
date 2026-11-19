@@ -25,7 +25,18 @@ type selectedView struct {
 }
 
 func (m *model) rebuild() {
-	previous, selected := m.cursor, m.selectedRow()
+	previous, previousRows, selected := m.cursor, m.rows, m.selectedRow()
+	var retained *fleetclient.Row
+	lostMachine := ""
+	if selected != nil {
+		ref := selected.Session.Ref.Reference
+		retained = m.rowForReference(ref)
+		if retained == nil {
+			lostMachine = ref.Machine
+		}
+	}
+	m.reconcileRowLoss(lostMachine)
+
 	m.rows = nil
 	switch m.view.kind {
 	case viewNeedsInput:
@@ -55,23 +66,34 @@ func (m *model) rebuild() {
 		panic("invalid selected view")
 	}
 	m.guest = false
+	m.cursor = min(0, len(m.rows)-1)
 	if selected == nil {
-		m.cursor = min(0, len(m.rows)-1)
 		return
 	}
-	ref := selected.Session.Ref.Reference
-	m.cursor = slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return row.Session.Ref.SessionEqual(ref) })
-	if m.cursor >= 0 {
+	indexOf := func(ref fleetclient.Reference) int {
+		return slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return row.Session.Ref.SessionEqual(ref) })
+	}
+	if index := indexOf(selected.Session.Ref.Reference); index >= 0 {
+		m.cursor = index
 		return
 	}
-	guest := *selected
-	if row := m.rowForReference(ref); row != nil {
-		guest = *row
-	} else {
-		guest.Available = false
+	if retained != nil {
+		m.cursor, m.guest = min(previous, len(m.rows)), true
+		m.rows = slices.Insert(m.rows, m.cursor, *retained)
+		return
 	}
-	m.cursor, m.guest = min(previous, len(m.rows)), true
-	m.rows = slices.Insert(m.rows, m.cursor, guest)
+	for _, row := range previousRows[previous+1:] {
+		if index := indexOf(row.Session.Ref.Reference); index >= 0 {
+			m.cursor = index
+			return
+		}
+	}
+	for _, row := range slices.Backward(previousRows[:previous]) {
+		if index := indexOf(row.Session.Ref.Reference); index >= 0 {
+			m.cursor = index
+			return
+		}
+	}
 }
 
 // viewOptions includes every group observed in the fleet plus the selected group,
@@ -131,9 +153,6 @@ func (m *model) selectRow(index int) {
 }
 
 func (m *model) guestNote(row fleetclient.Row) string {
-	if m.rowForReference(row.Session.Ref.Reference) == nil {
-		return "no longer listed"
-	}
 	if m.view.kind == viewGroup {
 		return "left this group"
 	}

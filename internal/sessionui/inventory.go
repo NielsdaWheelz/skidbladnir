@@ -10,10 +10,11 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 )
 
-// inventoryLane reads one peer. writing blocks reads while a mutation owns the
-// peer; settled records its first current reply.
+// inventoryLane owns both row-producing reads for one continuous roster membership.
+// writing blocks reads during a mutation; settled records the first current reply.
 type inventoryLane struct {
 	lane
+	contextRead      lane
 	settled, writing bool
 	// Exact lifetimes that read ready before the host or hub was fenced.
 	ready []fleetclient.Reference
@@ -44,30 +45,31 @@ func (m *model) refreshInventory(index int, manual bool) tea.Cmd {
 	if !m.observing() {
 		return nil
 	}
-	lane := &m.inventoryLanes[index]
-	if lane.writing { // a mutation owns this peer until refreshMutation
-		lane.trailing = lane.trailing || manual
+	owner := m.inventoryLanes[index]
+	if owner.writing { // a mutation owns this peer until refreshMutation
+		owner.trailing = owner.trailing || manual
 		return nil
 	}
 	client, machine := m.client, m.peers[index].Machine
-	return lane.read(m.ctx, manual, func(ctx context.Context, generation uint64) tea.Msg {
-		return inventoryMsg{machine: machine, generation: generation, result: client.InventoryMachine(ctx, machine)}
+	return owner.read(m.ctx, manual, func(ctx context.Context, generation uint64) tea.Msg {
+		return inventoryMsg{owner: owner, generation: generation, result: client.InventoryMachine(ctx, machine)}
 	})
 }
 
 func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
-	index := m.peerIndex(message.machine)
+	owner := message.owner
+	index := slices.Index(m.inventoryLanes, owner)
 	if index < 0 {
 		return nil
 	}
-	lane := &m.inventoryLanes[index]
-	landed, current := lane.land(message.generation)
+	landed, current := owner.land(message.generation)
 	if !landed {
 		return nil
 	}
 	var usage, screen tea.Cmd
 	if current && m.observing() {
-		lane.settled = true
+		machine := m.peers[index].Machine
+		owner.settled = true
 		m.cancelContext(index)
 		if message.result.OK {
 			received := message.result.Value.(fleetclient.Peer)
@@ -80,7 +82,7 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 				if session.Connection == nil {
 					continue
 				}
-				m.contextLanes[index].trailing = true
+				owner.contextRead.trailing = true
 				previousIndex := slices.IndexFunc(previous.Sessions, func(old fleetclient.Session) bool {
 					return old.Ref == session.Ref && old.Connection != nil && old.Connection.ID == session.Connection.ID
 				})
@@ -92,45 +94,43 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 		} else {
 			m.peers[index].OK, m.peers[index].Error = false, message.result.Error
 			m.forgetContext(index)
-			if m.screen.ref.Machine == message.machine && accessRejected(message.result.Error) {
+			if m.screen.ref.Machine == machine && accessRejected(message.result.Error) {
 				m.forgetScreen()
 			}
 		}
 		if !message.result.OK || m.notificationQualified || m.notificationFailed {
-			lane.ready = nil
+			owner.ready = nil
 		}
-		m.afterInventory(message.machine, message.generation)
-		if message.result.OK && m.screen.ref.Machine == message.machine {
+		m.afterInventory(machine)
+		if message.result.OK && m.screen.ref.Machine == machine {
 			screen = m.readScreen()
 		}
 	}
 	var trailing tea.Cmd
-	if lane.trailing {
+	if owner.trailing {
 		trailing = m.refreshInventory(index, false)
 	}
 	return tea.Batch(usage, screen, trailing, m.readContext(index))
 }
 
-func (m *model) afterInventory(machine string, generation uint64) {
+func (m *model) rebuildFromPeers() {
 	if m.fold.kind == foldDraft && m.searchState != directorySearchIdle && !m.directoryAvailable() {
 		m.clearDirectorySearch()
 	}
 	m.rebuild()
+}
+
+func (m *model) afterInventory(machine string) {
+	m.rebuildFromPeers()
 	observed := fleetclient.ObservedGroups(m.peers)
 	m.groupSelection.retain(groupChoices(m.form.group, observed))
-	if editor := m.metadata; editor != nil {
-		if editor.request.Operation == "group" {
-			editor.selection.retain(groupChoices(editor.draft, observed))
-		}
-		if editor.request.Ref.Machine == machine && (!editor.checking || generation > editor.readAfter) {
-			m.reconcileMetadata()
-		}
-	}
+	m.reconcileMetadata(machine, observed)
 }
 
 func (m *model) cancelContext(index int) {
-	m.contextLanes[index].fence()
-	m.contextLanes[index].trailing = false
+	contextRead := &m.inventoryLanes[index].contextRead
+	contextRead.fence()
+	contextRead.trailing = false
 }
 
 func (m *model) forgetContext(index int) {
@@ -139,18 +139,17 @@ func (m *model) forgetContext(index int) {
 	}
 }
 
-// readContext starts the peer's display-context pass when its current
-// inventory has remote rows. The pass reads a snapshot: losing access clears
-// the live rows.
+// readContext enriches a snapshot of the peer's current rows.
 func (m *model) readContext(index int) tea.Cmd {
-	if !m.observing() || !m.contextLanes[index].trailing {
+	owner := m.inventoryLanes[index]
+	if !m.observing() || !owner.contextRead.trailing {
 		return nil
 	}
 	source := m.peers[index]
 	source.Sessions = slices.Clone(source.Sessions)
 	peers, client := slices.Clone(m.peers), m.client
-	return m.contextLanes[index].read(m.ctx, true, func(ctx context.Context, generation uint64) tea.Msg {
-		return contextMsg{machine: source.Machine, generation: generation, peer: client.EnrichContexts(ctx, source, peers)}
+	return owner.contextRead.read(m.ctx, true, func(ctx context.Context, generation uint64) tea.Msg {
+		return contextMsg{owner: owner, generation: generation, peer: client.EnrichContexts(ctx, source, peers)}
 	})
 }
 
@@ -158,11 +157,12 @@ func (m *model) readContext(index int) tea.Cmd {
 // have relabelled it. A current pass means nothing replaced these rows since
 // it began, because every row writer fences the lane first.
 func (m *model) acceptContext(message contextMsg) tea.Cmd {
-	index := m.peerIndex(message.machine)
+	owner := message.owner
+	index := slices.Index(m.inventoryLanes, owner)
 	if index < 0 {
 		return nil
 	}
-	landed, current := m.contextLanes[index].land(message.generation)
+	landed, current := owner.contextRead.land(message.generation)
 	if !landed {
 		return nil
 	}
@@ -209,9 +209,6 @@ func (m *model) refreshMutation(index int) tea.Cmd {
 		return nil
 	}
 	m.fenceInventory(index)
-	if editor := m.metadata; editor != nil && editor.checking {
-		editor.readAfter = m.inventoryLanes[index].generation
-	}
 	return m.refreshInventory(index, true)
 }
 
@@ -238,30 +235,29 @@ func (m *model) reconcileFleet() bool {
 		return false
 	}
 	peers := make([]fleetclient.Peer, len(machines))
-	inventories := make([]inventoryLane, len(machines))
-	contexts := make([]lane, len(machines))
+	inventories := make([]*inventoryLane, len(machines))
 	usages := make([]usagePeer, len(machines))
-	retained := map[string]bool{}
 	for index, machine := range machines {
 		peers[index] = fleetclient.Peer{Label: machine.Label, Machine: machine.Handle}
 		usages[index] = usagePeer{machine: machine}
 		if old := m.peerIndex(machine.Handle); old >= 0 {
-			peers[index], inventories[index], contexts[index] = m.peers[old], m.inventoryLanes[old], m.contextLanes[old]
+			peers[index], inventories[index] = m.peers[old], m.inventoryLanes[old]
 			peers[index].Label = machine.Label
 			usages[index] = m.usagePeers[old]
 			usages[index].machine = machine
-			retained[machine.Handle] = true
+		} else {
+			inventories[index] = &inventoryLane{}
 		}
 	}
-	for index, peer := range m.peers {
-		if !retained[peer.Machine] {
+	for index, owner := range m.inventoryLanes {
+		if !slices.Contains(inventories, owner) {
 			m.fenceInventory(index)
 		}
 	}
-	m.peers, m.inventoryLanes, m.contextLanes, m.usagePeers = peers, inventories, contexts, usages
+	m.peers, m.inventoryLanes, m.usagePeers = peers, inventories, usages
 	m.usageLane.fence()
 	m.usageLane.trailing = true
 	m.usageNext = time.Time{}
-	m.rebuild()
+	m.rebuildFromPeers()
 	return true
 }

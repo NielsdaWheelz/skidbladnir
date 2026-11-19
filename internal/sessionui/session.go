@@ -20,12 +20,12 @@ import (
 )
 
 type inventoryMsg struct {
-	machine    string
+	owner      *inventoryLane
 	generation uint64
 	result     fleetclient.Result
 }
 type contextMsg struct {
-	machine    string
+	owner      *inventoryLane
 	generation uint64
 	peer       fleetclient.Peer
 }
@@ -37,6 +37,7 @@ type notificationMsg struct {
 type fleetMsg struct{}
 type tickMsg struct{}
 type actionMsg struct {
+	owner            *inventoryLane
 	machine, subject string
 	result           fleetclient.Result
 }
@@ -86,8 +87,7 @@ type model struct {
 	notificationFailed    bool
 	notificationQualified bool
 	attachment            *attachment
-	inventoryLanes        []inventoryLane
-	contextLanes          []lane
+	inventoryLanes        []*inventoryLane
 	notificationLane      lane
 	usageLane             lane
 	screen                screen
@@ -104,10 +104,9 @@ func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File
 	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30, now: time.Now()}
 	for _, machine := range client.Machines() {
 		m.peers = append(m.peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
+		m.inventoryLanes = append(m.inventoryLanes, &inventoryLane{})
 		m.usagePeers = append(m.usagePeers, usagePeer{machine: machine})
 	}
-	m.inventoryLanes = make([]inventoryLane, len(m.peers))
-	m.contextLanes = make([]lane, len(m.peers))
 	m.ground.noColor = os.Getenv("NO_COLOR") != ""
 	if m.ground.noColor {
 		m.ground.profile = colorprofile.ASCII
@@ -150,14 +149,16 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 			machine = peer.Machine
 		}
 	}
+	var owner *inventoryLane
 	if index := m.peerIndex(machine); index >= 0 {
 		m.checkInventory(index)
-		m.inventoryLanes[index].writing = true
+		owner = m.inventoryLanes[index]
+		owner.writing = true
 		m.rebuild()
 	}
 	ctx, client := m.ctx, m.client
 	return func() tea.Msg {
-		return actionMsg{machine: machine, subject: subject, result: client.Execute(ctx, request)}
+		return actionMsg{owner: owner, machine: machine, subject: subject, result: client.Execute(ctx, request)}
 	}
 }
 
@@ -287,9 +288,9 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		return nil // the browser is closing: never enter what it created
 	}
 	m.busy = false
-	index := m.peerIndex(message.machine)
+	index := slices.Index(m.inventoryLanes, message.owner)
 	if index >= 0 {
-		m.inventoryLanes[index].writing = false
+		message.owner.writing = false
 	}
 	machine := message.machine
 	if operation == "start" && result.OK {
@@ -303,14 +304,18 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 			result.Value = *created.Terminal
 		}
 	}
+	actual := index
+	if machine != message.machine {
+		actual = m.peerIndex(machine)
+	}
 	if !result.OK {
-		m.invalidateAccess(machine, result.Error)
+		if actual >= 0 {
+			m.invalidateAccess(machine, result.Error)
+		}
 		m.onActionFailure(operation, message.subject, result.Error)
 		refresh := m.refreshMutation(index)
-		if machine != message.machine {
-			if actual := m.peerIndex(machine); actual >= 0 {
-				return tea.Batch(refresh, m.refreshInventory(actual, true))
-			}
+		if actual >= 0 && actual != index {
+			return tea.Batch(refresh, m.refreshInventory(actual, true))
 		}
 		return refresh
 	}
@@ -318,17 +323,27 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 	case "start", "shell":
 		m.fold = fold{}
 		value := result.Value.(fleetclient.ObservedSession)
-		if createdIndex := m.peerIndex(value.Machine); createdIndex >= 0 {
-			return m.adoptCreated(createdIndex, value)
+		if actual >= 0 {
+			return m.adoptCreated(actual, value)
 		}
 		m.clearDirectorySearch()
+		m.inform("terminal created on " + value.Label + ".")
 	case "group", "rename":
-		m.metadata.checking = true
-		m.metadata.acknowledged = true
-		m.invalidatePendingPeer()
-		m.inform(message.subject + ": metadata saved; checking inventory")
+		m.completeMetadata(message.subject, nil)
 	case "close":
 		receipt := result.Value.(api.CloseResult)
+		if receipt.Terminal == "closed" {
+			ref := m.pending.Ref
+			// Refresh fences a pre-close read even if the machine rejoined mid-write.
+			index = m.peerIndex(ref.Machine)
+			if index >= 0 {
+				peer := &m.peers[index]
+				if closed := slices.IndexFunc(peer.Sessions, func(session fleetclient.Session) bool { return session.Ref.SessionEqual(ref) }); closed >= 0 {
+					peer.Sessions = slices.Delete(peer.Sessions, closed, closed+1)
+					m.rebuild()
+				}
+			}
+		}
 		var text string
 		switch {
 		case receipt.Terminal != "closed":
@@ -357,19 +372,15 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 }
 
 func (m *model) onActionFailure(operation, subject string, failure *fleetclient.Failure) {
+	if operation == "group" || operation == "rename" {
+		m.completeMetadata(subject, failure)
+		return
+	}
 	text := subject + ": " + fleetview.ErrorMessage(*failure, m.pending)
 	if operation == "start" && m.fold.kind == foldDraft && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
 		m.focusForm(formDirectory)
 	}
 	m.fail(text)
-	if operation == "group" || operation == "rename" {
-		m.metadata.failure = failure
-		if failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || accessRejected(failure) || failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged" {
-			m.metadata.checking = true
-			m.metadata.acknowledged = false
-			m.invalidatePendingPeer()
-		}
-	}
 }
 
 // adoptCreated reveals a confirmed creation in its group, selects it and enters it.
@@ -437,13 +448,6 @@ func (m *model) onSearch(message searchMsg) tea.Cmd {
 func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
-func (m *model) invalidatePendingPeer() {
-	if index := m.peerIndex(m.pending.Ref.Machine); index >= 0 {
-		m.peers[index].OK = false
-	}
-	m.rebuild()
-}
-
 // accessRejected reports a failure that holds for its whole host until the next inventory.
 func accessRejected(failure *fleetclient.Failure) bool {
 	return failure != nil && (failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch")
@@ -466,10 +470,7 @@ func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 	if m.screen.ref.Machine == machine {
 		m.forgetScreen()
 	}
-	if m.fold.kind == foldDraft && m.form.machine == m.peers[index].Label && m.searchState != directorySearchIdle {
-		m.clearDirectorySearch()
-	}
-	m.rebuild()
+	m.rebuildFromPeers()
 }
 func (m *model) selectedRow() *fleetclient.Row {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {

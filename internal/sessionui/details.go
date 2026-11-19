@@ -10,10 +10,7 @@ import (
 // current is where the session's work runs: this host, a resolved remote host,
 // or an unresolved remote connection.
 func (m *model) current(row *fleetclient.Row) fleetclient.ExecutionContext {
-	if index := m.peerIndex(row.Machine); index >= 0 {
-		return row.Session.Current(m.peers[index])
-	}
-	return row.Session.Current(fleetclient.Peer{Label: row.Label, Machine: row.Machine})
+	return row.Session.Current(m.peers[m.peerIndex(row.Machine)])
 }
 
 // rowFooter discloses observed text only for a fresh local agent. A known agent
@@ -36,9 +33,7 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 	availability := "available"
 	if !m.rowAvailable(*row) {
 		availability = "unavailable"
-		if m.rowForReference(row.Session.Ref.Reference) == nil {
-			view = fleetview.ProjectStatus(row.Session, false, false)
-		} else if m.hostChecking(*row) || m.heldReady(*row) {
+		if m.hostChecking(*row) || m.heldReady(*row) {
 			availability, view.Detail = "checking", "checking"
 		}
 	}
