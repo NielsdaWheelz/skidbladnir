@@ -3,6 +3,7 @@ package sessionui
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"slices"
@@ -93,6 +94,7 @@ type model struct {
 	screen                screen
 	screenLane            lane
 	usagePeers            []usagePeer
+	claudeUsage           map[string]claudeQuota
 	usageNext             time.Time
 }
 
@@ -168,6 +170,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if visit := m.attachment; visit != nil && visit.finished {
 		m.attachment = nil
 		if visit.err != nil {
+			var failure *fleetclient.Failure
+			if errors.As(visit.err, &failure) {
+				m.invalidateAccess(visit.ref.Machine, failure)
+			}
 			m.fail(visit.err.Error())
 		} else {
 			m.inform("detached from " + visit.name + " on " + visit.machine + ".")
@@ -249,6 +255,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			command = m.onKey(message)
 		}
 	}
+	m.reconcileClaudeQuota()
 	m.settle()
 	return m, tea.Batch(returned, command)
 }

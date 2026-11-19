@@ -31,6 +31,9 @@ type Failure struct {
 	Dispatch             string `json:"dispatch"`
 	Target               Ref    `json:"target,omitzero"`
 }
+
+func (failure *Failure) Error() string { return failure.Code }
+
 type Result struct {
 	OK bool `json:"ok"`
 	// Values are decoded at the owning transport boundary.

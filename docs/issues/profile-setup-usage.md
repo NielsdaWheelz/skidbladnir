@@ -40,10 +40,10 @@ rewrite human yaml. use the existing configuration acceptance path; any settings
 editor or new host-specific settings must be scoped separately.
 
 usage is read-only evidence, never launch admission or readiness. preserve native
-versus terminal estimates, stale/missing state and whole-source selection. do not
-sum subscriptions, splice windows or treat matching home paths as matching real
-accounts. account mapping needs explicit owner setup unless an attributable
-provider identity source is separately adopted.
+versus terminal estimates, stale/missing state, and each provider's selection
+rules in [desktop usage](../architecture.md#desktop-usage). each claude window
+can come from a distinct pane for the same key. account mapping needs explicit
+owner setup. matching home paths alone cannot prove account identity.
 
 ## competitor evidence and trade-offs
 

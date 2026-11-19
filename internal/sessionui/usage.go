@@ -137,10 +137,38 @@ type usageText struct {
 // left is the printed remainder and share the part of the window's time still
 // to run; each is -1 when the band has no number or no reset to draw from.
 type windowText struct {
-	remaining, resetsIn string
-	left                int
-	share               float64
-	expired             bool
+	remaining, resetsIn, lastSeenAge string
+	left                             int
+	share                            float64
+	expired                          bool
+}
+
+func unknownWindowText() windowText { return windowText{remaining: "—", left: -1, share: -1} }
+
+func terminalWindowText(remaining int) *windowText {
+	return &windowText{remaining: "~" + strconv.Itoa(remaining) + "%", left: remaining, share: -1}
+}
+
+func claudeWindowText(window claudeQuotaWindow, now time.Time) *windowText {
+	if window.receivedAt.IsZero() {
+		unknown := unknownWindowText()
+		return &unknown
+	}
+	text := terminalWindowText(window.remaining)
+	if window.stale {
+		age := max(0, now.Sub(window.receivedAt))
+		switch {
+		case age >= 24*time.Hour:
+			text.lastSeenAge = fmt.Sprintf("%dd", age/(24*time.Hour))
+		case age >= time.Hour:
+			text.lastSeenAge = fmt.Sprintf("%dh", age/time.Hour)
+		case age >= time.Minute:
+			text.lastSeenAge = fmt.Sprintf("%dm", age/time.Minute)
+		default:
+			text.lastSeenAge = "<1m"
+		}
+	}
+	return text
 }
 
 func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usageText {
@@ -163,10 +191,10 @@ func usageWindowText(window *api.QuotaWindow, span time.Duration, observedAt tim
 	if window == nil {
 		return nil
 	}
-	text := &windowText{remaining: "—", left: -1, share: -1}
+	text := unknownWindowText()
 	if !usageWindowAvailable(window, observedAt, elapsed) {
 		text.expired = true
-		return text
+		return &text
 	}
 	text.left = int(max(0, 100-window.UsedPercent))
 	text.remaining = strconv.Itoa(text.left) + "%"
@@ -185,7 +213,7 @@ func usageWindowText(window *api.QuotaWindow, span time.Duration, observedAt tim
 			text.resetsIn = "<1m"
 		}
 	}
-	return text
+	return &text
 }
 
 // A row is a presentation projection, never another retained observation.
@@ -201,14 +229,15 @@ type usageRow struct {
 }
 
 func (row usageRow) windowPresentation(window *windowText) (windowText, string) {
-	absent := windowText{remaining: "—", left: -1, share: -1}
 	switch {
 	case row.state != "" || window == nil:
-		return absent, row.state
+		return unknownWindowText(), row.state
 	case window.expired:
-		return absent, "awaiting update"
+		return unknownWindowText(), "awaiting update"
 	case row.text.stale:
-		return absent, "stale"
+		return unknownWindowText(), "stale"
+	case window.lastSeenAge != "":
+		return *window, "stale"
 	}
 	return *window, ""
 }
@@ -281,7 +310,7 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 	}
 	return row
 }
-func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageRow {
+func (m *model) codexTerminalUsage(profile fleetclient.Profile, now time.Time) usageRow {
 	row := usageRow{profile: profile, state: "checking"}
 	unavailable, absent := false, false
 	for _, peer := range m.peers {
@@ -333,10 +362,10 @@ func (m *model) terminalUsage(profile fleetclient.Profile, now time.Time) usageR
 		row.state = ""
 		row.text.stale = max(time.Duration(0), now.Sub(row.receivedAt)) >= usageStaleAfter
 		if value := row.terminal.TerminalUsage.FiveHourUsedPercent; value != nil {
-			row.text.fiveHour = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", left: 100 - *value, share: -1}
+			row.text.fiveHour = terminalWindowText(100 - *value)
 		}
 		if value := row.terminal.TerminalUsage.SevenDayUsedPercent; value != nil {
-			row.text.sevenDay = &windowText{remaining: "~" + strconv.Itoa(100-*value) + "%", left: 100 - *value, share: -1}
+			row.text.sevenDay = terminalWindowText(100 - *value)
 		}
 	} else if unavailable {
 		row.state = "unavailable"
@@ -370,7 +399,7 @@ func (m *model) usageRows(now time.Time) []usageRow {
 		switch profile.Provider {
 		case "Codex":
 			native := m.nativeUsage(profile, now)
-			terminal := m.terminalUsage(profile, now)
+			terminal := m.codexTerminalUsage(profile, now)
 			if native.native != nil && !native.text.stale && (native.text.fiveHour != nil && !native.text.fiveHour.expired || native.text.sevenDay != nil && !native.text.sevenDay.expired) {
 				rows[index] = native
 			} else if terminal.terminal != nil && !terminal.text.stale {
@@ -383,7 +412,11 @@ func (m *model) usageRows(now time.Time) []usageRow {
 				rows[index] = native
 			}
 		case "Claude":
-			rows[index] = m.terminalUsage(profile, now)
+			quota := m.claudeUsage[profile.Key]
+			rows[index] = usageRow{profile: profile, text: usageText{
+				fiveHour: claudeWindowText(quota.fiveHour, now),
+				sevenDay: claudeWindowText(quota.sevenDay, now),
+			}}
 		default:
 			rows[index] = usageRow{profile: profile}
 		}
@@ -438,10 +471,17 @@ func (m *model) weeklyQuota(room int) string {
 		text, status := row.windowPresentation(row.text.sevenDay)
 		profile := attention.SingleLine(row.profile.Key)
 		item := profile + " " + text.remaining
-		one := profile + " 7d " + text.remaining + " left"
 		if status != "" {
 			item += " " + status
+		}
+		one := profile + " 7d " + text.remaining
+		switch {
+		case text.lastSeenAge != "":
+			one += " left (" + status + ")"
+		case status != "":
 			one = item
+		case text.left >= 0 || row.profile.Provider != "Claude":
+			one += " left"
 		}
 		items = append(items, item)
 		if row.profile.Key == selectedProfile {
@@ -531,6 +571,10 @@ func (m *model) usageBand(limit int) []line {
 
 func (m *model) usageWindow(row usageRow, window *windowText, weekly bool, frame int) line {
 	text, word := row.windowPresentation(window)
+	if text.lastSeenAge != "" {
+		label := text.remaining + " " + word + " (seen " + text.lastSeenAge + " ago)"
+		return line{{text: cell(label, usageSlot), role: mutedRole, italic: true}}
+	}
 	if text.left < 0 {
 		if !weekly && (window == nil || row.state != "") {
 			word = ""
