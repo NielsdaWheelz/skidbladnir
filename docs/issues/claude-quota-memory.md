@@ -5,6 +5,10 @@ one-line footer against claude's web settings → usage on the same account.
 the private file may predate the web view. opening `/usage` in claude code
 can itself refresh the cache being checked.
 
+on 2026-11-20 utc, the v0.27.0 claude-usage route and installed formatter
+passed on all three hosts. the fleet returned general weekly and fable amounts
+and a fable reset. the cases below need their own live observations.
+
 | live case | result |
 | --- | --- |
 | compare cached 5h, 7d and fable amounts and supplied reset times with the web view, accounting for the fetch age | `NOT_RUN` |
