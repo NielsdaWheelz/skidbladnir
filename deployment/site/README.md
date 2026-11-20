@@ -8,15 +8,12 @@ the tunnel connects outwards and the server listens on loopback only.
 **Pushing `main` publishes.** Every five minutes `skid-web-pull.timer` fetches `main` over https and, when the
 tree of `site/` differs from the one last released, streams `git archive <sha> site` into `release.py install
 <sha>`. That checks the archive (plain files under `site/` only, both pages present), unpacks it to
-`/srv/skid-web/releases/<sha>/`, switches `/srv/skid-web/current` to it, checks the server serves it, and keeps
-the newest five releases. No code from the repository runs on the server. Logs: `journalctl -u skid-web-pull`.
+`/srv/skid-web/releases/<sha>/`, switches `/srv/skid-web/current` to it, deletes every other release and checks the
+server serves it. No code from the repository runs on the server. Logs: `journalctl -u skid-web-pull`.
 
 - Preview a change as the server will serve it: `python3 deployment/site/serve.py 8000 site`, then
   http://127.0.0.1:8000/.
-- Release at once from a checkout that can `ssh dev-server-deploy`: `deployment/site/release.sh [ref]`.
-- Roll back: revert the commit on `main` and push. For an instant rollback, on the server:
-  `sudo systemctl stop skid-web-pull.timer`, `sudo python3 /opt/skid-web/control/release.py list`,
-  `… release.py activate <sha>`; then revert `main` and start the timer again.
+- Roll back: revert the commit on `main` and push. The pull timer releases the revert within five minutes.
 - After changing `serve.py`, `release.py`, `pull.py` or a unit, rerun the installer (below); it reinstalls them
   and restarts `skid-web` if it runs.
 
@@ -40,9 +37,8 @@ On dev-server, as an administrator, from a copy of this folder:
 | file | role |
 | --- | --- |
 | `serve.py` | the static server: no listings or dotfiles, `/page` to `/page/`, HTML revalidated, other files cached five minutes, one byte range per request for the video |
-| `release.py` | install, activate, list and check releases on the server (root) |
+| `release.py` | install a release and check the server (root) |
 | `pull.py`, `skid-web-pull.*` | the five-minute check of `main` that releases a changed `site/` |
-| `release.sh` | release at once over `ssh dev-server-deploy` |
 | `install.sh`, `skid-web.service`, `skid-web-tunnel.service` | server setup |
 | `tunnel-config.json` | the tunnel's ingress rules |
 

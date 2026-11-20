@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Install, activate and check releases of the skid site on dev-server. Runs as root (sudo).
+"""Install and check the skid site on dev-server. Runs as root (sudo).
 
   release.py install <sha>    read `git archive <sha> site` (a tar) from stdin, unpack it to
-                              /srv/skid-web/releases/<sha>, check it and make it current
-  release.py activate <sha>   make an installed release current again (rollback)
-  release.py list             installed releases, newest first; * marks the current one
+                              /srv/skid-web/releases/<sha>, check it, make it current and delete every other release
   release.py check            the site answers on loopback with the current release
 
-deployment/site/pull.py (the pull timer) and deployment/site/release.sh (over ssh) drive this.
-Activation swaps the /srv/skid-web/current link atomically; serve.py follows it on every request. The newest
-five releases (and the current one) are kept. Adapted from atlas-kit's deploy/devbox/release.py.
+deployment/site/pull.py (the pull timer) drives this. Activation swaps the /srv/skid-web/current link atomically,
+so visitors never see a half-written site; serve.py follows the link on every request. Only the current release is
+kept: rollback is reverting main. Adapted from atlas-kit's deploy/devbox/release.py.
 """
 import fcntl
 import grp
@@ -23,7 +21,7 @@ from pathlib import Path
 
 SRV = Path("/srv/skid-web")
 RELEASES, CURRENT, INCOMING = SRV / "releases", SRV / "current", SRV / "incoming"
-PORT, KEEP, MAX_BYTES = 3490, 5, 64 * 1024 * 1024
+PORT, MAX_BYTES = 3490, 64 * 1024 * 1024
 PAGES = ("/", "/design/")
 
 
@@ -91,18 +89,6 @@ def unpack(archive, sha):
     print(f"skid site release: unpacked {files} files to {RELEASES / sha}")
 
 
-def activate(sha):
-    target = RELEASES / sha
-    if not (target / "index.html").is_file():
-        die(f"release {sha} is not installed")
-    tmp = SRV / ".current.next"
-    if tmp.is_symlink() or tmp.exists():
-        tmp.unlink()
-    tmp.symlink_to(target, target_is_directory=True)
-    tmp.replace(CURRENT)
-    print(f"skid site release: {sha[:12]} is current")
-
-
 def current():
     return CURRENT.resolve().name if CURRENT.is_symlink() else None
 
@@ -120,16 +106,6 @@ def check():
         if r.status != 200 or body != (root / page.strip("/") / "index.html").read_bytes():
             die(f"{page} is not served from the current release")
     print(f"skid site release: {sha[:12]} serves {', '.join(PAGES)}")
-
-
-def prune():
-    keep = {current()}
-    releases = sorted((p for p in RELEASES.iterdir() if p.is_dir() and not p.name.startswith(".")),
-                      key=lambda p: p.stat().st_mtime, reverse=True)
-    keep |= {p.name for p in releases[:KEEP]}
-    for p in releases:
-        if p.name not in keep:
-            shutil.rmtree(p)
 
 
 def main():
@@ -152,24 +128,23 @@ def main():
                 raise
             finally:
                 archive.unlink(missing_ok=True)
-        activate(sha)
-        prune()
+        tmp = SRV / ".current.next"
+        if tmp.is_symlink() or tmp.exists():
+            tmp.unlink()
+        tmp.symlink_to(RELEASES / sha, target_is_directory=True)
+        tmp.replace(CURRENT)
+        print(f"skid site release: {sha[:12]} is current")
+        for p in RELEASES.iterdir():  # every other release, and any leftover .<sha>.incoming stage
+            if p.name != sha:
+                shutil.rmtree(p)
         if os.system("systemctl is-active --quiet skid-web.service 2>/dev/null") == 0:
             check()
         else:
             print("skid site release: skid-web.service is not running yet; start it: systemctl enable --now skid-web skid-web-tunnel")
-    elif op == "activate" and len(args) == 1:
-        activate(sha_arg(args[0]))
-        check()
-    elif op == "list" and not args:
-        cur = current()
-        for p in sorted((p for p in RELEASES.iterdir() if p.is_dir() and not p.name.startswith(".")),
-                        key=lambda p: p.stat().st_mtime, reverse=True):
-            print(("* " if p.name == cur else "  ") + p.name)
     elif op == "check" and not args:
         check()
     else:
-        die("usage: release.py install <sha> < archive.tar | activate <sha> | list | check")
+        die("usage: release.py install <sha> < archive.tar | check")
 
 
 if __name__ == "__main__":

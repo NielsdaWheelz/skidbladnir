@@ -5,7 +5,7 @@ Run by skid-web-pull.timer every five minutes, or by hand: sudo python3 -B /opt/
 
 It fetches only the newest commit of main into /var/lib/skid-web/repo.git over https (the repository is public,
 so no key is needed), compares the tree of site/ with the one last released, and on a change streams
-`git archive <sha> site` into release.py install, the same step deployment/site/release.sh runs over ssh. main
+`git archive <sha> site` into release.py install. main
 moves mostly for code, so an unchanged site/ releases nothing. No code from the repository runs on the server:
 only the files under site/ are copied, after release.py has checked them.
 Adapted from atlas-kit's deploy/devbox/pull.py.
