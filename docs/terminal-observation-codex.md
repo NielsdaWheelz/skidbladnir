@@ -1109,7 +1109,8 @@ attribution.
   effort items are unsupported.
 - **Usage** (`terminalUsage`): the items `5h N% left` and `weekly N% left`, `N`
   canonical 0–100, reporting used = 100 − `N` for the five-hour and seven-day
-  windows. The whole read is refused when the row reaches the right edge, contains
+  windows. Each present `fiveHour` or `sevenDay` carries `usedPercent`. The
+  whole read is refused when the row reaches the right edge, contains
   `…`, or holds a malformed `5h …` or `weekly …` item or a duplicate window. Upstream
   renders remaining quota; monthly, context and arbitrary primary or secondary
   windows supply neither account window.

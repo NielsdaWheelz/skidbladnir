@@ -150,12 +150,13 @@ type ProfileUsage struct {
 	Report    *QuotaReport `json:"report,omitempty"`
 }
 
-// QuotaWindow and QuotaReport are one codex profile's account quota as internal/quota reads it.
+// QuotaWindow is one displayed or native account quota window.
 type QuotaWindow struct {
 	UsedPercent float64    `json:"usedPercent"`
 	ResetsAt    *time.Time `json:"resetsAt,omitempty"`
 }
 
+// QuotaReport is one codex profile's native account quota as internal/quota reads it.
 type QuotaReport struct {
 	ReportedAt time.Time    `json:"reportedAt"`
 	FiveHour   *QuotaWindow `json:"fiveHour,omitempty"`

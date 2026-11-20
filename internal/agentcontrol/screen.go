@@ -14,8 +14,9 @@ import (
 // unless a byte or row limit clipped one, so a row the observation does not
 // hold was dropped, and a grammar that needs it has clipped evidence.
 type screen struct {
-	width int
-	rows  []row
+	width     int
+	alternate bool
+	rows      []row
 }
 
 // row is one physical row, parsed on its own from the default style.
@@ -76,7 +77,7 @@ const (
 // parseScreen parses every captured row once; the rows no region holds stay
 // absent.
 func parseScreen(observation tmuxclient.PaneObservation) screen {
-	parsed := screen{width: observation.Width, rows: make([]row, observation.Height)}
+	parsed := screen{width: observation.Width, alternate: observation.Alternate, rows: make([]row, observation.Height)}
 	for _, region := range observation.Regions {
 		for index, text := range region.Rows {
 			parsed.rows[region.FirstRow+index] = parseRow(observation.Width, text)
