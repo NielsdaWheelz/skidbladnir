@@ -1,0 +1,24 @@
+{
+  "config": {
+    "ingress": [
+      {
+        "hostname": "skid.nielseriknandal.com",
+        "path": "(?:^|/)\\.{1,2}(?:/|$)|//|\\\\",
+        "service": "http_status:404"
+      },
+      {
+        "hostname": "skid.nielseriknandal.com",
+        "service": "http://127.0.0.1:3490",
+        "originRequest": {
+          "httpHostHeader": "skid.nielseriknandal.com"
+        }
+      },
+      {
+        "service": "http_status:404"
+      }
+    ],
+    "warp-routing": {
+      "enabled": false
+    }
+  }
+}

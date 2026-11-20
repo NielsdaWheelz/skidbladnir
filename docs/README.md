@@ -35,6 +35,8 @@ pages below either help you use skid or explain how it is built.
   sessions from a private checkpoint and requests native conversation resumes.
 - [tmux exec budget](tmux-exec-budget.md): the bound on tmux commands per inventory,
   and the service's scheduling priority on macOS.
+- [Publishing the site](../deployment/site/README.md): how `site/` reaches
+  skid.nielseriknandal.com from dev-server, and how to roll it back.
 - [Roadmap](roadmap.md): what is next and what is deferred.
 - [Issues](issues): open problems, one per file, each with its evidence and what
   proves it resolved.

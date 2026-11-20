@@ -1,0 +1,23 @@
+[Unit]
+Description=skid site Cloudflare tunnel
+After=network-online.target skid-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skid-web-tunnel
+Group=skid-web-tunnel
+ExecStart=/opt/skid-web/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:2003 run --token-file /etc/skid-web/cloudflared-token
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+MemoryMax=128M
+MemorySwapMax=0
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
