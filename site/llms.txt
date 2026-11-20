@@ -1,0 +1,42 @@
+# Skíðblaðnir
+
+> Every tmux session on every machine you own, on your desktop and your Android
+> phone. The same live terminals, straight over your tailnet. Nothing hosted, no
+> skid account, nothing to migrate.
+
+Skíðblaðnir (SKEETH-blahth-neer). Call it skid.
+
+skid itself hosts nothing and has no account; Tailscale needs an account, and may
+carry traffic through its encrypted DERP relays when no direct path exists.
+Skíðblaðnir is a single-user prototype, built and run by one person.
+
+Install on each computer: read the script, then run it.
+
+```sh
+curl -fsSLO https://github.com/NielsdaWheelz/skidbladnir/releases/latest/download/install
+less install
+bash install
+```
+
+When not to use skid:
+
+- You use an iPhone. There is no iOS app.
+- Your computers run Windows, macOS before 26 or on an Intel processor, or Linux on
+  arm64.
+- You are a team. A fleet has one owner, and every device in it can open a shell on
+  every computer.
+- You don't use Tailscale, or you want a hosted relay.
+- You want a chat interface to your agents. The phone shows their terminals.
+
+## Docs
+
+- [Site](https://skid.nielseriknandal.com/): the demo, how it works and how it compares
+- [README](https://github.com/NielsdaWheelz/skidbladnir#readme): requirements, install and quickstart
+- [Install](https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/install.md): every step for a computer
+- [Phone](https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/phone.md): sideloading, checking the signer, Obtainium and push
+- [Architecture](https://github.com/NielsdaWheelz/skidbladnir/blob/main/docs/architecture.md): the contract and the five constraints most mechanisms follow from
+- [Security](https://github.com/NielsdaWheelz/skidbladnir/blob/main/SECURITY.md): the trust model, and how to report a vulnerability
+
+## License
+
+- [Apache License, Version 2.0](https://github.com/NielsdaWheelz/skidbladnir/blob/main/LICENSE): Copyright 2026 Niels-Erik Nandal. The bundled fonts and xterm.js keep their own licenses.

@@ -5,8 +5,10 @@ Usage: serve.py <port> [root]   (skid-web.service; the tunnel maps skid.nielseri
 
 Serves /srv/skid-web/current, the release that release.py activated; the link is followed on every request, so
 activating a release needs no restart. Static files only: no directory listings, dotfiles or symlinks;
-/page -> /page/ redirects; 404.html for anything missing; HTML revalidated on every visit, other files cached for
-five minutes; one byte range per request, which Safari needs to play the demo video.
+/page -> /page/ redirects, and the paths in REDIRECTS redirect off the site; 404.html for anything missing;
+/ is llms.txt for terminal clients (TEXT_CLIENTS) and index.html for everyone else; pages (HTML and text)
+revalidated on every visit, other files cached for five minutes; one byte range per request, which Safari needs
+to play the demo video.
 `root` serves another folder the same way, e.g. `serve.py 8000 site` in a checkout.
 Adapted from atlas-kit's deploy/devbox/serve.py.
 """
@@ -25,6 +27,11 @@ TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 SECURITY = (("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "strict-origin-when-cross-origin"),
             ("Strict-Transport-Security", "max-age=31536000"))
 RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
+# 302, not permanent: "latest" moves, and a cached permanent redirect could never be taken back.
+REDIRECTS = {"/install": "https://github.com/NielsdaWheelz/skidbladnir/releases/latest/download/install"}
+# Clients that print the body to a terminal. Wget saves to a file and mirrors by following HTML links, so it keeps
+# the HTML.
+TEXT_CLIENTS = ("curl/", "HTTPie/")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -51,6 +58,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         parts = [p for p in path.split("/") if p]
         if not path.startswith("/") or "//" in path or any(p.startswith(".") or "\\" in p or "\0" in p for p in parts):
             return self.missing(head)
+        if path in REDIRECTS:
+            return self.redirect(302, REDIRECTS[path], head)
         try:
             root = ROOT.resolve(strict=True)
         except OSError:
@@ -58,19 +67,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         target = root.joinpath(*parts)
         if target.is_dir() and not target.is_symlink():
             if not path.endswith("/"):
-                return self.redirect(url.path + "/" + (f"?{url.query}" if url.query else ""), head)
+                return self.redirect(308, url.path + "/" + (f"?{url.query}" if url.query else ""), head)
             target = target / "index.html"
+        if not parts and self.headers.get("User-Agent", "").startswith(TEXT_CLIENTS):
+            target = root / "llms.txt"
         if target.is_symlink() or not target.is_file() or root not in target.resolve().parents:
             return self.missing(head)
-        self.file(200, target, head)
+        self.file(200, target, head, vary=not parts)
 
-    def file(self, status, f, head):
+    def file(self, status, f, head, vary=False):
         st = f.stat()
         etag = f'"{st.st_size:x}-{int(st.st_mtime_ns):x}"'
-        cache = "no-cache" if f.suffix == ".html" or status != 200 else "public, max-age=300"
+        cache = "no-cache" if f.suffix in (".html", ".txt") or status != 200 else "public, max-age=300"
         headers = [("Content-Type", TYPES.get(f.suffix, "application/octet-stream")), ("Cache-Control", cache),
                    ("Last-Modified", email.utils.formatdate(st.st_mtime, usegmt=True)), ("ETag", etag),
                    ("Accept-Ranges", "bytes")]
+        if vary:  # / answers by User-Agent, so a cache must key on it
+            headers.append(("Vary", "User-Agent"))
         if status == 200 and self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             for k, v in headers[1:] + list(SECURITY):
@@ -115,8 +128,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.file(404, page, head)
         self.plain(404, "not found", head)
 
-    def redirect(self, location, head):
-        self.send_response(308)
+    def redirect(self, status, location, head):
+        self.send_response(status)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
         for k, v in SECURITY:
