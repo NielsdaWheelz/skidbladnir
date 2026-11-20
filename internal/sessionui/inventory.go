@@ -14,8 +14,9 @@ import (
 // writing blocks reads during a mutation; settled records the first current reply.
 type inventoryLane struct {
 	lane
-	contextRead      lane
-	settled, writing bool
+	contextRead         lane
+	settled, writing    bool
+	needsReadAfterVisit bool // quota waits for a successful post-visit inventory
 	// Exact lifetimes that read ready before the host or hub was fenced.
 	ready []fleetclient.Reference
 }
@@ -72,6 +73,7 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 		owner.settled = true
 		m.cancelContext(index)
 		if message.result.OK {
+			owner.needsReadAfterVisit = false
 			received := message.result.Value.(fleetclient.Peer)
 			received.Label = m.peers[index].Label
 			if m.reconcileUsageProfiles(index, received) {
@@ -197,6 +199,7 @@ func (m *model) checkInventory(index int) {
 func (m *model) cancelObservations() {
 	for index := range m.inventoryLanes {
 		m.checkInventory(index)
+		m.inventoryLanes[index].needsReadAfterVisit = true
 		m.inventoryLanes[index].trailing = false
 	}
 	m.notificationLane.fence()

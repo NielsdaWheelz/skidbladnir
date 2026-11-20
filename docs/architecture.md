@@ -56,6 +56,10 @@ be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
 
+the desktop shows the lowest visible claude allowance for each profile and
+window. when no reading is visible, it marks the last value stale while its
+source still declares the same account binding ([desktop usage](#desktop-usage)).
+
 ### Guarantees
 
 - skid never closes a tmux session other than the exact confirmed target.
@@ -949,9 +953,11 @@ failure vocabulary. The contract:
    configuration scope, not a verified account; omitted when the home cannot be
    resolved.
 4. The owner guarantees that one profile key is one account on every host; usage
-   selection rests on that ([desktop usage](#desktop-usage)). Windows are never
-   spliced or summed, remote clocks never compared, and usage never gates
-   admission, readiness or controls.
+   selection rests on that ([desktop usage](#desktop-usage)). the desktop picks
+   claude windows independently and uses the declaring host's inventory
+   `accountScope` to decide whether it can remember a reading. scopes are
+   compared only within a host. percentages are never summed, remote clocks
+   never compared, and usage never gates admission, readiness or controls.
 
 ### Pressure
 
@@ -1438,25 +1444,38 @@ for the palette.
   terminal usage; the native stream reads `GET /v1/profile-usage` on every peer
   each minute while the browser owns the screen, band shown or hidden, and on
   `ctrl-r`; `u` reads nothing. neither clears the other's facts.
-- One whole observation per profile, never windows spliced from several; a newer
-  partial report replaces an older complete one. Codex: a fresh native report with
-  a live window, else fresh terminal evidence, else the retained native report as
-  diagnosis, else stale terminal evidence. Claude: terminal evidence only. Terminal
-  evidence is, per host, the matching local session with the most known windows
-  (ties: numeric tmux ID), and across hosts the latest client receipt (ties: the
-  smaller machine handle). Without a candidate a profile reads `unavailable` after
-  a failed read, else blank.
-- Values show remaining capacity; terminal-sourced values carry `~`. A window is
-  stale at one hour: native age is `observedAt − reportedAt` plus client monotonic
-  time since receipt; terminal age is only the time since the inventory that
-  carried it. A failed host or profile read makes a retained report stale at once;
-  stale numbers are hidden. Resets count down from host timestamps plus client
-  monotonic time, never comparing host clocks; at or past reset a window reads
-  `awaiting update` and never infers replenishment.
+- values show remaining capacity. terminal-sourced values carry `~`. their age
+  is client monotonic time since receipt of the inventory carrying the value.
+- codex chooses one whole observation per profile. a fresh native report with
+  a live window wins, followed by fresh terminal evidence, the retained native
+- report for diagnosis, then stale terminal evidence. per host, the matching
+  local session with the most known windows supplies terminal evidence. ties go
+  to the smaller numeric tmux id. across hosts the latest client receipt wins,
+  with ties going to the smaller machine handle. without a candidate a profile
+  reads `unavailable` after a failed read, else blank. native age is
+  `observedAt − reportedAt` plus client monotonic time since receipt. at one hour
+  or on a failed host or profile read, the retained report is stale and its
+  numbers are hidden. resets count down from host timestamps plus client
+  monotonic time. at or past reset a window reads `awaiting update`.
+- claude chooses the lowest present remainder independently for 5h and 7d
+  among matching local foreground panes from hosts declaring that profile.
+  ties prefer a known scope, the newest client receipt, then the smaller
+  machine handle. ordinary refreshes and browser writes keep the last accepted
+  inventory eligible. a confirmed close withdraws its pane immediately. a missing
+  reading, a failed inventory or age of at least one hour also withdraws the
+  reading. entering a terminal withdraws all hosts together until each next
+  succeeds.
+- a claude window with no eligible reading shows its last winner as stale
+  during this browser run, provided the declaring host still has the same
+  known profile binding. host removal, explicit access or machine identity
+  refusal, and a change or withdrawal of that declaration erase the affected
+  reading. a scope-less winner can appear while visible. it leaves no history.
+  each window keeps its own receipt and shows `—` when unknown.
 - while no band line is drawn, the rule carries quota: `7d quota left` and
   every profile's weekly remainder when they fit, else the selected row's
-  profile as `personal 7d 72% left` if that fits. a declaration state stands
-  alone.
+  profile as `personal 7d 72% left` if that fits. remembered claude values read
+  `work ~28% stale` in the full rule and `work 7d ~28% left (stale)` when
+  showing only the selected profile. a declaration state stands alone.
 - the band is a header and one line per profile in at most half of the body
   that notices leave. past that its last line is `… n more profiles in a
   taller window`, cut from the end of the display order. with room for fewer
@@ -1465,7 +1484,8 @@ for the palette.
   ellipsis, bold when the selected row draws from it; the 7d slot at 13 and
   the 5h slot at 47, each a 16-cell gauge, the number right-aligned in 5 and
   the countdown in 7. the header is `usage`, `7d` and `5h` over their slots
-  (`5h` only when a drawn profile reports one). the legend ends at cell 78:
+  (`5h` when a drawn codex profile reports one or a claude row is drawn).
+  the legend ends at cell 78:
   `━ quota left  ┴ time left`, with `═` on the plain path. each part appears
   only when its mark appears on a drawn line. a half-cell counts as quota.
 - a gauge draws the printed integer in 32 half cells, `round(left × 32 / 100)`,
@@ -1475,14 +1495,17 @@ for the palette.
   the share of the window still to run: `┷` on heavy, `┵` on the end, `┴` on
   light. the plain path draws 16 whole cells, `round(left × 16 / 100)` at
   least 1 above 0 and at most 15 below 100, heavy as `═` with its stem `╧`.
-- the countdown is whole minutes to reset, rounded down, in the two largest
-  units: `2d 4h`, `3h 12m`, `41m`, `<1m`. a profile's word (`checking`,
-  `unavailable`) prints once, in its 7d slot; a window's word (`stale`,
-  `awaiting update`) in that window's slot, alone. with no word and no 7d
-  window the slot prints `—`; a 5h never reported prints nothing. with no
-  profile the band is `usage` and the declaration state at column 13.
+- the countdown rounds down to whole minutes and shows the two largest units
+  as in `2d 4h`, `3h 12m`, `41m` or `<1m`. codex's profile state
+  (`checking`, `unavailable`) prints once in its 7d slot. `stale` and
+  `awaiting update` stand alone in the affected window. an empty 7d slot
+  prints `—`. a codex 5h never reported prints nothing.
+  for a stale claude window, the slot reads `~28% stale (seen 4m ago)` in place
+  of the gauge. age uses whole minutes, hours or days, and `<1m` at first.
+  with no profile the band is `usage` and the declaration state at column 13.
 - the band redraws when a sample changes a drawn value and when the clock
-  changes a countdown, a stem's cell, `stale` or `awaiting update`.
+  changes a countdown, a stem's cell, a remembered age, `stale` or
+  `awaiting update`.
   nothing else moves in it but the reveal.
 - showing the band with `u` on the full path starts the reveal. a sample or
   return from a terminal never starts it. time since `u` counts in frames of
@@ -1572,9 +1595,12 @@ for the palette.
   persists after inspection until the screen changes; a deliberate interruption
   qualifies; an agent exit raises nothing ([issue](issues/agent-exit-attention.md));
   an empty queue is not health. Tie order differs between clients.
-- Claude quota loses sub-percent precision (up to one point optimistic) and has no
-  resets or provider age, so recently captured old values look fresh; whole
-  replacement can discard an older complete window; countdowns lag up to 5 s.
+- claude quota loses sub-percent precision (up to one point optimistic) and has no
+  reset or provider timestamp. recently captured old values can still win.
+  the two values can come from different panes. a login change within the same
+  home is undetectable. remembered age dates the sighting and lasts one browser
+  run. codex whole replacement can discard an older complete window. countdown
+  and age updates can lag by the browser's five-second tick.
 - the first frame uses the plain palette. a terminal that does not answer the
   device query can delay first attach by one second. a later reply can reach
   an attached session. the browser samples the theme once, so theme changes need

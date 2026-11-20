@@ -52,7 +52,7 @@ func Run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Refere
 	}()
 	connection, failure := client.OpenTerminal(ctx, ref)
 	if failure != nil {
-		return Result{Err: errors.New(failure.Code)}
+		return Result{Err: failure}
 	}
 	defer connection.CloseNow()
 	columns, rows, err = term.GetSize(int(output.Fd()))
