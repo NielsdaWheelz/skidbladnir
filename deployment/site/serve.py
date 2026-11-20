@@ -31,7 +31,7 @@ RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
 REDIRECTS = {"/install": "https://github.com/NielsdaWheelz/skidbladnir/releases/latest/download/install"}
 # Clients that print the body to a terminal. Wget saves to a file and mirrors by following HTML links, so it keeps
 # the HTML.
-TEXT_CLIENTS = ("curl/", "HTTPie/")
+TEXT_CLIENTS = ("curl/", "HTTPie/")  # / varies by User-Agent: a Cloudflare "Cache Everything" rule would ignore Vary
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
