@@ -64,15 +64,16 @@ type Profile struct {
 }
 
 type Peer struct {
-	Label      string        `json:"label"`
-	Machine    string        `json:"machine"`
-	OK         bool          `json:"ok"`
-	ObservedAt string        `json:"observedAt,omitempty"`
-	ReceivedAt time.Time     `json:"-"`
-	Profiles   []Profile     `json:"profiles,omitempty"`
-	Sessions   []Session     `json:"sessions,omitempty"`
-	Recovery   *api.Recovery `json:"recovery,omitempty"`
-	Error      *Failure      `json:"error,omitempty"`
+	Label        string        `json:"label"`
+	Machine      string        `json:"machine"`
+	OK           bool          `json:"ok"`
+	ObservedAt   time.Time     `json:"observedAt,omitempty"`
+	ReceivedAt   time.Time     `json:"-"`
+	ReceivedBoot time.Duration `json:"-"`
+	Profiles     []Profile     `json:"profiles,omitempty"`
+	Sessions     []Session     `json:"sessions,omitempty"`
+	Recovery     *api.Recovery `json:"recovery,omitempty"`
+	Error        *Failure      `json:"error,omitempty"`
 }
 
 // MarshalJSON preserves required empty arrays for a successfully observed peer.
@@ -89,7 +90,7 @@ func (p Peer) MarshalJSON() ([]byte, error) {
 		Label      string        `json:"label"`
 		Machine    string        `json:"machine"`
 		OK         bool          `json:"ok"`
-		ObservedAt string        `json:"observedAt"`
+		ObservedAt time.Time     `json:"observedAt"`
 		Profiles   []Profile     `json:"profiles"`
 		Sessions   []Session     `json:"sessions"`
 		Recovery   *api.Recovery `json:"recovery"`
@@ -170,7 +171,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		if json.Unmarshal(encoded, &value) != nil || value.Machine.Handle != target.Machine || !value.Recovery.Known() {
 			return nil, false
 		}
-		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt.Format(time.RFC3339Nano), Profiles: make([]Profile, len(value.Profiles)), Sessions: make([]Session, len(value.Sessions)), Recovery: &value.Recovery.Recovery}
+		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: make([]Profile, len(value.Profiles)), Sessions: make([]Session, len(value.Sessions)), Recovery: &value.Recovery.Recovery}
 		for index, wire := range value.Profiles {
 			profile, ok := clientProfile(wire)
 			if !ok {

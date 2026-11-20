@@ -58,7 +58,10 @@ private checkpoint, using current configured commands.
 
 the desktop shows the lowest visible claude allowance for each profile and
 window. when no reading is visible, it marks the last value stale while its
-source still declares the same account binding ([desktop usage](#desktop-usage)).
+source still declares the same account binding. a reset visible in an attributable
+claude statusline counts down for its account and window until expiry, even
+after every pane closes. quitting the browser clears both readings
+([desktop usage](#desktop-usage)).
 
 ### Guarantees
 
@@ -86,7 +89,8 @@ Provider conversation search, history, inboxes, live targeting or hooks; chat UI
 copied provider history; transcript-derived semantic state; task-completion
 claims; durable command receipts and replay; scheduling, autonomous orchestration
 or a task protocol; execution proxying; cross-machine move, broadcast, failover or
-wake; automatic hub election; durable inventory; quota enforcement; git or project
+wake; automatic hub election; durable inventory; quota enforcement, manual reset
+settings or claude account queries; git or project
 discovery; arbitrary host setup or tailnet policy automation; terminal embedding
 in another app; containment between agents of one user; multi-user anything.
 
@@ -824,12 +828,15 @@ grammars, send admission and wait states. Around it:
    ([observation §6](terminal-observation.md#6-content-attention-and-filtering)):
    the gateway sends it as each row's `status` and Go clients call it.
 6. From the same successful sample of a local agent only: `terminalUsage
-   {fiveHourUsedPercent?, sevenDayUsedPercent?}` (integers 0–100, at least one)
+   {fiveHour?, sevenDay?}`, with at least one `{usedPercent, resetsAt?}` window,
    and `terminalFooter` (1–1,024 bytes, no `Cc`, `Cf`, `Zl` or `Zp`, no edge
    whitespace). Each sample replaces both; a failed or changed capture carries
    neither, and absence means not observed. Both are displayed text, never account
    reports or execution settings, and reading them never changes status, composer,
-   rules or clipping; the grammars own their productions
+   rules or clipping. a window includes its displayed integer usage (0–100,
+   including zero). claude may also supply a reset beside that window’s visible
+   percentage, encoded as a UTC RFC 3339 instant, to the second. the grammars own
+   their productions
    ([Codex §8](terminal-observation-codex.md#8-displayed-statusline-items),
    [Claude §7](terminal-observation-claude.md#7-displayed-statusline-suffix)).
    `terminal/inspect` carries status only.
@@ -955,7 +962,8 @@ failure vocabulary. The contract:
 4. The owner guarantees that one profile key is one account on every host; usage
    selection rests on that ([desktop usage](#desktop-usage)). the desktop picks
    claude windows independently and uses the declaring host's inventory
-   `accountScope` to decide whether it can remember a reading. scopes are
+   `accountScope` to decide whether it can remember a reading or a reset. each
+   fact belongs to its own reporter. scopes are
    compared only within a host. percentages are never summed, remote clocks
    never compared, and usage never gates admission, readiness or controls.
 
@@ -1445,7 +1453,9 @@ for the palette.
   each minute while the browser owns the screen, band shown or hidden, and on
   `ctrl-r`; `u` reads nothing. neither clears the other's facts.
 - values show remaining capacity. terminal-sourced values carry `~`. their age
-  is client monotonic time since receipt of the inventory carrying the value.
+  is client elapsed time since receipt of the inventory carrying the value.
+  claude measures elapsed time including sleep at receipt and on every browser
+  update. a failed clock sample withholds the affected report.
 - codex chooses one whole observation per profile. a fresh native report with
   a live window wins, followed by fresh terminal evidence, the retained native
 - report for diagnosis, then stale terminal evidence. per host, the matching
@@ -1459,8 +1469,9 @@ for the palette.
   monotonic time. at or past reset a window reads `awaiting update`.
 - claude chooses the lowest present remainder independently for 5h and 7d
   among matching local foreground panes from hosts declaring that profile.
-  ties prefer a known scope, the newest client receipt, then the smaller
-  machine handle. ordinary refreshes and browser writes keep the last accepted
+  ties prefer a known scope, a future reset on the same reading, newest receipt,
+  smaller machine handle, then smaller numeric tmux id. ordinary refreshes and
+  browser writes keep the last accepted
   inventory eligible. a confirmed close withdraws its pane immediately. a missing
   reading, a failed inventory or age of at least one hour also withdraws the
   reading. entering a terminal withdraws all hosts together until each next
@@ -1470,7 +1481,23 @@ for the palette.
   known profile binding. host removal, explicit access or machine identity
   refusal, and a change or withdrawal of that declaration erase the affected
   reading. a scope-less winner can appear while visible. it leaves no history.
-  each window keeps its own receipt and shows `—` when unknown.
+  each window keeps its own receipt.
+- each claude profile and window also remembers one future reset independently
+  of the percentage. one distinct future instant from current, known-scope
+  sources establishes or corrects it. agree on the newest reporter, then
+  smaller machine handle and numeric tmux id. an equal instant keeps its valid
+  binding and deadline. no date or disagreement retains a known date and leaves
+  an unseen date blank. a scope-less amount can show its own live timer when
+  there is neither a remembered reset nor disagreement. it sets no shared date.
+- calculate a local expiry from receipt time plus the reset’s distance from
+  that inventory’s host observation. keep the timer through pane loss, a failed
+  refresh, a terminal visit or an ageing amount. withdraw it when its own source
+  binding is revoked. at expiry drop the date and amounts whose local receipt
+  precedes that deadline. while the account/window exists, refuse those receipts
+  as amounts and refuse dates at or before the last expired reset, even after
+  the reporter leaves. a later date can still qualify while its paired amount
+  ages out. a newly received undated reading can appear. skid infers neither a
+  refill nor a reset.
 - while no band line is drawn, the rule carries quota: `7d quota left` and
   every profile's weekly remainder when they fit, else the selected row's
   profile as `personal 7d 72% left` if that fits. remembered claude values read
@@ -1500,8 +1527,12 @@ for the palette.
   (`checking`, `unavailable`) prints once in its 7d slot. `stale` and
   `awaiting update` stand alone in the affected window. an empty 7d slot
   prints `—`. a codex 5h never reported prints nothing.
-  for a stale claude window, the slot reads `~28% stale (seen 4m ago)` in place
-  of the gauge. age uses whole minutes, hours or days, and `<1m` at first.
+  a live claude amount with a known date shows the usual stem and countdown.
+  stale amounts show `~28% stale (seen 4m ago)` or `~28% stale 4m ago  in 2d 4h`
+  without the gauge. the slot can omit `ago` to fit. age uses whole minutes,
+  hours or days, and `<1m` at first. a date alone shows `—  resets in 2d 4h`.
+  `awaiting update` means an expired reading is still visible, and `—` means
+  neither amount nor date is known. the compact summary has no timer.
   with no profile the band is `usage` and the declaration state at column 13.
 - the band redraws when a sample changes a drawn value and when the clock
   changes a countdown, a stem's cell, a remembered age, `stale` or
@@ -1595,12 +1626,12 @@ for the palette.
   persists after inspection until the screen changes; a deliberate interruption
   qualifies; an agent exit raises nothing ([issue](issues/agent-exit-attention.md));
   an empty queue is not health. Tie order differs between clients.
-- claude quota loses sub-percent precision (up to one point optimistic) and has no
-  reset or provider timestamp. recently captured old values can still win.
-  the two values can come from different panes. a login change within the same
-  home is undetectable. remembered age dates the sighting and lasts one browser
-  run. codex whole replacement can discard an older complete window. countdown
-  and age updates can lag by the browser's five-second tick.
+- claude quota loses sub-percent precision. a newly captured undated value
+  can still be old. the amounts and dates can come from different panes.
+  a login change within the same home is undetectable. claude reset accuracy
+  depends on the reporting host’s clock and transit time. elapsed age dates
+  skid’s sighting. codex whole replacement can discard an older complete
+  window. countdown and age updates can lag by the browser’s five-second tick.
 - the first frame uses the plain palette. a terminal that does not answer the
   device query can delay first attach by one second. a later reply can reach
   an attached session. the browser samples the theme once, so theme changes need

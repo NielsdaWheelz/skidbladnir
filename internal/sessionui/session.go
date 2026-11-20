@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/boottime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
@@ -69,6 +70,7 @@ type model struct {
 	band                  bool
 	reveal                time.Time // start of the active reveal
 	now                   time.Time // shared by every projection of this update
+	bootNow               time.Duration
 	revealGeneration      int
 	form                  createDraft
 	field                 int
@@ -167,6 +169,7 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var returned, command tea.Cmd
 	m.now = time.Now()
+	m.bootNow = boottime.Now()
 	if visit := m.attachment; visit != nil && visit.finished {
 		m.attachment = nil
 		if visit.err != nil {

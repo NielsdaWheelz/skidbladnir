@@ -145,18 +145,31 @@ type windowText struct {
 
 func unknownWindowText() windowText { return windowText{remaining: "—", left: -1, share: -1} }
 
-func terminalWindowText(remaining int) *windowText {
-	return &windowText{remaining: "~" + strconv.Itoa(remaining) + "%", left: remaining, share: -1}
+func terminalWindowText(left int, span, until time.Duration) *windowText {
+	text := usageWindowText(left, span, until)
+	if left >= 0 {
+		text.remaining = "~" + text.remaining
+	}
+	return text
 }
 
-func claudeWindowText(window claudeQuotaWindow, now time.Time) *windowText {
-	if window.receivedAt.IsZero() {
+func claudeWindowText(window claudeQuotaWindow, span, now time.Duration) *windowText {
+	if now == 0 {
 		unknown := unknownWindowText()
 		return &unknown
 	}
-	text := terminalWindowText(window.remaining)
-	if window.stale {
-		age := max(0, now.Sub(window.receivedAt))
+	left := -1
+	if window.amount.received != 0 {
+		left = window.amount.remaining
+	}
+	deadline := window.reset.deadline
+	if window.showOwnDate {
+		deadline = window.amount.date.deadline
+	}
+	text := terminalWindowText(left, span, deadline-now)
+	text.expired = left < 0 && text.resetsIn == "" && window.expiredVisible
+	if left >= 0 && !window.visible {
+		age := max(0, now-window.amount.received)
 		switch {
 		case age >= 24*time.Hour:
 			text.lastSeenAge = fmt.Sprintf("%dd", age/(24*time.Hour))
@@ -180,29 +193,39 @@ func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usa
 	elapsed := max(time.Duration(0), now.Sub(profile.receivedAt))
 	age := profile.observedAt.Sub(report.ReportedAt) + elapsed
 	text.stale = hostFailed || profile.profile.ReadState == "unavailable" || age >= usageStaleAfter
-	text.fiveHour = usageWindowText(report.FiveHour, 5*time.Hour, profile.observedAt, elapsed)
-	text.sevenDay = usageWindowText(report.SevenDay, 7*24*time.Hour, profile.observedAt, elapsed)
+	text.fiveHour = nativeWindowText(report.FiveHour, 5*time.Hour, profile.observedAt, elapsed)
+	text.sevenDay = nativeWindowText(report.SevenDay, 7*24*time.Hour, profile.observedAt, elapsed)
 	return text
 }
 func usageWindowAvailable(window *api.QuotaWindow, observedAt time.Time, elapsed time.Duration) bool {
 	return window != nil && (window.ResetsAt == nil || window.ResetsAt.Sub(observedAt) > elapsed)
 }
-func usageWindowText(window *api.QuotaWindow, span time.Duration, observedAt time.Time, elapsed time.Duration) *windowText {
+func nativeWindowText(window *api.QuotaWindow, span time.Duration, observedAt time.Time, elapsed time.Duration) *windowText {
 	if window == nil {
 		return nil
 	}
-	text := unknownWindowText()
 	if !usageWindowAvailable(window, observedAt, elapsed) {
+		text := unknownWindowText()
 		text.expired = true
 		return &text
 	}
-	text.left = int(max(0, 100-window.UsedPercent))
-	text.remaining = strconv.Itoa(text.left) + "%"
+	var until time.Duration
 	if window.ResetsAt != nil {
-		remaining := window.ResetsAt.Sub(observedAt) - elapsed
-		text.share = float64(remaining) / float64(span)
+		until = window.ResetsAt.Sub(observedAt) - elapsed
+	}
+	return usageWindowText(int(max(0, 100-window.UsedPercent)), span, until)
+}
+
+func usageWindowText(left int, span, until time.Duration) *windowText {
+	text := unknownWindowText()
+	if left >= 0 {
+		text.left = left
+		text.remaining = strconv.Itoa(left) + "%"
+	}
+	if until > 0 {
+		text.share = float64(until) / float64(span)
 		// Whole minutes still to run, in the two largest units.
-		switch minutes := int(remaining / time.Minute); {
+		switch minutes := int(until / time.Minute); {
 		case minutes >= 24*60:
 			text.resetsIn = fmt.Sprintf("%dd %dh", minutes/(24*60), minutes/60%24)
 		case minutes >= 60:
@@ -344,10 +367,10 @@ func (m *model) codexTerminalUsage(profile fleetclient.Profile, now time.Time) u
 				continue
 			}
 			known := 0
-			if usage.FiveHourUsedPercent != nil {
+			if usage.FiveHour != nil {
 				known++
 			}
-			if usage.SevenDayUsedPercent != nil {
+			if usage.SevenDay != nil {
 				known++
 			}
 			if candidate == nil || known > count || known == count && fleetclient.CompareSessions(*session, *candidate) < 0 {
@@ -361,11 +384,11 @@ func (m *model) codexTerminalUsage(profile fleetclient.Profile, now time.Time) u
 	if row.terminal != nil {
 		row.state = ""
 		row.text.stale = max(time.Duration(0), now.Sub(row.receivedAt)) >= usageStaleAfter
-		if value := row.terminal.TerminalUsage.FiveHourUsedPercent; value != nil {
-			row.text.fiveHour = terminalWindowText(100 - *value)
+		if value := row.terminal.TerminalUsage.FiveHour; value != nil {
+			row.text.fiveHour = terminalWindowText(100-int(value.UsedPercent), 5*time.Hour, 0)
 		}
-		if value := row.terminal.TerminalUsage.SevenDayUsedPercent; value != nil {
-			row.text.sevenDay = terminalWindowText(100 - *value)
+		if value := row.terminal.TerminalUsage.SevenDay; value != nil {
+			row.text.sevenDay = terminalWindowText(100-int(value.UsedPercent), 7*24*time.Hour, 0)
 		}
 	} else if unavailable {
 		row.state = "unavailable"
@@ -414,8 +437,8 @@ func (m *model) usageRows(now time.Time) []usageRow {
 		case "Claude":
 			quota := m.claudeUsage[profile.Key]
 			rows[index] = usageRow{profile: profile, text: usageText{
-				fiveHour: claudeWindowText(quota.fiveHour, now),
-				sevenDay: claudeWindowText(quota.sevenDay, now),
+				fiveHour: claudeWindowText(quota.fiveHour, 5*time.Hour, m.bootNow),
+				sevenDay: claudeWindowText(quota.sevenDay, 7*24*time.Hour, m.bootNow),
 			}}
 		default:
 			rows[index] = usageRow{profile: profile}
@@ -573,11 +596,19 @@ func (m *model) usageWindow(row usageRow, window *windowText, weekly bool, frame
 	text, word := row.windowPresentation(window)
 	if text.lastSeenAge != "" {
 		label := text.remaining + " " + word + " (seen " + text.lastSeenAge + " ago)"
+		if text.resetsIn != "" {
+			label = text.remaining + " " + word + " " + text.lastSeenAge + " ago  in " + text.resetsIn
+			if len(label) > usageSlot {
+				label = strings.Replace(label, " ago", "", 1)
+			}
+		}
 		return line{{text: cell(label, usageSlot), role: mutedRole, italic: true}}
 	}
 	if text.left < 0 {
 		if !weekly && (window == nil || row.state != "") {
 			word = ""
+		} else if text.resetsIn != "" {
+			return line{{text: cell("—  resets in "+text.resetsIn, usageSlot), role: quietRole}}
 		} else if word == "" {
 			return line{{text: cell("—", usageSlot), role: quietRole}}
 		}

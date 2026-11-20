@@ -3,8 +3,9 @@
 each row as ObservePane does (`capture-pane -p -e`, one row per command), split the rows into ObservePane's
 regions, apply the frame's declared byte-cap drops, and store the frame's expectation beside it.
 
-Run from this directory: `python3 capture.py`. It uses a fresh random tmux socket with `-f /dev/null`,
-creates and kills its own server, and needs tmux 3.4 or newer. Expectations live in the authored headers:
+Run from this directory with a scratch `TMUX_TMPDIR`: `python3 capture.py`. It uses a fresh random tmux
+socket with `-f /dev/null`, creates and kills its own server, and needs tmux 3.4 or newer.
+Expectations live in the authored headers:
 codex `expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id>,...|none`, claude
 `expect=<activity>/<interaction>/<notice> <composer> reason=<reason> rules=...`.
 An optional final `footer=<JSON string|null>` asserts displayed text or absence.
@@ -22,7 +23,7 @@ from paint import frames  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOCKET = 'skid-frames-' + uuid.uuid4().hex
-ENVIRONMENT = {key: value for key, value in os.environ.items() if key not in ('TMUX', 'TMUX_PANE', 'TMUX_TMPDIR')}
+ENVIRONMENT = {key: value for key, value in os.environ.items() if key not in ('TMUX', 'TMUX_PANE')}
 
 
 def tmux(*args):
@@ -42,9 +43,11 @@ def expectation(header):
     expected = {'activity': activity, 'interaction': interaction, 'notice': notice, 'composer': composer,
                 'reason': fields['reason'], 'rules': rules}
     usage = {}
-    for key, window in (('usage5h', 'fiveHourUsedPercent'), ('usage7d', 'sevenDayUsedPercent')):
-        if key in fields:
-            usage[window] = int(fields[key])
+    for label, window in (('5h', 'fiveHour'), ('7d', 'sevenDay')):
+        if 'usage' + label in fields:
+            usage[window] = {'usedPercent': int(fields['usage' + label])}
+            if 'reset' + label in fields:
+                usage[window]['resetsAt'] = fields['reset' + label]
     if usage:
         expected['usage'] = usage
     footer = re.search(r'\bfooter=(.+)$', header)

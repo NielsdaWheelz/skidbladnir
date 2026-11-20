@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -17,7 +18,7 @@ type Row struct {
 }
 
 func (peer Peer) Row(session Session) Row {
-	return Row{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK}
+	return Row{peer.Label, peer.Machine, peer.ObservedAt.Format(time.RFC3339Nano), session, peer.OK}
 }
 
 type Group struct {
@@ -61,8 +62,13 @@ func ObservedGroups(peers []Peer) []group.Label {
 
 // CompareSessions orders sessions by numeric tmux id.
 func CompareSessions(a, b Session) int {
-	l := strings.TrimLeft(strings.TrimPrefix(a.Ref.TmuxID, "$"), "0")
-	r := strings.TrimLeft(strings.TrimPrefix(b.Ref.TmuxID, "$"), "0")
+	return CompareSessionIDs(a.Ref.TmuxID, b.Ref.TmuxID)
+}
+
+// CompareSessionIDs orders the tmux ids carried by sessions and quota observations.
+func CompareSessionIDs(a, b string) int {
+	l := strings.TrimLeft(strings.TrimPrefix(a, "$"), "0")
+	r := strings.TrimLeft(strings.TrimPrefix(b, "$"), "0")
 	if order := cmp.Compare(len(l), len(r)); order != 0 {
 		return order
 	}

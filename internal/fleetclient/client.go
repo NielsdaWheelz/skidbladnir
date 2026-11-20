@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
+	"github.com/NielsdaWheelz/skidbladnir/internal/boottime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/coder/websocket"
@@ -254,7 +255,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (resolved, *
 				current := row.Current(peer)
 				row.Execution = &current
 			}
-			matches = append(matches, ObservedSession{Label: peer.Label, Machine: peer.Machine, ObservedAt: peer.ObservedAt, Session: row})
+			matches = append(matches, ObservedSession{Label: peer.Label, Machine: peer.Machine, ObservedAt: peer.ObservedAt.Format(time.RFC3339Nano), Session: row})
 		}
 	}
 	switch {
@@ -421,6 +422,10 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, int64(limit+1)))
 	receivedAt := time.Now()
+	var receivedBoot time.Duration
+	if operation == "list" {
+		receivedBoot = boottime.Now()
+	}
 	if err != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -450,6 +455,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	if operation == "list" {
 		observed := value.(Peer)
 		observed.ReceivedAt = receivedAt
+		observed.ReceivedBoot = receivedBoot
 		value = observed
 	} else if operation == "profile_usage" {
 		observed := value.(ProfileUsagePeer)
