@@ -56,12 +56,12 @@ be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
 
-the desktop shows the lowest visible claude allowance for each profile and
-window. when no reading is visible, it marks the last value stale while its
-source still declares the same account binding. a reset visible in an attributable
-claude statusline counts down for its account and window until expiry, even
-after every pane closes. quitting the browser clears both readings
-([desktop usage](#desktop-usage)).
+skid remembers the most recent 5h, general 7d and fable readings from the
+enrolled machines for each claude account. the desktop shows remaining
+percentages and counts down each reported reset, even with every source offline.
+fable shares the weekly gauge. a full gold stroke reaches its midpoint. the
+managed claude footer shows used percentages from the same saved readings. see
+[desktop usage](#desktop-usage).
 
 ### Guarantees
 
@@ -775,7 +775,7 @@ duplicate key.
 | `process` | Kernel foreground, environment, cwd and boot identity: Linux `/proc`; Darwin `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo` and `proc_pidpath`, never parsed `ps` |
 | `group`, `catalog` | Label grammar and order; the frozen dwarf catalogue |
 | `terminalcontext` | Connection registrations |
-| `quota` | The Codex quota read (`api.QuotaReport`) |
+| `quota` | Host-local Codex daemon and Claude cache reads (`api.QuotaReport`) |
 | `workdir`, `pressure` | Directory admission, listing and search; pressure sampling, policy and history |
 
 sessions imports neither agentcontrol nor quota; the gateway composes them. Log
@@ -827,16 +827,14 @@ grammars, send admission and wait states. Around it:
 5. `api.PresentStatus` is the one presentation
    ([observation §6](terminal-observation.md#6-content-attention-and-filtering)):
    the gateway sends it as each row's `status` and Go clients call it.
-6. From the same successful sample of a local agent only: `terminalUsage
-   {fiveHour?, sevenDay?}`, with at least one `{usedPercent, resetsAt?}` window,
-   and `terminalFooter` (1–1,024 bytes, no `Cc`, `Cf`, `Zl` or `Zp`, no edge
-   whitespace). Each sample replaces both; a failed or changed capture carries
-   neither, and absence means not observed. Both are displayed text, never account
-   reports or execution settings, and reading them never changes status, composer,
-   rules or clipping. a window includes its displayed integer usage (0–100,
-   including zero). claude may also supply a reset beside that window’s visible
-   percentage, encoded as a UTC RFC 3339 instant, to the second. the grammars own
-   their productions
+6. a successful local sample can supply `terminalFooter` (1–1,024 bytes, no
+   `Cc`, `Cf`, `Zl` or `Zp`, no edge whitespace). a codex sample can also
+   supply `terminalUsage {fiveHour?, sevenDay?}`, with at least one window
+   carrying its displayed integer `usedPercent` (0–100, including zero).
+   each sample replaces these displayed facts. a failed or changed capture
+   withdraws them. display extraction is independent of status, composer,
+   rules and clipping. claude account usage travels on the profile-usage route.
+   the grammars specify the admitted text
    ([Codex §8](terminal-observation-codex.md#8-displayed-statusline-items),
    [Claude §7](terminal-observation-claude.md#7-displayed-statusline-suffix)).
    `terminal/inspect` carries status only.
@@ -941,31 +939,57 @@ failure vocabulary. The contract:
 
 ### Account quota and usage
 
-1. `GET /v1/profile-usage` reads every Codex profile, unused ones included, in
-   configured order, concurrently under one 5 s deadline: a WebSocket over
+1. `GET /v1/profile-usage` reads the configured codex and claude profiles in
+   order, concurrently under one 5 s deadline. for codex it opens a websocket over
    `<home>/app-server-control/app-server-control.sock`, then `initialize` (client
    `skidbladnir`), `initialized` and `account/rateLimits/read`, with no close
    handshake. Server messages are skipped, never answered. It never starts,
    restarts, logs into or updates a daemon, runs no tmux and dispatches nothing to
    conversations.
-2. It answers `{machine, observedAt, profiles:[{key, label, provider, accountScope?,
-   readState:"ok"|"unavailable", report?:{reportedAt, fiveHour?, sevenDay?:
-   {usedPercent, resetsAt?}}}]}`, `[]` without Codex profiles. Only the
+2. the host supplies `machine`, `observedAt` and the `profiles` array.
+   each profile carries `readState` (`ok` or `unavailable`). a codex
+   `report` carries `reportedAt` and optional `fiveHour` and `sevenDay`
+   windows with `usedPercent` and an optional `resetsAt`. only the
    `rateLimits` default snapshot counts; windows are named by `windowDurationMins`
    300 and 10080, never position; unknown durations are skipped; a duplicate, a
    non-integer token or a reset outside years 1–9999 makes that profile
    unavailable; frames are at most 4 MiB. A report dated after `observedAt` is
    dropped; a settings change during the reads fails the route.
-3. `accountScope` is lowercase hex `sha256(provider NUL canonical home)`: local
+3. for claude, the gateway reads `~/.claude.json` for the default profile and
+   `<profile home>/.claude.json` for a named one. claude's nonempty legacy
+   `<profile home>/.config.json` takes precedence. if redirecting claude to
+   `~/.claude` would select a second, distinct global config, the gateway
+   marks that default profile unavailable. the footer knows its actual
+   `CLAUDE_CONFIG_DIR` and reads the file claude selected.
+   `cachedUsageUtilization.accountUuid` must match `oauthAccount.accountUuid`
+   in the same file. the optional `claude` record identifies the active login
+   by the lowercase hex SHA-256 of `claude-account`, a NUL byte and its account
+   id. the same login has the same identifier on every machine.
+   `fetchedAtMs` independently dates every supplied amount and reset.
+   `five_hour` and `seven_day` are general limits. one model-only
+   `weekly_scoped` fable row supplies its
+   own percentage and reset. each field is optional. reading the cache never
+   starts claude or fetches quota from the provider.
+   [profile file location](https://code.claude.com/docs/en/claude-directory) ·
+   [model-scoped usage rows](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
+4. `accountScope` is lowercase hex `sha256(provider NUL canonical home)`: local
    configuration scope, not a verified account; omitted when the home cannot be
    resolved.
-4. The owner guarantees that one profile key is one account on every host; usage
-   selection rests on that ([desktop usage](#desktop-usage)). the desktop picks
-   claude windows independently and uses the declaring host's inventory
-   `accountScope` to decide whether it can remember a reading or a reset. each
-   fact belongs to its own reporter. scopes are
-   compared only within a host. percentages are never summed, remote clocks
-   never compared, and usage never gates admission, readiness or controls.
+5. each running gateway reads the enrolled machines at startup and once a
+   minute using authenticated `GET /v1/claude-usage`. this route reads the
+   answering machine's configured claude caches. it also returns saved
+   measurements for accounts without a current profile row in
+   `otherClaudeAccounts`. a footer can therefore contribute a reading even
+   when its source later switches logins or uses a separate directory. both
+   routes preserve the original fetch time through every hop. each machine
+   keeps one private record per account and the last known login for each
+   enrolled machine's profile. `skid claude-usage` reads the current login
+   and this machine's saved record for the footer without waiting for the fleet.
+6. the owner maps one profile key to one account across hosts. if machines
+   disagree about a key, the desktop uses its local login when known.
+   conflicting remote logins alone leave that key unavailable. observations for
+   distinct accounts stay separate. quota is read-only evidence for the
+   operator. [desktop usage](#desktop-usage)
 
 ### Pressure
 
@@ -1032,7 +1056,7 @@ own; `/v1/notifications/*` go to the hub's notifier.
 | `POST /v1/sessions/{tmuxId}/terminal/{op}`, `DELETE /v1/sessions/{tmuxId}` | [Terminal control](#terminal-control) |
 | `GET /v1/terminal-contexts/{connectionId}` | [Remote context](#remote-context) |
 | `POST /v1/directory-listings`, `POST /v1/directory-searches` | [Directories](#directories) |
-| `GET /v1/profile-usage` | [Account quota](#account-quota-and-usage) |
+| `GET /v1/profile-usage`, `GET /v1/claude-usage` | [account quota](#account-quota-and-usage) |
 | `GET /v1/pressure` | [Pressure](#pressure) |
 | `/v1/fleet*`, `/v1/local/*` | [Fleet](#fleet-interfaces) |
 | `/v1/notifications/*` | [Notifications](#notification-interfaces) |
@@ -1448,17 +1472,13 @@ for the palette.
 
 ### Desktop usage
 
-- Two streams, both blind to views: inventory (every 5 s) carries each session's
-  terminal usage; the native stream reads `GET /v1/profile-usage` on every peer
-  each minute while the browser owns the screen, band shown or hidden, and on
-  `ctrl-r`; `u` reads nothing. neither clears the other's facts.
-- values show remaining capacity. terminal-sourced values carry `~`. their age
-  is client elapsed time since receipt of the inventory carrying the value.
-  claude measures elapsed time including sleep at receipt and on every browser
-  update. a failed clock sample withholds the affected report.
+- inventory supplies codex terminal evidence every five seconds. the browser
+  reads each host's profile usage once a minute while it owns the screen and
+  on `ctrl-r`, whether the band is open or closed. `u` changes visibility.
+- values show remaining capacity. a `~` marks a value read from a terminal.
 - codex chooses one whole observation per profile. a fresh native report with
   a live window wins, followed by fresh terminal evidence, the retained native
-- report for diagnosis, then stale terminal evidence. per host, the matching
+  report for diagnosis, then stale terminal evidence. per host, the matching
   local session with the most known windows supplies terminal evidence. ties go
   to the smaller numeric tmux id. across hosts the latest client receipt wins,
   with ties going to the smaller machine handle. without a candidate a profile
@@ -1467,54 +1487,42 @@ for the palette.
   or on a failed host or profile read, the retained report is stale and its
   numbers are hidden. resets count down from host timestamps plus client
   monotonic time. at or past reset a window reads `awaiting update`.
-- claude chooses the lowest present remainder independently for 5h and 7d
-  among matching local foreground panes from hosts declaring that profile.
-  ties prefer a known scope, a future reset on the same reading, newest receipt,
-  smaller machine handle, then smaller numeric tmux id. ordinary refreshes and
-  browser writes keep the last accepted
-  inventory eligible. a confirmed close withdraws its pane immediately. a missing
-  reading, a failed inventory or age of at least one hour also withdraws the
-  reading. entering a terminal withdraws all hosts together until each next
-  succeeds.
-- a claude window with no eligible reading shows its last winner as stale
-  during this browser run, provided the declaring host still has the same
-  known profile binding. host removal, explicit access or machine identity
-  refusal, and a change or withdrawal of that declaration erase the affected
-  reading. a scope-less winner can appear while visible. it leaves no history.
-  each window keeps its own receipt.
-- each claude profile and window also remembers one future reset independently
-  of the percentage. one distinct future instant from current, known-scope
-  sources establishes or corrects it. agree on the newest reporter, then
-  smaller machine handle and numeric tmux id. an equal instant keeps its valid
-  binding and deadline. no date or disagreement retains a known date and leaves
-  an unseen date blank. a scope-less amount can show its own live timer when
-  there is neither a remembered reset nor disagreement. it sets no shared date.
-- calculate a local expiry from receipt time plus the reset’s distance from
-  that inventory’s host observation. keep the timer through pane loss, a failed
-  refresh, a terminal visit or an ageing amount. withdraw it when its own source
-  binding is revoked. at expiry drop the date and amounts whose local receipt
-  precedes that deadline. while the account/window exists, refuse those receipts
-  as amounts and refuse dates at or before the last expired reset, even after
-  the reporter leaves. a later date can still qualify while its paired amount
-  ages out. a newly received undated reading can appear. skid infers neither a
-  refill nor a reset.
-- while no band line is drawn, the rule carries quota: `7d quota left` and
-  every profile's weekly remainder when they fit, else the selected row's
-  profile as `personal 7d 72% left` if that fits. remembered claude values read
-  `work ~28% stale` in the full rule and `work 7d ~28% left (stale)` when
-  showing only the selected profile. a declaration state stands alone.
-- the band is a header and one line per profile in at most half of the body
-  that notices leave. past that its last line is `… n more profiles in a
-  taller window`, cut from the end of the display order. with room for fewer
-  than three lines it is not drawn and keeps its state.
-- one layout at every width, 78 cells: the profile name at 0 in 11, end
-  ellipsis, bold when the selected row draws from it; the 7d slot at 13 and
-  the 5h slot at 47, each a 16-cell gauge, the number right-aligned in 5 and
-  the countdown in 7. the header is `usage`, `7d` and `5h` over their slots
-  (`5h` when a drawn codex profile reports one or a claude row is drawn).
-  the legend ends at cell 78:
+- claude remembers six independent facts per account. the amount and absolute
+  reset time for 5h, general 7d and fable 7d each take their newest measured
+  value across machines, ordered by claude's fetch timestamp. if exact fetch
+  times tie, the larger percentage or later deadline wins. a partial reading
+  updates only the supplied facts. an old cache, disconnect or restart keeps
+  the last reading. a newly measured zero is a value.
+- each claude reset counts down against the desktop's current wall clock.
+  after the deadline the same percentage stays visible and the timer shows
+  how long ago the deadline passed. only another measurement can change an
+  amount or supply a new reset.
+- the collapsed rule carries `7d quota left` for the general weekly allowance.
+  show every profile when it fits, else the selected profile if it fits.
+  fable appears in the expanded band.
+- the band fits in half the body left by notices and the fold. each profile
+  has a main line. show the main rows first when budgeting height. the overflow
+  count refers to omitted profiles. with room for fewer than three lines the
+  band keeps its state and stays hidden.
+- claude's weekly gauge has one origin for both allowances. the regular stroke
+  measures general 7d remaining across the full track. the thicker gold stroke
+  measures fable remaining across the left half. on a 16-cell track, 100%,
+  50% and 0% fable left occupy eight, four and zero cells. each amount comes
+  from its own cache window. the general percentage stays beside the track.
+  the header keys `▬ fable (½ scale)`. the general endpoint and reset stem
+  stay legible where the strokes overlap. the thicker shape identifies fable
+  when colour is off. the half scale reflects the included fable allowance on
+  eligible plans. [anthropic's plan terms](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan)
+- labelled text gives the fable percentage and its own countdown. it fits in
+  an unused 5h slot or beside the two gauges on a wide screen. on a narrow
+  screen with both slots occupied, spare height allows a text continuation
+  below the profile.
+- the 78-cell layout reserves 11 cells for a profile name, with end ellipsis and
+  bold for the selected profile. the 7d slot begins at column 13 and 5h at 47.
+  each contains a 16-cell gauge, a five-cell percentage and a seven-cell
+  countdown. the header labels the columns. the legend at the right reads
   `━ quota left  ┴ time left`, with `═` on the plain path. each part appears
-  only when its mark appears on a drawn line. a half-cell counts as quota.
+  only when its mark occurs in a drawn line. a half-cell counts as quota.
 - a gauge draws the printed integer in 32 half cells, `round(left × 32 / 100)`,
   at least 1 above 0 and at most 31 below 100: heavy `━` for what is left, `╾`
   where it ends mid-cell, light `─` for what is spent. a window with a reset
@@ -1527,15 +1535,14 @@ for the palette.
   (`checking`, `unavailable`) prints once in its 7d slot. `stale` and
   `awaiting update` stand alone in the affected window. an empty 7d slot
   prints `—`. a codex 5h never reported prints nothing.
-  a live claude amount with a known date shows the usual stem and countdown.
-  stale amounts show `~28% stale (seen 4m ago)` or `~28% stale 4m ago  in 2d 4h`
-  without the gauge. the slot can omit `ago` to fit. age uses whole minutes,
-  hours or days, and `<1m` at first. a date alone shows `—  resets in 2d 4h`.
-  `awaiting update` means an expired reading is still visible, and `—` means
-  neither amount nor date is known. the compact summary has no timer.
+  a claude amount with a future deadline shows the usual stem and countdown.
+  an elapsed deadline shows its age, for example `2h ago`, or the year and
+  month for a deadline over a year old. a known deadline
+  without an amount still has a timer. `—` alone means neither amount nor date
+  is known. the compact summary has no timer.
   with no profile the band is `usage` and the declaration state at column 13.
 - the band redraws when a sample changes a drawn value and when the clock
-  changes a countdown, a stem's cell, a remembered age, `stale` or
+  changes a countdown, a stem's cell, an elapsed time, `stale` or
   `awaiting update`.
   nothing else moves in it but the reveal.
 - showing the band with `u` on the full path starts the reveal. a sample or
@@ -1595,17 +1602,17 @@ for the palette.
   its question and effect. a tight question shortens both names independently
   to keep the session and host visible. foot caps can clip the end of the key map
   when notices or the usage band crowd the body.
-- the usage band takes body lines while it shows: 5 of 20 at 80×24 with four
-  profiles and 10 with twelve, so an open row's fold falls from 9 lines to 7
-  or 4 and a foot fold from 11 to 8 or 5. showing it can scroll the table;
+- the usage band takes body lines while it shows. at 80×24 with four profiles
+  the header and main rows take five lines.
+  taller bands leave less room for an open fold. showing it can scroll the table.
   hiding it does not scroll back. profiles past its cap show nowhere while it
   shows, the selected row's own among them. names sharing their first ten cells
   can read alike. `u` cannot hide the band from an editor, a draft or the
-  terminal chooser. on the table, `q` quits with it shown. it opens on a sample
-  up to 65 s old between successful reads. the browser gives up the exact reset
-  instant and seconds countdown. `40m` can mean 40 m 59 s. the all-profiles
-  rule is six cells longer and gives way sooner. the band is 78 cells at every
-  width. the selected profile's bold is its only link to the table and vanishes
+  terminal chooser. on the table, `q` quits with it shown. opening it uses
+  the last known readings. claude's cache can predate the last gateway poll.
+  the countdown displays whole minutes. `40m` can mean 40 m 59 s. the all-profiles
+  rule is six cells longer and gives way sooner. the two main gauge slots fit
+  in 78 cells. the selected profile's bold is its only link to the table and vanishes
   under `NO_COLOR`.
 - the stem sets quota left against time left, an even-spending norm for work
   that comes in bursts: a fresh window reads behind after one burst. it
@@ -1626,12 +1633,13 @@ for the palette.
   persists after inspection until the screen changes; a deliberate interruption
   qualifies; an agent exit raises nothing ([issue](issues/agent-exit-attention.md));
   an empty queue is not health. Tie order differs between clients.
-- claude quota loses sub-percent precision. a newly captured undated value
-  can still be old. the amounts and dates can come from different panes.
-  a login change within the same home is undetectable. claude reset accuracy
-  depends on the reporting host’s clock and transit time. elapsed age dates
-  skid’s sighting. codex whole replacement can discard an older complete
-  window. countdown and age updates can lag by the browser’s five-second tick.
+- claude's global config is a provider-owned file with a private cache schema.
+  its contents can remain old until claude fetches usage again. the footer
+  floors used percentages and the desktop shows their complements. ordering
+  uses the fetching machines' clocks. the reset countdown uses the reported
+  deadline and the desktop clock. codex
+  whole replacement can discard an older complete window. countdown and age
+  updates can lag by the browser's five-second tick.
 - the first frame uses the plain palette. a terminal that does not answer the
   device query can delay first attach by one second. a later reply can reach
   an attached session. the browser samples the theme once, so theme changes need

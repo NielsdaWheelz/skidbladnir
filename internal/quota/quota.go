@@ -1,6 +1,4 @@
-// Package quota reads each configured codex profile's account rate limits from
-// its already-running app-server daemon. It only observes: it never starts,
-// restarts or logs in a daemon and never answers one.
+// Package quota reads account limits from the existing Codex daemon and Claude cache.
 package quota
 
 import (
@@ -15,50 +13,82 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
+	"github.com/NielsdaWheelz/skidbladnir/internal/claudeusage"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
 )
 
-// Usage is one codex profile's report; a nil Report means unavailable.
+// Usage carries the observation for one configured provider profile.
 type Usage struct {
 	Profile agentruntime.Profile
 	Report  *api.QuotaReport
+	Claude  *api.ClaudeUsage
 }
 
 type Observation struct {
-	ObservedAt time.Time
-	Profiles   []Usage
+	ObservedAt          time.Time
+	Profiles            []Usage
+	OtherClaudeAccounts []api.ClaudeUsage
+	HistoryUnavailable  bool
 }
 
-// Observe reads every codex profile, in configured order, concurrently under one
-// five-second deadline. A settings change during the reads is an error.
-func Observe(parent context.Context, manager *sessions.Manager) (Observation, error) {
+// Observe reads local profiles concurrently. The Claude-only route never contacts a
+// Codex daemon. Both routes remember the local Claude samples before replying.
+func Observe(parent context.Context, manager *sessions.Manager, stateDir string, claudeOnly bool) (Observation, error) {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	revision := manager.SettingsRevision()
 	var profiles []Usage
 	for _, profile := range manager.Profiles() {
-		if profile.Provider == agentruntime.ProviderCodex {
+		if profile.Provider == agentruntime.ProviderClaude || !claudeOnly && profile.Provider == agentruntime.ProviderCodex {
 			profiles = append(profiles, Usage{Profile: profile})
 		}
 	}
 	var pending sync.WaitGroup
 	for index := range profiles {
-		pending.Go(func() { profiles[index].Report = read(ctx, agentruntime.CodexEndpoint(profiles[index].Profile)) })
+		pending.Go(func() {
+			usage := &profiles[index]
+			switch usage.Profile.Provider {
+			case agentruntime.ProviderCodex:
+				usage.Report = read(ctx, agentruntime.CodexEndpoint(usage.Profile))
+			case agentruntime.ProviderClaude:
+				reading := ReadClaudeProfile(usage.Profile.Home)
+				if reading.Account != "" {
+					usage.Claude = &reading
+				}
+			}
+		})
 	}
 	pending.Wait()
 	observedAt := time.Now().UTC()
+	historyUnavailable := false
+	represented := make(map[string]bool)
 	for index := range profiles {
-		// only a wall-clock step dates a report after the sample; clients refuse the whole host for one.
-		if report := profiles[index].Report; report != nil && report.ReportedAt.After(observedAt) {
-			profiles[index].Report = nil
+		usage := &profiles[index]
+		if usage.Claude != nil {
+			represented[usage.Claude.Account] = true
+			saved, err := claudeusage.Remember(stateDir, *usage.Claude)
+			if err != nil {
+				historyUnavailable = true
+			}
+			usage.Claude = &saved
 		}
+		// only a wall-clock step dates a report after the sample; clients refuse the whole host for one.
+		if report := usage.Report; report != nil && report.ReportedAt.After(observedAt) {
+			usage.Report = nil
+		}
+	}
+	var other []api.ClaudeUsage
+	if claudeOnly {
+		var err error
+		other, err = claudeusage.Others(stateDir, represented)
+		historyUnavailable = historyUnavailable || err != nil
 	}
 	if manager.SettingsRevision() != revision {
 		return Observation{}, errors.New("quota configuration changed")
 	}
-	return Observation{ObservedAt: observedAt, Profiles: profiles}, nil
+	return Observation{ObservedAt: observedAt, Profiles: profiles, OtherClaudeAccounts: other, HistoryUnavailable: historyUnavailable}, nil
 }
 
 // read makes one observe-only exchange with the daemon at endpoint: initialize,

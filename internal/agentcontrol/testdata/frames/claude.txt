@@ -4,8 +4,7 @@ replays it. grammar: docs/terminal-observation-claude.md. frames marked _source 
 was not observed live.
 header: === <id> w=<W> h=<H> alt=<0|1> <renderer> [bclip=<row>] [tclip=<row>] expect=<activity>/<interaction>/<notice>
         <composer> reason=<reason> rules=<id>,...|none (decision order).
-        optional usage5h=<integer> usage7d=<integer>; omitted windows are absent, including both when no usage is read.
-        optional reset5h=<UTC RFC3339 instant> reset7d=<UTC RFC3339 instant> for corresponding usage windows.
+        every claude frame expects terminal usage to be absent.
         optional final footer=<JSON string|null> asserts the literal footer or its absence; omission leaves it unchecked.
 unparseable=<row> prefixes that captured row with unsupported CSI, a synthetic writer-change observation.
 bclip drops the bottom region's rows above <row>; tclip drops the top region's rows from <row>; both mark it clipped.
@@ -1941,15 +1940,15 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
 
 
-=== U01_classic_quota_both w=80 h=10 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 footer="model"
+=== U01_classic_quota_all w=80 h=10 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
 06|«f»─{80}«/f»
-07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34% · fable 80%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U02_full_quota_five_zero w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=0 footer="model"
+=== U02_full_quota_five_zero w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
@@ -1957,7 +1956,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy │ model │ ctx 0% │ 5h 0%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U03_full_quota_seven_hundred w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=100 footer="model"
+=== U03_full_quota_seven_hundred w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
@@ -1965,7 +1964,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy │ model │ ctx 101% │ 7d 100%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U04_full_quota_working w=80 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty usage5h=12 usage7d=34 footer="model"
+=== U04_full_quota_working w=80 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty footer="model"
 02|«f2»✶«/f» «f2»Doing dummy work…«/f»
 04|«f»─{80}«/f»
 05|«f»❯⍽«/f»«i» «/»
@@ -1973,20 +1972,20 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U05_full_quota_no_color w=80 h=10 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty usage5h=12 usage7d=34 footer="model"
+=== U05_full_quota_no_color w=80 h=10 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|─{80}
 05|❯⍽«i» «/»
 06|─{80}
-07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · fable 0%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U06_full_quota_unknown_context w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=7 footer="model"
+=== U06_full_quota_unknown_context w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
 06|«f»─{80}«/f»
-07|  «f2»dummy │ model │ ctx -- │ 7d 7%«/f»
+07|  «f2»dummy │ model │ ctx -- │ 7d 7% · fable 100%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
 === U07_quota_in_draft w=80 h=10 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft footer=null
@@ -2121,7 +2120,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  7d 34%
 09|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U23_quota_prefix_wrapped w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer=null
+=== U23_quota_prefix_wrapped w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
@@ -2138,7 +2137,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»d │ model │ ctx 2% │ 5h 12%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U25_quota_conservative_spare w=32 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer="model"
+=== U25_quota_conservative_spare w=32 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{32}«/f»
 05|❯⍽«i» «/»
@@ -2162,7 +2161,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy👩‍💻 │ model │ ctx 2% │ 5h 12%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U28_quota_unicode_wide w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer="model"
+=== U28_quota_unicode_wide w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
@@ -2177,7 +2176,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 76|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
 77|  «f»⏵⏵ bypass permissions on«/f»
 
-=== U30_quota_unrelated_top_clipped w=80 h=80 alt=1 full tclip=1 expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 footer="model"
+=== U30_quota_unrelated_top_clipped w=80 h=80 alt=1 full tclip=1 expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
 00|Dummy header.
 72|⏺ Dummy reply.
 74|«f»─{80}«/f»
@@ -2209,7 +2208,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
 09|  / for commands
 
-=== U34_quota_limit_wait w=80 h=12 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait usage5h=12 usage7d=34 footer="model"
+=== U34_quota_limit_wait w=80 h=12 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait footer="model"
 02|⏺ Dummy reply.
 04|«f»─{80}«/f»
 05|❯⍽«i» «/»
@@ -2218,7 +2217,23 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
 09|  «f»⏵⏵ bypass permissions on«/f»
 
-; displayed model/effort extension: complete managed phrases, independent of quota.
+=== U35_fable_only w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx -- │ fable 25%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U36_fable_wrong_order w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx -- │ fable 25% · 7d 34%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+; complete managed model/effort phrases
 
 === L01_phrase_no_effort_no_quota w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="Alias-Q"
 02|⏺ Dummy reply.
@@ -2276,7 +2291,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy │ Alias-Q  │ ctx 7%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== L08_missing_left_boundary w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer=null
+=== L08_missing_left_boundary w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
 02|⏺ Dummy reply.
 04|«f»─{100}«/f»
 05|❯⍽«i» «/»
@@ -2284,7 +2299,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»Alias-Q │ ctx 7% │ 5h 12%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== L09_wrong_boundary w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer=null
+=== L09_wrong_boundary w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
 02|⏺ Dummy reply.
 04|«f»─{100}«/f»
 05|❯⍽«i» «/»
@@ -2292,7 +2307,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 07|  «f2»dummy | Alias-Q │ ctx 7% │ 5h 12%«/f»
 08|  «f»⏵⏵ bypass permissions on«/f»
 
-=== L10_extra_field w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer=null
+=== L10_extra_field w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
 02|⏺ Dummy reply.
 04|«f»─{100}«/f»
 05|❯⍽«i» «/»
@@ -2333,7 +2348,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 08|  «f2»dummy │ Alias-Q │ ctx 7%«/f»
 09|  «f»⏵⏵ bypass permissions on«/f»
 
-=== L15_duplicate_other_quota_independent w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer=null
+=== L15_duplicate_other_quota_independent w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer=null
 02|⏺ Dummy reply.
 04|«f»─{100}«/f»
 05|❯⍽«i» «/»
@@ -2422,249 +2437,3 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|❯⍽«d»Try«/»«g» «/»«d»"dummy example prompt"«/»
 06|«f»─{80}«/f»
 07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
-
-=== Q01_classic_both w=80 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=0 usage7d=34 reset5h=2030-11-03T08:30:00Z reset7d=2030-11-03T09:30:00Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  «f2»resets 7d 2030-11-03 01:30:00 -0800 · 5h 2030-11-03 01:30:00 -0700 {3}«/f»
-08|  «f2»dummy │ model │ ctx 2% │ 5h 0% · 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q02_full_single w=39 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 reset5h=2030-09-11T14:32:03Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{39}«/f»
-05|❯⍽«i» «/»
-06|«f»─{39}«/f»
-07|   resets 5h 2030-09-11 20:02:03 +0530
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q03_missing_window w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=0 reset7d=2030-11-06T17:00:00Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800 · 5h 2030-11-03 01:30:00 -0700
-08|  «f2»dummy │ model │ ctx 2% │ 7d 0%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q04_missing_usage w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q05_unpaired w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q06_duplicate_row w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -08…
-08|  resets 7d 2030-11-06 09:00:00 -0800
-09|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-10|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q07_wrong_row w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800
-08|
-09|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-10|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q08_unparsed_row w=80 h=12 alt=1 full unparseable=7 expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer=null
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q09_wrong_order w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 5h 2030-11-03 01:30:00 -0700 · 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q10_duplicate_window w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800 · 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q11_invalid_day w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-02-30 09:00:00 -0800 · 5h 2030-11-03 01:30:00 -0700
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q12_invalid_offset w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0860
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q13_invalid_utc_year w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 0001-01-01 00:00:00 +0100
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q14_trailing_text w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800 · notice
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q15_ellipsis w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -080…
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q16_right_edge w=38 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{38}«/f»
-05|❯⍽«i» «/»
-06|«f»─{38}«/f»
-07|   resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q17_wrapped w=38 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{38}«/f»
-05|❯⍽«i» «/»
-06|«f»─{38}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800 · 5h 2030-11-03 01:30:00 -0700
-08|
-09|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-10|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q18_resets_directory w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 reset7d=2030-11-06T17:00:00Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»resets branch │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q19_classic_notification w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 reset7d=2030-11-06T17:00:00Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  «d»resets 7d 2030-11-06 09:00:00 -0800⟩Dummy notification«/»
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q20_classic_notification_three_cells w=80 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 reset5h=2030-11-03T08:30:00Z reset7d=2030-11-06T17:00:00Z footer="model"
-02|⏺ Dummy reply.
-04|«f»─{80}«/f»
-05|❯⍽«i» «/»
-06|«f»─{80}«/f»
-07|  «d»resets 7d 2030-11-06 09:00:00 -0800 · 5h 2030-11-03 01:30:00 -0700⟩updated«/»
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q21_full_inline_text w=100 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800⟩Dummy notification
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q22_classic_notification_two_cells w=57 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{57}«/f»
-05|❯⍽«i» «/»
-06|«f»─{57}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800⟩Dummy notice now
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q23_classic_notification_wrong_extent w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800 {42}Dummy notification
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q24_classic_notification_clipped_reset w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -080…⟩Dummy notification
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q25_classic_duplicate_field w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800⟩resets 7d 2030-11-06 09:00:00 -0800
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q26_classic_broken_separator w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800⟩· 5h 2030-11-03 01:30:00 -0700
-08|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»
-
-=== Q27_classic_notification_ellipsis w=100 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=34 footer="model"
-02|⏺ Dummy reply.
-04|«f»─{100}«/f»
-05|❯⍽«i» «/»
-06|«f»─{100}«/f»
-07|  resets 7d 2030-11-06 09:00:00 -0800⟩Dummy notification…
-08|  «f2»dummy │ model │ ctx 2% │ 7d 34%«/f»
-09|  «f»⏵⏵ bypass permissions on«/f»

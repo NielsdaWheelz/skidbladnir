@@ -46,8 +46,6 @@ def expectation(header):
     for label, window in (('5h', 'fiveHour'), ('7d', 'sevenDay')):
         if 'usage' + label in fields:
             usage[window] = {'usedPercent': int(fields['usage' + label])}
-            if 'reset' + label in fields:
-                usage[window]['resetsAt'] = fields['reset' + label]
     if usage:
         expected['usage'] = usage
     footer = re.search(r'\bfooter=(.+)$', header)

@@ -988,53 +988,32 @@ every record is content-free.
 6. Update §1's qualified column and versions; [unrun acceptance](issues/unrun-acceptance.md)
    tracks every required row that column leaves unqualified.
 
-## 7. Displayed statusline suffix
+## 7. displayed statusline suffix
 
-`claudeReadStatusline` reads the managed formatter's final opaque rows above
-the ordinary composer's mode row, using only the composer's established
-`bottom` and `footer.mode` anchors. Picker and other non-ordinary branches omit.
-These are displayed facts. Their admission leaves status, composer, rules and
-clipping alone.
+`terminalFooter` carries the managed formatter's literal model/effort phrase.
+`claudeReadStatusline` reads the last opaque row immediately above the ordinary
+composer's mode row, using the established `bottom` and `footer.mode` anchors.
+picker and other non-ordinary branches omit the phrase.
 
 ```text
 <prefix> │ <model/effort phrase> │ ctx <integer%|-->
 <prefix> │ <model/effort phrase> │ ctx <integer%|--> │ <quota>
-quota = 5h P% | 7d P% | 5h P% · 7d P%
 ```
 
-`integer` is `0|[1-9][0-9]*`; `P` is canonical 0–100.
+`integer` is `0|[1-9][0-9]*`. the optional quota field contains one or more
+of `5h P%`, `7d P%` and `fable P%`, in that order, separated by ` · `.
+each `P` is a canonical integer in 0–100. these labels delimit the managed
+format. the host reads claude’s percentages and reset dates separately.
+[profile usage](architecture.md#account-quota-and-usage)
 
-- **Usage** (`terminalUsage`): the whole ` │ ctx … │ <quota>` suffix ends the row's
-  plain text; used percentages are `P` as written, a real `0%` included. The prefix
-  bytes plus the suffix's runes must stay below the pane width; a candidate on an
-  earlier opaque row refuses usage. A present `fiveHour` or `sevenDay` window
-  carries `usedPercent`.
-- **Reset** (`resetsAt` in each usage window): with `bottom < mode−2`, read the
-  parsed cells at `mode−2`. Allow space indentation and trailing spaces. Require
-  one spare cell on the right. In classic (normal screen), a notification can
-  share the row. If the right field ends two cells before the edge and at least
-  three space cells separate it from the reset field, read only the left field.
-  A right field containing an ellipsis or a reset-like continuation refuses the
-  dates. In fullscreen, match the entire row.
-  After `resets `, accept one `7d <instant>` or
-  `5h <instant>` entry, or both joined by ` · ` with weekly first. Each instant
-  uses `YYYY-MM-DD HH:MM:SS ±HHMM`, a valid date, and offset hours
-  00–23 and minutes 00–59. A wrapped, unparsed, clipped or malformed row, another
-  `resets ` candidate before it, or an unparsed earlier opaque row refuses all
-  dates. Keep only dates paired with a percentage in the corresponding window
-  on `mode−1`, encoded as UTC `YYYY-MM-DDTHH:MM:SSZ` with a year in 0001–9999.
-  [Claude's notification layout](https://code.claude.com/docs/en/statusline#notifications-share-the-status-line-row)
-- **Footer phrase** (`terminalFooter`): the row's parsed cells, NBSP kept, split on
-  ` │ ` into exactly three or four fields; the phrase is the second field, kept
-  exactly (native aliases and effort or tier wording included, never split on its
-  last word), and the text after it must be the ctx suffix with optional quota. The
-  bound counts every prefix and phrase byte plus the suffix's runes, below the pane
-  width. An unparsed row, or a candidate on an earlier opaque row, refuses it; so do
-  missing or wrapped fields, incomplete boundaries and custom layouts. Fragments are
-  never joined and nothing is inferred from an ellipsis. Quota may be absent.
+split the parsed cells on ` │ `, preserving nonbreaking spaces. require three
+or four fields. keep the second field exactly, including native aliases, effort
+or tier wording.
+count every prefix and phrase byte plus the suffix's runes. the total must
+leave a spare cell before the right edge. an unparsed row or another candidate
+in the opaque footer refuses the phrase. so do missing or wrapped fields,
+incomplete boundaries and unrecognized suffixes. this reader leaves status,
+composer, rules and clipping alone.
 
-The delimited clause comes from the owner's
-[managed formatter](https://github.com/NielsdaWheelz/dev-server/blob/main/assets/claude/statusline.sh),
-which displays the supplied quota, native display name and effort. A custom
-formatter reproducing exactly this grammar is indistinguishable, an accepted
-limit. The retained frames qualify these readers separately from status behaviour.
+a custom formatter reproducing this grammar is indistinguishable. the authored
+frames exercise these boundaries. [managed formatter](https://github.com/NielsdaWheelz/dev-server/blob/main/assets/claude/statusline.sh)

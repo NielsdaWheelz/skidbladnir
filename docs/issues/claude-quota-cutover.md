@@ -1,19 +1,14 @@
 # claude reset qualification and cutover
 
-skid reads claude’s structured reset instant through the managed statusline.
-on the macbook, both renderers carried eligible dates through the gateway and
-desktop, including after narrowing the pane. `claude-work` did not supply a
-five-hour window. its weekly date agreed with `/usage`. for `claude-work2`,
-the independent `/usage` view reported both dates exactly one minute earlier
-than the statusline input. that comparison failed. the owner accepted the
-one-minute difference and chose to display the explicit statusline instant. [provider field](https://code.claude.com/docs/en/statusline#rate-limit-usage)
-
-arch and devbox renderer acceptance and installed fleet acceptance are
-`NOT_RUN`. source qualification and release artifacts are separate.
+the gateway and footer must use the same claude profile-cache reader on each
+host. the formatter invokes the local skid executable, so deploy the selected
+skid release first. fable lives on the profile-usage route. the worker session
+wire retains its grouped codex windows and omits claude terminal usage.
+[installed cache checks](claude-quota-memory.md) and fleet cutover are `NOT_RUN`.
 
 ## cutover
 
-1. wait for fable usage to land. select the combined revisions and rerun the
+1. select the combined skid and formatter revisions and rerun the
    quota and worker compatibility checks before signing. require hosted checks
    and a signed skid release verified against the exact source and asset digests.
    stage the same-schema jarvis release and qualified contained host.

@@ -5,8 +5,9 @@ Before changing this repository, read [the architecture](docs/architecture.md),
 terminal sessions and pane processes; providers own execution and history.
 The phone and desktop are tmux clients. Read [agent control](docs/architecture.md#7-observation-and-agent-control)
 for terminal observation and explicit controls; [the scope](docs/architecture.md#1-scope)
-owns the current capability boundary. Native account quota is read-only and
-uses attributable terminal evidence when native evidence is unavailable or stale.
+owns the current capability boundary. Account quota is read-only. Claude uses its
+profile cache. Codex can use attributable terminal evidence when its native
+report is unavailable or stale.
 Do not reintroduce
 retired machinery: generalized hook runtimes, provenance, SQLite lifecycle facts,
 contract codegen or proof ledgers.

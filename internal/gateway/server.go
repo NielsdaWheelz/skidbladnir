@@ -17,11 +17,7 @@ const (
 	shutdownTimeout   = 9 * time.Second
 )
 
-func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (result error) {
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return fmt.Errorf("listen on gateway loopback: %w", err)
-	}
+func Serve(ctx context.Context, listener net.Listener, gateway *Gateway) (result error) {
 	defer func() {
 		// justify-ignore-error: HTTP shutdown already closes the owned listener;
 		// net.ErrClosed confirms that release, while other close failures remain.

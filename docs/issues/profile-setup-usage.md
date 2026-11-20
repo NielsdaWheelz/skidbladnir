@@ -42,8 +42,9 @@ editor or new host-specific settings must be scoped separately.
 usage is read-only evidence, never launch admission or readiness. preserve native
 versus terminal estimates, stale/missing state, and each provider's selection
 rules in [desktop usage](../architecture.md#desktop-usage). each claude window
-can come from a distinct pane for the same key. account mapping needs explicit
-owner setup. matching home paths alone cannot prove account identity.
+and reset can come from a different host's cache for the same verified login.
+account mapping needs explicit owner setup. matching home paths alone cannot
+prove account identity.
 
 ## competitor evidence and trade-offs
 

@@ -12,7 +12,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
-	"github.com/NielsdaWheelz/skidbladnir/internal/boottime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
@@ -70,7 +69,6 @@ type model struct {
 	band                  bool
 	reveal                time.Time // start of the active reveal
 	now                   time.Time // shared by every projection of this update
-	bootNow               time.Duration
 	revealGeneration      int
 	form                  createDraft
 	field                 int
@@ -96,7 +94,7 @@ type model struct {
 	screen                screen
 	screenLane            lane
 	usagePeers            []usagePeer
-	claudeUsage           map[string]claudeQuota
+	claudeUsage           []fleetclient.ProfileUsage
 	usageNext             time.Time
 }
 
@@ -106,6 +104,7 @@ func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File
 	browserContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30, now: time.Now()}
+	m.claudeUsage = client.KnownClaudeUsage()
 	for _, machine := range client.Machines() {
 		m.peers = append(m.peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 		m.inventoryLanes = append(m.inventoryLanes, &inventoryLane{})
@@ -169,7 +168,6 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var returned, command tea.Cmd
 	m.now = time.Now()
-	m.bootNow = boottime.Now()
 	if visit := m.attachment; visit != nil && visit.finished {
 		m.attachment = nil
 		if visit.err != nil {
@@ -258,7 +256,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			command = m.onKey(message)
 		}
 	}
-	m.reconcileClaudeQuota()
 	m.settle()
 	return m, tea.Batch(returned, command)
 }
