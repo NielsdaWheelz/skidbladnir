@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Undoes stage: closes each staged session whose name still matches, removes
+# ~/demo from every host, confirms the demo groups are empty, and removes the
+# font if record left it. Live; each run needs the owner's approval.
+set -euo pipefail
+# shellcheck source=kit.sh
+source "$(dirname "${BASH_SOURCE[0]}")/kit.sh"
+
+failed=0
+complain() {
+  printf 'cleanup: %s\n' "$*" >&2
+  failed=1
+}
+
+if [[ -f $work/sessions.tsv ]]; then
+  while IFS=$'\t' read -r -u 3 handle host _ name _; do
+    info=$(skid info "$handle" --machine "$host" --json) || true
+    read -r found code <<<"$(python3 -c '
+import json, sys
+document = json.loads(sys.argv[1])
+print(((document.get("result") or {}).get("session") or {}).get("name", "-"), (document.get("error") or {}).get("code", "-"))
+' "$info")"
+    if [[ $code == handle_not_found ]]; then
+      printf '%s on %s is already closed\n' "$name" "$host"
+    elif [[ $found != "$name" ]]; then
+      complain "$handle on $host reads as \"$found\" ($code), not $name; left open"
+    elif skid close "$handle" --machine "$host" >/dev/null; then
+      printf 'closed %s on %s\n' "$name" "$host"
+    else
+      complain "closing $name ($handle) on $host failed"
+    fi
+  done 3<"$work/sessions.tsv"
+fi
+
+while read -r -u 3 host _; do
+  on "$host" 'test ! -e ~/demo || { test -e ~/demo/.skid-media && rm -rf ~/demo; }' ||
+    complain "left ~/demo on $host: it lacks stage's marker, or the host is unreachable"
+done 3<<<"$hosts"
+
+for group in "${groups[@]}"; do
+  listing=$(skid list --group "$group" --json) || {
+    complain "skid list --group $group failed or is partial"
+    continue
+  }
+  count=$(python3 -c '
+import json, sys
+print(sum(len(peer.get("sessions", [])) for peer in json.loads(sys.argv[1])["result"]["peers"]))
+' "$listing")
+  ((count == 0)) || complain "group $group still has $count sessions"
+done
+
+rm -f "$font"
+((failed == 0)) || exit 1
+rm -f "$work/sessions.tsv"
+printf 'cleaned up\n'

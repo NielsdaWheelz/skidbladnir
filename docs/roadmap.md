@@ -36,6 +36,7 @@ workspaces.
   [systemd unit warning](issues/systemd-unit-changed-warning.md),
   [join skips the serve route](issues/join-skips-serve-route.md),
   [unwalked install](issues/fresh-install-walk.md).
+- Site: [stale demo media](issues/stale-demo-media.md).
 - Design language: [fret angle](issues/fret-angle-spec.md),
   [wordmark tracking](issues/wordmark-tracking.md).
 - Desktop: [SIGTERM hang](issues/tui-sigterm-hang.md),

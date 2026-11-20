@@ -49,10 +49,17 @@ case "$gate" in
     run diff-check git diff --check
     # shellcheck disable=SC2016 # The inner shell owns this variable.
     run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    shell_scripts=(deployment/providers/shell-init deployment/providers/terminal-context-init)
+    shell_scripts=(deployment/providers/shell-init deployment/providers/terminal-context-init deployment/site/install.sh)
     for script in scripts/*; do
+      [[ -d "$script" ]] && continue
       [[ -x "$script" ]] || { printf '%s is not executable\n' "$script" >&2; exit 1; }
       if [[ "$(head -n 1 "$script")" == '#!/usr/bin/env bash' ]]; then
+        shell_scripts+=("$script")
+      fi
+    done
+    # The media kit mixes scripts with sourced and data files, so it is selected by shebang alone.
+    for script in scripts/media/*; do
+      if [[ -f "$script" && "$(head -n 1 "$script")" == '#!/usr/bin/env bash' ]]; then
         shell_scripts+=("$script")
       fi
     done

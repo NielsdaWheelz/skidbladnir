@@ -1,0 +1,3 @@
+# The scripts here source kit.sh from beside them.
+external-sources=true
+source-path=SCRIPTDIR
