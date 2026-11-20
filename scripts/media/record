@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# Records the continuity shot: VHS drives the installed browser on this
+# computer while adb drives skid on the owner's phone and scrcpy records it.
+# Takes the phone stills too. Live; each run needs the owner's approval.
+set -euo pipefail
+# shellcheck source=kit.sh
+source "$(dirname "${BASH_SOURCE[0]}")/kit.sh"
+
+adb=${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb
+dump=/data/local/tmp/skid-media-ui.xml
+
+[[ -f $work/sessions.tsv ]] || fail "$work/sessions.tsv is missing; run stage first"
+IFS=$'\t' read -r api_handle api_host api_tmux _ < <(awk -F '\t' '$4 == "api"' "$work/sessions.tsv") ||
+  fail 'sessions.tsv has no api row'
+api_target=$(printf %q "$api_tmux")
+cd "$work"
+
+# The browser lists a group's rows in fleet order, then by tmux id, as list does.
+api_row=$(skid list --group atlas --json | python3 -c '
+import json, sys
+peers = json.load(sys.stdin)["result"]["peers"]
+print([s["terminalHandle"] for p in peers for s in p.get("sessions", [])].index(sys.argv[1]))
+' "$api_handle") || fail 'cannot place api in the atlas view'
+if ((api_row > 0)); then echo "Down $api_row"; else echo '# api is the first row'; fi >select-api.tape
+
+rm -f desktop.mp4 phone.mp4 dashboard.png terminal.png forge.png
+: >events.txt
+log() {
+  printf '%s %s\n' "$1" "$(python3 -c 'import time; print(f"{time.time():.3f}")')" >>events.txt
+  printf '%s\n' "$1"
+}
+
+if [[ -n ${MEDIA_PHONE:-} ]]; then
+  phone=$MEDIA_PHONE
+else
+  phone=$("$adb" devices | awk 'NR > 1 && $2 == "device" { n++; serial = $1 } END { if (n == 1) print serial }')
+  [[ -n $phone ]] || fail "adb lists no device or several; set MEDIA_PHONE to the phone's serial"
+fi
+device() { "$adb" -s "$phone" "$@"; }
+
+# Another session sometimes QA-tests a different app on this phone, and earlier
+# taps landed in it. So every input checks focus first, in the same shell
+# command on the phone.
+focused="dumpsys window | grep -q 'mCurrentFocus=.*dev.niels.skidbladnir'"
+device shell "$focused" || fail 'skid is not in focus on the phone; open its dashboard'
+send() { device shell "$focused && input $*" || fail "skid lost focus on the phone, or input $* failed; stopped"; }
+# adb's input text doubles characters under Gboard, so type key codes.
+key() { send keyevent "$1"; }
+# tap LABEL taps the centre of the first node whose text, content-desc or class is LABEL.
+tap() {
+  local x y
+  read -r x y < <(device exec-out "rm -f $dump && uiautomator dump $dump >/dev/null && cat $dump" |
+    python3 "$kit/centre.py" "$1") || fail "no \"$1\" on the phone's screen"
+  send tap "$x" "$y"
+}
+still() { device exec-out screencap -p >"$1.png"; }
+
+zen=$(device shell settings get global zen_mode | tr -d '\r')
+demo_allowed=$(device shell settings get global sysui_demo_allowed | tr -d '\r')
+case $zen in
+  0) dnd=off ;;
+  1) dnd=priority ;;
+  2) dnd=on ;;
+  3) dnd=alarms ;;
+  *) fail "unexpected zen_mode $zen" ;;
+esac
+vhs_pid='' scrcpy_pid=''
+restore() {
+  set +e
+  [[ -z $vhs_pid ]] || kill -TERM "$vhs_pid"
+  [[ -z $scrcpy_pid ]] || { kill -TERM "$scrcpy_pid" && wait "$scrcpy_pid"; }
+  rm -f "$font"
+  device shell rm -f "$dump"
+  device shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null
+  if [[ $demo_allowed == null ]]; then
+    device shell settings delete global sysui_demo_allowed >/dev/null
+  else
+    device shell settings put global sysui_demo_allowed "$demo_allowed"
+  fi
+  device shell cmd notification set_dnd "$dnd"
+}
+trap restore EXIT
+
+device shell cmd notification set_dnd on
+device shell settings put global sysui_demo_allowed 1
+demo() { device shell am broadcast -a com.android.systemui.demo -e command "$@" >/dev/null; }
+demo enter
+demo clock -e hhmm 0941
+demo battery -e level 100 -e plugged false
+demo network -e wifi show -e level 4 -e mobile show -e level 4 -e datatype none
+demo notifications -e visible false
+cp "$repo/android/app/src/main/res/font/jetbrains_mono.ttf" "$font"
+
+# attached sets api's attached-client count, after checking the id still names api.
+attached() {
+  local name
+  read -r name clients < <(on "$api_host" "tmux display -p -t $api_target '#{session_name} #{session_attached}'")
+  [[ $name == api ]] || fail "tmux $api_tmux on $api_host is ${name:-gone}, not api"
+}
+# await MIN MAX waits until api's attached-client count is between MIN and MAX.
+await() {
+  local deadline=$((SECONDS + 120))
+  until attached && ((clients >= $1 && clients <= $2)); do
+    kill -0 "$vhs_pid" 2>/dev/null || fail "vhs exited; see $work/vhs.log"
+    kill -0 "$scrcpy_pid" 2>/dev/null || fail "scrcpy exited; see $work/scrcpy.log"
+    ((SECONDS < deadline)) || fail "api never had $1 to $2 attached clients"
+    sleep 0.2
+  done
+}
+
+tap atlas
+sleep 1
+still dashboard
+log scrcpy_start
+ADB=$adb scrcpy -s "$phone" --no-control --no-window --no-playback --no-audio \
+  --max-size 1600 --video-bit-rate 6M --record=phone.mp4 >scrcpy.log 2>&1 &
+scrcpy_pid=$!
+log vhs_start
+vhs "$kit/desktop.tape" >vhs.log 2>&1 &
+vhs_pid=$!
+
+await 1 9
+log desktop_attached
+await 0 0
+log desktop_detached
+tap api
+log phone_open
+sleep 3
+tap android.webkit.WebView
+log phone_focus
+sleep 1.5
+key 40 # l
+sleep 0.2
+key 47 # s
+sleep 0.5
+key 66 # enter
+log phone_ls
+sleep 2
+key 4 # back, which hides the keyboard
+log keyboard_hidden
+sleep 1
+still terminal
+attached
+((clients == 1)) || fail "the desktop re-attached before the phone detached; lengthen desktop.tape's 20 s sleep"
+tap Detach
+log phone_detach
+await 0 0
+log phone_detached
+await 1 9
+log desktop_reattached
+wait "$vhs_pid"
+vhs_pid=''
+log vhs_done
+sleep 1
+log scrcpy_stop
+# A background job in a non-interactive shell ignores SIGINT, so stop scrcpy with SIGTERM.
+kill -TERM "$scrcpy_pid" || fail "scrcpy stopped early; see $work/scrcpy.log"
+wait "$scrcpy_pid" || true
+scrcpy_pid=''
+[[ -s phone.mp4 ]] || fail "scrcpy wrote no video; see $work/scrcpy.log"
+
+tap 'New dwarf'
+sleep 2
+still forge
+# Do Not Disturb should hold back heads-up notifications; the shade's window shows one if not.
+heads_up=$(device shell dumpsys window visible | grep -c NotificationShade || true)
+key 4 # back, which closes the sheet
+((heads_up == 0)) || fail "a heads-up notification or the shade may be in forge.png; check it and retake"
+printf 'recorded into %s\n' "$work"
