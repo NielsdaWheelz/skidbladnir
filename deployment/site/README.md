@@ -36,7 +36,7 @@ On dev-server, as an administrator, from a copy of this folder:
 
 | file | role |
 | --- | --- |
-| `serve.py` | the static server: no listings or dotfiles, `/page` to `/page/`, HTML revalidated, other files cached five minutes, one byte range per request for the video |
+| `serve.py` | the static server: no listings or dotfiles, `/page` to `/page/`, `/install` to the latest release's installer (302), `/` as `llms.txt` to curl and HTTPie, pages revalidated, other files cached five minutes, one byte range per request for the video |
 | `release.py` | install a release and check the server (root) |
 | `pull.py`, `skid-web-pull.*` | the five-minute check of `main` that releases a changed `site/` |
 | `install.sh`, `skid-web.service`, `skid-web-tunnel.service` | server setup |

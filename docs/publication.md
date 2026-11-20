@@ -449,5 +449,5 @@ Done when: the essay is published and this file is deleted.
 | W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
 | W6 front door | `publication/front-door` | merged; the owner approved it, README length included; the walk from the W2.0 snapshot is `NOT_RUN` ([unwalked install](issues/fresh-install-walk.md)) | #191 |
 | W7 site | `publication/site` | merged; the owner approved it and moved hosting from Vercel to dev-server: tunnel `skid-web`, proxied `skid` CNAME, `skid-web` on loopback 3490, released from `main` every five minutes | #192 |
-| W8 site details | `publication/site-details`, owner actions | planned | |
+| W8 site details | `publication/site-details`, owner actions | merged: `/install` (302 to the latest installer), `curl /` and `/llms.txt` as plain text, OpenGraph and Twitter tags, a literal 404; GitHub description and homepage set; the social preview upload and profile pin are owner actions (no API) | |
 | W9 essay and close | owner's site, `publication/close` | planned | |
