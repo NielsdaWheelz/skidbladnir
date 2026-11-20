@@ -1,5 +1,7 @@
 # The desktop half of the continuity shot, in the installed browser. record
-# runs it from $MEDIA_WORK after writing select-api.tape there.
+# runs it from $MEDIA_WORK after writing select-api.tape there. stage gave api a
+# bare shell whose prompt is "atlas $ "; each attach waits for it before typing,
+# so no keys reach the browser.
 Output desktop.mp4
 Require skid
 Set Shell zsh
@@ -32,7 +34,8 @@ Show
 
 Sleep 3s
 Enter
-Sleep 2s
+Wait+Screen@10s /atlas \$/
+Sleep 1500ms
 Type "git log --oneline"
 Sleep 300ms
 Enter
@@ -42,7 +45,8 @@ Type "d"
 # Meanwhile the phone opens api, runs ls and detaches; record checks it did.
 Sleep 20s
 Enter
-Sleep 2500ms
+Wait+Screen@10s /atlas \$/
+Sleep 2s
 Type "git status"
 Sleep 300ms
 Enter

@@ -36,6 +36,8 @@ paint claude F02_full_working_default working
 paint claude F12_full_permission_bash permission
 paint claude F01_full_idle_default idle
 
+# The demo repositories take nothing from the owner's git configuration.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 commits=0
 # commit REPO MESSAGE commits the repository's tree as a neutral author, at a
 # fixed time so its hashes repeat from run to run.
@@ -105,19 +107,31 @@ for platform in darwin/arm64 linux/amd64; do
   cp "$tree/bin/codex" "$tree/bin/claude"
 done
 
-# Live from here. Refuse unless the demo's names are free.
-listing=$(skid list --json) || fail "skid list failed or is partial: $listing"
-python3 -c '
+# Live from here. Refuse unless every host lists and the demo's sessions and
+# groups are free. The listing reaches python on stdin: it can be 1 MiB, as
+# large as macOS allows a command's arguments to be.
+skid list --json | python3 -c '
 import json, sys
-peers = json.loads(sys.argv[1])["result"]["peers"]
+text = sys.stdin.read()
+if not text:
+    sys.exit("skid list printed nothing; it prints nothing over 1 MiB")
+document = json.loads(text)
+if not document["ok"]:
+    sys.exit("skid list failed: " + document["error"]["code"])
+peers = document["result"]["peers"]
+failing = ["%s (%s)" % (p["label"], p["error"]["code"]) for p in peers if not p["ok"]]
+if failing:
+    sys.exit("unavailable: " + ", ".join(failing))
 demo = sys.argv[2:]
-labels = {s["group"] for p in peers for s in p.get("sessions", []) if s.get("group")}
+wanted = {tuple(row.split()[:2]) for row in sys.argv[1].splitlines()}
+taken = sorted("%s on %s" % pair for pair in wanted & {(s["name"], p["label"]) for p in peers for s in p["sessions"]})
+labels = {s["group"] for p in peers for s in p["sessions"] if s.get("group")}
 used = sorted(labels & set(demo))
 # group.Compare folds ASCII case only. desktop.tape steps from all to the first group.
 early = sorted(label for label in labels - set(demo) if label.encode().lower() < max(demo).encode())
-if used or early:
-    sys.exit(f"demo groups in use: {used}; groups that sort before them: {early}")
-' "$listing" "${groups[@]}" || fail 'the demo groups must be unused and sort first'
+if taken or used or early:
+    sys.exit("sessions that exist: %s; demo groups in use: %s; groups that sort before them: %s" % (taken, used, early))
+' "$sessions" "${groups[@]}" || fail 'every host must list, with the demo sessions and groups free and first'
 while read -r -u 3 host _; do
   on "$host" 'test ! -e ~/demo' || fail "$host has a ~/demo already, or is unreachable"
 done 3<<<"$hosts"
@@ -151,6 +165,9 @@ print(result.get("creation", "-"), result.get("handle") or "-", tmux)
   if [[ $provider == - ]]; then
     # The owner's status line names the host; keep it out of the shot.
     on "$host" "tmux set-option -t $target status off"
+    # A bare shell: no rc files, history or login prompt, on screen or in
+    # tmux's scrollback, and a fixed prompt that desktop.tape waits for.
+    skid text "$handle" --machine "$host" "clear; printf '\033[3J'; exec env -i HOME=\$HOME TERM=\$TERM PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin HISTFILE=/dev/null BASH_SILENCE_DEPRECATION_WARNING=1 PS1='atlas \$ ' bash --norc --noprofile" >/dev/null
     continue
   fi
   on "$host" "tmux resize-window -t $target -x $width -y $height"

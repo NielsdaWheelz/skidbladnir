@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Composes the continuity video and the stills from record's files in $MEDIA_WORK into $MEDIA_WORK/assets,
-then prints their sizes and fails if one is over its limit. Offline; needs ffmpeg."""
+"""Composes record's files into the site's continuity video, its poster and the stills.
+
+Reads events.txt, desktop.mp4, phone.mp4 and the phone's dashboard, terminal and forge stills from $MEDIA_WORK
+(default ~/.cache/skid-media), writes the six assets to $MEDIA_WORK/assets, prints their sizes and exits nonzero when
+one is over its limit. Offline; needs ffmpeg.
+"""
 import os
 import re
 import subprocess
@@ -8,7 +12,8 @@ import sys
 
 WORK = os.environ.get('MEDIA_WORK') or os.path.expanduser('~/.cache/skid-media')
 OUT = os.path.join(WORK, 'assets')
-# desktop.tape detaches this far into its video: 3 s, Enter, 2 s, git log typed, 0.3 s, Enter, 3 s, ctrl-] d.
+# desktop.tape detaches this far into its video: 3 s, Enter, the attach (taken as half a second), 1.5 s, git log
+# typed, 0.3 s, Enter, 3 s, ctrl-] d.
 DESKTOP_DETACH = 9.7
 # A cut is the strongest scene change within this many seconds of its estimate. VHS's timeline drifts about 10%
 # from the wall clock, so the desktop's is known only to a second or so.
