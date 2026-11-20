@@ -1,0 +1,16 @@
+[Unit]
+Description=Release the skid site when site/ changes on main (fetch, check, switch)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /opt/skid-web/control/pull.py
+TimeoutStartSec=15min
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/skid-web /var/lib/skid-web
+MemoryMax=512M

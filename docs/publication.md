@@ -42,7 +42,7 @@ Owner, 2026-10-25.
 | fleet trust | computers administer, phones are clients: hub administration refuses phone bearers | a phone cannot invite, remove or apply |
 | tests | pure-core unit tests deferred; the proposal is recorded in [test system](issues/test-system-reset.md) | the first objection a reviewer raises stays open |
 | docs | user docs cover procedures (install, phone). References keep their owners: `skid --help` for the CLI, [architecture §5](architecture.md#5-configuration) for configuration, [§3](architecture.md#3-topology-and-trust) for trust; the README links them. The site exhibits and links rather than copies | readers leave the site for depth |
-| site | static HTML and CSS in `site/`, no framework or build step; a Vercel project rooted at `site/`; a DNS-only `skid` CNAME; dark only; no analytics; self-hosted subsets of Big Shoulders and JetBrains Mono; JavaScript only for copy buttons and tabs; under 100 KB before media | no light theme; no visitor data |
+| site | static HTML and CSS in `site/`, no framework or build step; served from dev-server behind its own Cloudflare tunnel, as nexus-web's frontend and the atlas site are (owner, 2026-11-20; it replaced a Vercel project); dark only; no analytics; self-hosted subsets of Big Shoulders and JetBrains Mono; JavaScript only for copy buttons and tabs; under 100 KB before media | no light theme; no visitor data |
 | launch | an essay on nielseriknandal.com leads; Show HN is optional and later | |
 | history | no rewrite; the Firebase client key in history is handled in Google Cloud, not git | the tailnet name and one hostname email stay in history |
 | Linux walk | no fresh Linux host; the fresh Linux install is `NOT_RUN`; Linux fixes are proven by temporary tests and package-manager containers | Linux first-install failures can ship unseen |
@@ -143,7 +143,7 @@ Maturity, stated plainly: a single-user prototype, built and run by one person
   the affected boundary ([testing](rules.md#testing)). Anything that installs,
   enables services or reaches Tailscale runs in the W2.0 environments. The owner's
   tmux, the installed gateway, Tailscale, the phone, other hosts, real provider
-  accounts, releases, GitHub settings, DNS, Vercel and Google Cloud need the
+  accounts, releases, GitHub settings, DNS, Cloudflare and Google Cloud need the
   owner's approval in the current turn. `NOT_RUN` is never a pass.
 - The owner merges, or tells the coordinator to. Releases happen only on the
   owner's request, by the [release](architecture.md#release) procedure.
@@ -369,8 +369,10 @@ making.
   valknut, fret band and seals; the provenance ledger with museum links; the name
   in Old Norse and in Brodeur; the fonts. Links to the [design language](design-language.md)
   and the history.
-- A Vercel project with a preview deployment per pull request; the DNS-only CNAME
-  (owner approval).
+- Served from dev-server like nexus-web's frontend and the atlas site: a static
+  server on loopback behind a named Cloudflare tunnel, released from `main`
+  ([publishing](../deployment/site/README.md)); the tunnel and DNS need owner
+  approval.
 
 Done when: under 100 KB before media; no horizontal scroll at 360 px; the palette's
 WCAG ratios hold; the Nu HTML Checker (`vnu`) reports no errors; the owner
@@ -446,6 +448,6 @@ Done when: the essay is published and this file is deleted.
 | W5.3 roadmap | `publication/roadmap` | merged | #185, `d39fa0d` |
 | W5.4 voice | `publication/voice`, `publication/voice-close` | merged; casefold and code-span proof for every file | #186, `2118c44`; #189 |
 | W6 front door | `publication/front-door` | merged; the owner approved it, README length included; the walk from the W2.0 snapshot is `NOT_RUN` ([unwalked install](issues/fresh-install-walk.md)) | #191 |
-| W7 site | `publication/site` | planned | |
+| W7 site | `publication/site` | merged; the owner approved it and moved hosting from Vercel to dev-server: tunnel `skid-web`, proxied `skid` CNAME, `skid-web` on loopback 3490, released from `main` every five minutes | #192 |
 | W8 site details | `publication/site-details`, owner actions | planned | |
 | W9 essay and close | owner's site, `publication/close` | planned | |

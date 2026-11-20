@@ -1,0 +1,26 @@
+[Unit]
+Description=skid site (skid.nielseriknandal.com), static files on loopback
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skid-web
+Group=skid-web
+ExecStart=/usr/bin/python3 -B /opt/skid-web/control/serve.py 3490
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+MemoryMax=256M
+MemorySwapMax=0
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
