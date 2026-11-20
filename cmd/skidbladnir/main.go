@@ -31,6 +31,19 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		arguments = []string{arguments[1], "-h"}
 	}
 	switch arguments[0] {
+	case "claude-usage":
+		if len(arguments) == 2 && (arguments[1] == "-h" || arguments[1] == "--help") {
+			return commandHelp(stdout, "claude-usage")
+		}
+		if len(arguments) != 1 {
+			commandHelp(stderr, "claude-usage")
+			return exitUsage
+		}
+		if err := writeClaudeUsage(stdout, stderr); err != nil {
+			fmt.Fprintln(stderr, "unable to write claude usage")
+			return exitFailure
+		}
+		return 0
 	case "terminal-context":
 		if err := terminalContext(arguments[1:]); err != nil {
 			fmt.Fprintln(stderr, "terminal context unavailable")

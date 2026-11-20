@@ -1,14 +1,15 @@
-# live claude quota acceptance
+# live claude cache acceptance
 
-the [desktop quota contract](../architecture.md#desktop-usage) passed isolated
-80×24 browser checks in colour and plain text. the deployed gateway and real
-claude footer still need a live comparison.
+check the installed [usage band](../architecture.md#desktop-usage) and
+one-line footer against claude's web settings → usage on the same account.
+the private file may predate the web view. opening `/usage` in claude code
+can itself refresh the cache being checked.
 
 | live case | result |
 | --- | --- |
-| compare the per-window minima in the caption and expanded band with the eligible panes | `NOT_RUN` |
-| hide the last eligible footer and verify the stale label and band age | `NOT_RUN` |
-| restore the footer and verify the next read replaces the stale display | `NOT_RUN` |
+| compare cached 5h, 7d and fable amounts and supplied reset times with the web view, accounting for the fetch age | `NOT_RUN` |
+| compare footer used with band left. verify the general weekly caption, the gold overlay's half scale and the independent fable countdown | `NOT_RUN` |
+| observe a second host supply a newer reading with no open pane. restart the displays while the source is offline. verify the amounts persist, the countdown crosses its deadline and the next reading updates only the supplied fields | `NOT_RUN` |
 
-the check requires current owner approval for the fleet read and for hiding
-and restoring an identified pane's footer. record case outcomes only.
+the check requires current owner approval for the fleet and provider reads.
+record case outcomes only.

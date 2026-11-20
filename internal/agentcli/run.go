@@ -62,6 +62,7 @@ this computer
   install, update  install or update skid
   uninstall        remove skid; settings, state and sessions remain
   version          this release and its source commit
+  claude-usage     last known percentages for this claude account's status line
   serve            this computer's gateway, run by its service
   notifications    set up macos notifications
 
@@ -227,6 +228,11 @@ skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 skid uninstall
   own this computer's installation; skid help install, update or uninstall
   explains each.
+`},
+	{"claude-usage", `skid claude-usage
+  prints the last known 5h, 7d and fable used percentages for the active
+  claude account (CLAUDE_CONFIG_DIR, or the default profile). skid keeps
+  the newest reading from any enrolled machine. this command reads locally.
 `},
 	{"version", `skid version
 skid --version

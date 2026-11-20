@@ -511,7 +511,7 @@ steps until it clears both fills.
 | ink | names, labels, notices, focused input; the band's names, numbers, heavy line and stems | default | default | default |
 | quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned; the band's heads, legend words, countdowns and light line | derived | derived | faint |
 | muted | other status and client notes | quiet | quiet | `#AAA69D` |
-| gold | lip, current view chevrons, focused chooser | `#D6A85F` | `#8A6416` | bright yellow |
+| gold | lip, current view chevrons, focused chooser, fable overlay on the weekly gauge | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
 | moss | ready | `#76B082` | `#3B7448` | `#76B082` |
 | frost | starting and working | `#78A9C6` | `#2C6688` | `#78A9C6` |

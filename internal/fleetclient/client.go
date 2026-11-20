@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
-	"github.com/NielsdaWheelz/skidbladnir/internal/boottime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/coder/websocket"
@@ -50,6 +49,7 @@ func success(value any) Result {
 }
 
 type Client struct {
+	claudeHistory  claudeHistory
 	peers          []peer
 	defaultMachine Machine
 	hub            string
@@ -367,6 +367,7 @@ var routes = map[string]struct {
 }{
 	"list":             {http.MethodGet, "/v1/sessions", false, http.StatusOK},
 	"profile_usage":    {http.MethodGet, "/v1/profile-usage", false, http.StatusOK},
+	"claude_usage":     {http.MethodGet, "/v1/claude-usage", false, http.StatusOK},
 	"terminal_context": {http.MethodGet, "/v1/terminal-contexts/{id}", false, http.StatusOK},
 	"directory_search": {http.MethodPost, "/v1/directory-searches", false, http.StatusOK},
 	"terminal_inspect": {http.MethodPost, "/v1/sessions/{id}/terminal/inspect", false, http.StatusOK},
@@ -417,15 +418,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	}
 	defer response.Body.Close()
 	limit := MaximumControlBytes
-	if operation == "list" {
+	if operation == "list" || operation == "claude_usage" {
 		limit = MaximumInventoryBytes
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, int64(limit+1)))
 	receivedAt := time.Now()
-	var receivedBoot time.Duration
-	if operation == "list" {
-		receivedBoot = boottime.Now()
-	}
 	if err != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -455,11 +452,13 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	if operation == "list" {
 		observed := value.(Peer)
 		observed.ReceivedAt = receivedAt
-		observed.ReceivedBoot = receivedBoot
 		value = observed
-	} else if operation == "profile_usage" {
+	} else if operation == "profile_usage" || operation == "claude_usage" {
 		observed := value.(ProfileUsagePeer)
 		observed.ReceivedAt = receivedAt
+		if err := client.rememberClaudePeer(observed); err != nil && operation == "claude_usage" {
+			return Failed("InternalError", dispatch)
+		}
 		value = observed
 	}
 	return success(value)

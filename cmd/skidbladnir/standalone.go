@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -110,10 +111,16 @@ func serveStandalone(stdout io.Writer) (result error) {
 		notifications = observer
 	}
 	monitor := pressure.NewMonitor()
-	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle})
-	workers := make(chan error, 4)
+	gatewayHandler := gateway.New(gateway.Config{Agents: agents, Sessions: manager, Workdir: workingDirectories, Pressure: monitor, Fleet: control, Notifications: notifications, Logger: logger, Machine: handle, StateDir: state})
+	// Bind before workers start so their first local fleet request can connect.
+	listener, err := net.Listen("tcp", fleet.LocalAddress)
+	if err != nil {
+		return fmt.Errorf("listen on gateway loopback: %w", err)
+	}
+	workers := make(chan error, 5)
 	go func() { monitor.Run(ctx); workers <- nil }()
 	go func() { control.Run(ctx); workers <- nil }()
+	go func() { client.RunClaudeUsage(ctx); workers <- nil }()
 	go func() {
 		if observer != nil {
 			observer.Run(ctx)
@@ -165,9 +172,9 @@ func serveStandalone(stdout io.Writer) (result error) {
 			previous = next
 		}
 	}()
-	result = gateway.ListenAndServe(ctx, fleet.LocalAddress, gatewayHandler)
+	result = gateway.Serve(ctx, listener, gatewayHandler)
 	cancel()
-	for range 4 {
+	for range 5 {
 		result = errors.Join(result, <-workers)
 	}
 	return errors.Join(result, control.Err())

@@ -62,13 +62,8 @@ func ObservedGroups(peers []Peer) []group.Label {
 
 // CompareSessions orders sessions by numeric tmux id.
 func CompareSessions(a, b Session) int {
-	return CompareSessionIDs(a.Ref.TmuxID, b.Ref.TmuxID)
-}
-
-// CompareSessionIDs orders the tmux ids carried by sessions and quota observations.
-func CompareSessionIDs(a, b string) int {
-	l := strings.TrimLeft(strings.TrimPrefix(a, "$"), "0")
-	r := strings.TrimLeft(strings.TrimPrefix(b, "$"), "0")
+	l := strings.TrimLeft(strings.TrimPrefix(a.Ref.TmuxID, "$"), "0")
+	r := strings.TrimLeft(strings.TrimPrefix(b.Ref.TmuxID, "$"), "0")
 	if order := cmp.Compare(len(l), len(r)); order != 0 {
 		return order
 	}

@@ -137,17 +137,19 @@ type ContextAgent struct {
 	Label    string `json:"label,omitempty"` // Profile's configured label
 }
 
-// ProfileUsageReport answers GET /v1/profile-usage. Profiles is never null.
+// ProfileUsageReport answers both usage routes. Profiles is never null.
 type ProfileUsageReport struct {
-	Machine    Machine        `json:"machine"`
-	ObservedAt time.Time      `json:"observedAt"`
-	Profiles   []ProfileUsage `json:"profiles"`
+	Machine             Machine        `json:"machine"`
+	ObservedAt          time.Time      `json:"observedAt"`
+	Profiles            []ProfileUsage `json:"profiles"`
+	OtherClaudeAccounts []ClaudeUsage  `json:"otherClaudeAccounts,omitempty"`
 }
 
 type ProfileUsage struct {
 	Profile
 	ReadState string       `json:"readState"`
 	Report    *QuotaReport `json:"report,omitempty"`
+	Claude    *ClaudeUsage `json:"claude,omitempty"`
 }
 
 // QuotaWindow is one displayed or native account quota window.
@@ -156,7 +158,7 @@ type QuotaWindow struct {
 	ResetsAt    *time.Time `json:"resetsAt,omitempty"`
 }
 
-// QuotaReport is one codex profile's native account quota as internal/quota reads it.
+// QuotaReport is a Codex account's native quota observation.
 type QuotaReport struct {
 	ReportedAt time.Time    `json:"reportedAt"`
 	FiveHour   *QuotaWindow `json:"fiveHour,omitempty"`

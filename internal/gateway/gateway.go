@@ -36,6 +36,7 @@ type Config struct {
 	Notifications http.Handler
 	Logger        *slog.Logger // the process's one logging.New; its doc is the event-line contract
 	Machine       machine.Handle
+	StateDir      string
 }
 
 type Gateway struct {
@@ -47,6 +48,7 @@ type Gateway struct {
 	notifications http.Handler
 	logger        *slog.Logger
 	machine       machine.Handle
+	stateDir      string
 	routes        *http.ServeMux
 	notSent       map[string]bool // route patterns whose error answers default to dispatch not_sent
 
@@ -67,6 +69,7 @@ func New(config Config) *Gateway {
 		notifications: config.Notifications,
 		logger:        config.Logger,
 		machine:       config.Machine,
+		stateDir:      config.StateDir,
 		live:          make(map[*liveConnection]struct{}),
 		closedDevices: make(map[string]bool),
 		notSent:       make(map[string]bool),
@@ -91,6 +94,7 @@ func New(config Config) *Gateway {
 	gateway.routes.HandleFunc("POST /v1/directory-searches", gateway.searchDirectories)
 	gateway.routes.HandleFunc("GET /v1/terminal-contexts/{connectionId}", gateway.readTerminalContext)
 	gateway.routes.HandleFunc("GET /v1/profile-usage", gateway.readProfileUsage)
+	gateway.routes.HandleFunc("GET /v1/claude-usage", gateway.readProfileUsage)
 	gateway.routes.HandleFunc("GET /v1/pressure", gateway.readPressure)
 	gateway.routes.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) { writeError(writer, errorInvalidRequest) })
 	return gateway

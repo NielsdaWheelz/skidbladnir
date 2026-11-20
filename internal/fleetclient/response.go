@@ -64,16 +64,15 @@ type Profile struct {
 }
 
 type Peer struct {
-	Label        string        `json:"label"`
-	Machine      string        `json:"machine"`
-	OK           bool          `json:"ok"`
-	ObservedAt   time.Time     `json:"observedAt,omitempty"`
-	ReceivedAt   time.Time     `json:"-"`
-	ReceivedBoot time.Duration `json:"-"`
-	Profiles     []Profile     `json:"profiles,omitempty"`
-	Sessions     []Session     `json:"sessions,omitempty"`
-	Recovery     *api.Recovery `json:"recovery,omitempty"`
-	Error        *Failure      `json:"error,omitempty"`
+	Label      string        `json:"label"`
+	Machine    string        `json:"machine"`
+	OK         bool          `json:"ok"`
+	ObservedAt time.Time     `json:"observedAt,omitempty"`
+	ReceivedAt time.Time     `json:"-"`
+	Profiles   []Profile     `json:"profiles,omitempty"`
+	Sessions   []Session     `json:"sessions,omitempty"`
+	Recovery   *api.Recovery `json:"recovery,omitempty"`
+	Error      *Failure      `json:"error,omitempty"`
 }
 
 // MarshalJSON preserves required empty arrays for a successfully observed peer.
@@ -198,18 +197,18 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		return ObservedSession{Label: target.Label, Machine: target.Machine, ObservedAt: value.ObservedAt.Format(time.RFC3339Nano), Session: row}, true
-	case "profile_usage":
+	case "profile_usage", "claude_usage":
 		var value api.ProfileUsageReport
 		if json.Unmarshal(encoded, &value) != nil || value.Machine.Handle != target.Machine {
 			return nil, false
 		}
-		observed := ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: make([]ProfileUsage, len(value.Profiles))}
+		observed := ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: make([]ProfileUsage, len(value.Profiles)), OtherClaudeAccounts: value.OtherClaudeAccounts}
 		for index, wire := range value.Profiles {
 			profile, ok := clientProfile(wire.Profile)
 			if !ok || wire.ReadState != "ok" && wire.ReadState != "unavailable" {
 				return nil, false
 			}
-			observed.Profiles[index] = ProfileUsage{Profile: profile, ReadState: wire.ReadState, Report: wire.Report}
+			observed.Profiles[index] = ProfileUsage{Profile: profile, ReadState: wire.ReadState, Report: wire.Report, Claude: wire.Claude}
 		}
 		return observed, true
 	case "terminal_context":
