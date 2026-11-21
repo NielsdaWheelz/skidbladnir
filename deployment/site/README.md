@@ -5,6 +5,10 @@ way nexus-web's frontend and the atlas site are: a static server on loopback (`s
 behind a named Cloudflare tunnel (`skid-web-tunnel.service`). Nothing is built on the server and no port is open:
 the tunnel connects outwards and the server listens on loopback only.
 
+The site is static HTML and CSS with no framework or build step: dark only, no analytics, self-hosted subsets of
+Big Shoulders and JetBrains Mono, JavaScript only for copy buttons and tabs, under 100 KB before media. It exhibits
+the product and links to the docs rather than copying them.
+
 **Pushing `main` publishes.** Every five minutes `skid-web-pull.timer` fetches `main` over https and, when the
 tree of `site/` differs from the one last released, streams `git archive <sha> site` into `release.py install
 <sha>`. That checks the archive (plain files under `site/` only, both pages present), unpacks it to
