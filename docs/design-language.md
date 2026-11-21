@@ -104,6 +104,20 @@ governs product copy; public prose may quote, with attribution, the primary
 sources the provenance ledger (§2) cites, and uses the canonical copy in the
 [README](../README.md).
 
+Public prose (README, docs, AGENTS.md, the site, release notes) uses correct
+capitalization, with product names as their owners spell them: Tailscale, macOS,
+Android, Claude Code, Codex, tmux. CLI, installer and error output keep
+lowercase. Skíðblaðnir is the proper name, always capitalized; skid, the everyday
+name and the command, is always lowercase, even opening a sentence. Issue files
+convert as they are touched. Public copy says nothing about the tools used to
+write the code, either way; history, commit trailers and AGENTS.md stay as they
+are. A comparison describes a different contract, never superiority, and names
+each alternative graciously, its strengths first; it leads with that contract,
+not with what alternatives also claim (provider independence, agent status,
+recovery, the cross-machine CLI, no telemetry). Copy never overstates: Tailscale
+needs an account and may relay traffic through its encrypted DERP servers; skid
+hosts nothing and has no account.
+
 ## 5. Color
 
 ### Surfaces (stone strata)

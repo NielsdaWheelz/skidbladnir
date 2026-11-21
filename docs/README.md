@@ -1,7 +1,10 @@
 # Documentation
 
 The [README](../README.md) says what Skíðblaðnir is and whether it suits you. The
-pages below either help you use skid or explain how it is built.
+pages below either help you use skid or explain how it is built. The pages for
+using skid give procedures; each reference has one owner, which the others link
+rather than copy: `skid --help` for commands, [architecture §5](architecture.md#5-configuration)
+for configuration, [§3](architecture.md#3-topology-and-trust) for trust.
 
 ## Using skid
 

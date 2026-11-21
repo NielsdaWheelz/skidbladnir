@@ -18,4 +18,8 @@ Resolved when: with explicit cleanup authorization, the owner inventories curren
 apps, IAM bindings, keys, API keys and any DNS record, decides reuse or removal,
 revokes unused keys, removes obsolete apps, projects, DNS and the matching local
 artifacts, confirms no optional integration depends on them, keeps release-signing
-keys, and records what remains.
+keys, and records what remains. Git history is not rewritten: the Firebase client
+key committed in `android/app/firebase.json` from `b5189e1` to `f21112c` is
+handled in Google Cloud, and GitHub secret-scanning alert #1, which the owner
+left open, closes as revoked if the key is deleted or as won't fix if it is
+kept.

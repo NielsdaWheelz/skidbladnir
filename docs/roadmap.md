@@ -6,20 +6,21 @@ contract; each item's evidence and resolution criteria live in its
 
 ## Next
 
-qualify the independent [terminal service](issues/terminal-service-qualification.md)
-through the remaining native smoke and mac privacy checks. the approved macbook
+Qualify the independent [terminal service](issues/terminal-service-qualification.md)
+through the remaining native smoke and Mac privacy checks. The approved macbook
 and devbox cutovers and subsequent gateway updates preserved their reconstructed
 workspaces.
 
-1. Carry the [publication campaign](publication.md) to its close.
-2. Measure the macbook's tmux exec cost
+1. Measure the macbook's tmux exec cost
    ([exec overhead](issues/tmux-exec-overhead.md)) and run the phone pass for
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
-3. Observe the shipped but unobserved journeys
+2. Observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
-   recovery, and explain Linux Claude's guarded start
+   recovery and the Claude usage cache against Claude's web view
+   ([Claude cache acceptance](issues/claude-quota-memory.md)), and explain Linux
+   Claude's guarded start
    ([Linux Claude turn](issues/terminal-only-live-qualification.md)).
-4. Finish qualifying conversation recovery on deployed hosts and clients:
+3. Finish qualifying conversation recovery on deployed hosts and clients:
    Linux loss, notices and actual reboots
    ([conversation recovery acceptance](issues/conversation-recovery-acceptance.md)).
 
@@ -36,7 +37,10 @@ workspaces.
   [systemd unit warning](issues/systemd-unit-changed-warning.md),
   [join skips the serve route](issues/join-skips-serve-route.md),
   [unwalked install](issues/fresh-install-walk.md).
-- Site: [stale demo media](issues/stale-demo-media.md).
+- Hub: [recurring disk exhaustion](issues/hub-disk-exhaustion.md),
+  [notification recovery](issues/notification-readiness-loss.md).
+- Site: [stale demo media](issues/stale-demo-media.md),
+  [Vercel previews blocked](issues/vercel-account-blocked.md).
 - Design language: [fret angle](issues/fret-angle-spec.md),
   [wordmark tracking](issues/wordmark-tracking.md).
 - Desktop: [SIGTERM hang](issues/tui-sigterm-hang.md),
@@ -50,7 +54,7 @@ workspaces.
   [pane retarget](issues/terminal-pane-retarget.md),
   [agent creation 500](issues/agent-creation-internal-error.md),
   [member settings validation](issues/member-settings-validation.md),
-  [macos process attribution](issues/macos-process-attribution.md),
+  [macOS process attribution](issues/macos-process-attribution.md),
   [repeated file-access prompts](issues/macos-permission-prompts.md).
 - Observation: [Claude panel rows](issues/claude-panel-status-unknown.md),
   [unruled Claude dialogs](issues/claude-unruled-request-dialogs.md).
@@ -75,20 +79,35 @@ Each removes a second owner or a needless hop:
   [visual redesign](issues/visual-redesign.md): unscoped.
 - [Launcher recognition](issues/provider-wrapper-recognition.md) and
   [agent exit attention](issues/agent-exit-attention.md): need scope first.
+- [Pairing without Play services](issues/pairing-without-play-services.md): a
+  paste or link fallback is a new capability; scope first.
 - [Mac serve stderr](issues/macos-serve-stderr-discarded.md) and
   [behavioral suite](issues/test-system-reset.md): owner decisions.
+- [Phone release cadence](issues/phone-release-cadence.md): say which releases
+  the phone needs, or accept the cost.
 - [Cloud resources](issues/cloud-resource-cleanup.md): cleanup needs explicit
   authorization.
 - [Android developer verification](issues/android-developer-verification.md):
   register the signing key, or say what not registering means.
 - [Terminal transport](issues/terminal-runtime-decision.md): control mode or an owned
-  pty; replacement deferred. the ownership cutover retains tmux.
+  pty; replacement deferred. The ownership cutover retains tmux.
 
-## proposals under review
+## Proposals under review
 
-the [workspace coherence review](issues/workspace-coherence.md) indexes the t3/bb
+The [workspace coherence review](issues/workspace-coherence.md) indexes the t3/bb
 research, current-source findings, proposed sequence and candidate acceptance
-journeys. its linked issues retain setup/recovery, phone continuity, launch presets,
-search, accounts, attention, managed collaboration, handoff and customization
-directions, including trade-offs and rejected alternatives. recording them is not
-implementation approval and does not reorder the approved work above.
+journeys. Its proposals, each with trade-offs and rejected alternatives:
+[setup and recovery](issues/fleet-setup-recovery.md),
+[phone continuity](issues/phone-terminal-continuity.md),
+[launch presets](issues/project-launch-presets.md),
+[search](issues/fleet-search.md),
+[profiles and accounts](issues/profile-setup-usage.md),
+[attention](issues/attention-dispositions.md),
+[managed collaboration](issues/managed-collaboration.md),
+[handoff](issues/session-handoff.md),
+[clients and customization](issues/client-extensibility.md),
+[agent action discovery](issues/agent-action-discovery.md),
+[interaction latency](issues/interaction-latency.md),
+[work context notes](issues/work-context-notes.md).
+Recording them is not implementation approval and does not reorder the approved
+work above.
