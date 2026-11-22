@@ -522,10 +522,10 @@ steps until it clears both fills.
 
 | role | carries | dark | light | plain |
 | --- | --- | --- | --- | --- |
-| ink | names, labels, notices, focused input; the band's names, numbers, heavy line and stems | default | default | default |
-| quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned; the band's heads, legend words, countdowns and light line | derived | derived | faint |
+| ink | names, labels, notices, focused input; the band's names, numbers, heavy line, stems and an exhausted general window's countdown | default | default | default |
+| quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned; the band's heads, countdowns, light line, unknown `—`, and faded names and windows | derived | derived | faint |
 | muted | other status and client notes | quiet | quiet | `#AAA69D` |
-| gold | lip, current view chevrons, focused chooser, fable overlay on the weekly gauge | `#D6A85F` | `#8A6416` | bright yellow |
+| gold | lip, current view chevrons, focused chooser, the band's Fable stroke and chomper | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
 | moss | ready | `#76B082` | `#3B7448` | `#76B082` |
 | frost | starting and working | `#78A9C6` | `#2C6688` | `#78A9C6` |
@@ -540,15 +540,17 @@ the gold `▌` lip marks every fold line. text begins in column 5. one rule head
 the open row's screen and another separates the body from the usage band, while
 shown, and the controls. hints use ink and quiet.
 
-copy is lowercase and literal. preserve the host's words for status and the
-shared desktop outcome words. browser copy names the session and listing host,
+Copy is lowercase and literal. Preserve the host's words for status and the
+shared desktop outcome words. Browser copy names the session and listing host,
 reports only what was sampled or completed, and names the refused action and
-reason. label ellipses mean a pending confirmation before sending. fit within
-78 cells or wrap whole. words and marks survive stripping every style. no boxes,
+reason. Label ellipses mean a pending confirmation before sending. Fit within
+78 cells or wrap whole. Words and marks survive stripping every style, except a
+usage reading's staleness, which only fades. No boxes,
 fret, runes, icons or motion, with one exception by the owner's ruling: the
-usage band's reveal, a gold chomper that crosses each gauge's spent part once
-when `u` shows the band ([architecture](architecture.md#desktop-usage)). it stands
-against §1.4, §1.6, §12, §14, §15 and gold's row, which are otherwise unchanged.
+usage band's reveal, a gold chomper that crosses each weekly gauge's spent part
+once when `u` shows the band ([architecture](architecture.md#desktop-usage)). It
+stands against §1.4, §1.6, §12, §14, §15 and gold's row, which are otherwise
+unchanged.
 
 ## 18. Dvergatal curation
 

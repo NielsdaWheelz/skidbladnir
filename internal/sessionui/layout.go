@@ -91,7 +91,7 @@ func (m *model) frame() frame {
 	case m.cursor >= 0:
 		caption = m.tableCaption(f, len(f.rows) < len(m.rows))
 	}
-	quota := ""
+	var quota line
 	if len(f.band) == 0 {
 		quota = m.weeklyQuota(f.width - ansi.StringWidth(caption) - 6)
 	}

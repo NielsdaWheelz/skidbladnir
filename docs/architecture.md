@@ -56,12 +56,11 @@ be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
 
-skid remembers the most recent 5h, general 7d and fable readings from the
-enrolled machines for each claude account. the desktop shows remaining
-percentages and counts down each reported reset, even with every source offline.
-fable shares the weekly gauge. a full gold stroke reaches its midpoint. the
-managed claude footer shows used percentages from the same saved readings. see
-[desktop usage](#desktop-usage).
+skid remembers the most recent 5h, general 7d and Fable readings from the
+enrolled machines for each Claude account. The desktop shows remaining
+percentages and counts down each period's reset, even with every source offline.
+The managed Claude footer shows used percentages from the same saved readings.
+See [desktop usage](#desktop-usage).
 
 ### Guarantees
 
@@ -1472,93 +1471,111 @@ for the palette.
 
 ### Desktop usage
 
-- inventory supplies codex terminal evidence every five seconds. the browser
-  reads each host's profile usage once a minute while it owns the screen and
-  on `ctrl-r`, whether the band is open or closed. `u` changes visibility.
-- values show remaining capacity. a `~` marks a value read from a terminal.
-- codex chooses one whole observation per profile. a fresh native report with
-  a live window wins, followed by fresh terminal evidence, the retained native
-  report for diagnosis, then stale terminal evidence. per host, the matching
-  local session with the most known windows supplies terminal evidence. ties go
-  to the smaller numeric tmux id. across hosts the latest client receipt wins,
-  with ties going to the smaller machine handle. without a candidate a profile
-  reads `unavailable` after a failed read, else blank. native age is
-  `observedAt − reportedAt` plus client monotonic time since receipt. at one hour
-  or on a failed host or profile read, the retained report is stale and its
-  numbers are hidden. resets count down from host timestamps plus client
-  monotonic time. at or past reset a window reads `awaiting update`.
-- claude remembers six independent facts per account. the amount and absolute
-  reset time for 5h, general 7d and fable 7d each take their newest measured
-  value across machines, ordered by claude's fetch timestamp. if exact fetch
-  times tie, the larger percentage or later deadline wins. a partial reading
-  updates only the supplied facts. an old cache, disconnect or restart keeps
-  the last reading. a newly measured zero is a value.
-- each claude reset counts down against the desktop's current wall clock.
-  after the deadline the same percentage stays visible and the timer shows
-  how long ago the deadline passed. only another measurement can change an
-  amount or supply a new reset.
-- the collapsed rule carries `7d quota left` for the general weekly allowance.
-  show every profile when it fits, else the selected profile if it fits.
-  fable appears in the expanded band.
-- the band fits in half the body left by notices and the fold. each profile
-  has a main line. show the main rows first when budgeting height. the overflow
-  count refers to omitted profiles. with room for fewer than three lines the
+- Inventory supplies Codex terminal evidence every five seconds. The browser
+  reads each host's profile usage once a minute while it owns the screen and on
+  `ctrl-r`, whether the band is open or closed. `u` changes visibility.
+- Values show remaining capacity: 100 minus the whole part of the used
+  percentage, stopping at 0 when a provider reports more than 100% used. A `~` marks a value
+  read from a terminal.
+- Codex chooses one whole observation per profile: a native report with an
+  unfaded window, then terminal evidence with an unfaded window, then the
+  retained native report, then terminal evidence. Per host, the matching local
+  session with the most known windows supplies terminal evidence; ties go to the
+  smaller numeric tmux ID. Across hosts a native report with a window still
+  ahead beats one whose windows have all passed; among those ahead a fresh one
+  beats a stale one; then the latest client receipt wins; terminal evidence takes the latest
+  receipt. Ties go to the smaller machine handle. A host whose access was
+  rejected offers no native report; a host whose inventory failed offers no
+  terminal evidence. Native age is `observedAt − reportedAt` plus client
+  monotonic time since receipt, and resets count down from host timestamps plus
+  client monotonic time. A profile with no observation reads `unavailable`
+  after a failed read and `checking` before any read.
+- Claude remembers six independent facts per account. The amount and absolute
+  reset time for 5h, general 7d and Fable 7d each take their newest measured
+  value across machines, ordered by Claude's fetch timestamp. If fetch times
+  tie, the larger percentage or later deadline wins. A partial reading updates
+  only the supplied facts. An old cache, disconnect or restart keeps the last
+  reading. A newly measured zero is a value. Each reset counts down against the
+  desktop's wall clock, and only another measurement can change an amount or
+  supply a new reset. A Claude profile reads `unavailable` when its account is
+  unknown or conflicting, has no remembered reading, or, with no remembered
+  binding, its host's read failed, and `checking` before the first usage read lands.
+- A window fades when its reset has passed. A Codex window also fades when its
+  native report is stale (an hour old, or a failed host or profile read) or its
+  terminal evidence is an hour old. Claude windows never fade by age. A faded
+  window keeps its number, gauge cells and countdown, drawn quiet. A passed
+  reset draws no stem, and its countdown shows its age. A profile's name turns
+  quiet when its row has at least one window and all of them fade.
+- The band is one grid at every terminal width, 78 cells with the Fable column
+  and 69 without, one line per profile:
+
+  | Column | x | Width | Align | Header |
+  | --- | --- | --- | --- | --- |
+  | Name | 0 | 11 | left, `…` | `usage` |
+  | Weekly gauge | 13 | 24 | | |
+  | 7d | 38 | 5 | right | `━ 7d` (`═ 7d` plain) |
+  | Fable | 45 | 7 | right | `🬋 fable` |
+  | Weekly countdown | 54 | 7 | left | `┴ reset` |
+  | 5h | 64 | 5 | right | `5h` |
+  | 5h countdown | 71 | 7 | left | `reset` |
+
+  A right-aligned header ends at its column's last cell; a left-aligned one
+  starts at its x. The Fable column exists when the band's profiles include a
+  Claude profile; without it, later columns shift nine cells left. Rows are the
+  declared profiles (inventory, then profile-usage reports, then remembered
+  Claude bindings), so readings arriving or lapsing never move the grid. A
+  missing window is blank; a window with an unknown amount prints a quiet `—`.
+- The band fits in half the body left by notices and the fold. Profiles past
+  its cap become one overflow line. With room for fewer than three lines the
   band keeps its state and stays hidden.
-- claude's weekly gauge has one origin for both allowances. the regular stroke
-  measures general 7d remaining across the full track. the thicker gold stroke
-  measures fable remaining across the left half. on a 16-cell track, 100%,
-  50% and 0% fable left occupy eight, four and zero cells. each amount comes
-  from its own cache window. the general percentage stays beside the track.
-  the header keys `▬ fable (½ scale)`. the general endpoint and reset stem
-  stay legible where the strokes overlap. the thicker shape identifies fable
-  when colour is off. the half scale reflects the included fable allowance on
-  eligible plans. [anthropic's plan terms](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan)
-- labelled text gives the fable percentage and its own countdown. it fits in
-  an unused 5h slot or beside the two gauges on a wide screen. on a narrow
-  screen with both slots occupied, spare height allows a text continuation
-  below the profile.
-- the 78-cell layout reserves 11 cells for a profile name, with end ellipsis and
-  bold for the selected profile. the 7d slot begins at column 13 and 5h at 47.
-  each contains a 16-cell gauge, a five-cell percentage and a seven-cell
-  countdown. the header labels the columns. the legend at the right reads
-  `━ quota left  ┴ time left`, with `═` on the plain path. each part appears
-  only when its mark occurs in a drawn line. a half-cell counts as quota.
-- a gauge draws the printed integer in 32 half cells, `round(left × 32 / 100)`,
-  at least 1 above 0 and at most 31 below 100: heavy `━` for what is left, `╾`
-  where it ends mid-cell, light `─` for what is spent. a window with a reset
-  carries a stem in cell `clamp(⌈time left × 16⌉ − 1, 0, 15)`, time left being
-  the share of the window still to run: `┷` on heavy, `┵` on the end, `┴` on
-  light. the plain path draws 16 whole cells, `round(left × 16 / 100)` at
-  least 1 above 0 and at most 15 below 100, heavy as `═` with its stem `╧`.
-- the countdown rounds down to whole minutes and shows the two largest units
-  as in `2d 4h`, `3h 12m`, `41m` or `<1m`. codex's profile state
-  (`checking`, `unavailable`) prints once in its 7d slot. `stale` and
-  `awaiting update` stand alone in the affected window. an empty 7d slot
-  prints `—`. a codex 5h never reported prints nothing.
-  a claude amount with a future deadline shows the usual stem and countdown.
-  an elapsed deadline shows its age, for example `2h ago`, or the year and
-  month for a deadline over a year old. a known deadline
-  without an amount still has a timer. `—` alone means neither amount nor date
-  is known. the compact summary has no timer.
-  with no profile the band is `usage` and the declaration state at column 13.
-- the band redraws when a sample changes a drawn value and when the clock
-  changes a countdown, a stem's cell, an elapsed time, `stale` or
-  `awaiting update`.
-  nothing else moves in it but the reveal.
-- showing the band with `u` on the full path starts the reveal. a sample or
-  return from a terminal never starts it. time since `u` counts in frames of
-  1/15 s. a gold chomper crosses every gauge from its last cell at two frames
-  per cell, `◕` then `●`. wholly spent cells ahead of it are quiet `╍`, except
-  for a stem. cells behind it are settled. it holds `◕` for both frames on the
-  first wholly spent cell and then leaves. a gauge without a wholly spent cell
+- The weekly gauge has 24 cells. General 7d left fills `round(left × 48 / 100)`
+  half cells, at least 1 above 0 and at most 47 below 100: heavy `━`, `╾` where
+  it ends mid-cell, light `─` for spent. The plain path fills
+  `round(left × 24 / 100)` whole cells, at least 1 above 0 and at most 23 below
+  100, heavy as `═`. The weekly reset is the general window's, else Fable's.
+  While it is ahead, its stem sits in cell `clamp(⌈time left × 24⌉ − 1, 0, 23)`,
+  time left being the share of a seven-day window still to run: `┷` on heavy,
+  `┵` on the half cell, `┴` on light, `╧` on plain heavy. An unknown general
+  amount leaves a blank track with its stem.
+- Fable shares the weekly gauge on half scale: `round(fable × 12 / 100)` cells,
+  at least 1 above 0 and at most 11 below 100, so a full allowance reaches the
+  midpoint. The half scale reflects the included Fable allowance on eligible
+  plans ([Anthropic's plan terms](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan)).
+  A thick gold `🬋` covers those of its cells the general stroke touches, or all of them
+  when the general amount is unknown: Fable the general allowance can still
+  fund. A dashed gold `╌` continues beyond: Fable it cannot. A stem cell keeps
+  the general gauge's stem glyph in ink. Other cells under Fable take Fable's
+  fade; the rest take the general window's.
+- Countdowns round down to whole minutes and show the two largest units:
+  `2d 4h`, `3h 12m`, `41m`, `<1m`. A passed deadline shows its age: `<1m ago`,
+  `12m ago`, `3h ago`, `2d ago`, `5w ago`, else the year and month. A countdown
+  wider than seven cells is cut. The weekly column prints one countdown, the
+  weekly reset's. Countdowns are quiet. One turns ink when its period's general
+  window is at 0% and neither that window nor the countdown's source has faded.
+- `checking` and `unavailable` print as italic muted words at column 13, the
+  rest of the row blank. A profile with neither a state nor a window prints a
+  quiet `—` there. The selected row's profile is bold. With no profile the band
+  is `usage` and the declaration state at column 13.
+- The collapsed rule carries `7d quota left` and every profile's general weekly
+  percentage when it fits, else the selected profile as `name 7d 72% left`. A
+  row without a 7d amount reads `name —`, or `name 7d —` alone, and a state
+  keeps its word. A faded window's item is quiet.
+- The band redraws when a sample changes a drawn value and when the clock
+  changes a countdown, a stem's cell, an age or a fade. Nothing else moves in it
+  but the reveal.
+- Showing the band with `u` on the full path starts the reveal. A sample or a
+  return from a terminal never starts it. Time since `u` counts in frames of
+  1/15 s. A gold chomper crosses each gauge with a known general amount from its
+  last cell at two frames per cell, `◕` then `●`. Wholly spent cells ahead of it
+  are quiet `╍`, except a stem; dashed Fable cells count as spent, thick ones
+  never do. Cells behind it are settled. It holds `◕` for both frames on the
+  first wholly spent cell and then leaves. A gauge without a wholly spent cell
   stays settled throughout.
-- every other gauge cell keeps its settled glyph. if the discs cover the only
-  visible stems, the time legend disappears until a stem is visible again.
-  the frame depends only on elapsed time and the current samples. a new profile
+- The frame depends only on elapsed time and the current samples. A new profile
   joins at the current position, and a changed number can add or remove a
-  chomper. an exhausted gauge settles at frame 32. the reveal's own tick chain
-  ends at frame 33. toggling the band or entering a terminal advances its
-  generation and retires any outstanding tick.
+  chomper. An exhausted gauge settles at frame 48 (3.2 s); the reveal's own
+  tick chain ends at frame 49. Toggling the band or entering a terminal
+  advances its generation and retires any outstanding tick.
 
 ### Desktop errors
 
@@ -1602,27 +1619,37 @@ for the palette.
   its question and effect. a tight question shortens both names independently
   to keep the session and host visible. foot caps can clip the end of the key map
   when notices or the usage band crowd the body.
-- the usage band takes body lines while it shows. at 80×24 with four profiles
-  the header and main rows take five lines.
-  taller bands leave less room for an open fold. showing it can scroll the table.
-  hiding it does not scroll back. profiles past its cap show nowhere while it
-  shows, the selected row's own among them. names sharing their first ten cells
-  can read alike. `u` cannot hide the band from an editor, a draft or the
-  terminal chooser. on the table, `q` quits with it shown. opening it uses
-  the last known readings. claude's cache can predate the last gateway poll.
-  the countdown displays whole minutes. `40m` can mean 40 m 59 s. the all-profiles
-  rule is six cells longer and gives way sooner. the two main gauge slots fit
-  in 78 cells. the selected profile's bold is its only link to the table and vanishes
-  under `NO_COLOR`.
-- the stem sets quota left against time left, an even-spending norm for work
-  that comes in bursts: a fresh window reads behind after one burst. it
-  resolves 6.25 points and states no rate or forecast, though the eye will
-  read one.
-- the full-path reveal repaints fifteen times a second for 2.2 s. the font
-  supplies its discs. another font may draw `◕` and `●` larger, smaller or not
-  at all. in MesloLGS NF their sizes differ, so the chew can read as a pulse.
-  its look in ghostty is unrun. the design language's §1.4, §1.6, §12, §14,
-  §15 and gold's row stand as written against it.
+- The usage band takes body lines while it shows. At 80×24 with four profiles
+  the header and rows take five lines. Taller bands leave less room for an
+  open fold. Showing it can scroll the table; hiding it does not scroll back.
+  Profiles past its cap show nowhere while it shows, the selected row's own
+  among them. Names sharing their first ten cells can read alike. `u` cannot
+  hide the band from an editor, a draft or the terminal chooser. On the table,
+  `q` quits with it shown. Opening it uses the last known readings; Claude's
+  cache can predate the last gateway poll. The countdown displays whole
+  minutes, so `40m` can mean 40 m 59 s. The all-profiles rule is longer than
+  the selected form and gives way first. With the Fable column the grid fills
+  all 78 cells, so a wider column needs a new layout. The selected profile's
+  bold is its only link to the table, and it vanishes under `NO_COLOR` with
+  every fade.
+- Staleness is only a fade: under `NO_COLOR` a stale or lapsed reading looks
+  current, though a lapsed one still shows its age. While a reading is kept, a
+  failed usage read shows only as that fade for Codex; a kept Claude reading
+  shows no sign of it.
+- Fable's own reset prints only when general has none, so a diverging one is
+  hidden.
+- The stem sets quota left against time left, an even-spending norm for work
+  that comes in bursts: a fresh window reads behind after one burst. It
+  resolves about 4.2 points and states no rate or forecast, though the eye will
+  read one. The 5h window has no stem.
+- `🬋` is a sextant that Ghostty draws itself; a terminal without sextant
+  support, such as xterm.js with most fonts, can draw a box. Thick Fable cells follow the cells the
+  general stroke touches, so a half cell of general counts as fundable.
+- The full-path reveal repaints fifteen times a second for 3.27 s. The font
+  supplies its discs. Another font may draw `◕` and `●` larger, smaller or not
+  at all. In MesloLGS NF their sizes differ, so the chew can read as a pulse.
+  The design language's §1.4, §1.6, §12, §14, §15 and gold's row stand as
+  written against it.
 - one screen read costs a direct peer call and a bounded tmux capture, on a key.
   a retained idle tail can consist mostly of the agent's composer. usage reads
   each minute while the browser has the screen.
@@ -1644,10 +1671,10 @@ for the palette.
   device query can delay first attach by one second. a later reply can reach
   an attached session. the browser samples the theme once, so theme changes need
   restart. on the full path the pigments are fixed by the design language.
-- the plain path keeps faint and bright yellow. faint varies by terminal and
-  vanishes under mosh. bright yellow can be weak on light themes. `▌`, `▜`,
-  `▛`, `←`, `→`, `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧` and `●`
-  have ambiguous east-asian width and can wrap a frame.
+- The plain path keeps faint and bright yellow. Faint varies by terminal and
+  vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `←`, `→`,
+  `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧` and `●` have ambiguous
+  East Asian Width and can wrap a frame.
 - browser help points to the live key map. visits still join the bounded hub
   acknowledgement before returning the tty. the
   [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
@@ -1668,6 +1695,13 @@ for the palette.
 - usage is a band, not a fold: quota is evidence one keeps in view while
   working, and a fold is the one fold open, takes the keys and locks the
   table. the band is the rule's quota opened out, so it hangs under the rule.
+- The band is a fixed grid. A column is one quantity and a missing window is
+  blank, so providers differ only in which cells are empty. A reset belongs to
+  its period: Fable's weekly reset has matched the general one, so it prints
+  once.
+- Only the week has a gauge. A 5h percentage measures a different allowance
+  from the week's, so a shared track would invite a comparison it cannot
+  support, and a five-hour window is spent in bursts rather than rationed.
 - Escape never quits because Codex and Claude train a reflexive escape, often
   right after `ctrl-] d`.
 - Styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision

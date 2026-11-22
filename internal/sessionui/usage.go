@@ -3,10 +3,8 @@ package sessionui
 import (
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -86,15 +84,6 @@ func (m *model) acceptUsage(message usageMsg) tea.Cmd {
 			}
 			profiles[profileIndex] = value
 		}
-		// Older gateways declare Claude in inventory but omit it from native
-		// usage. Its declaration still has a completed, unavailable reading.
-		for _, declared := range m.peers[index].Profiles {
-			if declared.Provider == "Claude" && !slices.ContainsFunc(profiles, func(value usageProfile) bool {
-				return value.profile.Key == declared.Key
-			}) {
-				profiles = append(profiles, usageProfile{profile: fleetclient.ProfileUsage{Profile: declared, ReadState: "unavailable"}})
-			}
-		}
 		peer.profiles = profiles
 	}
 	if m.usageLane.trailing {
@@ -138,125 +127,70 @@ func (m *model) reconcileUsageProfiles(index int, received fleetclient.Peer) boo
 
 const usageStaleAfter = time.Hour
 
-type usageText struct {
-	fiveHour, sevenDay, fableSevenDay *windowText
-	stale                             bool
+// usageRow is one profile at m.now: the one contract between provider
+// selection and drawing.
+type usageRow struct {
+	profile           fleetclient.Profile
+	state             string       // "", "checking", "unavailable"; set only when no window is
+	week, fable, five *quotaWindow // nil: no such window
 }
 
-// left is the printed remainder and share the part of the window's time still
-// to run. Each is -1 when it has no mark. A past reset keeps its text.
-type windowText struct {
-	remaining, resetTime string
-	left                 int
-	share                float64
-	expired              bool
+// quotaWindow is a window as the band draws it.
+type quotaWindow struct {
+	left     int            // printed percent left; -1 unknown
+	estimate bool           // read from a terminal: printed with ~
+	until    *time.Duration // to its reset; ≤ 0 passed; nil: none
+	faded    bool
 }
 
-func unknownWindowText() windowText { return windowText{remaining: "—", left: -1, share: -1} }
-
-// resetWhen includes the direction when a date is shown in running text.
-func (w windowText) resetWhen() string {
-	if w.share >= 0 {
-		return "in " + w.resetTime
+func (w quotaWindow) percent() string {
+	switch {
+	case w.left < 0:
+		return "—"
+	case w.estimate:
+		return "~" + strconv.Itoa(w.left) + "%"
+	default:
+		return strconv.Itoa(w.left) + "%"
 	}
-	return w.resetTime
 }
 
-func terminalWindowText(left int, span, until time.Duration) *windowText {
-	text := usageWindowText(left, span, until)
-	if left >= 0 {
-		text.remaining = "~" + text.remaining
+func (row usageRow) windows() (some, unfaded bool) {
+	for _, window := range []*quotaWindow{row.week, row.fable, row.five} {
+		if window != nil {
+			some, unfaded = true, unfaded || !window.faded
+		}
 	}
-	return text
+	return some, unfaded
 }
 
-func usagePresentation(profile usageProfile, hostFailed bool, now time.Time) usageText {
-	text := usageText{}
-	report := profile.profile.Report
-	if report == nil {
-		return text
+func (row usageRow) weeklyResetSource() *quotaWindow {
+	if row.week != nil && row.week.until != nil {
+		return row.week
 	}
-	elapsed := max(time.Duration(0), now.Sub(profile.receivedAt))
-	age := profile.observedAt.Sub(report.ReportedAt) + elapsed
-	text.stale = hostFailed || profile.profile.ReadState == "unavailable" || age >= usageStaleAfter
-	text.fiveHour = nativeWindowText(report.FiveHour, 5*time.Hour, profile.observedAt, elapsed)
-	text.sevenDay = nativeWindowText(report.SevenDay, 7*24*time.Hour, profile.observedAt, elapsed)
-	return text
+	if row.fable != nil && row.fable.until != nil {
+		return row.fable
+	}
+	return nil
+}
+
+// A used percent can exceed 100; left saturates at 0.
+func percentLeft(used float64) int {
+	return 100 - int(min(100, used))
 }
 func usageWindowAvailable(window *api.QuotaWindow, observedAt time.Time, elapsed time.Duration) bool {
 	return window != nil && (window.ResetsAt == nil || window.ResetsAt.Sub(observedAt) > elapsed)
 }
-func nativeWindowText(window *api.QuotaWindow, span time.Duration, observedAt time.Time, elapsed time.Duration) *windowText {
-	if window == nil {
-		return nil
-	}
-	if !usageWindowAvailable(window, observedAt, elapsed) {
-		text := unknownWindowText()
-		text.expired = true
-		return &text
-	}
-	var until time.Duration
-	if window.ResetsAt != nil {
-		until = window.ResetsAt.Sub(observedAt) - elapsed
-	}
-	return usageWindowText(int(max(0, 100-window.UsedPercent)), span, until)
-}
-
-func usageWindowText(left int, span, until time.Duration) *windowText {
-	text := unknownWindowText()
-	if left >= 0 {
-		text.left = left
-		text.remaining = strconv.Itoa(left) + "%"
-	}
-	if until > 0 {
-		text.share = float64(until) / float64(span)
-		// Whole minutes still to run, in the two largest units.
-		switch minutes := int(until / time.Minute); {
-		case minutes >= 24*60:
-			text.resetTime = fmt.Sprintf("%dd %dh", minutes/(24*60), minutes/60%24)
-		case minutes >= 60:
-			text.resetTime = fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
-		case minutes > 0:
-			text.resetTime = strconv.Itoa(minutes) + "m"
-		default:
-			text.resetTime = "<1m"
-		}
-	}
-	return &text
-}
-
-// A row is a presentation projection, never another retained observation.
-type usageRow struct {
-	profile    fleetclient.Profile
-	machine    fleetclient.Machine
-	native     *usageProfile
-	terminal   *fleetclient.Session
-	receivedAt time.Time
-	text       usageText
-	state      string
-	failed     bool
-}
-
-func (row usageRow) windowPresentation(window *windowText) (windowText, string) {
-	switch {
-	case row.state != "" || window == nil:
-		return unknownWindowText(), row.state
-	case window.expired:
-		return unknownWindowText(), "awaiting update"
-	case row.text.stale:
-		return unknownWindowText(), "stale"
-	}
-	return *window, ""
-}
-
 func usageLater(receivedAt time.Time, machine string, previous time.Time, previousMachine string) bool {
 	return receivedAt.After(previous) || receivedAt.Equal(previous) && machine < previousMachine
 }
-func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow {
-	row := usageRow{profile: profile, state: "checking"}
-	var expired *usageProfile
-	var expiredMachine fleetclient.Machine
-	expiredFailed, unavailable, absent := false, false, false
+
+// nativeUsage projects one native report across hosts: one with a window still
+// ahead, fresh before stale, then the later receipt; else the latest whose
+// windows have all passed. A host whose access was rejected offers none.
+func (m *model) nativeUsage(profile fleetclient.Profile) usageRow {
+	var chosen, expired *usageProfile
+	var chosenMachine, expiredMachine string
+	chosenStale, unavailable, absent := false, false, false
 	for index, peer := range m.usagePeers {
 		relevant := peer.profiles == nil
 		for _, value := range peer.profiles {
@@ -269,56 +203,63 @@ func (m *model) nativeUsage(profile fleetclient.Profile, now time.Time) usageRow
 			unavailable = true
 			continue
 		}
-		if peer.failure != nil {
-			unavailable = true
-		}
+		failed := peer.failure != nil
+		unavailable = unavailable || failed
 		for index := range peer.profiles {
 			value := &peer.profiles[index]
 			if value.profile.Key != profile.Key || value.profile.Provider != profile.Provider {
 				continue
 			}
-			if value.profile.ReadState == "unavailable" {
-				unavailable = true
-			}
+			unavailable = unavailable || value.profile.ReadState == "unavailable"
 			report := value.profile.Report
 			if report == nil {
 				absent = absent || !value.receivedAt.IsZero()
 				continue
 			}
-			elapsed := max(time.Duration(0), now.Sub(value.receivedAt))
+			elapsed := max(0, m.now.Sub(value.receivedAt))
 			if !usageWindowAvailable(report.FiveHour, value.observedAt, elapsed) && !usageWindowAvailable(report.SevenDay, value.observedAt, elapsed) {
 				absent = true
-				if (report.FiveHour != nil || report.SevenDay != nil) && (expired == nil || usageLater(value.receivedAt, peer.machine.Handle, expired.receivedAt, expiredMachine.Handle)) {
-					expired, expiredMachine, expiredFailed = value, peer.machine, peer.failure != nil
+				if (report.FiveHour != nil || report.SevenDay != nil) && (expired == nil || usageLater(value.receivedAt, peer.machine.Handle, expired.receivedAt, expiredMachine)) {
+					expired, expiredMachine = value, peer.machine.Handle
 				}
 				continue
 			}
-			fresh := !usagePresentation(*value, peer.failure != nil, now).stale
-			previousFresh := row.native != nil && !usagePresentation(*row.native, row.failed, now).stale
-			if row.native == nil || fresh && !previousFresh || fresh == previousFresh && usageLater(value.receivedAt, peer.machine.Handle, row.native.receivedAt, row.machine.Handle) {
-				row.native, row.machine, row.failed = value, peer.machine, peer.failure != nil
+			stale := failed || value.profile.ReadState == "unavailable" || value.observedAt.Sub(report.ReportedAt)+elapsed >= usageStaleAfter
+			if chosen == nil || !stale && chosenStale || stale == chosenStale && usageLater(value.receivedAt, peer.machine.Handle, chosen.receivedAt, chosenMachine) {
+				chosen, chosenMachine, chosenStale = value, peer.machine.Handle, stale
 			}
 		}
 	}
-	if row.native != nil {
-		row.text = usagePresentation(*row.native, row.failed, now)
-		row.state = ""
-		return row
+	if chosen == nil {
+		chosen = expired
 	}
-	if expired != nil {
-		row.native, row.machine, row.failed = expired, expiredMachine, expiredFailed
-		row.text = usagePresentation(*expired, expiredFailed, now)
-		row.state = "" // The known windows render their specific reset diagnosis.
+	switch {
+	case chosen != nil:
+		elapsed := max(0, m.now.Sub(chosen.receivedAt))
+		window := func(quota *api.QuotaWindow) *quotaWindow {
+			if quota == nil {
+				return nil
+			}
+			projected := &quotaWindow{left: percentLeft(quota.UsedPercent), faded: chosenStale}
+			if quota.ResetsAt != nil {
+				until := quota.ResetsAt.Sub(chosen.observedAt.Add(elapsed))
+				projected.until, projected.faded = &until, chosenStale || until <= 0
+			}
+			return projected
+		}
+		return usageRow{profile: profile, week: window(chosen.profile.Report.SevenDay), five: window(chosen.profile.Report.FiveHour)}
+	case unavailable:
+		return usageRow{profile: profile, state: "unavailable"}
+	case absent:
+		return usageRow{profile: profile}
+	default:
+		return usageRow{profile: profile, state: "checking"}
 	}
-	if unavailable {
-		row.state = "unavailable"
-	} else if expired == nil && absent {
-		row.state = ""
-	}
-	return row
 }
-func (m *model) codexTerminalUsage(profile fleetclient.Profile, now time.Time) usageRow {
-	row := usageRow{profile: profile, state: "checking"}
+func (m *model) codexTerminalUsage(profile fleetclient.Profile) usageRow {
+	var terminal *fleetclient.Session
+	var machine string
+	var receivedAt time.Time
 	unavailable, absent := false, false
 	for _, peer := range m.peers {
 		declared := false
@@ -361,27 +302,31 @@ func (m *model) codexTerminalUsage(profile fleetclient.Profile, now time.Time) u
 				candidate, count = session, known
 			}
 		}
-		if candidate != nil && (row.terminal == nil || usageLater(peer.ReceivedAt, peer.Machine, row.receivedAt, row.machine.Handle)) {
-			row.terminal, row.machine, row.receivedAt = candidate, fleetclient.Machine{Label: peer.Label, Handle: peer.Machine}, peer.ReceivedAt
+		if candidate != nil && (terminal == nil || usageLater(peer.ReceivedAt, peer.Machine, receivedAt, machine)) {
+			terminal, machine, receivedAt = candidate, peer.Machine, peer.ReceivedAt
 		}
 	}
-	if row.terminal != nil {
-		row.state = ""
-		row.text.stale = max(time.Duration(0), now.Sub(row.receivedAt)) >= usageStaleAfter
-		if value := row.terminal.TerminalUsage.FiveHour; value != nil {
-			row.text.fiveHour = terminalWindowText(100-int(value.UsedPercent), 5*time.Hour, 0)
+	switch {
+	case terminal != nil:
+		faded := m.now.Sub(receivedAt) >= usageStaleAfter
+		window := func(quota *api.QuotaWindow) *quotaWindow {
+			if quota == nil {
+				return nil
+			}
+			return &quotaWindow{left: percentLeft(quota.UsedPercent), estimate: true, faded: faded}
 		}
-		if value := row.terminal.TerminalUsage.SevenDay; value != nil {
-			row.text.sevenDay = terminalWindowText(100-int(value.UsedPercent), 7*24*time.Hour, 0)
-		}
-	} else if unavailable {
-		row.state = "unavailable"
-	} else if absent {
-		row.state = ""
+		return usageRow{profile: profile, week: window(terminal.TerminalUsage.SevenDay), five: window(terminal.TerminalUsage.FiveHour)}
+	case unavailable:
+		return usageRow{profile: profile, state: "unavailable"}
+	case absent:
+		return usageRow{profile: profile}
+	default:
+		return usageRow{profile: profile, state: "checking"}
 	}
-	return row
 }
-func (m *model) usageRows(now time.Time) []usageRow {
+
+// Only claude can read fable.
+func (m *model) usageRows() (rows []usageRow, fableColumn bool) {
 	profiles := []fleetclient.Profile{}
 	add := func(profile fleetclient.Profile) {
 		for _, present := range profiles {
@@ -404,30 +349,33 @@ func (m *model) usageRows(now time.Time) []usageRow {
 	for _, known := range m.claudeUsage {
 		add(known.Profile)
 	}
-	rows := make([]usageRow, len(profiles))
+	rows = make([]usageRow, len(profiles))
 	for index, profile := range profiles {
 		switch profile.Provider {
 		case "Codex":
-			native := m.nativeUsage(profile, now)
-			terminal := m.codexTerminalUsage(profile, now)
-			if native.native != nil && !native.text.stale && (native.text.fiveHour != nil && !native.text.fiveHour.expired || native.text.sevenDay != nil && !native.text.sevenDay.expired) {
+			native, terminal := m.nativeUsage(profile), m.codexTerminalUsage(profile)
+			nativeSome, nativeUnfaded := native.windows()
+			terminalSome, terminalUnfaded := terminal.windows()
+			switch {
+			case nativeUnfaded:
 				rows[index] = native
-			} else if terminal.terminal != nil && !terminal.text.stale {
+			case terminalUnfaded:
 				rows[index] = terminal
-			} else if native.native != nil {
+			case nativeSome:
 				rows[index] = native
-			} else if terminal.terminal != nil {
+			case terminalSome:
 				rows[index] = terminal
-			} else {
+			default:
 				rows[index] = native
 			}
 		case "Claude":
-			rows[index] = m.claudeUsageRow(profile, now)
+			rows[index] = m.claudeUsageRow(profile)
+			fableColumn = true
 		default:
 			rows[index] = usageRow{profile: profile}
 		}
 	}
-	return rows
+	return rows, fableColumn
 }
 func (m *model) usageDeclarationState() string {
 	full, completed, failed, pending := true, false, false, false
@@ -458,63 +406,97 @@ func (m *model) selectedProfile() string {
 	return ""
 }
 
-func (m *model) weeklyQuota(room int) string {
-	if room <= 0 {
-		return ""
-	}
-	rows := m.usageRows(m.now)
-	if len(rows) == 0 {
-		state := m.usageDeclarationState()
-		if ansi.StringWidth(state) <= room {
-			return state
-		}
-		return ""
-	}
-	selectedProfile := m.selectedProfile()
-	var items []string
-	selected := ""
-	for _, row := range rows {
-		text, status := row.windowPresentation(row.text.sevenDay)
-		profile := attention.SingleLine(row.profile.Key)
-		item := profile + " " + text.remaining
-		if status != "" {
-			item += " " + status
-		}
-		one := profile + " 7d " + text.remaining
-		switch {
-		case status != "":
-			one = item
-		case text.left >= 0 || row.profile.Provider != "Claude":
-			one += " left"
-		}
-		items = append(items, item)
-		if row.profile.Key == selectedProfile {
-			selected = one
+func countdown(until time.Duration, now time.Time) string {
+	if until > 0 {
+		switch minutes := int(until / time.Minute); {
+		case minutes >= 24*60:
+			return fmt.Sprintf("%dd %dh", minutes/(24*60), minutes/60%24)
+		case minutes >= 60:
+			return fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
+		case minutes > 0:
+			return strconv.Itoa(minutes) + "m"
+		default:
+			return "<1m"
 		}
 	}
-	all := "7d quota left  " + strings.Join(items, "  ")
-	if ansi.StringWidth(all) <= room {
-		return all
+	switch {
+	case until > -time.Minute:
+		return "<1m ago"
+	case until > -time.Hour:
+		return fmt.Sprintf("%dm ago", -until/time.Minute)
+	case until > -24*time.Hour:
+		return fmt.Sprintf("%dh ago", -until/time.Hour)
+	case until > -7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", -until/(24*time.Hour))
+	case until > -365*24*time.Hour:
+		return fmt.Sprintf("%dw ago", -until/(7*24*time.Hour))
+	default:
+		return now.Add(until).UTC().Format("2006-01") // in UTC, as resets are reported
 	}
-	if ansi.StringWidth(selected) <= room {
-		return selected
-	}
-	return ""
 }
 
-// Fixed slot widths leave the full band 78 cells wide at the minimum terminal size.
+func (m *model) weeklyQuota(room int) line {
+	if room <= 0 {
+		return nil
+	}
+	rows, _ := m.usageRows()
+	if len(rows) == 0 {
+		if state := m.usageDeclarationState(); ansi.StringWidth(state) <= room {
+			return line{{text: state}}
+		}
+		return nil
+	}
+	selectedProfile := m.selectedProfile()
+	all := line{{text: "7d quota left"}}
+	width := ansi.StringWidth(all[0].text)
+	var selected span
+	for _, row := range rows {
+		profile, percent, role := attention.SingleLine(row.profile.Key), "—", inkRole
+		if row.week != nil {
+			percent = row.week.percent()
+			if row.week.faded {
+				role = quietRole
+			}
+		}
+		item, one := profile+" "+percent, profile+" 7d "+percent
+		switch {
+		case row.state != "":
+			item += " " + row.state
+			one = item
+		case row.week != nil && row.week.left >= 0:
+			one += " left"
+		}
+		all = append(all, span{text: "  "}, span{text: item, role: role})
+		width += 2 + ansi.StringWidth(item)
+		if row.profile.Key == selectedProfile {
+			selected = span{text: one, role: role}
+		}
+	}
+	if width <= room {
+		return all
+	}
+	if selected.text != "" && ansi.StringWidth(selected.text) <= room {
+		return line{selected}
+	}
+	return nil
+}
+
+// The band is one grid of these widths, 78 cells at every terminal width;
+// without a claude profile the fable column and its gap are absent.
 const (
-	usageName  = 11
-	usageGauge = 16
-	usageSlot  = usageGauge + 1 + 5 + 2 + 7
+	usageName      = 11
+	usageGauge     = 24
+	usagePercent   = 5
+	usageFable     = 7
+	usageCountdown = 7
 )
 
 func (m *model) usageBand(limit int) []line {
 	if limit < 3 {
 		return nil
 	}
-	rows := m.usageRows(m.now)
-	head := line{{text: cell("usage", usageName+2), role: quietRole, bold: true}}
+	rows, fableColumn := m.usageRows()
+	head := line{{text: cell("usage", usageName) + "  ", role: quietRole, bold: true}}
 	if len(rows) == 0 {
 		return []line{append(head, span{text: m.usageDeclarationState(), role: mutedRole, italic: true})}
 	}
@@ -523,171 +505,146 @@ func (m *model) usageBand(limit int) []line {
 		cut = len(rows) - (limit - 2)
 		rows = rows[:limit-2]
 	}
+	heavy := "━"
+	if m.ground.raise == nil {
+		heavy = "═"
+	}
+	// Titles align as their columns' cells do; a sample is one cell.
+	head = append(head, span{text: cell("", usageGauge)}, span{text: " "},
+		span{text: fmt.Sprintf("%*s", usagePercent-len(" 7d"), heavy)}, span{text: " 7d", role: quietRole}, span{text: "  "})
+	if fableColumn {
+		head = append(head, span{text: fmt.Sprintf("%*s", usageFable-len(" fable"), "🬋"), role: goldRole}, span{text: " fable", role: quietRole}, span{text: "  "})
+	}
+	head = append(head, span{text: "┴"}, span{text: cell(" reset", usageCountdown-1), role: quietRole}, span{text: "   "},
+		span{text: fmt.Sprintf("%*s", usagePercent, "5h"), role: quietRole}, span{text: "  "}, span{text: cell("reset", usageCountdown), role: quietRole})
 	lines := []line{head}
 	selected := m.selectedProfile()
 	frame := -1
 	if !m.reveal.IsZero() {
 		frame = int(m.now.Sub(m.reveal) / revealFrame)
 	}
-	five, heavy, timed := "", "", false
-	showFableKey := false
-	extra := limit - 1 - len(rows)
 	for _, row := range rows {
 		name := span{text: cell(row.profile.Key, usageName) + "  ", bold: row.profile.Key == selected}
-		fableLeft := -1
-		detail := ""
-		if fable := row.text.fableSevenDay; fable != nil {
-			fableLeft = fable.left
-			showFableKey = showFableKey || fableLeft >= 0
-			detail = "fable 7d " + fable.remaining
-			if fable.resetTime != "" {
-				detail += "  " + fable.resetWhen()
+		switch some, unfaded := row.windows(); {
+		case row.state != "":
+			lines = append(lines, line{name, {text: row.state, role: mutedRole, italic: true}})
+		case !some:
+			lines = append(lines, line{name, {text: "—", role: quietRole}})
+		default:
+			if !unfaded {
+				name.role = quietRole
 			}
-		}
-		entry := append(line{name}, m.usageWindow(row, row.text.sevenDay, true, fableLeft, frame)...)
-		entry = append(entry, span{text: "   "})
-		if detail != "" && row.text.fiveHour == nil && ansi.StringWidth(detail) <= usageSlot {
-			entry = append(entry, span{text: detail})
-			detail = ""
-		} else {
-			entry = append(entry, m.usageWindow(row, row.text.fiveHour, false, -1, frame)...)
-		}
-		if detail != "" && usageName+2+2*usageSlot+3+3+ansi.StringWidth(detail) <= m.width-2 {
-			entry = append(entry, span{text: "   " + detail})
-			detail = ""
-		}
-		lines = append(lines, entry)
-		if row.text.fiveHour != nil {
-			five = "5h"
-		}
-		if detail != "" && cut == 0 && extra > 0 {
-			lines = append(lines, line{{text: "  " + detail}})
-			extra--
-		}
-	}
-	for _, entry := range lines[1:] {
-		// A stem can replace the only heavy mark. Key the marks that survived
-		// in the drawn slots, excluding the operator's profile name.
-		for _, part := range entry[1:] {
-			for _, mark := range part.text {
-				switch mark {
-				case '━', '╾':
-					heavy = "━"
-				case '═':
-					heavy = "═"
-				case '┷', '┵', '┴', '╧', '╋', '┫':
-					timed = true
-				}
+			entry := append(line{name}, m.weekGauge(row, frame)...)
+			entry = append(entry, span{text: " "}, percentCell(row.week, usagePercent), span{text: "  "})
+			if fableColumn {
+				entry = append(entry, percentCell(row.fable, usageFable), span{text: "  "})
 			}
+			entry = append(entry, m.countdownCell(row.weeklyResetSource(), row.week), span{text: "   "},
+				percentCell(row.five, usagePercent), span{text: "  "}, m.countdownCell(row.five, row.five))
+			lines = append(lines, entry)
 		}
 	}
 	if cut > 0 {
 		lines = append(lines, line{{text: fmt.Sprintf("… %d more profiles in a taller window", cut), role: quietRole}})
 	}
-	var legend line
-	if heavy != "" {
-		legend = line{{text: heavy}, {text: " quota left", role: quietRole}}
-	}
-	if timed {
-		legend = append(legend, span{text: "  ┴"}, span{text: " time left", role: quietRole})
-	}
-	room := usageSlot
-	for _, part := range legend {
-		room -= ansi.StringWidth(part.text)
-	}
-	if showFableKey {
-		head = append(head, span{text: "7d  ", role: quietRole}, span{text: "▬", role: goldRole}, span{text: cell(" fable (½ scale)", usageSlot+3-5), role: quietRole})
-	} else {
-		head = append(head, span{text: cell("7d", usageSlot+3), role: quietRole})
-	}
-	head = append(head, span{text: cell(five, room), role: quietRole})
-	lines[0] = append(head, legend...)
 	return lines
 }
 
-func (m *model) usageWindow(row usageRow, window *windowText, weekly bool, fableLeft, frame int) line {
-	text, word := row.windowPresentation(window)
-	if text.left < 0 && fableLeft < 0 {
-		if !weekly && (window == nil || row.state != "") {
-			word = ""
-		} else if text.resetTime != "" {
-			return line{{text: cell("—  reset "+text.resetWhen(), usageSlot), role: quietRole}}
-		} else if word == "" {
-			return line{{text: cell("—", usageSlot), role: quietRole}}
-		}
-		return line{{text: cell(word, usageSlot), role: mutedRole, italic: true}}
+func percentCell(window *quotaWindow, width int) span {
+	if window == nil {
+		return span{text: cell("", width)}
 	}
-
-	gauge := m.quotaGauge(text.left, text.share, fableLeft, frame)
-	return append(gauge, span{text: fmt.Sprintf(" %5s", text.remaining)}, span{text: "  " + cell(text.resetTime, 7), role: quietRole})
+	role := inkRole
+	if window.faded || window.left < 0 {
+		role = quietRole
+	}
+	return span{text: fmt.Sprintf("%*s", width, window.percent()), role: role}
 }
 
-func (m *model) quotaGauge(left int, share float64, fableLeft, frame int) line {
-	// Round to the nearest half cell (whole on plain), reserving empty and
-	// full for exactly 0 and 100 percent.
-	scale := 2 * usageGauge
-	heavy, heavyStem := "━", "┷"
-	if m.ground.raise == nil {
-		scale, heavy, heavyStem = usageGauge, "═", "╧"
+// source may be fable's window; only the period's general window can ink it.
+func (m *model) countdownCell(source, general *quotaWindow) span {
+	text, role := "", quietRole
+	if source != nil && source.until != nil {
+		text = countdown(*source.until, m.now)
+		if general != nil && general.left == 0 && !general.faded && !source.faded {
+			role = inkRole
+		}
 	}
-	units := (max(0, left)*scale + 50) / 100
+	return span{text: cell(text, usageCountdown), role: role}
+}
+
+// Empty and full are reserved for exactly 0 and 100 percent.
+func scaled(left, cells int) int {
+	n := (left*cells + 50) / 100
 	if left > 0 && left < 100 {
-		units = min(max(units, 1), scale-1)
+		n = min(max(n, 1), cells-1)
 	}
-	halves := units * (2 * usageGauge / scale)
-	// Fable has its own zero and full values on the first half of this track.
-	fableCells := (max(0, fableLeft)*(usageGauge/2) + 50) / 100
-	if fableLeft > 0 && fableLeft < 100 {
-		fableCells = min(max(1, fableCells), usageGauge/2-1)
+	return n
+}
+
+func (m *model) weekGauge(row usageRow, frame int) line {
+	heavy, heavyStem, scale := "━", "┷", 2*usageGauge
+	if m.ground.raise == nil {
+		heavy, heavyStem, scale = "═", "╧", usageGauge
+	}
+	known := row.week != nil && row.week.left >= 0
+	halves := 0
+	if known {
+		halves = scaled(row.week.left, scale) * 2 * usageGauge / scale
+	}
+	touched := (halves + 1) / 2
+	fableCells := 0
+	if row.fable != nil && row.fable.left >= 0 {
+		fableCells = scaled(row.fable.left, usageGauge/2)
 	}
 	stem := -1
-	if share >= 0 {
-		stem = min(max(0, int(math.Ceil(share*usageGauge))-1), usageGauge-1)
+	if reset := row.weeklyResetSource(); reset != nil && *reset.until > 0 {
+		// For until > 0, (until − 1) / cell is ⌈until / cell⌉ − 1.
+		stem = min(int((*reset.until-1)/(7*24*time.Hour/usageGauge)), usageGauge-1)
 	}
-	firstSpent, chomper := (halves+1)/2, -1
-	if frame >= 0 {
+	chomper := -1
+	if known && frame >= 0 {
 		chomper = usageGauge - 1 - frame/2
+	}
+	generalRole, fableRole := inkRole, goldRole
+	if row.week != nil && row.week.faded {
+		generalRole = quietRole
+	}
+	if row.fable != nil && row.fable.faded {
+		fableRole = quietRole
 	}
 	var gauge line
 	for index := range usageGauge {
-		glyph, stemGlyph, ink := "─", "┴", quietRole
-		if index < halves/2 {
-			glyph, stemGlyph, ink = heavy, heavyStem, inkRole
-		} else if index < firstSpent {
-			glyph, stemGlyph, ink = "╾", "┵", inkRole
-		}
-		// Inside the thicker overlay the pale cap marks a covered general
-		// endpoint, and the pale cross marks the general reset stem.
-		covered := index < fableCells
-		endpoint := firstSpent > 0 && firstSpent < fableCells && index == firstSpent-1
+		glyph, stemGlyph, role := "─", "┴", quietRole
 		switch {
-		case covered && index == stem && endpoint:
-			glyph, ink = "┫", inkRole
-		case covered && index == stem:
-			glyph, ink = "╋", inkRole
-		case covered && endpoint:
-			glyph, ink = "▕", inkRole
-		case covered:
-			glyph, ink = "▬", goldRole
-		case left >= 0 && index == chomper && index >= firstSpent:
-			glyph, ink = "◕", goldRole
-			if frame%2 == 1 && index > firstSpent {
+		case !known:
+			glyph = " "
+		case index < halves/2:
+			glyph, stemGlyph, role = heavy, heavyStem, generalRole
+		case index < touched:
+			glyph, stemGlyph, role = "╾", "┵", generalRole
+		}
+		if index < fableCells { // thick where general quota can fund fable's, dashed beyond
+			glyph, role = "╌", fableRole
+			if index < touched || !known {
+				glyph = "🬋"
+			}
+		}
+		switch {
+		case index == chomper && index >= touched:
+			glyph, role = "◕", goldRole
+			if frame%2 == 1 && index > touched {
 				glyph = "●"
 			}
 		case index == stem:
-			glyph, ink = stemGlyph, inkRole
-		case left < 0:
-			glyph = " "
-		case index >= firstSpent && index < chomper:
-			glyph = "╍"
+			glyph, role = stemGlyph, generalRole
+		case index >= touched && index < chomper:
+			glyph, role = "╍", quietRole
 		}
-		if covered && index == stem && fableCells <= 2 {
-			ink = goldRole // the stem and cap can occupy the entire short overlay
-		}
-		if last := len(gauge) - 1; last >= 0 && gauge[last].role == ink {
+		if last := len(gauge) - 1; last >= 0 && gauge[last].role == role {
 			gauge[last].text += glyph
 		} else {
-			gauge = append(gauge, span{text: glyph, role: ink})
+			gauge = append(gauge, span{text: glyph, role: role})
 		}
 	}
 	return gauge
