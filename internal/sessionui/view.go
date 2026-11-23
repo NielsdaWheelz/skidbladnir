@@ -49,6 +49,14 @@ type span struct {
 
 type line []span
 
+func (l line) width() int {
+	width := 0
+	for _, part := range l {
+		width += ansi.StringWidth(part.text)
+	}
+	return width
+}
+
 func (m *model) renderLine(l line) string {
 	var rendered strings.Builder
 	styles := [...]ansi.Style{plain, faint, muted, here, ember, moss, frost, wordmark}
@@ -300,10 +308,7 @@ func (m *model) noticeLines(width int) []line {
 
 func rule(caption string, quota line, width int) line {
 	var result line
-	room := width - ansi.StringWidth(caption)
-	for _, part := range quota {
-		room -= ansi.StringWidth(part.text)
-	}
+	room := width - ansi.StringWidth(caption) - quota.width()
 	edge := 1
 	if room >= 10 {
 		edge = 2

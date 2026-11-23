@@ -448,35 +448,34 @@ func (m *model) weeklyQuota(room int) line {
 	}
 	selectedProfile := m.selectedProfile()
 	all := line{{text: "7d quota left"}}
-	width := ansi.StringWidth(all[0].text)
-	var selected span
+	var selected line
 	for _, row := range rows {
-		profile, percent, role := attention.SingleLine(row.profile.Key), "—", inkRole
+		name, amount := span{text: attention.SingleLine(row.profile.Key)}, span{text: "—", role: quietRole}
 		if row.week != nil {
-			percent = row.week.percent()
+			amount = percentCell(row.week, 0)
 			if row.week.faded {
-				role = quietRole
+				name.role = quietRole
 			}
 		}
-		item, one := profile+" "+percent, profile+" 7d "+percent
+		item := line{name, {text: " "}, amount}
+		one := line{name, {text: " 7d ", role: name.role}, amount}
 		switch {
 		case row.state != "":
-			item += " " + row.state
+			item = append(item, span{text: " "}, span{text: row.state, role: mutedRole, italic: true})
 			one = item
 		case row.week != nil && row.week.left >= 0:
-			one += " left"
+			one = append(one, span{text: " left", role: name.role})
 		}
-		all = append(all, span{text: "  "}, span{text: item, role: role})
-		width += 2 + ansi.StringWidth(item)
+		all = append(append(all, span{text: "  "}), item...)
 		if row.profile.Key == selectedProfile {
-			selected = span{text: one, role: role}
+			selected = one
 		}
 	}
-	if width <= room {
+	if all.width() <= room {
 		return all
 	}
-	if selected.text != "" && ansi.StringWidth(selected.text) <= room {
-		return line{selected}
+	if selected != nil && selected.width() <= room {
+		return selected
 	}
 	return nil
 }

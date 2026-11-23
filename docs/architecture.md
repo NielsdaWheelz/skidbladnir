@@ -1559,7 +1559,8 @@ for the palette.
 - The collapsed rule carries `7d quota left` and every profile's general weekly
   percentage when it fits, else the selected profile as `name 7d 72% left`. A
   row without a 7d amount reads `name —`, or `name 7d —` alone, and a state
-  keeps its word. A faded window's item is quiet.
+  keeps its word. Its roles are the band's: an unknown `—` is quiet, a state's
+  word italic muted, and a faded week's item quiet.
 - The band redraws when a sample changes a drawn value and when the clock
   changes a countdown, a stem's cell, an age or a fade. Nothing else moves in it
   but the reveal.
