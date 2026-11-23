@@ -298,9 +298,12 @@ func (m *model) noticeLines(width int) []line {
 	return lines
 }
 
-func rule(caption, quota string, width int) line {
+func rule(caption string, quota line, width int) line {
 	var result line
-	room := width - ansi.StringWidth(caption) - ansi.StringWidth(quota)
+	room := width - ansi.StringWidth(caption)
+	for _, part := range quota {
+		room -= ansi.StringWidth(part.text)
+	}
 	edge := 1
 	if room >= 10 {
 		edge = 2
@@ -310,12 +313,14 @@ func rule(caption, quota string, width int) line {
 		result = append(result, span{text: end + " ", role: quietRole}, span{text: caption}, span{text: " "})
 		room -= edge + 2
 	}
-	if quota != "" {
+	if len(quota) > 0 {
 		room -= edge + 2
 	}
 	result = append(result, span{text: strings.Repeat("─", room), role: quietRole})
-	if quota != "" {
-		result = append(result, span{text: " "}, span{text: quota}, span{text: " " + end, role: quietRole})
+	if len(quota) > 0 {
+		result = append(result, span{text: " "})
+		result = append(result, quota...)
+		result = append(result, span{text: " " + end, role: quietRole})
 	}
 	return result
 }
