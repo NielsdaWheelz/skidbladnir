@@ -1205,7 +1205,7 @@ internal class SkidbladnirController(
         return machine.copy(notifications = machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
             val key = NotificationKey(SessionTarget(machine.machine.handle, session))
             key to NotificationPresentation(
-                ready = !unavailable && machine.canMutate && notificationView.presentsReady(key, session),
+                ready = !unavailable && notificationView.presentsReady(key, session),
                 unavailable = session.agent != null && unavailable,
             )
         })

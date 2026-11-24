@@ -706,7 +706,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 					}
 				}
 				// The cli keeps no notification store, so no row is ready.
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, provider, fleetview.ProjectStatus(row, entry.Available, false).Detail, fleetview.GroupHeading(group.Label), current.CWD)
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, provider, fleetview.ProjectStatus(row, true, false).State, fleetview.GroupHeading(group.Label), current.CWD)
 			}
 		}
 		if list.Partial {
@@ -789,7 +789,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			// info resolves a complete inventory, so its status is fresh; the cli
 			// keeps no notification store, so it is never ready.
 			view := fleetview.ProjectStatus(row, true, false)
-			fmt.Fprintln(stdout, "state: "+view.Detail)
+			fmt.Fprintln(stdout, "state: "+view.State)
 			if value.Diagnostics == nil {
 				fmt.Fprintln(stdout, "status reason: "+view.Reason)
 			}

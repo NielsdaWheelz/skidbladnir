@@ -21,7 +21,8 @@ var (
 	faint    = ansi.Style{}.Faint()
 	wordmark = ansi.Style{}.Reverse(true)
 	here     = ansi.Style{}.ForegroundColor(ansi.BrightYellow)
-	frost    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff})
+	frostInk = color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff}
+	frost    = ansi.Style{}.ForegroundColor(frostInk)
 	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
 	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
 	ember    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
@@ -41,10 +42,10 @@ const (
 )
 
 type span struct {
-	background   color.Color
-	text         string
-	role         role
-	bold, italic bool
+	background              color.Color
+	text                    string
+	role                    role
+	bold, italic, underline bool
 }
 
 type line []span
@@ -77,24 +78,40 @@ func (m *model) renderLine(l line) string {
 		if part.italic {
 			style = style.Italic(true)
 		}
+		if part.underline {
+			var ink color.Color = frostInk
+			if m.ground.raise != nil {
+				ink = m.ground.pigments[frostRole]
+			}
+			style = style.UnderlineStyle(ansi.UnderlineDouble).UnderlineColor(ink)
+		}
 		rendered.WriteString(style.Styled(part.text))
 	}
 	return rendered.String()
 }
 
-func statusRole(tone api.StatusTone) role {
-	switch tone {
-	case api.ToneMuted:
-		return mutedRole
-	case api.ToneWorking:
-		return frostRole
-	case api.ToneAttention:
-		return emberRole
-	case api.ToneReady:
-		return mossRole
-	default:
-		panic("invalid status tone")
+func signSpan(sign api.StatusSign) span {
+	switch sign {
+	case api.SignRequest:
+		return span{text: "?", role: emberRole, bold: true}
+	case api.SignError:
+		return span{text: "!", role: emberRole, bold: true}
+	case api.SignReady:
+		return span{text: "●", role: mossRole}
+	case api.SignInterrupted:
+		return span{text: "■", role: mutedRole}
+	case api.SignMenu:
+		return span{text: "≡", role: mutedRole}
+	case api.SignWorking:
+		return span{text: "▸", role: frostRole}
+	case api.SignIdle:
+		return span{text: "·", role: mutedRole}
+	case api.SignUnknown:
+		return span{text: "—", role: mutedRole}
+	case api.SignTerminal:
+		return span{text: "$", role: mutedRole}
 	}
+	panic("invalid status sign")
 }
 
 func (m *model) View() tea.View {
@@ -144,7 +161,11 @@ func (m *model) header() line {
 	for index, view := range m.viewOptions() {
 		switch view.kind {
 		case viewNeedsInput:
-			tabs = append(tabs, tab{fixed: "needs input"})
+			sign := span{text: " "}
+			if queue := m.queue(); len(queue) > 0 {
+				sign = signSpan(m.statusView(queue[0]).Sign)
+			}
+			tabs = append(tabs, tab{fixed: "needs input ", sign: sign})
 		case viewAll:
 			tabs = append(tabs, tab{fixed: "all"})
 		case viewGroup:
@@ -166,7 +187,10 @@ func (m *model) header() line {
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
 // label is an operator's group label and may.
-type tab struct{ fixed, label string }
+type tab struct {
+	fixed, label string
+	sign         span
+}
 
 // strip lays out tabs in at most room cells, for room ≥ 45. needs input and all
 // always show whole. group labels share one cap, the largest from 24 down to 7
@@ -179,7 +203,7 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 		if t.label != "" {
 			return min(ansi.StringWidth(t.label), limit)
 		}
-		return ansi.StringWidth(t.fixed)
+		return ansi.StringWidth(t.fixed) + ansi.StringWidth(t.sign.text)
 	}
 	marker := func(hidden int) int {
 		if hidden == 0 {
@@ -244,11 +268,19 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 		if t.label != "" {
 			text = ansi.Truncate(t.label, size, "…")
 		}
+		left, right := span{text: " "}, span{text: " "}
+		name := span{text: text}
 		if index == current {
-			result = append(result, span{text: "‹", role: goldRole, background: raise}, span{text: text, bold: true, background: raise}, span{text: "›", role: goldRole, background: raise})
-		} else {
-			result = append(result, span{text: " " + text + " "})
+			left = span{text: "‹", role: goldRole, background: raise}
+			right = span{text: "›", role: goldRole, background: raise}
+			name.bold, name.background = true, raise
+			t.sign.background = raise
 		}
+		result = append(result, left, name)
+		if t.sign.text != "" {
+			result = append(result, t.sign)
+		}
+		result = append(result, right)
 	}
 	if last < len(tabs)-1 {
 		result = append(result, span{text: " " + strconv.Itoa(len(tabs)-1-last) + "→ ", role: quietRole})
@@ -282,7 +314,7 @@ func (m *model) noticeLines(width int) []line {
 		if !peer.OK && peer.Error != nil {
 			suffix := " unavailable (" + attention.SingleLine(peer.Error.Code) + ")"
 			if len(peer.Sessions) > 0 {
-				suffix += "; showing its last observation"
+				suffix += "; its listing is stale"
 			}
 			text := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…") + suffix
 			lines = append(lines, line{{text: ansi.Truncate(text, width, "…")}})
@@ -306,16 +338,18 @@ func (m *model) noticeLines(width int) []line {
 	return lines
 }
 
-func rule(caption string, quota line, width int) line {
+func rule(caption, quota line, width int) line {
 	var result line
-	room := width - ansi.StringWidth(caption) - quota.width()
+	room := width - caption.width() - quota.width()
 	edge := 1
 	if room >= 10 {
 		edge = 2
 	}
 	end := strings.Repeat("─", edge)
-	if caption != "" {
-		result = append(result, span{text: end + " ", role: quietRole}, span{text: caption}, span{text: " "})
+	if len(caption) > 0 {
+		result = append(result, span{text: end + " ", role: quietRole})
+		result = append(result, caption...)
+		result = append(result, span{text: " "})
 		room -= edge + 2
 	}
 	if len(quota) > 0 {
@@ -363,19 +397,12 @@ func (m *model) emptyTable() string {
 }
 
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	return m.projectStatus(row, row.Available || m.hostChecking(row))
+	ready := row.Available && m.notificationQualified && m.notificationReady(row.Session) || m.heldReady(row)
+	return fleetview.ProjectStatus(row.Session, m.rowAttachable(row), ready)
 }
 
-func (m *model) projectStatus(row fleetclient.Row, fresh bool) fleetview.StatusView {
-	view := fleetview.ProjectStatus(row.Session, fresh, row.Available && m.notificationQualified && m.notificationReady(row.Session))
-	if m.heldReady(row) {
-		view.Label, view.Tone, view.Queue, view.QueueDetail = "ready", api.ToneReady, fleetview.QueueReady, ""
-	}
-	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
-		view.Label += " · " + view.QueueDetail
-		view.Detail += " · " + view.QueueDetail
-	}
-	return view
+func (m *model) rowChecking(row fleetclient.Row) bool {
+	return m.hostChecking(row) || m.heldReady(row)
 }
 
 // hostChecking reports a row without remote actions whose host has not failed a

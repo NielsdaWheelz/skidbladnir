@@ -33,8 +33,8 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 	availability := "available"
 	if !m.rowAvailable(*row) {
 		availability = "unavailable"
-		if m.hostChecking(*row) || m.heldReady(*row) {
-			availability, view.Detail = "checking", "checking"
+		if m.rowChecking(*row) {
+			availability = "checking"
 		}
 	}
 	machine, cwd := current.Label, current.CWD
@@ -45,7 +45,7 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 		cwd = "directory unavailable"
 	}
 	facts := [][2]string{
-		{"state", view.Detail}, {"availability", availability}, {"name", value.Name},
+		{"state", view.State}, {"availability", availability}, {"name", value.Name},
 		{"running on", machine}, {"directory", cwd}, {"terminal handle", value.TerminalHandle},
 		{"naming", value.NameMode}, {"group", fleetview.GroupHeading(value.Group)},
 		{"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine},

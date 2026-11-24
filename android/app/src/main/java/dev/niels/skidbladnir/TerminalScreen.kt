@@ -377,8 +377,7 @@ private fun TerminalSessionSheet(
 ) {
     val owner = state.machine.machine.label.text
     val session = state.target.session
-    val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
-    val status = sessionStatusContent(session, state.machine.canMutate, notification)
+    val status = sessionStatusContent(state.machine, state.target)
     val actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection)
     // A checking rename keeps `rename` set after its sheet hides; rows the controller would then refuse are disabled.
     val sheetFree = state.close == null && state.rename == null
@@ -432,15 +431,21 @@ private fun TerminalSessionSheet(
                 fontFamily = NidavellirType.Data,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            Text(
-                text = listOfNotNull(status.label, status.detail, status.evidence).joinToString(" · "),
-                color = sessionStatusColor(status.tone),
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = NidavellirType.Data,
+            Row(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp),
-            )
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                StatusSign(status.sign, status.workContinues, Modifier.alignByBaseline())
+                Text(
+                    text = listOfNotNull(status.label, status.detail, status.evidence).joinToString(" · "),
+                    color = signFace(status.sign).ink,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = NidavellirType.Data,
+                    modifier = Modifier.alignByBaseline(),
+                )
+            }
             listOfNotNull(
                 context,
                 directory,

@@ -1181,8 +1181,9 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
 - **Execution context**: where a row's work runs: `local` (this host's pane cwd and
   agent), `remote` (the host that answers for an SSH/mosh connection chain) or
   `remoteUnknown`.
-- **status view**: host status with browser overlays for ready, checking, and
-  last observed. checking preserves the row's last queue class and evidence.
+- **status view**: the host's sign and words with browser overlays. a failed
+  host's rows read `—`. checking holds the sign and queue place while the host
+  is re-read. the hub supplies ready over an idle sign.
 - **guest**: the selected lifetime when fleet inventory still lists it but its
   group or queue view excludes it. it keeps live facts and action admission.
 - **captured target**: a confirmation or editor retains its exact reference,
@@ -1222,9 +1223,10 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
    and the same continuous roster membership. entering a terminal fences
    browser reads and clears the open fold.
 7. fleet-wide views. views and suggestions use retained fleet inventory. failed
-   hosts keep last observed rows and a notice. a healthy host is checking before
+   hosts keep their last rows and a notice. a healthy host is checking before
    its first read, after the browser writes to it and after a terminal visit.
-   checking changes the status word while the prior evidence remains visible.
+   a checking row keeps its sign and queue place. the caption and facts say
+   `checking`.
 8. ready is the hub's verdict for an idle row with the same observed foreground
    (provider, pid and start identity). after a visit a previously ready row
    checks until its host and hub have answered. a failed hub read removes ready
@@ -1251,7 +1253,8 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
 11. Display text. Every external string is sanitized with `attention.SingleLine`
     and measured in display cells before styling. Styled fragments never pass back
     through sanitization, which maps ESC to a space. Colour never carries meaning
-    alone; `NO_COLOR` strips styles, never words.
+    alone. `NO_COLOR` keeps the signs and words and strips every style, including
+    the work line.
 12. The TTY is lent, not shared. While attached the browser draws nothing and reads
     no input. Before returning, terminalclient cancels and joins both readers and
     restores the local TTY (cooked mode, remote-set presentation modes reset), also
@@ -1354,15 +1357,13 @@ then unassigned. A selected group stays while empty; a label appearing or
 vanishing moves tabs, never the view. Built-in views and same-named groups remain
 distinct: views are typed values, never indices or label text.
 
-Needs input holds fresh local agents in two tiers. Ready ([desktop invariant 8](#desktop-invariants),
-[phone](#phone-invariants)) comes first; then action: any request, or a current
-error or interruption notice, whatever the activity. A request or notice outranks
-a stored ready. A menu alone, quiet idle, starting, working, unknown, stale rows,
-terminals and remote agents stay out. a browser row checking after a visit or a
-write keeps its last queue membership while it checks. A menu that hides a
-qualifying notice keeps `menu open` and appends the notice (`· error shown`), so
-its inclusion is visible. Ties keep each client's stable session order. Membership
-derives from typed facts, never rendered strings or colours.
+Needs input holds rows signed request, error, ready ([desktop](#desktop-invariants),
+[phone](#phone-invariants)) or interrupted, in that order. Ties keep each client's
+stable session order. A request or notice outranks a stored ready. Membership
+and order derive from the typed sign. A failed host's rows leave the list and a
+healthy host's rows keep their places while it is re-read. The `needs input` tab
+reserves one cell for the first row's sign and leaves it blank when the list is
+empty.
 
 A row leaves when its last reason ends: ready when a visit's output acknowledges it
 or fresh non-idle replaces it; a request or notice when a fresh observation no
@@ -1392,27 +1393,27 @@ labels share a cap, from 24 to 7 cells. when the floor no longer fits, the
 farthest groups hide behind counted `←n` and `n→`. left and right clamp. a view
 change keeps a lifetime present in the new view, otherwise selects its first row.
 
-**table.** each session occupies one line. fixed columns measure last observations
-across all listed rows for the current view. `all` and group views share widths.
-needs input adds group and its queue status copy. columns are name (28 cells),
-mark, status, group (16), provider,
-profile, model/effort, machine (16) and path (at least eight). two spaces separate
-columns. trailing columns drop whole for everyone. the shared layout indicates
-which columns fit. machine and path drop together
-and an unresolved remote uses both for `remote context unknown`. name and status
-stay. the layout reserves space for `checking`. a `◼` marks every row whose typed
-queue class is ready or action.
+**table.** each session occupies one line, with the sign in a fixed cell before
+the name. the columns measure last observations across listed rows. `all` and
+group views share widths. needs input adds group. columns are name (28 cells),
+group (16), provider, profile, model/effort, machine (16) and path (at least
+eight). two spaces separate columns. trailing columns drop whole for everyone.
+machine and path drop together and an unresolved remote uses both for `remote
+context unknown`. sign and name stay.
 
 the path is the last two lexical components, with `…/` for earlier components.
 when it is too wide, it keeps `…/` and as much of the last component as fits.
-client notes do not set column widths. `checking` replaces only the status word.
-a stale row's `last observed: <label>` and a guest's `left the queue: <label>`
-or `left this group` run from the status position, suppress group and agent
-metadata, and keep place only if it fits. only `all` draws group headings,
-with their first row. the complete status and client notes fit at 80 columns.
+the caption holds `checking`, `stale` and a guest's `left the queue` or `left
+this group`. a stale row drops group and agent metadata and keeps place only if
+it fits. only `all` draws group headings, with their first row.
 
-the rule names the session and listing host, then any dropped execution place
-and position that fit. a foot draft or terminal chooser names its selected host.
+the rule names the session and listing host, then its status label with
+`· stale`, `· checking`, `· left the queue` or `· left this group` when they
+apply. the host's detail, any dropped execution place and position follow, in
+that order. detail and position must fit whole. the execution path can shorten
+as it does in the table. the name's tail gives way to keep the status. weekly
+quota takes the remaining room. a foot draft or terminal chooser names its
+selected host.
 notices put the outcome first, then hub and host failures and retained recovery
 notices. a checking host shows `checking inventory` only when it has no listed
 row. at extreme notice heights the visible footer keeps the highest-priority
@@ -1480,11 +1481,12 @@ old search replies. group suggestions use observed labels. the group editor's
 `ctrl-s` saves the typed draft.
 
 **keys.** the same entries drive dispatch, hints and the `?` map. the map shows
-session, create and browser keys, attach chords, open-row keys and the colour
-path. unavailable entries are quiet. an admitted listed key closes the map and
-acts. the hint line takes admitted entries by rank when they fit and ends with
-its kept close or quit entries. tab and shift-tab wrap through marked rows and
-carry an open fold.
+session, create and browser keys, attach chords, open-row keys and a sign
+legend. it names the colour path when there is room. unavailable entries are
+quiet. an admitted listed key closes the map and acts. the hint line takes
+admitted entries by rank when they fit and ends with its kept close or quit
+entries. tab and shift-tab wrap through rows that need input and carry an open
+fold.
 movement keys close an open fold before navigating. arrow and letter keys inside
 an editor or chooser belong to that field. escape closes a fold, returning an
 editor to open. `q` quits from the table, closes open, confirm, terminal and
@@ -1635,12 +1637,12 @@ for the palette.
   unavailable machines stay in its cycle; first creation waits for inventory, with
   no optimistic bypass.
 - wide values anywhere can drop columns for every row. at 80 columns place
-  usually survives only for the selected session, in the caption. short names
-  share the longest listed name's width. bounded names and paths can collide
-  visually. the open facts and `skid info` carry full identity.
-- a returning browser temporarily shows `checking` and admits attach and local
-  inspection while it awaits observations. an external close waits for a
-  successful read. a guest keeps context after leaving a filter.
+  can survive in the selected session's caption when its status leaves room.
+  short names share the longest listed name's width. bounded names and paths
+  can collide visually. the open facts and `skid info` carry full identity.
+- a returning browser holds signs while it awaits observations, says `checking`
+  in the caption and facts, and admits attach and local inspection. an external
+  close waits for a successful read. a guest keeps context after leaving a filter.
   reorder can move the cursor with the selected lifetime or its old successor.
 - a regular foot fold can cover the cursor. a disabled draft can clip long text
   and takes one escape to dismiss. short windows cut facts and field notes.
@@ -1702,8 +1704,11 @@ for the palette.
   restart. on the full path the pigments are fixed by the design language.
 - The plain path keeps faint and bright yellow. Faint varies by terminal and
   vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `←`, `→`,
-  `…` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧` and `●` have ambiguous
-  East Asian Width and can wrap a frame.
+  `…`, `●`, `■`, `≡`, `·`, `—` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧`
+  have ambiguous East Asian Width and can wrap a frame.
+- The work line uses a double frost underline. The terminal and intervening
+  tmux decide whether it retains its style and ink, draws as a single line, or
+  disappears.
 - browser help points to the live key map. visits still join the bounded hub
   acknowledgement before returning the tty. the
   [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
@@ -1719,8 +1724,12 @@ for the palette.
   and names views, never sessions. Digits or Tab cycling would name different
   views on different days, since tabs come from observed labels.
 - folds preserve the table and put an answer or question beside its subject.
-  `◼` repeats typed attention on the same row. an absent mark makes no claim
-  about a row beyond the current sample.
+- one fixed cell for status leaves room for trailing columns. the glyph shapes
+  survive `NO_COLOR`. a failed host's rows read `—` so a glance cannot mistake
+  an old request for a current one. needs input puts requests and errors first
+  because they can block work, then ready, then interruption, usually the
+  owner's own stop. a notice tells how the turn ended and takes precedence over
+  the owner's menu. the caption and facts keep the words near the cursor.
 - usage is a band, not a fold: quota is evidence one keeps in view while
   working, and a fold is the one fold open, takes the keys and locks the
   table. the band is the rule's quota opened out, so it hangs under the rule.
@@ -1984,7 +1993,7 @@ belong to the [design language](design-language.md).
   machine *can act* only while access is ready and inventory fresh.
   *Availability* is the one classification derived from access and inventory
   (`ready`, `refreshing`, `reading`, `stale`, `unavailable`, `auth required`,
-  `identity changed`); every notice, card marker, tone and forge affordance
+  `identity changed`); every notice, card marker, sign overlay and forge affordance
   reads it.
 - **Dashboard entry.** One owner, above the dashboard/terminal switch, of the
   selected view, the grid's scroll state and a pending saved restoration. It
@@ -2006,29 +2015,29 @@ Copy follows the [product language](#product-language).
 
 ### Phone invariants
 
-1. The host owns meaning. The phone renders host-rendered status copy and tone,
+1. The host owns meaning. The phone renders the host's status sign and copy,
    host-evaluated pressure levels and signal states, and host recovery copy. It
    overlays only what it alone knows: staleness, the hub's pending ready and
    notification availability. It has no pressure thresholds, decays no status
    by time and re-derives nothing the host sent.
-2. Stale knowledge is absence, not failure. A machine that cannot act keeps its
-   last cards, reading `last observed: <label>` in muted, never green and never
-   in needs input. Its cards are inert (no open, no action) and carry a marker
-   naming the reason (`STALE · actions disabled`, `AUTH REQUIRED · actions
-   disabled`, ...). Only trust events (auth required, identity changed) are
-   failure-toned; an unreachable or stale host is degraded, because one host
-   out is the federation's normal state. A pressure failure never fences
-   actions.
+2. A machine that cannot act keeps its last cards inert under a marker naming
+   the reason (`STALE · actions disabled`, `AUTH REQUIRED · actions disabled`,
+   ...). While it refreshes after its own write, its cards keep their signs and
+   needs-input places. After a failed read or trust event they read `unknown`
+   and the session sheet appends `· stale` to the label. Trust events (auth
+   required, identity changed) use failure ink. An unreachable or stale host
+   is degraded, because one host out is the federation's normal state. A
+   pressure failure never fences actions.
 3. One projection, `dashboardItems`, owns membership, order, render keys and
    restoration anchors. Sessions sort by machine label (root-locale lowercase,
    then exact), machine handle, numeric tmux ID. `all` places them under one
    heading per nonempty group in label order (ASCII-folded UTF-8, then exact
    bytes), unassigned last. A selected group or unassigned view has no heading:
    the tab names the scope. Needs input is flat. The host promises no order.
-4. Needs input holds a fresh session whose host queue is `action`, or whose
-   host queue is `ready` while the hub holds its pending ready and
-   notifications are available. Ready sessions come first, then actions, each
-   in session order. The queue never admits a control action.
+4. Needs input holds a session on a ready or refreshing machine whose host
+   sign is request, error or interrupted, or whose host sign is idle while
+   the hub holds its pending ready and notifications are available. The latter
+   reads ready. Rows follow the [shared order](#views-and-the-needs-input-queue).
 5. Every card shows its machine. Every action, menu row and confirmation
    carries the card's captured lifetime. A machine that stops being able to *act*
    while a menu is open disables that menu's rows in place; nothing retargets from a displayed label,
@@ -2110,11 +2119,11 @@ pull draws only the [refresh line](design-language.md#13-component-register),
 determinate while pulling and indeterminate while the pulled read runs, absent
 at rest; it reserves no height.
 
-**Card.** Work first: the exact tmux name (two lines), then the status line (the
-status facet, the literal label in its tone, an optional muted detail on one
-line) beside the dwarf's display name; then, when present, the availability
-marker, `notifications unavailable` and the objective (two lines); then a
-wrapping footer of one profile/host cluster and the directory:
+**Card.** Work first: the exact tmux name (two lines), then the status sign
+beside the dwarf's display name, with the host's label and detail in needs
+input, or the command for a local plain terminal. The availability marker,
+`notifications unavailable` and the objective (two lines) follow when present.
+The wrapping footer has one profile/host cluster and the directory:
 
 | Context | Cluster | Directory |
 | --- | --- | --- |
@@ -2123,16 +2132,12 @@ wrapping footer of one profile/host cluster and the directory:
 | Unresolved remote | `remote context unknown · terminal on <machine>` | None |
 
 The profile is the host's configured label, else `<provider> · profile
-unknown`; a plain pane shows none, since its status reads `terminal`; a launch
-profile never substitutes. The directory moves whole to a second line and
-start-ellipsizes only when wider than a line, so no useless fragment shows. In
-needs input a last line names the group (`group: <label>` or `unassigned`)
-and a queue reason wraps in full. Readable status and full dwarf names may grow
-a card; nothing shrinks, reserves space or animates to hide that. The status
-qualifier (`evidence`) is the same on every agent card, so cards omit it; the
-terminal's session sheet shows it. The facet's notch turns only for a fresh
-working local agent with animation on. Status carries no age; only inventory
-freshness has a clock.
+unknown`. A plain pane reads `$` and has no profile. The row gets its profile
+from the observed agent. The directory moves whole to a second line and
+start-ellipsizes only when wider than a line. In needs input a last line names
+the group (`group: <label>` or `unassigned`) and the status words wrap in full.
+The terminal's session sheet shows the sign, label, detail and evidence. Signs
+stay still. Inventory freshness has a clock.
 
 One body tap opens the terminal directly, without an inventory read; the
 gateway checks the lifetime at attach. Every other verb sits in the card's overflow,

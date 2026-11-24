@@ -11,50 +11,50 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
-// QueueCategory derives human collection membership and order, never control
-// admission. Only Ready and Action participate, in that order.
-type QueueCategory int
-
-const (
-	QueueExcluded QueueCategory = iota
-	QueueReady
-	QueueAction
-)
-
-// StatusView is the one terminal-status projection shared by the cli and the
-// desktop browser. It derives from observed facts only.
-type StatusView struct {
-	Label string
-	Tone  api.StatusTone
-	Queue QueueCategory
-	// Detail is the label with its secondary facts, for the existing detail space.
-	Detail string
-	// QueueDetail is the notice phrase a menu hides. Queue rows append it to
-	// their label and detail so their inclusion is visible without selection.
-	QueueDetail string
-	// Reason explains the observation without terminal content.
-	Reason string
+// QueueRank orders the needs-input collection. A negative rank excludes the sign.
+func QueueRank(sign api.StatusSign) int {
+	switch sign {
+	case api.SignRequest:
+		return 0
+	case api.SignError:
+		return 1
+	case api.SignReady:
+		return 2
+	case api.SignInterrupted:
+		return 3
+	default:
+		return -1
+	}
 }
 
-// ProjectStatus renders the row's status with api.PresentStatus, the
-// function behind the wire's `status`, and overlays the client's facts: fresh
-// is inventory freshness; ready is the notification owner's pending attention.
-// A stale view names its last observation and is never ready.
+// StatusView is the status shared by the cli and the desktop browser. State
+// joins the label, detail and evidence for surfaces with room for all three.
+type StatusView struct {
+	Sign          api.StatusSign
+	WorkContinues bool
+	Label, Detail string
+	State         string
+	Reason        string
+}
+
+// ProjectStatus adds inventory freshness and the hub's pending ready to the
+// host's projection. A stale view keeps its last observed words.
 func ProjectStatus(session fleetclient.Session, fresh, ready bool) StatusView {
 	host := api.PresentStatus(session.TerminalStatus, session.Agent != nil && session.Connection == nil)
-	view := StatusView{Label: host.Label, Tone: host.Tone, Reason: host.Reason}
+	view := StatusView{
+		Sign: host.Sign, WorkContinues: host.WorkContinues,
+		Label: host.Label, Detail: host.Detail, Reason: host.Reason,
+	}
 	switch {
 	case !fresh:
-		view.Label, view.Tone = "last observed: "+host.Label, api.ToneMuted
-	case host.Queue == api.QueueAction:
-		view.Queue, view.QueueDetail = QueueAction, host.QueueNotice
-	case host.Queue == api.QueueReady && ready:
-		view.Label, view.Tone, view.Queue = "ready", api.ToneReady, QueueReady
+		view.Sign, view.WorkContinues, view.Label = api.SignUnknown, false, host.Label+" · stale"
+	case host.Sign == api.SignIdle && ready:
+		view.Sign, view.Label, view.Detail = api.SignReady, "ready", ""
 	}
-	view.Detail = view.Label
-	for _, fact := range []string{host.Detail, host.Evidence} {
+	view.State = view.Label
+	for _, fact := range []string{view.Detail, host.Evidence} {
 		if fact != "" {
-			view.Detail += " · " + fact
+			view.State += " · " + fact
 		}
 	}
 	return view

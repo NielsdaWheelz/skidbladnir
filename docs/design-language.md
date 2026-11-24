@@ -2,8 +2,9 @@
 
 This document owns visual identity: color, shape, ornament, typography,
 iconography, motion, the terminal theme and the dwarf catalogue's curation. The
-[architecture](architecture.md) owns behavior and wins on any conflict; status
-copy and tone come from [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering).
+[architecture](architecture.md) owns behavior and wins on any conflict. This
+document owns the glyph and ink for each status sign (§5). Meaning and copy
+belong to [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering).
 
 The name: *Vǫluspá* 37 places a hall of gold of Sindri's line on Niðavellir,
 the "dark fields" — the same poem whose stanzas 10–16 supply the Dvergatal
@@ -32,10 +33,10 @@ on near-black stone. The name appears in docs only; UI text stays literal
 4. **Engineering over magic.** The angular Key to Erebor was designed to
    suggest a race relying on engineering and mechanical skill rather than magic
    (same source). Visual honesty is the app's law and the aesthetic reinforces
-   it: sampled status is named literally, freshness stays separate, absence is
-   displayed rather than guessed, no glow or motion implies unsampled work, no
-   ornament reads as an affordance, and errors or destructive copy receive no
-   decoration.
+   it. Sampled status is one sign, spelled out in the host's words where
+   attention already rests. Freshness stays explicit. Glow and motion make no
+   claim of work, ornament offers no action, and errors or destructive copy
+   receive no decoration.
 5. **Carved, not printed.** Surfaces are rock strata: elevation is a tonal
    step computed from one formula (§5), never a drop shadow. Ornament reads as
    cut into or out of the surface. Motion has mass: stone does not bounce (§12).
@@ -147,9 +148,26 @@ All ratios are WCAG 2.1 against Ink.
 | Frost | `#78A9C6` | 7.67 | working; informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-Status tones draw `working` in Frost, `attention` in Ember and `muted` in
-Muted; only ready is Moss, and only while the hub's pending ready holds and the
-row is fresh. Pressure history and detail rows keep Normal Moss · Warm Gold ·
+Status signs are one glyph each, in the Data face on the phone and the
+operator's font in the browser.
+
+| Sign | Glyph | Ink |
+| --- | --- | --- |
+| request | `?` U+003F, bold | Ember |
+| error | `!` U+0021, bold | Ember |
+| ready | `●` U+25CF | Moss |
+| interrupted | `■` U+25A0 | Muted |
+| menu | `≡` U+2261 | Muted |
+| working | `▸` U+25B8 | Frost |
+| idle | `·` U+00B7 | Muted |
+| unknown | `—` U+2014 | Muted |
+| terminal | `$` U+0024 | Muted |
+
+The work line is two Frost strokes at the foot of a sign. It marks work
+continuing under a request, error, interruption or menu. See
+[observation §6](terminal-observation.md#6-content-attention-and-filtering).
+
+Pressure history and detail rows keep Normal Moss · Warm Gold ·
 Hot Ember · Unknown/missing Muted · Informational Frost. The collapsed pressure
 rail is deliberately quieter: labels and `i/N` marks are Muted,
 informational/normal values are Bone, and only Warm/Hot values and marks spend
@@ -168,11 +186,10 @@ a colour a surface may reach for; it is what one tone resolves to.
 
 Two rules follow, and both are load-bearing:
 
-- **Staleness is absence, not failure.** Machine-freshness notices are
-  Degraded; stale cards retain their last observed status with motion and
-  actions off, but never green readiness. Ember spent on routine staleness is
-  Ember spent on nothing — in a federation one host is out often enough that
-  the alarm becomes the resting state.
+- **Staleness is absence.** Machine-freshness notices are Degraded. Stale
+  cards keep their names, read `—` and disable actions. A host goes out often
+  enough that using Ember for routine staleness would make the alarm the
+  resting state.
 - **Trust events are the loud ones.** A broken bearer or a changed identity is
   Failure even when that machine's inventory is perfectly current, because
   what failed is knowing who we are talking to.
@@ -221,9 +238,9 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
   below the perceptual floor for a hairline outline, and not worth re-cutting
   every seal already struck. Whatever draws the octagon reads the same constant
   the clip does, so a frame and its clip can never disagree.
-- **Activity facets are cut, never badged.** The card's status line leads with
-  a 12dp facet in the cut-corner chip geometry. Activity has no unread marker
-  or lozenge.
+- **Status is a text glyph.** The card leads with its Data-face sign (§5),
+  without a chip, border or fill. Ready's `●` is the unread marker. The hub
+  decides when it clears.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
   into 2–3 flat planes differing by one elevation step — the faceted-gemstone
   armor rule — never a smooth gradient or soft shadow.
@@ -328,10 +345,11 @@ catalogue casing; group labels keep their authored case in body or data type.
 - **Machine facts speak mono.** The dashboard borrows the terminal's own
   voice for everything tmux/proc reported — a quiet, honest bridge between
   the two surfaces.
-- **Work-first hierarchy** on the card: tmux name (data, largest and highest
-  contrast), literal status with a quieter display-face dwarf signature,
-  conditional notices/objective, then profile/host/directory (data, ≥11sp).
-  Readable status and full dwarf names may wrap.
+- **Work-first hierarchy.** The card gives highest contrast and size to the
+  Data-face tmux name. The status sign sits beside the quieter Display-face
+  dwarf signature, with the host's words in needs input. Conditional notices
+  and the objective follow, then profile, host and directory (Data, ≥11sp).
+  Status words and full dwarf names may wrap.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
   apps). Norse by Joël Carrouché is unusable (embedding rights ambiguous).
 
@@ -405,14 +423,11 @@ the text. No raster portrait, manifest or rights claim ships.
   cut-corner outline at the pressed alpha, used everywhere skid draws its own
   control. Material buttons, text fields and filter chips keep their platform
   ripple.
-- **Status motion is literal and bounded.** Only a fresh working local agent
-  may turn the status facet's notch. Stale cards, other states and
-  reduced-motion mode are static. The label stays fixed; no pulse, glow,
-  countdown or unread-result motion exists.
+- **Status stays still.** Work reads as `▸` or the work line.
 - **The forge breathes once.** Exactly one ambient decorative animation is
   budgeted in the whole app: the Forge sheet warms from DeepSurface to
-  ForgeGlow over 400ms when opened. The status facet is state-bound, not
-  ambient ornament. Everything else moves only when state moves.
+  ForgeGlow over 400ms when opened. Everything else moves only when state
+  moves.
 
 ## 13. Component register
 
@@ -420,16 +435,15 @@ the text. No raster portrait, manifest or rights claim ships.
   36dp seal. Its verbs sit behind a drawn three-stud overflow whose menu is
   RaisedSurface, card cut, shadowless, with Ember destructive rows after a
   hairline rule.
-- **Status line**: unboxed; the status facet, then the literal status label,
-  bold in its tone, and an optional Muted detail, Data face ≥ 11sp. No
-  transition age or unread signal; the evidence qualifier is not drawn on
-  cards. A plain pane reads `terminal`.
-- **Status facet**: 12dp chip shape, solid status colour, no border, text or
-  semantics, inline as the status line's first glyph.
+- **Status line.** The 12sp Data-face sign is unboxed. In needs input the
+  host's label follows in bold and in the sign's ink, with the Muted detail.
+  A local plain terminal reads `$` and its command. The session sheet includes
+  the evidence qualifier.
 - **View strip**: each tab is a 48dp-minimum target centring a 32dp-minimum
   field; selected is RaisedSurface with a 1dp Gold border and Gold text,
   inactive is transparent with Bone text, both in the same weight so selection
-  never changes width.
+  never changes width. The `needs input` tab reserves one cell for its sign,
+  including when the queue is empty.
 - **Refresh line**: transient feedback spends no resting space, so the refresh
   mark is an active-only 2dp Gold line with butt ends, inset 12dp at the
   collection's top edge, with no track, surface, elevation, glow, ornament or
@@ -528,14 +542,15 @@ steps until it clears both fills.
 | gold | lip, current view chevrons, focused chooser, the band's Fable stroke and chomper | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
 | moss | ready | `#76B082` | `#3B7448` | `#76B082` |
-| frost | starting and working | `#78A9C6` | `#2C6688` | `#78A9C6` |
+| frost | starting and working, the work line | `#78A9C6` | `#2C6688` | `#78A9C6` |
 | bronze | wordmark block | `#CD7F32` | `#94561A` | reverse video |
 
 roles belong to text spans. every span and the padding carry the fill of their
 line. bold identifies the cursor's name, names that need input, the current view,
 headings, keys, titles, the focused field, the question and the selected row's
 profile in the usage band. client notes are italic and stale names are quiet.
-the `◼` mark takes the projected status tone.
+a sign takes its ink from §5, with `?` and `!` bold. the work line is a
+double frost underline on the sign's cell.
 the gold `▌` lip marks every fold line. text begins in column 5. one rule heads
 the open row's screen and another separates the body from the usage band, while
 shown, and the controls. hints use ink and quiet.
@@ -544,13 +559,13 @@ Copy is lowercase and literal. Preserve the host's words for status and the
 shared desktop outcome words. Browser copy names the session and listing host,
 reports only what was sampled or completed, and names the refused action and
 reason. Label ellipses mean a pending confirmation before sending. Fit within
-78 cells or wrap whole. Words and marks survive stripping every style, except a
-usage reading's staleness, which only fades. No boxes,
-fret, runes, icons or motion, with one exception by the owner's ruling: the
-usage band's reveal, a gold chomper that crosses each weekly gauge's spent part
-once when `u` shows the band ([architecture](architecture.md#desktop-usage)). It
-stands against §1.4, §1.6, §12, §14, §15 and gold's row, which are otherwise
-unchanged.
+78 cells or wrap whole. Words and signs survive stripping every style. The
+work line and usage readings' staleness are style-only. The caption and facts
+can repeat `work continues` for the cursor row. The signs are text glyphs.
+The browser has no boxes, fret, runes or icons. Its one motion is the usage
+band's reveal, a gold chomper that crosses each weekly gauge's spent part once
+when `u` shows the band. This exception applies to §1.4, §1.6, §12, §14, §15
+and gold's row. See the [usage band](architecture.md#desktop-usage).
 
 ## 18. Dvergatal curation
 

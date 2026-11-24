@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/charmbracelet/x/ansi"
@@ -157,7 +158,9 @@ func (m *model) tableKeys() []key {
 				return m.askScreen()
 			}},
 		{keys: []string{"tab"}, show: "tab", label: "next needing input", group: "session", rank: 3,
-			can: markedGuard(1), act: markedMove(1)},
+			can: queuedGuard(1), act: queuedMove(1)},
+		{keys: []string{"shift+tab"}, show: "shift-tab", label: "previous", group: "session",
+			can: queuedGuard(-1), act: queuedMove(-1)},
 		{keys: []string{"x"}, show: "x", label: "interrupt and close…", group: "session", rank: 4,
 			can: rowGuard("close", false), act: confirmAction("close")},
 		{keys: []string{"c"}, show: "c", label: "another like this…", group: "create", rank: 5,
@@ -207,8 +210,6 @@ func (m *model) tableKeys() []key {
 		{keys: []string{"left", "h"}, show: "←→ hl", label: "step view", group: "browser",
 			act: func(m *model) tea.Cmd { m.step(-1); return nil }},
 		{keys: []string{"right", "l"}, act: func(m *model) tea.Cmd { m.step(1); return nil }},
-		{keys: []string{"shift+tab"}, show: "shift-tab", label: "previous mark", group: "session",
-			can: markedGuard(-1), act: markedMove(-1)},
 		{keys: []string{"ctrl+r"}, show: "ctrl-r", label: "refresh", group: "browser",
 			act: func(m *model) tea.Cmd { return tea.Batch(m.refresh(true), m.refreshUsage(true)) }},
 	}
@@ -270,29 +271,29 @@ func confirmAction(operation string) func(*model) tea.Cmd {
 	}
 }
 
-func (m *model) nextMarked(direction int) int {
+func (m *model) nextQueued(direction int) int {
 	count := len(m.rows)
 	for distance := 1; distance < count; distance++ {
 		index := (m.cursor + count + direction*distance) % count
-		if m.statusView(m.rows[index]).Queue != fleetview.QueueExcluded {
+		if fleetview.QueueRank(m.statusView(m.rows[index]).Sign) >= 0 {
 			return index
 		}
 	}
 	return -1
 }
 
-func markedGuard(direction int) func(*model) string {
+func queuedGuard(direction int) func(*model) string {
 	return func(m *model) string {
-		if m.nextMarked(direction) < 0 {
+		if m.nextQueued(direction) < 0 {
 			return "no other session in this view reads as needing input."
 		}
 		return ""
 	}
 }
 
-func markedMove(direction int) func(*model) tea.Cmd {
+func queuedMove(direction int) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
-		m.selectRow(m.nextMarked(direction))
+		m.selectRow(m.nextQueued(direction))
 		if m.fold.kind == foldOpen {
 			m.fold.facts = false
 			return m.askScreen()
@@ -371,6 +372,34 @@ func (m *model) keyMap(width int) []line {
 		}
 		lines = append(lines, keyRow)
 	}
+	var legend line
+	used := 0
+	for _, entry := range []struct {
+		sign  api.StatusSign
+		label string
+	}{
+		{api.SignRequest, " request"}, {api.SignError, " error"}, {api.SignReady, " ready"},
+		{api.SignInterrupted, " interruption"}, {api.SignMenu, " menu"},
+		{api.SignWorking, " working"}, {api.SignIdle, " idle"}, {api.SignUnknown, " unknown"},
+		{api.SignTerminal, " terminal"}, {"", ": work continues"},
+	} {
+		sign := span{text: "underlined", role: quietRole, underline: true}
+		if entry.sign != "" {
+			sign = signSpan(entry.sign)
+		}
+		cells := ansi.StringWidth(sign.text + entry.label)
+		if used > 0 && used+2+cells > width {
+			lines = append(lines, legend)
+			legend, used = nil, 0
+		}
+		if used > 0 {
+			legend = append(legend, span{text: "  "})
+			used += 2
+		}
+		legend = append(legend, sign, span{text: entry.label, role: quietRole})
+		used += cells
+	}
+	lines = append(lines, legend)
 	shortcuts := line{{text: "ctrl-] d detach  ctrl-] ctrl-] send ctrl-]", role: quietRole}}
 	for _, entry := range m.openKeys() {
 		switch entry.show {
@@ -399,7 +428,7 @@ func (m *model) rowRefusal(row fleetclient.Row, action string) string {
 }
 
 func (m *model) rowUnavailability(row fleetclient.Row) string {
-	if m.hostChecking(row) || m.heldReady(row) {
+	if m.rowChecking(row) {
 		return "being checked"
 	}
 	return "unavailable"

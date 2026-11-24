@@ -36,7 +36,16 @@ Desktop:
   waiting or entering an unchosen row. Judge whether the screen answers what
   the session is doing more often than not. Decide whether the port's third ink
   is wanted. Check legibility over Mosh and under `NO_COLOR`.
-- v0.11.0: live stale and checking cells: a failed host's rows muted `last observed` and never ready, re-read hosts `checking`, pending ready restored after recovery (terminal-observation-stale-live).
+- Status signs, owner look in Ghostty (`NOT_RUN`). Check each sign in dark and
+  light themes, including bold `?` and `!` beside `●`, and `▸`, `·` and `—`
+  told apart. Check the double Frost line under `?`, `!`, `■` and `≡`, directly
+  and through tmux and Mosh. Check the held and stale rows and their captions,
+  the needs-input tab, the keys legend, and every sign under `NO_COLOR`.
+- Status signs, installed entry points (`NOT_RUN`). Check the browser binary
+  and `skid serve` against the installed loopback endpoint. Show the double
+  work line on an error or interruption produced by the real gateway. The
+  isolated observation corpus has no such frame.
+- v0.11.0: pending ready restored after a failed host recovers (terminal-observation-stale-live).
 
 Phone:
 
@@ -47,6 +56,14 @@ Phone:
 - v0.13.0: terminal chrome on the S22+: one-row rail through connect/frozen/too-small and both sheets (terminal-chrome-hands-on).
 - v0.15.0: on real sessions, open and cancel both closure confirmations, then a terminal visit/return keeping the dashboard anchor (session-card-hands-on).
 - v0.11.0: concurrent work with a request, generic needs input, production-gateway delayed response (terminal-observation-phone-acceptance).
+- Status signs on the S22+ (`NOT_RUN`). Check each sign in the Data face at
+  default and largest text, both Frost strokes beneath a working claim, and
+  the needs-input words and order. Check the strip's sign, ink and reserved
+  cell and the session sheet's sign and words, including `· stale`. Check
+  that STALE cards read `—`. With a pending ready from the hub, start a
+  metadata write from the phone and verify that its controller keeps the
+  card's ready sign and queue place during REFRESHING while withholding
+  actions.
 
 Terminal observation and attention:
 

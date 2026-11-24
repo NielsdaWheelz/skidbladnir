@@ -29,7 +29,7 @@ Wait+Screen@30s /\bschema\b/
 # Up clamps at the first row; select-api.tape moves down to api's row.
 Up 9
 Source select-api.tape
-Wait+Screen@5s /▌ api /
+Wait+Screen@5s /▌ [$]  api /
 Show
 
 Sleep 3s

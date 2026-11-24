@@ -127,7 +127,7 @@ func (m *model) screenLines(row *fleetclient.Row, capacity, width int) []line {
 	suffix = attention.SingleLine(suffix)
 	name := ansi.Truncate(attention.SingleLine(row.Session.Name), max(1, width-3-ansi.StringWidth(prefix+suffix)), "…")
 	header := wrapped(prefix+name+suffix, width-3)
-	lines := []line{rule(ansi.Truncate(header[0], width-3, "…"), nil, width)}
+	lines := []line{rule(line{{text: ansi.Truncate(header[0], width-3, "…")}}, nil, width)}
 	for _, continuation := range header[1:min(capacity, len(header))] {
 		lines = append(lines, line{{text: continuation}})
 	}
