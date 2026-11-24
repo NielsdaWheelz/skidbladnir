@@ -23,7 +23,26 @@ type ClaudeSample struct {
 	FetchedAt    time.Time // valid even when Claude supplied no meter values
 	path         string    // selected native config; an atomic replacement keeps its path
 	organization string
-	personal     bool
+	plan         claudePlan
+}
+
+type claudePlan uint8
+
+const (
+	unsupportedPlan claudePlan = iota
+	personalPlan
+	teamPlan
+)
+
+func quotaPlan(subscription string) claudePlan {
+	switch subscription {
+	case "pro", "max":
+		return personalPlan
+	case "team":
+		return teamPlan
+	default:
+		return unsupportedPlan
+	}
 }
 
 func ReadClaudeProfile(profile agentruntime.Profile) ClaudeSample {
@@ -128,7 +147,9 @@ func readClaudeCache(configDir string, gatewayDefault bool) ClaudeSample {
 	}
 	sample.ReadState = "ok"
 	sample.organization = config.Account.Organization
-	sample.personal = config.Account.OrganizationType == "claude_pro" || config.Account.OrganizationType == "claude_max"
+	if subscription, ok := strings.CutPrefix(config.Account.OrganizationType, "claude_"); ok {
+		sample.plan = quotaPlan(subscription)
+	}
 	sample.Reading.Account = fmt.Sprintf("%x", sha256.Sum256([]byte("claude-account\x00"+config.Account.UUID)))
 	var cache struct {
 		AccountUUID string `json:"accountUuid"`

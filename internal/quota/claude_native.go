@@ -22,8 +22,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 )
 
-// Each binary completed the builtin against an existing login, without model
-// usage or a saved session, and advanced the same account's native cache.
+// Each binary advanced the native cache of both a personal and a team login
+// using the builtin without model usage or a saved session.
 var qualifiedClaudeBuilds = map[string]string{
 	"darwin/arm64/2.1.331": "4874591dc39bff1188921b82cbeb8a44e3a33b0f92c888b3d43639b9344101f7",
 	"linux/amd64/2.1.325":  "0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf",
@@ -66,11 +66,14 @@ func qualifiedClaude(home string) (target, digest string) {
 	return target, digest
 }
 
-// Neither safe mode nor restricted mode suppresses executable managed settings.
-// Unknown or unreadable policy keeps this account cache-only.
-func claudePolicyAbsent(dir, username string) bool {
+// Team logins run under their own server-managed policy. Host and hybrid
+// policy are outside the qualified usage command on both plan types.
+func claudePolicyAllowed(dir, username string, plan claudePlan) bool {
 	admin := "/etc/claude-code"
-	paths := []string{filepath.Join(dir, "remote-settings.json"), filepath.Join(dir, "state", "hybrid-settings.json")}
+	paths := []string{filepath.Join(dir, "state", "hybrid-settings.json")}
+	if plan != teamPlan {
+		paths = append(paths, filepath.Join(dir, "remote-settings.json"))
+	}
 	if runtime.GOOS == "darwin" {
 		admin = "/Library/Application Support/ClaudeCode"
 		const prefs = "/Library/Managed Preferences"
@@ -96,13 +99,14 @@ func claudePolicyAbsent(dir, username string) bool {
 }
 
 func (s ClaudeSample) sameLogin(other ClaudeSample) bool {
-	return s.ReadState == "ok" && other.ReadState == "ok" && s.Reading.Account == other.Reading.Account && s.organization == other.organization && s.path == other.path
+	return s.ReadState == "ok" && other.ReadState == "ok" && s.Reading.Account == other.Reading.Account &&
+		s.organization == other.organization && s.plan == other.plan && s.path == other.path
 }
 
 // A fresh sample satisfies demand. A zero start otherwise permits the next home.
 func refreshClaude(parent context.Context, stateDir string, profile agentruntime.Profile, expected ClaudeSample, current func() bool) (started time.Time, fresh bool, err error) {
 	home, err := os.UserHomeDir()
-	if err != nil || !expected.personal || expected.organization == "" {
+	if err != nil || expected.plan == unsupportedPlan || expected.organization == "" {
 		return started, false, nil
 	}
 	info, err := os.Stat(profile.Home)
@@ -110,7 +114,7 @@ func refreshClaude(parent context.Context, stateDir string, profile agentruntime
 		return started, false, nil
 	}
 	owner, err := user.Current()
-	if err != nil || !claudePolicyAbsent(profile.Home, owner.Username) {
+	if err != nil || !claudePolicyAllowed(profile.Home, owner.Username, expected.plan) {
 		return started, false, nil
 	}
 	target, digest := qualifiedClaude(home)
@@ -128,7 +132,7 @@ func refreshClaude(parent context.Context, stateDir string, profile agentruntime
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	before := ReadClaudeProfile(profile)
-	if !expected.sameLogin(before) || !before.personal || !current() {
+	if !expected.sameLogin(before) || !current() {
 		return started, false, nil
 	}
 	auth, err := claudeCommand(ctx, target, env, "--safe-mode", "--restricted", "auth", "status")
@@ -147,12 +151,12 @@ func refreshClaude(parent context.Context, stateDir string, profile agentruntime
 	}
 	if err != nil || json.Unmarshal(auth, &login) != nil ||
 		!login.LoggedIn || login.AuthMethod != "claude.ai" || login.APIProvider != "firstParty" ||
-		(login.SubscriptionType != "max" && login.SubscriptionType != "pro") ||
+		quotaPlan(login.SubscriptionType) != before.plan ||
 		login.ConfigDirectory != dir || login.OrgID != expected.organization || !login.LoginExpiresAt.After(time.Now()) {
 		return started, false, errClaudeAuth
 	}
 	before = ReadClaudeProfile(profile)
-	if !expected.sameLogin(before) || !before.personal || !claudePolicyAbsent(profile.Home, owner.Username) || !current() || ctx.Err() != nil {
+	if !expected.sameLogin(before) || !claudePolicyAllowed(profile.Home, owner.Username, before.plan) || !current() || ctx.Err() != nil {
 		return started, false, nil
 	}
 	if _, err := os.Lstat(block); !errors.Is(err, os.ErrNotExist) {

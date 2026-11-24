@@ -1006,9 +1006,12 @@ failure vocabulary. The contract:
    policy eligibility stays cache-only.
 8. the gateway runs the qualified native target directly with safe mode,
    restricted tools, no session persistence and the matching native config
-   directory. it checks for managed policy, then `auth status` verifies the
-   selected first-party personal login and its expiry. alternate auth and
-   routing never enter the child environment. the gateway accepts only
+   directory. it excludes host and hybrid managed policy. `auth status`
+   verifies the selected first-party pro, max or team login and its expiry.
+   claude applies the team's own server-managed policy, which may run
+   organization-configured hooks. personal logins with a remote policy
+   artifact stay cache-only. the child inherits neither alternate auth nor
+   routing overrides. the gateway accepts only
    structured builtin completion with zero model use and a valid first or
    strictly newer cache measurement for the same login and settings. unexpected
    dispatch blocks that build across restarts. failure to write the block
