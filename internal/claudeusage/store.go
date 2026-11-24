@@ -2,6 +2,7 @@
 package claudeusage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,11 +13,16 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/privatefile"
 )
 
+// Dir is the private state shared by the quota store, machine bindings and native block.
+func Dir(stateDir string) string {
+	return filepath.Join(stateDir, "claude-quota")
+}
+
 func accountPath(stateDir, account string) (string, error) {
 	if !filepath.IsLocal(account) || filepath.Base(account) != account {
 		return "", errors.New("invalid claude usage account filename")
 	}
-	return filepath.Join(stateDir, "claude-usage", account+".json"), nil
+	return filepath.Join(Dir(stateDir), "accounts", account+".json"), nil
 }
 
 // Load reads the last coherent record. A verified login can precede its first reading.
@@ -48,7 +54,7 @@ func Load(stateDir, account string) (api.ClaudeUsage, error) {
 // Others returns saved accounts without a current profile row in filename order.
 // A damaged record leaves all other readable accounts available.
 func Others(stateDir string, represented map[string]bool) ([]api.ClaudeUsage, error) {
-	entries, err := os.ReadDir(filepath.Join(stateDir, "claude-usage"))
+	entries, err := os.ReadDir(filepath.Join(Dir(stateDir), "accounts"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -70,7 +76,7 @@ func Others(stateDir string, represented map[string]bool) ([]api.ClaudeUsage, er
 
 // Remember serializes read-merge-replace across footer and gateway processes.
 // A storage error still returns the best reading available to this caller.
-func Remember(stateDir string, reading api.ClaudeUsage) (_ api.ClaudeUsage, err error) {
+func Remember(ctx context.Context, stateDir string, reading api.ClaudeUsage) (_ api.ClaudeUsage, err error) {
 	if reading.Account == "" {
 		return api.ClaudeUsage{}, nil
 	}
@@ -85,7 +91,7 @@ func Remember(stateDir string, reading api.ClaudeUsage) (_ api.ClaudeUsage, err 
 	if err != nil {
 		return reading, err
 	}
-	lock, lockErr := privatefile.Lock(path + ".lock")
+	lock, lockErr := privatefile.Lock(ctx, path+".lock")
 	if lock != nil {
 		defer func() { err = errors.Join(err, lock.Close()) }()
 	}

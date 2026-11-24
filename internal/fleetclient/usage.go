@@ -10,20 +10,21 @@ import (
 
 type ProfileUsage struct {
 	Profile
-	ReadState string           `json:"readState"`
-	Report    *api.QuotaReport `json:"report,omitempty"`
-	Claude    *api.ClaudeUsage `json:"claude,omitempty"`
+	ReadState     string           `json:"readState"`
+	Report        *api.QuotaReport `json:"report,omitempty"`
+	ClaudeAccount string           `json:"claudeAccount,omitempty"`
+	Claude        *api.ClaudeUsage `json:"-"` // Resolved desktop reading.
 }
 
 type ProfileUsagePeer struct {
-	Label               string
-	Machine             string
-	OK                  bool
-	Error               *Failure
-	ObservedAt          time.Time
-	ReceivedAt          time.Time
-	Profiles            []ProfileUsage
-	OtherClaudeAccounts []api.ClaudeUsage
+	Label          string
+	Machine        string
+	OK             bool
+	Error          *Failure
+	ObservedAt     time.Time
+	ReceivedAt     time.Time
+	Profiles       []ProfileUsage
+	ClaudeAccounts []api.ClaudeUsage
 }
 
 // ProfileUsage reads every peer's usage, independently of inventories.

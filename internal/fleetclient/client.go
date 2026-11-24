@@ -456,7 +456,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	} else if operation == "profile_usage" || operation == "claude_usage" {
 		observed := value.(ProfileUsagePeer)
 		observed.ReceivedAt = receivedAt
-		if err := client.rememberClaudePeer(observed); err != nil && operation == "claude_usage" {
+		if err := client.rememberClaudePeer(ctx, observed); err != nil && operation == "claude_usage" {
 			return Failed("InternalError", dispatch)
 		}
 		value = observed

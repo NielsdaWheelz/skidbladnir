@@ -1,11 +1,11 @@
 package fleetclient
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -18,7 +18,8 @@ import (
 // change on one machine independently of that login's measured quota.
 type claudeBinding struct {
 	Profile
-	Account string `json:"account,omitempty"`
+	Account  string `json:"account,omitempty"`
+	Verified bool   `json:"verified,omitempty"` // The login was readable in this observation.
 }
 
 type claudeBindings struct {
@@ -33,18 +34,8 @@ type claudeHistory struct {
 	accounts map[string]api.ClaudeUsage
 }
 
-func (peer ProfileUsagePeer) claudeReadings() []api.ClaudeUsage {
-	readings := slices.Clone(peer.OtherClaudeAccounts)
-	for _, row := range peer.Profiles {
-		if row.Claude != nil {
-			readings = append(readings, *row.Claude)
-		}
-	}
-	return readings
-}
-
 func (client *Client) bindingPath(machine string) string {
-	return filepath.Join(client.directory, "claude-usage", "machines", machine+".json")
+	return filepath.Join(claudeusage.Dir(client.directory), "machines", machine+".json")
 }
 
 func readClaudeBindings(path string) (claudeBindings, error) {
@@ -67,13 +58,16 @@ func (peer ProfileUsagePeer) claudeBindings(previous []claudeBinding) []claudeBi
 			continue
 		}
 		binding := claudeBinding{Profile: row.Profile}
-		if row.Claude != nil {
-			binding.Account = row.Claude.Account
-		}
-		if binding.Account == "" {
+		switch row.ReadState {
+		case "ok":
+			binding.Account = row.ClaudeAccount
+			binding.Verified = true
+		case "no_login":
+			// A readable sign-out clears this home's saved account.
+		case "unavailable":
 			// An unreadable cache supplies no new login for this profile home.
 			for _, old := range previous {
-				if old.Key == binding.Key && old.AccountScope == binding.AccountScope {
+				if binding.AccountScope != "" && old.Key == binding.Key && old.AccountScope == binding.AccountScope {
 					binding.Account = old.Account
 					break
 				}
@@ -85,13 +79,16 @@ func (peer ProfileUsagePeer) claudeBindings(previous []claudeBinding) []claudeBi
 }
 
 // Both the browser and the background gateway can be first to see a reading.
-func (client *Client) rememberClaudePeer(peer ProfileUsagePeer) (err error) {
-	for _, reading := range peer.claudeReadings() {
-		_, saveErr := claudeusage.Remember(client.directory, reading)
+func (client *Client) rememberClaudePeer(ctx context.Context, peer ProfileUsagePeer) (err error) {
+	if peer.ClaudeAccounts == nil {
+		return nil
+	}
+	for _, reading := range peer.ClaudeAccounts {
+		_, saveErr := claudeusage.Remember(ctx, client.directory, reading)
 		err = errors.Join(err, saveErr)
 	}
 	path := client.bindingPath(peer.Machine)
-	lock, lockErr := privatefile.Lock(path + ".lock")
+	lock, lockErr := privatefile.Lock(ctx, path+".lock")
 	if lockErr != nil {
 		return errors.Join(err, lockErr)
 	}
@@ -101,9 +98,6 @@ func (client *Client) rememberClaudePeer(peer ProfileUsagePeer) (err error) {
 		return errors.Join(err, readErr)
 	}
 	bindings := peer.claudeBindings(previous.Profiles)
-	if len(bindings) == 0 && len(previous.Profiles) == 0 {
-		return err
-	}
 	data, encErr := json.Marshal(claudeBindings{peer.ObservedAt, bindings})
 	if encErr != nil {
 		return errors.Join(err, encErr)
@@ -111,8 +105,8 @@ func (client *Client) rememberClaudePeer(peer ProfileUsagePeer) (err error) {
 	return errors.Join(err, privatefile.WriteFile(path, data))
 }
 
-// KnownClaudeUsage works with every gateway offline. The local login resolves
-// a profile key. Without one, its enrolled sources must agree on the account.
+// KnownClaudeUsage prefers a verified local login, then agreeing verified peers.
+// Without a verified login, all remembered accounts for the key must agree.
 func (client *Client) KnownClaudeUsage(recent ...ProfileUsagePeer) []ProfileUsage {
 	client.mu.RLock()
 	self := client.self.Machine
@@ -129,19 +123,26 @@ func (client *Client) KnownClaudeUsage(recent ...ProfileUsagePeer) []ProfileUsag
 
 	byMachine := make(map[string]ProfileUsagePeer)
 	for _, response := range recent {
-		if !response.OK {
+		if !response.OK || response.ClaudeAccounts == nil {
 			continue
 		}
 		byMachine[response.Machine] = response
-		for _, observed := range response.claudeReadings() {
+		for _, observed := range response.ClaudeAccounts {
 			r := history.accounts[observed.Account]
 			r.Merge(observed)
 			history.accounts[observed.Account] = r
 		}
 	}
+	const (
+		remembered = iota + 1
+		verifiedPeer
+		verifiedLocal
+	)
 	type choice struct {
-		claudeBinding
-		local, ambiguous bool
+		Profile
+		account   string
+		priority  int
+		ambiguous bool
 	}
 	byKey := make(map[string]*choice)
 	var ordered []*choice
@@ -150,29 +151,35 @@ func (client *Client) KnownClaudeUsage(recent ...ProfileUsagePeer) []ProfileUsag
 		if saved, err := readClaudeBindings(client.bindingPath(source.Machine)); err == nil && saved.ObservedAt.After(bindings.ObservedAt) {
 			bindings = saved
 		}
-		if response, ok := byMachine[source.Machine]; ok && response.ObservedAt.After(bindings.ObservedAt) {
+		response, currentRead := byMachine[source.Machine]
+		if currentRead && response.ObservedAt.After(bindings.ObservedAt) {
 			bindings = claudeBindings{response.ObservedAt, response.claudeBindings(bindings.Profiles)}
 		}
 		history.machines[source.Machine] = bindings
 		for _, binding := range bindings.Profiles {
 			current := byKey[binding.Key]
 			if current == nil {
-				current = &choice{claudeBinding: claudeBinding{Profile: binding.Profile}}
+				current = &choice{Profile: binding.Profile}
 				byKey[binding.Key] = current
 				ordered = append(ordered, current)
 			}
 			if source.Machine == self {
 				current.Profile = binding.Profile
 			}
-			if current.local || binding.Account == "" {
+			if binding.Account == "" {
 				continue
 			}
+			priority := remembered
+			if currentRead && binding.Verified {
+				priority = verifiedPeer
+				if source.Machine == self {
+					priority = verifiedLocal
+				}
+			}
 			switch {
-			case source.Machine == self:
-				current.Account, current.local, current.ambiguous = binding.Account, true, false
-			case current.Account == "":
-				current.Account = binding.Account
-			case current.Account != binding.Account:
+			case priority > current.priority:
+				current.account, current.priority, current.ambiguous = binding.Account, priority, false
+			case priority == current.priority && binding.Account != current.account:
 				current.ambiguous = true
 			}
 		}
@@ -180,12 +187,12 @@ func (client *Client) KnownClaudeUsage(recent ...ProfileUsagePeer) []ProfileUsag
 	rows := make([]ProfileUsage, 0, len(ordered))
 	for _, chosen := range ordered {
 		row := ProfileUsage{Profile: chosen.Profile, ReadState: "unavailable"}
-		if chosen.Account != "" && !chosen.ambiguous {
-			record := history.accounts[chosen.Account]
-			if saved, err := claudeusage.Load(client.directory, chosen.Account); err == nil {
+		if chosen.account != "" && !chosen.ambiguous {
+			record := history.accounts[chosen.account]
+			if saved, err := claudeusage.Load(client.directory, chosen.account); err == nil {
 				record.Merge(saved)
 			}
-			history.accounts[chosen.Account] = record
+			history.accounts[chosen.account] = record
 			if record.HasReading() {
 				row.Claude = &record
 				row.ReadState = "ok"

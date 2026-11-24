@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/claudeusage"
@@ -22,7 +24,9 @@ func writeClaudeUsage(out, diagnostics io.Writer) error {
 	// The formatter stays local even when every fleet gateway is offline.
 	dirs, historyErr := install.Paths()
 	if historyErr == nil {
-		report, historyErr = claudeusage.Remember(dirs.State, report)
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
+		report, historyErr = claudeusage.Remember(ctx, dirs.State, report)
 	}
 	if historyErr != nil {
 		fmt.Fprintln(diagnostics, "claude usage history unavailable")

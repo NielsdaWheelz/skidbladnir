@@ -16,9 +16,7 @@ workspaces.
    stock xterm ([phone acceptance](issues/stock-xterm-phone-acceptance.md)).
 2. Observe the shipped but unobserved journeys
    ([unrun acceptance](issues/unrun-acceptance.md)), including an actual reboot
-   recovery and the Claude usage cache against Claude's web view
-   ([Claude cache acceptance](issues/claude-quota-memory.md)), and explain Linux
-   Claude's guarded start
+   recovery, and explain Linux Claude's guarded start
    ([Linux Claude turn](issues/terminal-only-live-qualification.md)).
 3. Finish qualifying conversation recovery on deployed hosts and clients:
    Linux loss, notices and actual reboots
@@ -32,6 +30,7 @@ workspaces.
 - Phone: [sheet uniformity](issues/sheet-uniformity.md),
   [Tailscale DNS outage](issues/phone-tailscale-dns.md).
 - Fleet and install: [hub self-report after an update](issues/hub-self-report-after-update.md),
+  [claude quota cutover](issues/claude-quota-cutover.md),
   [member status placeholder](issues/member-status-placeholder.md),
   [connect operator check](issues/connect-operator-uid-match.md),
   [systemd unit warning](issues/systemd-unit-changed-warning.md),

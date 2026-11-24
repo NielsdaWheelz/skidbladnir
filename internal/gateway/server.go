@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -27,6 +28,7 @@ func Serve(ctx context.Context, listener net.Listener, gateway *Gateway) (result
 	}()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	gateway.quota = quota.NewObserver(ctx, gateway.sessions, gateway.stateDir, gateway.logger)
 	stopRecovery := gateway.sessions.StartRecovery(ctx, func(change sessions.RecoveryChange) {
 		attrs := []any{"skidbladnir.recovery.at", change.At.UTC().Format(time.RFC3339Nano), "skidbladnir.recovery.state", string(change.Recovery.State)}
 		if savedAt := change.Recovery.SavedAt; savedAt != nil {
@@ -77,6 +79,7 @@ func Serve(ctx context.Context, listener net.Listener, gateway *Gateway) (result
 	case <-ctx.Done():
 	}
 	cancel()
+	gateway.quota.Close()
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelShutdown()
 	if err := gateway.closeLiveConnections(shutdownContext); err != nil {

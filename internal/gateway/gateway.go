@@ -20,6 +20,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
+	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
@@ -49,6 +50,7 @@ type Gateway struct {
 	logger        *slog.Logger
 	machine       machine.Handle
 	stateDir      string
+	quota         *quota.Observer
 	routes        *http.ServeMux
 	notSent       map[string]bool // route patterns whose error answers default to dispatch not_sent
 
