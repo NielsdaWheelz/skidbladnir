@@ -32,7 +32,7 @@ Non-goals: authoritative completion, cancellation or crash detection; unseen or
 between-poll requests; task or subagent history; request payloads or counts;
 approval buttons; remote execution inference; provider forks or updaters; new
 daemons; persisted status. A shell's return proves the provider absent, not why it
-exited. Obscured execution may remain unknown, and no label may claim more.
+exited. Obscured execution may remain unknown, and no sign or label may claim more.
 
 ## 2. Capability and wire contract
 
@@ -49,14 +49,14 @@ TerminalStatus = {
           observation_timeout | capture_failed | process_failed
 }
 Detection = {status: TerminalStatus, composer: empty | draft | blocked | unknown}
-StatusPresentation = {label, tone: working | attention | muted,
-  queue: none | ready | action, detail?, evidence?, queueNotice?}
+StatusPresentation = {sign: request | error | interrupted | menu | working | idle |
+  unknown | terminal, workContinues: boolean, label, detail?, evidence?}
 ```
 
 Each inventory and creation row also carries `status: StatusPresentation`, the
-host's rendering of `terminalStatus` as if fresh and not ready (§6). Queue `ready`
-means eligible: a client keeps it only while the row is fresh and the hub holds a
-pending ready. Optional members are omitted, never null or empty.
+host's rendering of `terminalStatus` before client overlays (§6). A client applies
+`ready` over `idle` from the hub's pending ready. The host always encodes `sign`,
+`workContinues` and `label`. Optional members are omitted, never null or empty.
 
 | field/value | exact meaning |
 | --- | --- |
@@ -245,33 +245,37 @@ printed `none`. A classifier defect is never disguised as unavailable.
 
 ## 6. Content, attention and filtering
 
-One Go projection, `api.PresentStatus`, renders label, tone, queue, detail and
-evidence as if fresh and not ready. The gateway sends it as each row's `status`;
-the desktop and CLI call it on the rows they hold; Android reads `status`. Clients
-add only staleness, the hub's ready and notification health. Labels, tone and
-predicates derive from the same facts, and behaviour never compares rendered
-strings.
+One Go projection, `api.PresentStatus`, renders the sign, `workContinues`, label,
+detail and evidence before client overlays. The gateway sends it as each row's
+`status`. The desktop and CLI call it on the rows they hold. Android reads
+`status`. Clients add staleness, the hub's ready and notification health. Signs,
+labels and predicates derive from the same facts. Behaviour uses typed values.
 
-- Precedence: stale or unavailable treatment, then a request, a menu, a current
-  notice, starting or working, ready, and idle or unknown. When a request, menu or
-  notice takes precedence over working, the detail adds `work continues`.
-- Tones: `working` for starting and working, `attention` for requests and an error
-  notice, `muted` for everything else. Only `ready`, applied by a client from the
-  hub's verdict, is green. Colour never carries meaning alone.
-- Rows of a host whose read failed, or that is being re-read, are never ready and
-  never in the queue. Their presentation is each client's
-  ([desktop](architecture.md#desktop-invariants), [phone](architecture.md#phone-invariants)).
-- The evidence qualifier `inferred from terminal` appears only for a recognized
-  local agent with source terminal; unavailable and non-agent labels make no
+- The host takes the first match in this order. An unavailable sample reads
+  `unknown`, a row without a local agent reads `terminal`, then a request reads
+  `request`, a current notice reads `error` or `interrupted`, and a menu reads
+  `menu`. Starting and working read `working`. Idle with interaction and notice
+  both none reads `idle`. The remaining cases read `unknown`.
+- `workContinues` holds when activity is working under a request, notice or menu.
+  The detail names a notice under a request or a menu under a notice, followed by
+  `work continues` when that flag holds.
+- Each sign has its own glyph. Both clients use the same ink for each sign.
+  Only the client's `ready` overlay is green. See the [signs](design-language.md#5-color).
+- Every row of a host whose read failed reads `unknown` without a work line and
+  leaves the queue. A re-read of a healthy host holds each row's sign, ink, work
+  line and queue place. The clients own the words for these cases. See
+  [desktop](architecture.md#desktop-invariants) and [phone](architecture.md#phone-invariants).
+- The evidence qualifier `inferred from terminal` appears only for a local
+  agent with source terminal; unavailable and non-agent labels make no
   inference claim.
 - A current interruption or error notice can hide a saved ready; a visit never
   dismisses a current request; available again does not assert that a question
   was answered. There are no request IDs or durable request records. When ready is
   created and what acknowledges it belong to the hub
   ([notifications](architecture.md#12-notifications)).
-- The human `needs input` view holds ready, requests and current error and
-  interruption notices ([views](architecture.md#views-and-the-needs-input-queue)).
-  `wait --state needs-input` keeps the narrower explicit-request predicate of §5.
+- The human `needs input` view holds rows signed `request`, `error`, `ready` or
+  `interrupted`. `wait --state needs-input` keeps the explicit-request predicate
+  of §5. See the [view contract](architecture.md#views-and-the-needs-input-queue).
 - The diagnostic heading is `status evidence`: activity, interaction and notice
   separately, then reason and matched rules. Unknown and unavailable details may
   append `open the terminal to inspect`; no raw error is interpolated, and partial

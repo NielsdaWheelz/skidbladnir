@@ -29,7 +29,8 @@ workspaces.
   [IME reshow clears the selection](issues/terminal-ime-reshow-selection.md).
 - Phone: [sheet uniformity](issues/sheet-uniformity.md),
   [Tailscale DNS outage](issues/phone-tailscale-dns.md).
-- Fleet and install: [hub self-report after an update](issues/hub-self-report-after-update.md),
+- Fleet and install: [status sign cutover](issues/status-sign-cutover.md),
+  [hub self-report after an update](issues/hub-self-report-after-update.md),
   [claude quota cutover](issues/claude-quota-cutover.md),
   [member status placeholder](issues/member-status-placeholder.md),
   [connect operator check](issues/connect-operator-uid-match.md),
