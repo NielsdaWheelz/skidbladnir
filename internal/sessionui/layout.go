@@ -12,8 +12,6 @@ import (
 
 const (
 	nameColumn = iota
-	markColumn
-	statusColumn
 	groupColumn
 	providerColumn
 	profileColumn
@@ -22,6 +20,7 @@ const (
 	pathColumn
 	columnCount
 
+	rowNameStart = 5
 	unknownPlace = "remote context unknown"
 	unknownPath  = "directory unavailable"
 )
@@ -82,18 +81,18 @@ func (m *model) frame() frame {
 	} else if m.fold.kind != foldNone && m.cursor >= 0 {
 		f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), width))
 	}
-	caption := ""
+	var caption line
 	switch {
 	case m.fold.kind == foldTerminal:
-		caption = "new terminal on " + ansi.Truncate(attention.SingleLine(m.fold.request.Machine), f.width-21, "…")
+		caption = line{{text: "new terminal on " + ansi.Truncate(attention.SingleLine(m.fold.request.Machine), f.width-21, "…")}}
 	case m.fold.kind == foldDraft && !m.fold.seeded:
-		caption = "new session on " + ansi.Truncate(attention.SingleLine(m.form.machine), f.width-20, "…")
+		caption = line{{text: "new session on " + ansi.Truncate(attention.SingleLine(m.form.machine), f.width-20, "…")}}
 	case m.cursor >= 0:
 		caption = m.tableCaption(f, len(f.rows) < len(m.rows))
 	}
 	var quota line
 	if len(f.band) == 0 {
-		quota = m.weeklyQuota(f.width - ansi.StringWidth(caption) - 6)
+		quota = m.weeklyQuota(f.width - caption.width() - 6)
 	}
 	f.rule = rule(caption, quota, f.width)
 	return f
@@ -136,14 +135,11 @@ func tableViewport(first, height int, headings []bool) []tablePlacement {
 
 func (m *model) measureColumns(width int) tableColumns {
 	layout := tableColumns{}
-	// The mark has a fixed slot. Checking can replace even a short label
-	// without moving any later column or setting width from a client note.
-	layout.width[markColumn], layout.width[statusColumn] = 1, len("checking")
 	unknown := false
 	for _, peer := range m.peers {
 		for _, session := range peer.Sessions {
 			row := peer.Row(session)
-			values := m.rowCells(row, m.projectStatus(row, true).Label)
+			values := m.rowCells(row)
 			for column := nameColumn; column < machineColumn; column++ {
 				layout.width[column] = max(layout.width[column], ansi.StringWidth(values[column]))
 			}
@@ -157,8 +153,7 @@ func (m *model) measureColumns(width int) tableColumns {
 	}
 	layout.width[nameColumn] = min(28, max(1, layout.width[nameColumn]))
 	layout.width[groupColumn] = min(16, layout.width[groupColumn])
-	used := 2
-	layout.last = statusColumn
+	used := rowNameStart
 	for column := nameColumn; column < machineColumn; column++ {
 		cells := layout.width[column]
 		if cells == 0 {
@@ -187,8 +182,8 @@ func (m *model) measureColumns(width int) tableColumns {
 	return layout
 }
 
-func (m *model) rowCells(row fleetclient.Row, status string) [machineColumn]string {
-	cells := [machineColumn]string{nameColumn: row.Session.Name, statusColumn: status}
+func (m *model) rowCells(row fleetclient.Row) [machineColumn]string {
+	cells := [machineColumn]string{nameColumn: row.Session.Name}
 	if m.view.kind == viewNeedsInput {
 		cells[groupColumn] = fleetview.GroupHeading(row.Session.Group)
 	}
@@ -258,48 +253,31 @@ func (m *model) tableLines(f frame) []line {
 		}
 		selected := index == m.cursor
 		status := m.statusView(row)
-		cells := m.rowCells(row, status.Label)
-		statusInk := statusRole(status.Tone)
-		marked := status.Queue != fleetview.QueueExcluded
-		if marked {
-			cells[markColumn] = "◼"
-		}
+		sign := signSpan(status.Sign)
+		sign.underline = status.WorkContinues
 		stale := !m.rowAttachable(row)
-		guest := m.guest && selected
-		checking := m.hostChecking(row) || m.heldReady(row)
-		switch {
-		case guest:
-			cells[statusColumn] = m.guestNote(row)
-		case checking:
-			cells[statusColumn], statusInk = "checking", mutedRole
-		}
-		finished := line{{text: "  "}}
+		cells := m.rowCells(row)
+		lip := span{text: " "}
 		if selected {
-			finished = line{{text: "▌", role: goldRole}, {text: " "}}
+			lip = span{text: "▌", role: goldRole}
 		}
-		used := 2
+		finished := line{lip, {text: " "}, sign, {text: "  "}}
+		used := rowNameStart
 		for column := nameColumn; column <= min(f.columns.last, modelColumn); column++ {
 			text := cells[column]
-			if f.columns.width[column] == 0 || text == "" || column > statusColumn && (guest || stale) {
+			if f.columns.width[column] == 0 || text == "" || column > nameColumn && stale {
 				continue
 			}
 			item := span{text: text, role: quietRole}
 			switch column {
 			case nameColumn:
 				item.text = ansi.Truncate(text, f.columns.width[column], "…")
-				item.bold = selected || marked
+				item.bold = selected || fleetview.QueueRank(status.Sign) >= 0
 				if !stale {
 					item.role = inkRole
 				}
 			case groupColumn:
 				item.text = ansi.Truncate(text, f.columns.width[column], "…")
-			case markColumn:
-				item.role = statusRole(status.Tone)
-			case statusColumn:
-				item.role, item.italic = statusInk, guest || stale || checking
-				if guest || stale {
-					item.role = mutedRole
-				}
 			}
 			start := f.columns.start[column]
 			finished = append(finished, span{text: strings.Repeat(" ", start-used)}, item)
@@ -324,15 +302,34 @@ func (m *model) tableLines(f frame) []line {
 	return lines
 }
 
-func (m *model) tableCaption(f frame, hidden bool) string {
+func (m *model) tableCaption(f frame, hidden bool) line {
 	row := m.selectedRow()
-	base := target(row.Session.Name, row.Label, f.width-5)
-	parts := []string{base}
+	view := m.statusView(*row)
+	label := span{text: view.Label, role: signSpan(view.Sign).role, italic: !m.rowAttachable(*row)}
+	status := line{label}
+	if m.rowChecking(*row) {
+		status = append(status, span{text: " · checking", role: mutedRole, italic: true})
+	}
+	if m.guest {
+		note := "left the queue"
+		if m.view.kind == viewGroup {
+			note = "left this group"
+		}
+		status = append(status, span{text: " · " + note, role: mutedRole, italic: true})
+	}
+	width := f.width - 5
+	base := target(row.Session.Name, row.Label, width-3-status.width())
+	caption := append(line{{text: base}, {text: "   "}}, status...)
+	used := caption.width()
+	if detail := " · " + view.Detail; view.Detail != "" && used+ansi.StringWidth(detail) <= width {
+		caption = append(caption, span{text: detail, role: mutedRole})
+		used += ansi.StringWidth(detail)
+	}
 	if f.columns.last != pathColumn {
 		context := m.current(row)
 		machine, path := executionPlace(context)
 		place := machine
-		room := f.width - ansi.StringWidth(base) - 8
+		room := width - used - 3
 		if path != "" {
 			place = ""
 			if context.Kind == "remote" {
@@ -343,15 +340,16 @@ func (m *model) tableCaption(f frame, hidden bool) string {
 				place += shortPath(path, room)
 			}
 		}
-		if place = strings.TrimSpace(place); place != "" && ansi.StringWidth(base+"   "+place) <= f.width-5 {
-			parts = append(parts, place)
+		if place = strings.TrimSpace(place); place != "" && used+3+ansi.StringWidth(place) <= width {
+			caption = append(caption, span{text: "   " + place, role: quietRole})
+			used += 3 + ansi.StringWidth(place)
 		}
 	}
 	if hidden {
-		position := fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
-		if ansi.StringWidth(strings.Join(parts, "   ")+"   "+position) <= f.width-5 {
-			parts = append(parts, position)
+		position := fmt.Sprintf("   %d of %d", m.cursor+1, len(m.rows))
+		if used+len(position) <= width {
+			caption = append(caption, span{text: position, role: quietRole})
 		}
 	}
-	return strings.Join(parts, "   ")
+	return caption
 }

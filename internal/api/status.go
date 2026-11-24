@@ -224,86 +224,75 @@ func (footer TerminalFooter) Valid() bool {
 		!strings.ContainsFunc(text, func(r rune) bool { return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) })
 }
 
-// StatusTone is a status label's colour role; renderers own the palette and
-// never key colour on printed copy.
-type StatusTone string
+// StatusSign identifies the status at a glance. Clients choose its glyph and ink.
+type StatusSign string
 
 const (
-	ToneWorking   StatusTone = "working"
-	ToneAttention StatusTone = "attention"
-	ToneReady     StatusTone = "ready" // clients only: the hub's pending ready over an eligible row
-	ToneMuted     StatusTone = "muted"
+	SignRequest     StatusSign = "request"
+	SignError       StatusSign = "error"
+	SignInterrupted StatusSign = "interrupted"
+	SignMenu        StatusSign = "menu"
+	SignWorking     StatusSign = "working"
+	SignIdle        StatusSign = "idle"
+	SignUnknown     StatusSign = "unknown"
+	SignTerminal    StatusSign = "terminal"
+	SignReady       StatusSign = "ready" // client overlay only
 )
 
-// StatusQueue is human-collection membership before client overlays, never
-// control admission. Ready means eligible: a client keeps it only while its
-// inventory is fresh and the hub holds a pending ready.
-type StatusQueue string
-
-const (
-	QueueNone   StatusQueue = "none"
-	QueueReady  StatusQueue = "ready"
-	QueueAction StatusQueue = "action"
-)
-
-// StatusPresentation is the owner-visible copy of one observation, rendered as
-// if fresh and not ready; clients add staleness and the hub's ready
-// (terminal-observation.md §6).
+// StatusPresentation is the host's sign and wording of one observation.
 type StatusPresentation struct {
-	Label       string      `json:"label"`
-	Tone        StatusTone  `json:"tone"`
-	Queue       StatusQueue `json:"queue"`
-	Detail      string      `json:"detail,omitempty"`
-	Evidence    string      `json:"evidence,omitempty"`
-	QueueNotice string      `json:"queueNotice,omitempty"` // the notice a menu label hides
-	Reason      string      `json:"-"`                     // desktop only; explains without terminal content
+	Sign          StatusSign `json:"sign"`
+	WorkContinues bool       `json:"workContinues"`
+	Label         string     `json:"label"`
+	Detail        string     `json:"detail,omitempty"`
+	Evidence      string     `json:"evidence,omitempty"`
+	Reason        string     `json:"-"` // explains without terminal content
 }
 
-// PresentStatus renders a status; localAgent is an agent row without a
-// connection. The first matching row names it: overlay marks a request, menu
-// or notice row, which outranks visible activity; inspect marks the rows only
-// the terminal itself can settle. The idle row is reached only for a local
-// terminal sample without a notice, so it is exactly ready-eligible.
+// PresentStatus renders a status. A local agent has no remote connection.
 func PresentStatus(status TerminalStatus, localAgent bool) StatusPresentation {
 	if !status.Known() {
 		panic("unknown terminal status") // justify-defect: agentcontrol produces only Valid statuses and fleetclient admits only Known ones.
 	}
-	view := StatusPresentation{Tone: ToneMuted, Queue: QueueNone}
-	inferred := localAgent && status.Source == SourceTerminal
-	overlay, inspect := false, false
+	const menu = "menu open"
+	working := status.Activity == ActivityWorking
+	var view StatusPresentation
 	switch {
 	case status.Source == SourceUnavailable:
-		view.Label, inspect = "status unavailable", true
+		view.Sign, view.Label = SignUnknown, "status unavailable"
 	case !localAgent:
-		view.Label = "terminal"
+		view.Sign, view.Label = SignTerminal, "terminal"
 	case status.Interaction.Request():
-		view.Label, view.Tone, overlay = status.Interaction.RequestText(), ToneAttention, true
-	case status.Interaction == InteractionMenu:
-		view.Label, overlay = "menu open", true
-	case status.Notice == NoticeInterrupted:
-		view.Label, overlay = status.Notice.Text(), true
-	case status.Notice == NoticeError:
-		view.Label, view.Tone, overlay = status.Notice.Text(), ToneAttention, true
-	case status.Activity == ActivityStarting:
-		view.Label, view.Tone = "starting", ToneWorking
-	case status.Activity == ActivityWorking:
-		view.Label, view.Tone = "working", ToneWorking
-	case status.Activity == ActivityIdle && status.Interaction == InteractionNone:
-		view.Label, view.Queue = "idle", QueueReady
-	default:
-		view.Label, inspect = "status unknown", true
-	}
-	if inferred {
-		view.Evidence = "inferred from terminal"
-		if status.Interaction.Request() || status.Notice != NoticeNone {
-			view.Queue = QueueAction
-			if status.Interaction == InteractionMenu {
-				view.QueueNotice = status.Notice.Text()
-			}
+		view.Sign, view.Label, view.WorkContinues = SignRequest, status.Interaction.RequestText(), working
+		if status.Notice != NoticeNone {
+			view.Detail = status.Notice.Text()
 		}
+	case status.Notice != NoticeNone:
+		view.Sign = SignInterrupted
+		if status.Notice == NoticeError {
+			view.Sign = SignError
+		}
+		view.Label, view.WorkContinues = status.Notice.Text(), working
+		if status.Interaction == InteractionMenu {
+			view.Detail = menu
+		}
+	case status.Interaction == InteractionMenu:
+		view.Sign, view.Label, view.WorkContinues = SignMenu, menu, working
+	case status.Activity == ActivityStarting || working:
+		view.Sign, view.Label = SignWorking, string(status.Activity)
+	case status.Activity == ActivityIdle && status.Interaction == InteractionNone:
+		view.Sign, view.Label = SignIdle, "idle"
+	default:
+		view.Sign, view.Label = SignUnknown, "status unknown"
 	}
-	if overlay && status.Activity == ActivityWorking {
-		view.Detail = "work continues"
+	if localAgent && status.Source == SourceTerminal {
+		view.Evidence = "inferred from terminal"
+	}
+	if view.WorkContinues {
+		if view.Detail != "" {
+			view.Detail += " · "
+		}
+		view.Detail += "work continues"
 	}
 	switch status.Reason {
 	case ReasonRecognized:
@@ -329,7 +318,7 @@ func PresentStatus(status TerminalStatus, localAgent bool) StatusPresentation {
 	case ReasonProcessFailed:
 		view.Reason = "foreground process could not be identified"
 	}
-	if inspect {
+	if view.Sign == SignUnknown {
 		view.Reason += "; open the terminal to inspect"
 	}
 	return view

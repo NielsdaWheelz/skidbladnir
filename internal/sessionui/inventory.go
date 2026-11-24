@@ -6,8 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 )
 
 // inventoryLane owns both row-producing reads for one continuous roster membership.
@@ -183,7 +183,7 @@ func (m *model) checkInventory(index int) {
 	if peer.OK {
 		var ready []fleetclient.Reference
 		for _, session := range peer.Sessions {
-			if m.statusView(peer.Row(session)).Queue == fleetview.QueueReady {
+			if m.statusView(peer.Row(session)).Sign == api.SignReady {
 				ready = append(ready, session.Ref.Reference)
 			}
 		}

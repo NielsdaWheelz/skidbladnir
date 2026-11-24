@@ -40,17 +40,7 @@ func (m *model) rebuild() {
 	m.rows = nil
 	switch m.view.kind {
 	case viewNeedsInput:
-		for _, peer := range m.peers {
-			for _, session := range peer.Sessions {
-				row := peer.Row(session)
-				if m.statusView(row).Queue != fleetview.QueueExcluded {
-					m.rows = append(m.rows, row)
-				}
-			}
-		}
-		slices.SortStableFunc(m.rows, func(a, b fleetclient.Row) int {
-			return cmp.Compare(m.statusView(a).Queue, m.statusView(b).Queue)
-		})
+		m.rows = m.queue()
 	case viewAll, viewGroup:
 		filter := group.Filter{}
 		if m.view.kind == viewGroup {
@@ -152,9 +142,18 @@ func (m *model) selectRow(index int) {
 	m.cursor = min(index, len(m.rows)-1)
 }
 
-func (m *model) guestNote(row fleetclient.Row) string {
-	if m.view.kind == viewGroup {
-		return "left this group"
+func (m *model) queue() []fleetclient.Row {
+	var rows []fleetclient.Row
+	for _, peer := range m.peers {
+		for _, session := range peer.Sessions {
+			row := peer.Row(session)
+			if fleetview.QueueRank(m.statusView(row).Sign) >= 0 {
+				rows = append(rows, row)
+			}
+		}
 	}
-	return "left the queue: " + fleetview.ProjectStatus(row.Session, true, false).Label
+	slices.SortStableFunc(rows, func(a, b fleetclient.Row) int {
+		return cmp.Compare(fleetview.QueueRank(m.statusView(a).Sign), fleetview.QueueRank(m.statusView(b).Sign))
+	})
+	return rows
 }
