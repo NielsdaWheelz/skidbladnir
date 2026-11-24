@@ -11,24 +11,21 @@ import (
 )
 
 const (
-	nameColumn = iota
-	groupColumn
-	providerColumn
+	groupColumn = iota
 	profileColumn
 	modelColumn
-	machineColumn
-	pathColumn
+	placeColumn
 	columnCount
 
-	rowNameStart = 5
+	rowNameStart = 4 // lip, sign, two blank cells
 	unknownPlace = "remote context unknown"
 	unknownPath  = "directory unavailable"
 )
 
 type tableColumns struct {
+	name  int
 	width [columnCount]int
-	start [columnCount]int
-	last  int
+	start [columnCount]int // screen column, or zero for a lane that did not fit
 }
 
 type tablePlacement struct {
@@ -62,7 +59,7 @@ func (m *model) frame() frame {
 		f.body -= len(f.band)
 	}
 	tableHeight := f.body - reserved
-	f.columns = m.measureColumns(f.width)
+	f.columns = m.measureColumns(f.width - rowNameStart + 1)
 	if m.cursor >= 0 {
 		f.top = min(max(0, f.top, m.cursor-tableHeight+1), m.cursor)
 		headings := m.tableHeadings()
@@ -88,7 +85,7 @@ func (m *model) frame() frame {
 	case m.fold.kind == foldDraft && !m.fold.seeded:
 		caption = line{{text: "new session on " + ansi.Truncate(attention.SingleLine(m.form.machine), f.width-20, "…")}}
 	case m.cursor >= 0:
-		caption = m.tableCaption(f, len(f.rows) < len(m.rows))
+		caption = m.tableCaption(f, len(f.rows) < len(m.rows), f.width-5)
 	}
 	var quota line
 	if len(f.band) == 0 {
@@ -133,106 +130,124 @@ func tableViewport(first, height int, headings []bool) []tablePlacement {
 	return rows
 }
 
-func (m *model) measureColumns(width int) tableColumns {
-	layout := tableColumns{}
-	unknown := false
+// measureColumns measures retained fleet inventory and configured profiles. Room
+// is what remains after the spine and margin. An admitted place takes the rest.
+func (m *model) measureColumns(room int) tableColumns {
+	columns := tableColumns{width: [columnCount]int{profileColumn: len("unknown"), modelColumn: 20, placeColumn: 24}}
+	target := 0
 	for _, peer := range m.peers {
+		for _, profile := range peer.Profiles {
+			width := ansi.StringWidth(attention.SingleLine(profile.Key))
+			columns.width[profileColumn] = max(columns.width[profileColumn], width)
+		}
 		for _, session := range peer.Sessions {
-			row := peer.Row(session)
-			values := m.rowCells(row)
-			for column := nameColumn; column < machineColumn; column++ {
-				layout.width[column] = max(layout.width[column], ansi.StringWidth(values[column]))
-			}
-			machine, _ := executionPlace(m.current(&row))
-			if machine == unknownPlace {
-				unknown = true
-			} else {
-				layout.width[machineColumn] = max(layout.width[machineColumn], ansi.StringWidth(machine))
-			}
+			target = max(target, ansi.StringWidth(attention.SingleLine(session.Name)))
+			width := ansi.StringWidth(attention.SingleLine(fleetview.GroupHeading(session.Group)))
+			columns.width[groupColumn] = max(columns.width[groupColumn], width)
 		}
 	}
-	layout.width[nameColumn] = min(28, max(1, layout.width[nameColumn]))
-	layout.width[groupColumn] = min(16, layout.width[groupColumn])
-	used := rowNameStart
-	for column := nameColumn; column < machineColumn; column++ {
-		cells := layout.width[column]
-		if cells == 0 {
-			continue
-		}
-		if column != nameColumn {
-			used += 2
-		}
-		if used+cells > width {
-			return layout
-		}
-		layout.start[column] = used
-		layout.last = column
-		used += cells
+	target = min(target, 40)
+	columns.width[groupColumn] = min(columns.width[groupColumn], 16)
+	columns.width[profileColumn] = min(columns.width[profileColumn], 16)
+
+	first := profileColumn
+	if m.view.kind == viewNeedsInput {
+		first = groupColumn
 	}
-	place := layout.width[machineColumn] + 2 + 8
-	if unknown {
-		place = max(place, len(unknownPlace))
+	used := 0
+	for column := first; column < columnCount; column++ {
+		keep := min(target, 32)
+		if column == placeColumn {
+			keep = target
+		}
+		if room-used-2-columns.width[column] < keep {
+			break
+		}
+		columns.start[column] = used + 2
+		used += 2 + columns.width[column]
 	}
-	if used+2+place <= width {
-		layout.last = pathColumn
-		layout.start[machineColumn] = used + 2
-		layout.start[pathColumn] = layout.start[machineColumn] + layout.width[machineColumn] + 2
-		layout.width[pathColumn] = width - layout.start[pathColumn]
+	columns.name = max(0, room)
+	if used > 0 {
+		columns.name = min(target, room-used)
 	}
-	return layout
+	for column, start := range columns.start {
+		if start != 0 {
+			columns.start[column] = rowNameStart + columns.name + start
+		}
+	}
+	if start := columns.start[placeColumn]; start != 0 {
+		columns.width[placeColumn] = rowNameStart + room - start
+	}
+	return columns
 }
 
-func (m *model) rowCells(row fleetclient.Row) [machineColumn]string {
-	cells := [machineColumn]string{nameColumn: row.Session.Name}
-	if m.view.kind == viewNeedsInput {
-		cells[groupColumn] = fleetview.GroupHeading(row.Session.Group)
+func (m *model) rowCells(row fleetclient.Row) [placeColumn]string {
+	var cells [placeColumn]string
+	if !m.rowAttachable(row) {
+		return cells
 	}
+	cells[groupColumn] = attention.SingleLine(fleetview.GroupHeading(row.Session.Group))
 	if agent := m.current(&row).Agent; agent != nil {
-		cells[providerColumn], cells[profileColumn], cells[modelColumn] = strings.ToLower(agent.Provider), agent.Profile, m.rowFooter(row)
+		cells[profileColumn] = attention.SingleLine(agent.Profile)
 		if cells[profileColumn] == "" {
 			cells[profileColumn] = "unknown"
 		}
-	}
-	for i, text := range cells {
-		cells[i] = attention.SingleLine(text)
+		cells[modelColumn] = attention.SingleLine(m.rowFooter(row))
 	}
 	return cells
 }
 
-func executionPlace(current fleetclient.ExecutionContext) (machine, path string) {
-	label := attention.SingleLine(current.Label)
-	switch current.Kind {
-	case "local":
-		machine = ansi.Truncate(label, 16, "…")
-	case "remote":
-		machine = ansi.Truncate(label, 7, "…") + " (remote)"
-	case "remoteUnknown":
-		return unknownPlace, ""
-	default:
-		panic("invalid execution context")
+// place returns a host prefix only when the work runs off this machine. An
+// unresolved context has neither a host nor a directory.
+func (m *model) place(row fleetclient.Row) (host, directory string) {
+	current := m.current(&row)
+	if current.Kind == "remoteUnknown" {
+		return "", ""
 	}
-	path = attention.SingleLine(current.CWD)
-	if path == "" {
-		path = unknownPath
+	if current.Machine != m.client.Self() {
+		host = ansi.Truncate(attention.SingleLine(current.Label), 12, "…") + ":"
 	}
-	return machine, path
+	if current.CWD == "" {
+		return host, unknownPath
+	}
+	cwd := strings.TrimRight(attention.SingleLine(current.CWD), "/")
+	return host, cwd[strings.LastIndex(cwd, "/")+1:] + "/"
 }
 
-func shortPath(path string, width int) string {
-	if path == unknownPath {
-		return ansi.Truncate(path, width, "")
+// fitPlace keeps the host and the directory's tail, or drops the place when
+// there is no room for both.
+func fitPlace(host, directory string, width int) string {
+	if directory == "" {
+		directory = unknownPlace
 	}
-	end := strings.TrimRight(path, "/")
-	last := strings.LastIndex(end, "/") + 1
-	first := strings.LastIndex(strings.TrimRight(end[:last], "/"), "/") + 1
-	two := path
-	if strings.Trim(path[:first], "/") != "" {
-		two = "…/" + path[first:]
+	if ansi.StringWidth(host+directory) <= width {
+		return host + directory
 	}
-	if ansi.StringWidth(two) <= width {
-		return two
+	room := width - ansi.StringWidth(host) - 1
+	if room < 1 {
+		return ""
 	}
-	return "…/" + ansi.Truncate(path[last:], width-2, "")
+	return host + "…" + tail(directory, room)
+}
+
+// tail drops whole graphemes from the head until what remains fits.
+func tail(text string, cells int) string {
+	for remove := ansi.StringWidth(text) - cells; remove > 0; {
+		cluster, width := ansi.FirstGraphemeCluster(text, ansi.GraphemeWidth)
+		text = text[len(cluster):]
+		remove -= width
+	}
+	return text
+}
+
+func cutName(name, mode string, room int) string {
+	if ansi.StringWidth(name) <= room {
+		return name
+	}
+	if mode == "automatic" || room < 3 {
+		return ansi.Truncate(name, room, "…")
+	}
+	return ansi.Truncate(name, room/2, "") + "…" + tail(name, (room-1)/2)
 }
 
 // the browser lays out nothing below 80 × 24.
@@ -240,6 +255,14 @@ func (m *model) tooSmall() bool { return m.width < 80 || m.height < 24 }
 
 func (m *model) tableLines(f frame) []line {
 	lines := make([]line, f.body)
+	if m.width == 0 {
+		return lines
+	}
+	if m.width >= 4 {
+		for i := range lines {
+			lines[i] = line{{text: " "}}
+		}
+	}
 	for _, placement := range f.rows {
 		index := placement.index
 		row := m.rows[index]
@@ -249,7 +272,7 @@ func (m *model) tableLines(f frame) []line {
 			if row.Session.Group.IsUnassigned() {
 				role = quietRole
 			}
-			lines[placement.heading] = line{{text: heading, role: role, bold: true}}
+			lines[placement.heading] = line{{text: " "}, {text: heading, role: role, bold: true}}
 		}
 		selected := index == m.cursor
 		status := m.statusView(row)
@@ -257,101 +280,136 @@ func (m *model) tableLines(f frame) []line {
 		if status.WorkContinues {
 			sign.under, sign.underRole = ansi.UnderlineDouble, frostRole
 		}
-		stale := !m.rowAttachable(row)
-		cells := m.rowCells(row)
+		if m.width == 1 {
+			lines[placement.line] = line{sign}
+			continue
+		}
 		lip := span{text: " "}
 		if selected {
 			lip = span{text: "▌", role: goldRole}
 		}
-		finished := line{lip, {text: " "}, sign, {text: "  "}}
-		used := rowNameStart
-		for column := nameColumn; column <= min(f.columns.last, modelColumn); column++ {
-			text := cells[column]
-			if f.columns.width[column] == 0 || text == "" || column > nameColumn && stale {
-				continue
+		finished := line{lip, sign}
+		if m.width >= 8 {
+			name := span{
+				text: cutName(attention.SingleLine(row.Session.Name), row.Session.NameMode, f.columns.name),
+				role: inkRole,
+				bold: selected || fleetview.QueueRank(status.Sign) >= 0,
 			}
-			item := span{text: text, role: quietRole}
-			switch column {
-			case nameColumn:
-				item.text = ansi.Truncate(text, f.columns.width[column], "…")
-				item.bold = selected || fleetview.QueueRank(status.Sign) >= 0
-				if !stale {
-					item.role = inkRole
+			if !m.rowAttachable(row) {
+				name.role = quietRole
+			}
+			finished = append(finished, span{text: "  "}, name)
+			used := rowNameStart + ansi.StringWidth(name.text)
+			cells := m.rowCells(row)
+			for column, start := range f.columns.start {
+				if start == 0 {
+					continue
 				}
-			case groupColumn:
-				item.text = ansi.Truncate(text, f.columns.width[column], "…")
-			}
-			start := f.columns.start[column]
-			finished = append(finished, span{text: strings.Repeat(" ", start-used)}, item)
-			used = start + ansi.StringWidth(item.text)
-		}
-		if start := f.columns.start[machineColumn]; f.columns.last == pathColumn && start >= used+2 {
-			machine, path := executionPlace(m.current(&row))
-			machineWidth := ansi.StringWidth(machine)
-			if path == "" && machineWidth <= f.width-start || path != "" && machineWidth <= f.columns.width[machineColumn] {
-				finished = append(finished, span{text: strings.Repeat(" ", start-used)}, span{text: machine, role: quietRole})
-				if path != "" {
-					finished = append(finished, span{text: strings.Repeat(" ", f.columns.start[pathColumn]-start-machineWidth)},
-						span{text: shortPath(path, f.columns.width[pathColumn]), role: quietRole})
+				var text string
+				if column == placeColumn {
+					host, directory := m.place(row)
+					text = fitPlace(host, directory, f.columns.width[column])
+				} else {
+					text = ansi.Truncate(cells[column], f.columns.width[column], "…")
+				}
+				if text != "" {
+					finished = append(finished, span{text: strings.Repeat(" ", max(0, start-used))}, span{text: text, role: quietRole})
+					used = start + ansi.StringWidth(text)
 				}
 			}
 		}
-		if selected {
-			finished = finished.filled(m.ground.raise, f.width)
+		if selected && m.width >= 4 {
+			finished = finished.filled(m.ground.raise, f.width+1)
 		}
 		lines[placement.line] = finished
 	}
 	return lines
 }
 
-func (m *model) tableCaption(f frame, hidden bool) line {
+func (m *model) tableCaption(f frame, hidden bool, room int) line {
 	row := m.selectedRow()
 	view := m.statusView(*row)
-	label := span{text: view.Label, role: signSpan(view.Sign).role, italic: !m.rowAttachable(*row)}
-	status := line{label}
+	name := attention.SingleLine(row.Session.Name)
+	caption := line{
+		{text: name},
+		{text: " on " + attention.SingleLine(row.Label)},
+		{text: "   "},
+		{text: attention.SingleLine(view.Label), role: signSpan(view.Sign).role, italic: !m.rowAttachable(*row)},
+	}
 	if m.rowChecking(*row) {
-		status = append(status, span{text: " · checking", role: mutedRole, italic: true})
+		caption = append(caption, span{text: " · checking", role: mutedRole, italic: true})
 	}
 	if m.guest {
 		note := "left the queue"
 		if m.view.kind == viewGroup {
 			note = "left this group"
 		}
-		status = append(status, span{text: " · " + note, role: mutedRole, italic: true})
+		caption = append(caption, span{text: " · " + note, role: mutedRole, italic: true})
 	}
-	width := f.width - 5
-	base := target(row.Session.Name, row.Label, width-3-status.width())
-	caption := append(line{{text: base}, {text: "   "}}, status...)
-	used := caption.width()
-	if detail := " · " + view.Detail; view.Detail != "" && used+ansi.StringWidth(detail) <= width {
-		caption = append(caption, span{text: detail, role: mutedRole})
-		used += ansi.StringWidth(detail)
+	if detail := attention.SingleLine(view.Detail); detail != "" {
+		caption = append(caption, span{text: " · " + detail, role: mutedRole})
 	}
-	if f.columns.last != pathColumn {
-		context := m.current(row)
-		machine, path := executionPlace(context)
-		place := machine
-		room := width - used - 3
-		if path != "" {
-			place = ""
-			if context.Kind == "remote" {
-				place = machine + "  "
-			}
-			room -= ansi.StringWidth(place)
-			if room >= 8 || ansi.StringWidth(path) <= room {
-				place += shortPath(path, room)
-			}
+
+	statusEnd := len(caption)
+	for column, fact := range m.rowCells(*row) {
+		if f.columns.start[column] == 0 && (column != groupColumn || m.view.kind == viewNeedsInput) && fact != "" && fact != "—" {
+			caption = append(caption, span{text: "   " + fact, role: quietRole})
 		}
-		if place = strings.TrimSpace(place); place != "" && used+3+ansi.StringWidth(place) <= width {
-			caption = append(caption, span{text: "   " + place, role: quietRole})
-			used += 3 + ansi.StringWidth(place)
+	}
+	placeAt := -1
+	var host, directory string
+	prefix := "   "
+	if f.columns.start[placeColumn] == 0 {
+		host, directory = m.place(*row)
+		if directory != "" {
+			prefix += "in "
 		}
+		placeAt = len(caption)
+		place := host + directory
+		if directory == "" {
+			place = unknownPlace
+		}
+		caption = append(caption, span{text: prefix + place, role: quietRole})
 	}
 	if hidden {
-		position := fmt.Sprintf("   %d of %d", m.cursor+1, len(m.rows))
-		if used+len(position) <= width {
-			caption = append(caption, span{text: position, role: quietRole})
-		}
+		caption = append(caption, span{text: fmt.Sprintf("   %d of %d", m.cursor+1, len(m.rows)), role: quietRole})
 	}
-	return caption
+
+	// The least important facts are at the tail. Shorten place once before
+	// giving up the fact, retaining the host and at least 12 cells with "in ".
+	width := caption.width()
+	for width > room && len(caption) > statusEnd {
+		last := len(caption) - 1
+		width -= ansi.StringWidth(caption[last].text)
+		if last == placeAt && room-width-3 >= 12 {
+			if place := fitPlace(host, directory, room-width-len(prefix)); place != "" {
+				caption[last].text = prefix + place
+				return caption
+			}
+		}
+		caption = caption[:last]
+	}
+	if width <= room {
+		return caption
+	}
+	width -= ansi.StringWidth(caption[1].text)
+	caption[1].text = ""
+	if width <= room {
+		return caption
+	}
+	if nameRoom := room - width + ansi.StringWidth(name); nameRoom >= 6 {
+		caption[0].text = ansi.Truncate(name, nameRoom, "…")
+		return caption
+	}
+
+	status := caption[3:]
+	for i := range status {
+		if width := ansi.StringWidth(status[i].text); width <= room {
+			room -= width
+			continue
+		}
+		status[i].text = ansi.Truncate(status[i].text, room, "…")
+		return status[:i+1]
+	}
+	return status
 }

@@ -89,3 +89,10 @@ func (client *Client) DefaultMachine() Machine {
 	defer client.mu.RUnlock()
 	return client.defaultMachine
 }
+
+// Self returns this browser's machine handle.
+func (client *Client) Self() string {
+	client.mu.RLock()
+	defer client.mu.RUnlock()
+	return client.self.Machine
+}

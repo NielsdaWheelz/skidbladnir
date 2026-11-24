@@ -121,14 +121,13 @@ func (m *model) View() tea.View {
 		lines = []string{" " + m.renderLine(m.header()), ""}
 		body := m.tableLines(f)
 		if len(m.rows) == 0 {
-			body[0] = line{{text: m.emptyTable()}}
+			body[0] = line{{text: " " + m.emptyTable()}}
 		}
 		for index, item := range body {
 			if index >= f.foldAt && index < f.foldAt+len(f.fold) {
-				lines = append(lines, m.renderLine(f.fold[index-f.foldAt]))
-			} else {
-				lines = append(lines, " "+m.renderLine(item))
+				item = f.fold[index-f.foldAt]
 			}
+			lines = append(lines, m.renderLine(item))
 		}
 		for _, item := range f.notices {
 			lines = append(lines, " "+m.renderLine(item))
