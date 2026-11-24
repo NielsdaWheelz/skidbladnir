@@ -1254,7 +1254,7 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
     and measured in display cells before styling. Styled fragments never pass back
     through sanitization, which maps ESC to a space. Colour never carries meaning
     alone. `NO_COLOR` keeps the signs and words and strips every style, including
-    the work line.
+    the work line and the Fable underline.
 12. The TTY is lent, not shared. While attached the browser draws nothing and reads
     no input. Before returning, terminalclient cancels and joins both readers and
     restores the local TTY (cooked mode, remote-set presentation modes reset), also
@@ -1544,7 +1544,7 @@ for the palette.
   | Name | 0 | 11 | left, `…` | `usage` |
   | Weekly gauge | 13 | 24 | | |
   | 7d | 38 | 5 | right | `━ 7d` (`═ 7d` plain) |
-  | Fable | 45 | 7 | right | `🬋 fable` |
+  | Fable | 45 | 7 | right | `  fable`, its first cell a sample of the Fable underline |
   | Weekly countdown | 54 | 7 | left | `┴ reset` |
   | 5h | 64 | 5 | right | `5h` |
   | 5h countdown | 71 | 7 | left | `reset` |
@@ -1567,15 +1567,19 @@ for the palette.
   time left being the share of a seven-day window still to run: `┷` on heavy,
   `┵` on the half cell, `┴` on light, `╧` on plain heavy. An unknown general
   amount leaves a blank track with its stem.
-- Fable shares the weekly gauge on half scale: `round(fable × 12 / 100)` cells,
-  at least 1 above 0 and at most 11 below 100, so a full allowance reaches the
-  midpoint. The half scale reflects the included Fable allowance on eligible
-  plans ([Anthropic's plan terms](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan)).
-  A thick gold `🬋` covers those of its cells the general stroke touches, or all of them
-  when the general amount is unknown: Fable the general allowance can still
-  fund. A dashed gold `╌` continues beyond: Fable it cannot. A stem cell keeps
-  the general gauge's stem glyph in ink. Other cells under Fable take Fable's
-  fade; the rest take the general window's.
+- The Fable underline runs beneath the weekly gauge on its scale.
+  It spans `round(fable × 24 / 100)` cells from the left, at least 1 above 0
+  and at most 23 below 100, none at 0 or without a Fable amount. On eligible
+  plans, the included Fable allowance is half the weekly limit and spends from
+  it ([Anthropic's plan terms](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan)).
+  Each point of general left funds two of Fable. While Fable is at most twice
+  the general amount, the underline is single throughout. Beyond that it is
+  single for `round(2 × general × 24 / 100)` cells, bounded alike and capped
+  one cell short of the underline's end. The remaining cells are dotted for
+  the unfundable part. With the general amount unknown it is single throughout.
+  It is gold, quiet when Fable's window fades. It runs under every glyph in its
+  range, including blanks, stems and the reveal's marks. The 7d window, weekly
+  reset and reveal determine the glyphs and their ink.
 - Countdowns round down to whole minutes and show the two largest units:
   `2d 4h`, `3h 12m`, `41m`, `<1m`. A passed deadline shows its age: `<1m ago`,
   `12m ago`, `3h ago`, `2d ago`, `5w ago`, else the year and month. A countdown
@@ -1598,10 +1602,9 @@ for the palette.
   return from a terminal never starts it. Time since `u` counts in frames of
   1/15 s. A gold chomper crosses each gauge with a known general amount from its
   last cell at two frames per cell, `◕` then `●`. Wholly spent cells ahead of it
-  are quiet `╍`, except a stem; dashed Fable cells count as spent, thick ones
-  never do. Cells behind it are settled. It holds `◕` for both frames on the
-  first wholly spent cell and then leaves. A gauge without a wholly spent cell
-  stays settled throughout.
+  are quiet `╍`, except a stem. Cells behind it are settled. It holds `◕` for
+  both frames on the first wholly spent cell and then leaves. A gauge without a
+  wholly spent cell stays settled throughout.
 - The frame depends only on elapsed time and the current samples. A new profile
   joins at the current position, and a changed number can add or remove a
   chomper. An exhausted gauge settles at frame 48 (3.2 s); the reveal's own
@@ -1673,9 +1676,13 @@ for the palette.
   that comes in bursts: a fresh window reads behind after one burst. It
   resolves about 4.2 points and states no rate or forecast, though the eye will
   read one. The 5h window has no stem.
-- `🬋` is a sextant that Ghostty draws itself; a terminal without sextant
-  support, such as xterm.js with most fonts, can draw a box. Thick Fable cells follow the cells the
-  general stroke touches, so a half cell of general counts as fundable.
+- The Fable underline resolves whole cells, about 4.2 points. The full path's
+  general gauge resolves half cells. One reserved dotted cell can stand for an
+  excess of a single point. Fable at 0% and a row without Fable both draw no
+  underline. The Fable column distinguishes `0%`, blank and `—`.
+- The dotted boundary represents twice the general amount left, a point the
+  gauge leaves unmarked. It assumes the included Fable allowance is half the
+  weekly limit. A promotion or plan change can move the funded boundary.
 - The full-path reveal repaints fifteen times a second for 3.27 s. The font
   supplies its discs. Another font may draw `◕` and `●` larger, smaller or not
   at all. In MesloLGS NF their sizes differ, so the chew can read as a pulse.
@@ -1705,10 +1712,17 @@ for the palette.
 - The plain path keeps faint and bright yellow. Faint varies by terminal and
   vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `←`, `→`,
   `…`, `●`, `■`, `≡`, `·`, `—` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧`
-  have ambiguous East Asian Width and can wrap a frame.
-- The work line uses a double frost underline. The terminal and intervening
-  tmux decide whether it retains its style and ink, draws as a single line, or
-  disappears.
+  have ambiguous East Asian Width and can wrap a frame. Faint can dim the Fable
+  underline in quiet cells of the gauge, including spent, blank and faded cells.
+  A faded Fable underline takes the text colour.
+- The work line is a double frost underline and the Fable underline is single
+  or dotted gold. The terminal and intervening tmux determine whether each
+  retains its style and ink, draws as a single line in the text colour, or
+  disappears. A terminal that lacks SGR 58 support can read its colour
+  parameters as other attributes, such as blink, faint or a stray colour,
+  across the underlined run. `NO_COLOR` strips both marks and the header's
+  underlined sample. The Fable column keeps its number. The font places the
+  underline within the row and determines its gap below the general line.
 - browser help points to the live key map. visits still join the bounded hub
   acknowledgement before returning the tty. the
   [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
@@ -1740,6 +1754,9 @@ for the palette.
 - Only the week has a gauge. A 5h percentage measures a different allowance
   from the week's, so a shared track would invite a comparison it cannot
   support, and a five-hour window is spent in bursts rather than rationed.
+- A cell can display one glyph and an independently coloured underline. Giving
+  Fable the underline keeps the general gauge visible over their shared range.
+  Their common scale lets Fable's end read against the stem.
 - Escape never quits because Codex and Claude train a reflexive escape, often
   right after `ctrl-] d`.
 - Styles are plain `x/ansi` values: lipgloss 2 would pull an ultraviolet revision

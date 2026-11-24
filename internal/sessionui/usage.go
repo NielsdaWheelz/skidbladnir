@@ -512,7 +512,8 @@ func (m *model) usageBand(limit int) []line {
 	head = append(head, span{text: cell("", usageGauge)}, span{text: " "},
 		span{text: fmt.Sprintf("%*s", usagePercent-len(" 7d"), heavy)}, span{text: " 7d", role: quietRole}, span{text: "  "})
 	if fableColumn {
-		head = append(head, span{text: fmt.Sprintf("%*s", usageFable-len(" fable"), "🬋"), role: goldRole}, span{text: " fable", role: quietRole}, span{text: "  "})
+		head = append(head, span{text: " ", under: ansi.UnderlineSingle, underRole: goldRole},
+			span{text: " fable", role: quietRole}, span{text: "  "})
 	}
 	head = append(head, span{text: "┴"}, span{text: cell(" reset", usageCountdown-1), role: quietRole}, span{text: "   "},
 		span{text: fmt.Sprintf("%*s", usagePercent, "5h"), role: quietRole}, span{text: "  "}, span{text: cell("reset", usageCountdown), role: quietRole})
@@ -592,10 +593,20 @@ func (m *model) weekGauge(row usageRow, frame int) line {
 		halves = scaled(row.week.left, scale) * 2 * usageGauge / scale
 	}
 	touched := (halves + 1) / 2
-	fableCells := 0
+
+	fable, funded, fableRole := 0, 0, goldRole
 	if row.fable != nil && row.fable.left >= 0 {
-		fableCells = scaled(row.fable.left, usageGauge/2)
+		fable = scaled(row.fable.left, usageGauge)
+		funded = fable
+		if known && row.fable.left > 2*row.week.left {
+			// Keep at least one dotted cell when rounding erases the excess.
+			funded = min(scaled(2*row.week.left, usageGauge), fable-1)
+		}
+		if row.fable.faded {
+			fableRole = quietRole
+		}
 	}
+
 	stem := -1
 	if reset := row.weeklyResetSource(); reset != nil && *reset.until > 0 {
 		// For until > 0, (until − 1) / cell is ⌈until / cell⌉ − 1.
@@ -605,12 +616,9 @@ func (m *model) weekGauge(row usageRow, frame int) line {
 	if known && frame >= 0 {
 		chomper = usageGauge - 1 - frame/2
 	}
-	generalRole, fableRole := inkRole, goldRole
+	generalRole := inkRole
 	if row.week != nil && row.week.faded {
 		generalRole = quietRole
-	}
-	if row.fable != nil && row.fable.faded {
-		fableRole = quietRole
 	}
 	var gauge line
 	for index := range usageGauge {
@@ -623,12 +631,6 @@ func (m *model) weekGauge(row usageRow, frame int) line {
 		case index < touched:
 			glyph, stemGlyph, role = "╾", "┵", generalRole
 		}
-		if index < fableCells { // thick where general quota can fund fable's, dashed beyond
-			glyph, role = "╌", fableRole
-			if index < touched || !known {
-				glyph = "🬋"
-			}
-		}
 		switch {
 		case index == chomper && index >= touched:
 			glyph, role = "◕", goldRole
@@ -640,10 +642,17 @@ func (m *model) weekGauge(row usageRow, frame int) line {
 		case index >= touched && index < chomper:
 			glyph, role = "╍", quietRole
 		}
-		if last := len(gauge) - 1; last >= 0 && gauge[last].role == role {
+		under := ansi.UnderlineNone
+		switch {
+		case index < funded:
+			under = ansi.UnderlineSingle
+		case index < fable:
+			under = ansi.UnderlineDotted
+		}
+		if last := len(gauge) - 1; last >= 0 && gauge[last].role == role && gauge[last].under == under {
 			gauge[last].text += glyph
 		} else {
-			gauge = append(gauge, span{text: glyph, role: role})
+			gauge = append(gauge, span{text: glyph, role: role, under: under, underRole: fableRole})
 		}
 	}
 	return gauge
