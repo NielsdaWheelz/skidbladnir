@@ -383,7 +383,7 @@ func (m *model) keyMap(width int) []line {
 		{api.SignWorking, " working"}, {api.SignIdle, " idle"}, {api.SignUnknown, " unknown"},
 		{api.SignTerminal, " terminal"}, {"", ": work continues"},
 	} {
-		sign := span{text: "underlined", role: quietRole, underline: true}
+		sign := span{text: "underlined", role: quietRole, under: ansi.UnderlineDouble, underRole: frostRole}
 		if entry.sign != "" {
 			sign = signSpan(entry.sign)
 		}

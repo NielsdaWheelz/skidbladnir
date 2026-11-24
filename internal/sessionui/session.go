@@ -103,7 +103,11 @@ type model struct {
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
 	browserContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m := &model{ctx: browserContext, client: client, input: input, output: output, cursor: -1, width: 100, height: 30, now: time.Now()}
+	m := &model{
+		ground: ground{pigments: plainPigments},
+		ctx:    browserContext, client: client, input: input, output: output,
+		cursor: -1, width: 100, height: 30, now: time.Now(),
+	}
 	m.claudeUsage = client.KnownClaudeUsage()
 	for _, machine := range client.Machines() {
 		m.peers = append(m.peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})

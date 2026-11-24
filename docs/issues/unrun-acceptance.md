@@ -28,7 +28,12 @@ Desktop:
 - v0.11.0: live `s`/`x` provider and tmux closure, and [a6](https://github.com/NielsdaWheelz/skidbladnir/blob/ba60841d3eeefde94eda0aea623f81f4133e88e2/docs/desktop-browser.md#7-acceptance-and-delivery) info editing (takeover/reset, naming conflicts, lost acknowledgements, replaced targets) through a real gateway (desktop-browser-runtime-acceptance).
 - v0.18.0: installed production terminal entry/greeting on desktop and phone; needs an owner exception to the default-server guardrail (desktop-browser-runtime-acceptance).
 - v0.14.0: `start --stdin` on the installed fleet: cold startup to the first prompt, and each supported startup-dialog layout refused without blind input (jarvis-launch-readiness, jarvis-launch-receipts, at `ba60841`).
-- Usage band, owner look in Ghostty (`NOT_RUN`): the `🬋` Fable stroke and `╌` dashes beside Ghostty's own lines; faded rows; how `◕` and `●` sit and whether they pulse; the reveal at 7.5 cells a second across 24 cells; the stem's legibility; a light theme.
+- Usage band, owner look in Ghostty (`NOT_RUN`). Check the Fable underline's
+  weight and its gap below the general line, whether the dotted part reads as
+  dots, the faded underline, the header's underlined sample and faded rows.
+  Watch `◕` and `●` cross above it and check how they sit and whether they
+  pulse. Check the reveal at 7.5 cells a second across 24 cells, the stem's
+  legibility and a light theme.
 - Usage band, Codex sources (`NOT_RUN`, checked only by reading `internal/sessionui/usage.go`): a terminal estimate fades an hour after its receipt, and a profile whose native and terminal readings have both faded shows the native one. The release's temporary harness could not wait an hour.
 - Browser fold owner pass on the installed fleet (`NOT_RUN`, waived by the owner
   for this release). The pass covers copy and

@@ -14,20 +14,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Layout uses plain sanitized text; finished fragments receive design-language
-// accents. Labels remain complete without color.
-var (
-	plain    = ansi.Style{}
-	faint    = ansi.Style{}.Faint()
-	wordmark = ansi.Style{}.Reverse(true)
-	here     = ansi.Style{}.ForegroundColor(ansi.BrightYellow)
-	frostInk = color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff}
-	frost    = ansi.Style{}.ForegroundColor(frostInk)
-	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
-	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
-	ember    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
-)
-
 type role uint8
 
 const (
@@ -41,11 +27,15 @@ const (
 	bronzeRole
 )
 
+// Layout uses plain sanitized text; finished fragments receive design-language
+// accents. Labels remain complete without color.
 type span struct {
-	background              color.Color
-	text                    string
-	role                    role
-	bold, italic, underline bool
+	background   color.Color
+	text         string
+	role         role
+	under        ansi.Underline
+	underRole    role
+	bold, italic bool
 }
 
 type line []span
@@ -60,13 +50,17 @@ func (l line) width() int {
 
 func (m *model) renderLine(l line) string {
 	var rendered strings.Builder
-	styles := [...]ansi.Style{plain, faint, muted, here, ember, moss, frost, wordmark}
 	for _, part := range l {
-		style := styles[part.role]
-		if m.ground.raise != nil {
-			style = plain
-			if pigment := m.ground.pigments[part.role]; pigment != nil {
-				style = style.ForegroundColor(pigment)
+		var style ansi.Style
+		if pigment := m.ground.pigments[part.role]; pigment != nil {
+			style = style.ForegroundColor(pigment)
+		}
+		if m.ground.raise == nil {
+			switch part.role {
+			case quietRole:
+				style = style.Faint()
+			case bronzeRole:
+				style = style.Reverse(true)
 			}
 		}
 		if part.background != nil {
@@ -78,12 +72,11 @@ func (m *model) renderLine(l line) string {
 		if part.italic {
 			style = style.Italic(true)
 		}
-		if part.underline {
-			var ink color.Color = frostInk
-			if m.ground.raise != nil {
-				ink = m.ground.pigments[frostRole]
+		if part.under != ansi.UnderlineNone {
+			style = style.UnderlineStyle(part.under)
+			if pigment := m.ground.pigments[part.underRole]; pigment != nil {
+				style = style.UnderlineColor(pigment)
 			}
-			style = style.UnderlineStyle(ansi.UnderlineDouble).UnderlineColor(ink)
 		}
 		rendered.WriteString(style.Styled(part.text))
 	}

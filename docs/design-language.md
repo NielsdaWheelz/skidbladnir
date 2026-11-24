@@ -539,18 +539,23 @@ steps until it clears both fills.
 | ink | names, labels, notices, focused input; the band's names, numbers, heavy line, stems and an exhausted general window's countdown | default | default | default |
 | quiet | group, provider, profile, model, place, rules, hint and field labels, unassigned; the band's heads, countdowns, light line, unknown `—`, and faded names and windows | derived | derived | faint |
 | muted | other status and client notes | quiet | quiet | `#AAA69D` |
-| gold | lip, current view chevrons, focused chooser, the band's Fable stroke and chomper | `#D6A85F` | `#8A6416` | bright yellow |
+| gold | lip, current view chevrons, focused chooser, the band's Fable underline and chomper | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
 | moss | ready | `#76B082` | `#3B7448` | `#76B082` |
 | frost | starting and working, the work line | `#78A9C6` | `#2C6688` | `#78A9C6` |
 | bronze | wordmark block | `#CD7F32` | `#94561A` | reverse video |
 
-roles belong to text spans. every span and the padding carry the fill of their
-line. bold identifies the cursor's name, names that need input, the current view,
-headings, keys, titles, the focused field, the question and the selected row's
-profile in the usage band. client notes are italic and stale names are quiet.
+roles belong to text spans. a span's underline takes a role of its own. when
+that role has no pigment, as with ink and with quiet on the plain path, the
+underline takes the text colour. every span and the padding carry the fill of
+their line. bold identifies the cursor's name, names that need input, the
+current view, headings, keys, titles, the focused field, the question and the
+selected row's profile in the usage band. client notes are italic and stale
+names are quiet.
 a sign takes its ink from §5, with `?` and `!` bold. the work line is a
-double frost underline on the sign's cell.
+double frost underline on the sign's cell. the Fable underline is single or
+dotted beneath the weekly gauge's cells, gold while current and quiet when
+faded.
 the gold `▌` lip marks every fold line. text begins in column 5. one rule heads
 the open row's screen and another separates the body from the usage band, while
 shown, and the controls. hints use ink and quiet.
@@ -560,8 +565,9 @@ shared desktop outcome words. Browser copy names the session and listing host,
 reports only what was sampled or completed, and names the refused action and
 reason. Label ellipses mean a pending confirmation before sending. Fit within
 78 cells or wrap whole. Words and signs survive stripping every style. The
-work line and usage readings' staleness are style-only. The caption and facts
-can repeat `work continues` for the cursor row. The signs are text glyphs.
+work line, the Fable underline and usage readings' staleness are style-only.
+The caption and facts can repeat `work continues` for the cursor row, and the
+Fable column keeps Fable's number. The signs are text glyphs.
 The browser has no boxes, fret, runes or icons. Its one motion is the usage
 band's reveal, a gold chomper that crosses each weekly gauge's spent part once
 when `u` shows the band. This exception applies to §1.4, §1.6, §12, §14, §15
