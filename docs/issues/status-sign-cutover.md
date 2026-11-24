@@ -8,6 +8,10 @@ required.
 [Wire contract](../terminal-observation.md#2-capability-and-wire-contract),
 [lockstep cutovers](../architecture.md#lockstep-cutovers).
 
+The signed v0.30.0 release carries this cutover. Deployment is pending.
+At publication, arch was offline and the enrolled phone was unavailable
+through adb, so the existing fleet was kept together.
+
 Have the APK ready before updating hosts. With current-turn owner approval,
 publish, pin and verify the release, update every enrolled host, then
 install the APK at once. Reopen the desktop browser for its updated binary.
