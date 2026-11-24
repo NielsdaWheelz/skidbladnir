@@ -73,14 +73,13 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
         tmuxId == other.tmuxId && identityToken == other.identityToken
 }
 
-/** The host's status copy for one observation, rendered as if fresh and not ready (terminal-observation.md §6). */
+/** The host's presentation for one observation, before the phone's ready and stale overlays. */
 @Serializable internal data class StatusPresentation(
+    val sign: SessionSign,
+    val workContinues: Boolean,
     val label: String,
-    val tone: SessionStatusTone,
-    val queue: SessionQueueCategory,
     val detail: String? = null,
     val evidence: String? = null,
-    val queueNotice: String? = null,
 )
 
 internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession) {

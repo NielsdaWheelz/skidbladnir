@@ -253,6 +253,7 @@ internal data class VisibleSession(
     val machine: PairedMachine,
     val target: SessionTarget,
     val context: ExecutionContext,
+    val status: SessionStatusContent,
 ) {
     val cardKey: DashboardCardKey = dashboardCardKey(target)
 }
@@ -332,57 +333,56 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
         "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
 }
 
-@Serializable internal enum class SessionStatusTone {
+/** Declared in needs-input order: the first four queue. The host never sends Ready. */
+@Serializable internal enum class SessionSign {
+    @SerialName("request") Request,
+    @SerialName("error") Error,
+    @SerialName("ready") Ready,
+    @SerialName("interrupted") Interrupted,
+    @SerialName("menu") Menu,
     @SerialName("working") Working,
-    @SerialName("ready") Ready,
-    @SerialName("attention") Attention,
-    @SerialName("muted") Muted,
+    @SerialName("idle") Idle,
+    @SerialName("unknown") Unknown,
+    @SerialName("terminal") Terminal,
 }
 
-/**
- * Human-collection membership, in needs-input order. On the wire it is the host's verdict before
- * the phone's overlays, where Ready means only eligible; in [SessionStatusContent] it is final.
- */
-@Serializable internal enum class SessionQueueCategory {
-    @SerialName("ready") Ready,
-    @SerialName("action") Action,
-    @SerialName("none") Excluded,
-}
-
-// `detail` tells one session's state from another's; `evidence` names how status was
-// known. The card shows only the first, since the qualifier is the same on every agent card.
 internal data class SessionStatusContent(
-    val label: String, val detail: String?, val evidence: String?,
-    val tone: SessionStatusTone, val secondary: String?, val queueCategory: SessionQueueCategory,
-    val detailExplainsQueue: Boolean,
-)
+    val sign: SessionSign,
+    val workContinues: Boolean,
+    val label: String,
+    val detail: String?,
+    val evidence: String?,
+    val secondary: String?,
+) {
+    val queued: Boolean get() = sign <= SessionSign.Interrupted
+}
 
-/**
- * Status for the card and the terminal header: the host's [StatusPresentation] under the phone's
- * own knowledge. Staleness prefixes and mutes it, the hub's pending ready turns an eligible idle
- * row `ready`, and notification health adds a secondary line. A plain local terminal shows its
- * running command as detail.
- */
-internal fun sessionStatusContent(
-    session: TmuxSession, fresh: Boolean, notification: NotificationPresentation, showQueueReason: Boolean = false,
-): SessionStatusContent {
+/** The host's presentation and the phone's overlays for the card, queue and session sheet. */
+internal fun sessionStatusContent(machine: MachineState, target: SessionTarget): SessionStatusContent {
+    val session = target.session
     val status = session.status
-    val ready = fresh && status.queue == SessionQueueCategory.Ready && notification.ready && !notification.unavailable
-    val queueNotice = status.queueNotice?.takeIf { showQueueReason }
+    val notification = machine.notifications[NotificationKey(target)] ?: NotificationPresentation()
+    val held = when (machineAvailability(machine)) {
+        MachineAvailability.Ready, MachineAvailability.Refreshing -> true
+        MachineAvailability.AuthRequired, MachineAvailability.IdentityChanged, MachineAvailability.Reading,
+        is MachineAvailability.Stale, is MachineAvailability.Unavailable -> false
+    }
+    val ready = held && status.sign == SessionSign.Idle && notification.ready
     return SessionStatusContent(
-        label = if (!fresh) "last observed: ${status.label}" else if (ready) "ready" else status.label,
-        detail = listOfNotNull(queueNotice, status.detail).joinToString(" · ").ifEmpty { null }
-            ?: session.activeCommand.takeIf { status.evidence == null && session.connection == null },
-        evidence = status.evidence,
-        tone = if (!fresh) SessionStatusTone.Muted else if (ready) SessionStatusTone.Ready else status.tone,
-        secondary = if (notification.unavailable) "notifications unavailable" else null,
-        queueCategory = when {
-            !fresh -> SessionQueueCategory.Excluded
-            status.queue == SessionQueueCategory.Action -> SessionQueueCategory.Action
-            ready -> SessionQueueCategory.Ready
-            else -> SessionQueueCategory.Excluded
+        sign = when {
+            !held -> SessionSign.Unknown
+            ready -> SessionSign.Ready
+            else -> status.sign
         },
-        detailExplainsQueue = queueNotice != null,
+        workContinues = held && status.workContinues,
+        label = when {
+            !held -> "${status.label} · stale"
+            ready -> "ready"
+            else -> status.label
+        },
+        detail = status.detail ?: session.activeCommand.takeIf { status.evidence == null && session.connection == null },
+        evidence = status.evidence,
+        secondary = if (notification.unavailable) "notifications unavailable" else null,
     )
 }
 

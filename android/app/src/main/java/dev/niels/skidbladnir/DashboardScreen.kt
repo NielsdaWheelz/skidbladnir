@@ -57,9 +57,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -73,6 +76,11 @@ internal fun DashboardScreen(
     val openNotificationSettings = { context.startActivity(context.notificationOwner().settingsIntent()) }
     var machineSelection by remember { mutableStateOf<DashboardMachineSelection?>(null) }
     val machines = state.machines
+    val view = entry.view
+    val items = dashboardItems(machines, view)
+    val needsInput = if (view == DashboardViewSelection.NeedsInput) items
+        else dashboardItems(machines, DashboardViewSelection.NeedsInput)
+    val needsInputSign = needsInput.firstOrNull()?.let { (it as DashboardItem.Session).visible.status.sign }
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
@@ -80,7 +88,7 @@ internal fun DashboardScreen(
                 onNotificationSettings = openNotificationSettings,
             )
 
-            DashboardViewStrip(dashboardViews(machines, entry.view), entry.view, entry::selectView)
+            DashboardViewStrip(dashboardViews(machines, view), view, needsInputSign, entry::selectView)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     machineNotice(machine)?.let { MachineNoticeText(it, Modifier.padding(horizontal = 28.dp, vertical = 2.dp)) }
@@ -110,7 +118,7 @@ internal fun DashboardScreen(
                 )
             }
 
-            DwarfCollection(state, entry, controller)
+            DwarfCollection(state, entry, items, controller)
         }
 
         // The margin is the wrapper's, so the seal's semantics bounds stay the 56dp the grid's clearance measures.
@@ -149,10 +157,10 @@ internal fun DashboardScreen(
 private fun DwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
+    items: List<DashboardItem>,
     controller: SkidbladnirController,
 ) {
     val machines = state.machines
-    val items = dashboardItems(machines, entry.view)
     val needsInputView = entry.view == DashboardViewSelection.NeedsInput
     val keys = items.map(DashboardItem::key)
     val recoveryNotices = machines.mapNotNull { machine ->
@@ -276,7 +284,6 @@ private fun DwarfCollection(
                                     visible,
                                     machine,
                                     needsInputView = needsInputView,
-                                    motionEnabled = motionEnabled,
                                     actions = listOf(
                                         MenuAction("change group", machine.canMutate, destructive = false) {
                                             controller.openGroupEditor(target)
@@ -356,6 +363,7 @@ private fun DashboardTopBar(
 private fun DashboardViewStrip(
     views: List<DashboardViewSelection>,
     view: DashboardViewSelection,
+    needsInputSign: SessionSign?,
     onSelect: (DashboardViewSelection) -> Unit,
 ) {
     val selectedChip = remember { BringIntoViewRequester() }
@@ -373,7 +381,6 @@ private fun DashboardViewStrip(
             views.forEach { choice ->
                 key(choice.key) {
                     val selected = choice.key == view.key
-                    val label = choice.displayLabel()
                     Box(
                         modifier = Modifier
                             .widthIn(min = 48.dp, max = maximumWidth)
@@ -394,7 +401,21 @@ private fun DashboardViewStrip(
                             modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 32.dp),
                         ) {
                             Text(
-                                label, color = if (selected) Gold else Bone,
+                                text = buildAnnotatedString {
+                                    append(choice.displayLabel())
+                                    if (choice == DashboardViewSelection.NeedsInput) {
+                                        append(" ")
+                                        val face = needsInputSign?.let(::signFace)
+                                        withStyle(SpanStyle(
+                                            fontFamily = NidavellirType.Data,
+                                            color = face?.ink ?: Color.Unspecified,
+                                            fontWeight = face?.weight,
+                                        )) {
+                                            append(face?.glyph ?: "\u00A0")
+                                        }
+                                    }
+                                },
+                                color = if (selected) Gold else Bone,
                                 style = MaterialTheme.typography.labelLarge,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,

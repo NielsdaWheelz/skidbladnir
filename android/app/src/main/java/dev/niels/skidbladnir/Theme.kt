@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -137,11 +140,39 @@ internal fun NidavellirTheme(content: @Composable () -> Unit) {
     )
 }
 
-internal fun sessionStatusColor(tone: SessionStatusTone): Color = when (tone) {
-    SessionStatusTone.Working -> Frost
-    SessionStatusTone.Ready -> Moss
-    SessionStatusTone.Attention -> Ember
-    SessionStatusTone.Muted -> Muted
+internal data class SignFace(val glyph: String, val ink: Color, val weight: FontWeight = FontWeight.Normal)
+
+internal fun signFace(sign: SessionSign): SignFace = when (sign) {
+    SessionSign.Request -> SignFace("?", Ember, FontWeight.Bold)
+    SessionSign.Error -> SignFace("!", Ember, FontWeight.Bold)
+    SessionSign.Ready -> SignFace("●", Moss)
+    SessionSign.Interrupted -> SignFace("■", Muted)
+    SessionSign.Menu -> SignFace("≡", Muted)
+    SessionSign.Working -> SignFace("▸", Frost)
+    SessionSign.Idle -> SignFace("·", Muted)
+    SessionSign.Unknown -> SignFace("—", Muted)
+    SessionSign.Terminal -> SignFace("\$", Muted)
+}
+
+@Composable
+internal fun StatusSign(sign: SessionSign, workContinues: Boolean, modifier: Modifier = Modifier) {
+    val face = signFace(sign)
+    val style = MaterialTheme.typography.labelMedium
+    var baseline by remember { mutableFloatStateOf(0f) }
+    Text(
+        face.glyph,
+        modifier = if (workContinues) modifier.drawBehind {
+            val thickness = style.fontSize.toPx() / 12f
+            val rule = Size(size.width, thickness)
+            drawRect(Frost, topLeft = Offset(0f, baseline + 1.5f * thickness), size = rule)
+            drawRect(Frost, topLeft = Offset(0f, baseline + 3.5f * thickness), size = rule)
+        } else modifier,
+        color = face.ink,
+        style = style,
+        fontFamily = NidavellirType.Data,
+        fontWeight = face.weight,
+        onTextLayout = { baseline = it.firstBaseline },
+    )
 }
 
 /** One observed Android motion setting shared by every state-bound animation. */

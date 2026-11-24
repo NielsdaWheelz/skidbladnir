@@ -150,21 +150,19 @@ internal fun dashboardItems(
             .filter { view.matchesGroup(it.group) }
             .map { session ->
                 val target = SessionTarget(state.machine.handle, session)
-                val notification = state.notifications[NotificationKey(target)] ?: NotificationPresentation()
-                VisibleSession(state.machine, target, state.executionContext(session)) to
-                    sessionStatusContent(session, state.canMutate, notification).queueCategory
+                VisibleSession(state.machine, target, state.executionContext(session), sessionStatusContent(state, target))
             }
-    }.sortedWith(compareBy<Pair<VisibleSession, SessionQueueCategory>> { it.first.machine.label.text.lowercase(Locale.ROOT) }
-        .thenBy { it.first.machine.label.text }
-        .thenBy { it.first.machine.handle.encoded }
-        .thenBy { it.first.target.session.tmuxId.substring(1).toBigInteger() })
+    }.sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
+        .thenBy { it.machine.label.text }
+        .thenBy { it.machine.handle.encoded }
+        .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
     return when (view) {
-        DashboardViewSelection.NeedsInput -> sessions.filter { it.second != SessionQueueCategory.Excluded }
-            .sortedBy { it.second }.map { DashboardItem.Session(it.first) }
+        DashboardViewSelection.NeedsInput -> sessions.filter { it.status.queued }
+            .sortedBy { it.status.sign }.map { DashboardItem.Session(it) }
         is DashboardViewSelection.Named, DashboardViewSelection.Unassigned ->
-            sessions.map { DashboardItem.Session(it.first) }
+            sessions.map { DashboardItem.Session(it) }
         DashboardViewSelection.All -> {
-            val grouped = sessions.map { it.first }.groupBy { it.target.session.group }
+            val grouped = sessions.groupBy { it.target.session.group }
             val labels = grouped.keys.filterNotNull()
                 .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
             buildList {
