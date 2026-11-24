@@ -33,38 +33,60 @@ type tablePlacement struct {
 }
 
 type frame struct {
-	width, body, top int
-	columns          tableColumns
-	rows             []tablePlacement
-	foldAt           int
-	fold             []line
-	notices, band    []line
-	rule, hints      line
+	width, rowWidth, body, top      int
+	strip, blank, caption, hintLine bool
+	columns                         tableColumns
+	rows                            []tablePlacement
+	foldAt                          int
+	fold                            []line
+	notices, band                   []line
+	rule, hints                     line
+}
+
+func (f frame) bandLimit() int { return (f.body - len(f.fold)) / 2 }
+
+// chrome assigns room before laying out any action or key hint.
+func (m *model) chrome() frame {
+	f := frame{width: m.width, rowWidth: m.width, body: m.height, top: m.top}
+	if m.width >= 4 {
+		f.width -= 2
+		f.rowWidth--
+	}
+	f.strip = m.height >= 3 && m.width >= 6
+	f.blank = m.height >= 12 && f.strip
+	f.caption = m.height >= 2
+	f.hintLine = m.height >= 8
+	for _, drawn := range [...]bool{f.strip, f.blank, f.caption, f.hintLine} {
+		if drawn {
+			f.body--
+		}
+	}
+	if m.fold.loss != "" && f.body > 0 {
+		// A disabled fold occupies even the last body line.
+		f.fold = m.foldLines(max(1, f.body-1), f.rowWidth)
+	}
+	if limit := f.body - len(f.fold) - 2; limit > 0 && f.width > 0 {
+		f.notices = m.noticeLines(f.width)
+		f.notices = f.notices[:min(limit, len(f.notices))]
+		f.body -= len(f.notices)
+	}
+	if m.band {
+		f.band = m.usageBand(f.bandLimit(), f.width)
+		f.body -= len(f.band)
+	}
+	return f
 }
 
 func (m *model) frame() frame {
-	f := frame{width: m.width - 2, top: m.top}
-	width := f.width - 3
-	f.body = m.height - 4
-	if m.fold.loss != "" {
-		f.fold = m.foldLines(f.body-1, width)
-	}
+	f := m.chrome()
 	reserved := len(f.fold)
-	f.notices, f.hints = m.noticeLines(f.width), m.keyHints(f.width)
-	// Leave room for the disabled prompt and the selected row or empty state.
-	f.notices = f.notices[:min(len(f.notices), f.body-reserved-2)]
-	f.body -= len(f.notices)
-	if m.band {
-		f.band = m.usageBand((f.body - reserved) / 2)
-		f.body -= len(f.band)
-	}
 	tableHeight := f.body - reserved
-	f.columns = m.measureColumns(f.width - rowNameStart + 1)
-	if m.cursor >= 0 {
+	f.columns = m.measureColumns(max(0, f.rowWidth-rowNameStart))
+	if m.cursor >= 0 && tableHeight > 0 {
 		f.top = min(max(0, f.top, m.cursor-tableHeight+1), m.cursor)
 		headings := m.tableHeadings()
 		for {
-			f.rows = tableViewport(f.top, tableHeight, headings)
+			f.rows = tableViewport(f.top, tableHeight, headings, m.height >= 24)
 			if f.rows[len(f.rows)-1].index >= m.cursor {
 				break
 			}
@@ -73,19 +95,42 @@ func (m *model) frame() frame {
 	}
 	if reserved != 0 {
 		f.foldAt = tableHeight
-	} else if m.fold.foot() {
-		f.composeFoot(m.foldLines(f.body*11/20, width))
-	} else if m.fold.kind != foldNone && m.cursor >= 0 {
-		f.composeInline(m.cursor, m.foldLines(max(1, min(16, (f.body-1)/2)), width))
+	} else if m.fold.kind != foldNone && (m.fold.foot() || m.cursor >= 0) {
+		lines := m.foldLines(m.fold.capacity(f.body), f.rowWidth)
+		if m.fold.foot() {
+			f.composeFoot(lines)
+		} else {
+			f.composeInline(m.cursor, lines)
+		}
+	}
+	if f.hintLine {
+		f.hints = m.keyHints(f.width)
+	}
+	if !f.caption {
+		return f
+	}
+	room := f.width
+	if f.width >= 12 {
+		room -= 5
 	}
 	var caption line
 	switch {
+	case m.notice != "" && len(f.notices) == 0:
+		role := inkRole
+		if m.noticeFailure {
+			role = emberRole
+		}
+		caption = line{{text: ansi.Truncate(attention.SingleLine(m.notice), room, "…"), role: role}}
 	case m.fold.kind == foldTerminal:
-		caption = line{{text: "new terminal on " + ansi.Truncate(attention.SingleLine(m.fold.request.Machine), f.width-21, "…")}}
+		caption = line{{text: ansi.Truncate("new terminal on "+attention.SingleLine(m.fold.request.Machine), room, "…")}}
 	case m.fold.kind == foldDraft && !m.fold.seeded:
-		caption = line{{text: "new session on " + ansi.Truncate(attention.SingleLine(m.form.machine), f.width-20, "…")}}
+		caption = line{{text: ansi.Truncate("new session on "+attention.SingleLine(m.form.machine), room, "…")}}
 	case m.cursor >= 0:
-		caption = m.tableCaption(f, len(f.rows) < len(m.rows), f.width-5)
+		caption = m.tableCaption(f, len(f.rows) < len(m.rows), room)
+	}
+	if f.width < 12 {
+		f.rule = caption
+		return f
 	}
 	var quota line
 	if len(f.band) == 0 {
@@ -97,7 +142,7 @@ func (m *model) frame() frame {
 
 func (m *model) tableHeadings() []bool {
 	headings := make([]bool, len(m.rows))
-	if m.view.kind != viewAll {
+	if m.view.kind != viewAll || m.width < 14 {
 		return headings
 	}
 	for index, row := range m.rows {
@@ -108,7 +153,7 @@ func (m *model) tableHeadings() []bool {
 
 // tableViewport puts each heading on the line before the first session. The
 // selected row's line is an anchor for inline folds, independent of their size.
-func tableViewport(first, height int, headings []bool) []tablePlacement {
+func tableViewport(first, height int, headings []bool, gap bool) []tablePlacement {
 	var rows []tablePlacement
 	y := 0
 	for index := first; index < len(headings); index++ {
@@ -116,7 +161,7 @@ func tableViewport(first, height int, headings []bool) []tablePlacement {
 		rowLine := y
 		if headings[index] && (index != first || height > 1) {
 			rowLine++
-			if index != first {
+			if index != first && gap {
 				rowLine++
 			}
 			heading = rowLine - 1
@@ -250,9 +295,6 @@ func cutName(name, mode string, room int) string {
 	return ansi.Truncate(name, room/2, "") + "…" + tail(name, (room-1)/2)
 }
 
-// the browser lays out nothing below 80 × 24.
-func (m *model) tooSmall() bool { return m.width < 80 || m.height < 24 }
-
 func (m *model) tableLines(f frame) []line {
 	lines := make([]line, f.body)
 	if m.width == 0 {
@@ -319,7 +361,7 @@ func (m *model) tableLines(f frame) []line {
 			}
 		}
 		if selected && m.width >= 4 {
-			finished = finished.filled(m.ground.raise, f.width+1)
+			finished = finished.filled(m.ground.raise, f.rowWidth)
 		}
 		lines[placement.line] = finished
 	}

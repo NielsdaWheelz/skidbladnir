@@ -114,8 +114,7 @@ Remote access uses Tailscale Serve's HTTPS port 8443 and only Tailscale's
    line for linger or `tailscaled` if either is off, with the command to run, and
    macOS reports the scheduling priority of skid's service.
 
-4. Run `skid list`, or `skid` for the session browser in a terminal of at least
-   80 × 24 cells.
+4. Run `skid list`, or `skid` for the session browser.
 
 ## What the installer changes
 

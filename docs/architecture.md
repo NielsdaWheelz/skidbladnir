@@ -1225,8 +1225,8 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
 7. fleet-wide views. views and suggestions use retained fleet inventory. failed
    hosts keep their last rows and a notice. a healthy host is checking before
    its first read, after the browser writes to it and after a terminal visit.
-   a checking row keeps its sign and queue place. the caption and facts say
-   `checking`.
+   a checking row keeps its sign and queue place. the caption and facts show
+   `checking` while it fits.
 8. ready is the hub's verdict for an idle row with the same observed foreground
    (provider, pid and start identity). after a visit a previously ready row
    checks until its host and hub have answered. a failed hub read removes ready
@@ -1381,50 +1381,83 @@ predicate.
 
 ### Browser
 
-the view strip and `▜skid▛` occupy line 1. line 2 is blank. the table and any
-fold share the body, followed by notices, the caption and quota rule, the usage
-band while shown, and one hint line. the table scrolls only as needed to keep
-the selected row visible when selection, inventory, view, window size or footer
-height changes. below 80×24 only the size notice and outcome draw. only
-`ctrl-c` and the current fold's closing keys act there.
+the table and any fold share the body. the view strip sits above it. notices,
+the caption and quota rule, the usage band and key hints sit below it. the
+table scrolls only as needed to keep the selected row visible when selection,
+inventory, view, window size or footer height changes.
 
-**strip.** `needs input`, `all` and the current label stay visible. other group
-labels share a cap, from 24 to 7 cells. when the floor no longer fits, the
-farthest groups hide behind counted `←n` and `n→`. left and right clamp. a view
-change keeps a lifetime present in the new view, otherwise selects its first row.
+**size.** the browser draws at every window size. lines fit without wrapping,
+and from four columns the last column stays blank. a one-line window holds the
+cursor's row. the caption arrives at 2 lines, the strip at 3, hints at 8, the
+blank line under the strip at 12 and the blank before each later heading at 24.
+the strip needs 6 columns and headings need 14. below 6 columns the strip's
+lines go to the body.
 
-**table.** each session occupies one line, with the sign in a fixed cell before
-the name. the columns measure last observations across listed rows. `all` and
-group views share widths. needs input adds group. columns are name (28 cells),
-group (16), provider, profile, model/effort, machine (16) and path (at least
-eight). two spaces separate columns. trailing columns drop whole for everyone.
-machine and path drop together and an unresolved remote uses both for `remote
-context unknown`. sign and name stay.
+a key that opens an effect fold or sends its action checks the current
+window. `x`, `s` and their send keys require the whole question and effect.
+`r`, `g`, `c`, `N` and `n` and their sends require their fields and controls,
+with eight cells for a value. attaching, `T` and creation submits require
+20–1024 columns and 5–512 rows before fencing reads. a creation that returns
+outside that range selects the session and reports the refused attach. a fold
+that loses room keeps its text, and its send rearms when it fits. a refusal
+names the action and reason. navigation, inspection, draft input, closing a
+fold, refresh and quit keep their ordinary key rules at every size.
 
-the path is the last two lexical components, with `…/` for earlier components.
-when it is too wide, it keeps `…/` and as much of the last component as fits.
-the caption holds `checking`, `stale` and a guest's `left the queue` or `left
-this group`. a stale row drops group and agent metadata and keeps place only if
-it fits. only `all` draws group headings, with their first row.
+**strip.** other group labels share a cap, from 24 to 7 cells. when that no
+longer fits, the farthest groups hide behind counted `←n` and `n→`. as the
+window narrows the wordmark goes, then `needs input` shortens to its sign,
+then only that sign and the current view remain, with at least three cells for
+the current label. the sign alone is the smallest strip. left and right clamp.
+a view change keeps a lifetime present in the new view, otherwise selects its
+first row.
 
-the rule names the session and listing host, then its status label with
-`· stale`, `· checking`, `· left the queue` or `· left this group` when they
-apply. the host's detail, any dropped execution place and position follow, in
-that order. detail and position must fit whole. the execution path can shorten
-as it does in the table. the name's tail gives way to keep the status. weekly
-quota takes the remaining room. a foot draft or terminal chooser names its
-selected host.
+**table.** from two columns the cursor's lip occupies the first cell and
+every status sign the second. at one column the sign fills the cell. names
+begin in the fifth column and arrive at eight columns. two spaces separate
+lanes. after name, the lanes are group in needs input (at most 16 cells),
+profile (at least the width of `unknown`, at most 16), model/effort (20) and
+place (at least 24, and the rest of the line). names and groups measure all
+listed rows, including retained rows. profile measures configured profile
+keys. `all` and group views share starts. status, footer and agent exit leave
+those starts fixed. the name target is the longest listed name capped at 40.
+the lanes are admitted in order while leaving 32 cells for names, or the
+target if smaller. place requires the full target. with no later lane, names
+take the whole line after the spine. automatic names keep the head when cut.
+manual names keep both ends when there is room for at least three cells.
+
+place gives the directory's last component and a slash, with `/` for root and
+`directory unavailable` when missing. it prefixes the execution host and a
+colon only when that host's handle differs from the browser's. the host label
+is capped at 12 cells. a cut directory keeps its tail. an unresolved remote
+reads `remote context unknown`. stale rows keep place and drop group and agent
+facts. only `all` draws group headings. the table keeps a heading with its
+first row when both fit. an inline fold can cover the heading while it
+keeps the cursor in place.
+
+the caption names the session and listing host, then the status label and
+its stale, checking or guest markers as applicable, then the host's detail.
+nonempty facts from lanes that did not fit follow in order: group, profile,
+model and place. position comes last while rows are hidden.
+as room falls the caption gives up position, the place's head then the place,
+model, profile, group, listing host, the name's tail then the name. the status
+is cut from the tail last. dashes frame the caption from 12 cells of room.
+weekly quota takes remaining room while the band is hidden. a foot draft or
+terminal chooser names its selected host.
+
 notices put the outcome first, then hub and host failures and retained recovery
 notices. a checking host shows `checking inventory` only when it has no listed
-row. at extreme notice heights the visible footer keeps the highest-priority
-notices and room for the table.
+row. a host label is capped at 16 cells and its notice is cut at the tail.
+notices take lines while the body keeps two. with no line to spare, an outcome
+takes the caption until the next key press.
 
 **folds.** one fold at a time. space opens any selected row, including a stale
 row or guest. inline folds stay beside that row, moving later lines down or
 earlier lines up without moving the selected row or table scroll. their cap is
 `max(1, min(16, (body − 1) / 2))` in whole lines. foot folds cover at
 most 11/20 of the body's last lines, including the title. they can cover the
-cursor but cannot cover a notice. a clipped fold keeps its focused line visible.
+cursor but cannot cover a notice. fold text fits the window. an inline fold
+draws nothing in a one-line body, and a clipped fold keeps its focused line
+visible.
 
 open shows handle, pane, directory, command and any attached clients, then the
 sampled screen. `i` switches to facts, with state and availability first, then
@@ -1439,10 +1472,10 @@ samples. the fold sanitizes terminal lines, drops blank and drawing-only lines,
 and shows the latest lines that fit.
 
 `x` and `s` open an inline question naming the captured session and host above
-the literal effect. enter or `y` sends once if the captured lifetime is available.
-escape, `n` and `q` cancel. sending or canceling returns to the table. a refused
-send explains why. `r` and `g` open
-inline editors from an open row. a write's draft and uncertainty survive until a
+the literal effect. enter or `y` sends once if the captured lifetime is
+available and the whole question and effect fit. escape, `n` and `q` cancel.
+sending or canceling returns to the table. `r` and `g` open inline editors
+from an open row. a write's draft and uncertainty survive until a
 fresh read settles them. pending reconciliation blocks another edit. matching
 fresh metadata resolves an acknowledged write or reports observation after an
 unknown outcome, then returns to the open row. conflicting metadata keeps the
@@ -1454,10 +1487,10 @@ removing the subject collapses open details. a confirmation or editor moves to
 a disabled foot fold naming the captured subject and reason. an unanswered
 question says `nothing sent`. an editor keeps its frozen draft. a sent edit's
 reply reports against its captured subject and ends checking if the subject is
-gone. the disabled fold and the successor or empty state keep space even when
-notices crowd the table. escape dismisses the fold. while idle, `ctrl-c`
-quits and `ctrl-r` refreshes. every other key and paste belongs to the disabled
-fold and has no effect. reappearance cannot rearm it. a seeded creation draft
+gone. the disabled fold takes precedence in a one-line body. with room,
+the successor or empty state also draws. escape dismisses the fold. while
+idle, `ctrl-c` quits and `ctrl-r` refreshes. every other key and paste belongs
+to the disabled fold and has no effect. reappearance cannot rearm it. a seeded creation draft
 becomes standalone and keeps its fields, focus and any valid search.
 
 `n` opens the terminal chooser at the configured default. it cycles every
@@ -1478,21 +1511,24 @@ a directory search after 150 ms. left and right preview values, tab or enter
 accepts and advances, shift-tab returns without accepting and `ctrl-u` clears
 to home or unassigned. edits, machine change, focus loss and cancellation retire
 old search replies. group suggestions use observed labels. the group editor's
-`ctrl-s` saves the typed draft.
+`ctrl-s` saves the typed draft. a focused text field shows the tail of what
+was typed.
 
 **keys.** the same entries drive dispatch, hints and the `?` map. the map shows
 session, create and browser keys, attach chords, open-row keys and a sign
 legend. it names the colour path when there is room. unavailable entries are
 quiet. an admitted listed key closes the map and acts. the hint line takes
 admitted entries by rank when they fit and ends with its kept close or quit
-entries. tab and shift-tab wrap through rows that need input and carry an open
-fold.
+entries, which leave from the front when they alone do not fit. tab and
+shift-tab wrap through rows that need input and carry an open fold.
 movement keys close an open fold before navigating. arrow and letter keys inside
 an editor or chooser belong to that field. escape closes a fold, returning an
 editor to open. `q` quits from the table, closes open, confirm, terminal and
 keys, and types in a text field. `u` shows and hides the usage band on the
 table, in an open row and in a confirm. it waits for the terminal's colours
-as attach does. the band starts hidden in each run and only `u` changes it.
+as attach does. showing it requires the whole grid and margin, 80 columns
+with Claude or 71 without, and room for three band lines. hiding it needs
+no room. the band starts hidden in each run and only `u` changes it.
 `ctrl-r` refreshes inventory and usage in every fold and reads the open row's
 screen. `ctrl-c` quits from any fold. a write in flight refuses every key until
 its result lands. see `?` for the
@@ -1556,8 +1592,8 @@ for the palette.
   Claude bindings), so readings arriving or lapsing never move the grid. A
   missing window is blank; a window with an unknown amount prints a quiet `—`.
 - The band fits in half the body left by notices and the fold. Profiles past
-  its cap become one overflow line. With room for fewer than three lines the
-  band keeps its state and stays hidden.
+  its cap become one overflow line. When fewer than three lines fit or the
+  grid and margin are too wide, the band keeps its state and stays hidden.
 - The weekly gauge has 24 cells. General 7d left fills `round(left × 48 / 100)`
   half cells, at least 1 above 0 and at most 47 below 100: heavy `━`, `╾` where
   it ends mid-cell, light `─` for spent. The plain path fills
@@ -1631,33 +1667,37 @@ for the palette.
 - While attached the browser's chrome and status are gone; navigation needs detach.
 - `ctrl-c` is refused in flight for up to 15 s; a held `ctrl-c` then quits as soon
   as the outcome lands, possibly unread, and a restart keeps no record. After `n`,
-  `N`, `T` or `c` the new terminal still attaches: detach, then quit. A reflexive
-  `ctrl-c` after `ctrl-] d` quits skid.
+  `N`, `T` or `c`, a creation attaches if the window fits. Detach before
+  quitting. A reflexive `ctrl-c` after `ctrl-] d` quits skid.
 - Duplicate suppression lasts only while an action is in flight; a later `n`
   creates another terminal. There is no exactly-once creation or remote
   cancellation.
 - `n` restarts at the default and costs an Enter even with one machine;
   unavailable machines stay in its cycle; first creation waits for inventory, with
   no optimistic bypass.
-- wide values anywhere can drop columns for every row. at 80 columns place
-  can survive in the selected session's caption when its status leaves room.
-  short names share the longest listed name's width. bounded names and paths
-  can collide visually. the open facts and `skid info` carry full identity.
-- a returning browser holds signs while it awaits observations, says `checking`
-  in the caption and facts, and admits attach and local inspection. an external
-  close waits for a successful read. a guest keeps context after leaving a filter.
-  reorder can move the cursor with the selected lifetime or its old successor.
-- a regular foot fold can cover the cursor. a disabled draft can clip long text
-  and takes one escape to dismiss. short windows cut facts and field notes.
-  the refusal carries the field's full reason. a confirmation contains only
-  its question and effect. a tight question shortens both names independently
-  to keep the session and host visible. foot caps can clip the end of the key map
-  when notices or the usage band crowd the body.
+- a longer listed name or group can move or drop lanes for every row, as can a
+  longer configured profile when a host first reports it. admitting a lane
+  can cut more names as the window widens. a name longer than 40 cells is cut
+  wherever a later lane fits. below about 18 cells, cuts can make names look
+  alike. directories repeat within a group. a home reads as its last path
+  component. rows show execution place while the facts retain the full path
+  and context.
+- a returning browser holds signs while it awaits observations and admits
+  attach and local inspection. an external close waits for a successful read.
+  a guest keeps context after leaving a filter. reorder can move the cursor with the selected lifetime or its old successor.
+- a foot fold can cover the cursor. short windows clip facts, field notes and
+  key maps. unfocused draft values may look cut and are sent whole. a narrow
+  window needs more height to show a whole question within its cap. for a
+  26-cell name, closing takes 23 lines at 40 columns or 13 at 80. a refusal can
+  scroll the table and its explanation can be cut, disappearing at one line.
+  at one column under `NO_COLOR` the cursor has no mark. a window-size message
+  can rearm a send before the next repaint.
 - The usage band takes body lines while it shows. At 80×24 with four profiles
   the header and rows take five lines. Taller bands leave less room for an
-  open fold. Showing it can scroll the table; hiding it does not scroll back.
-  Profiles past its cap show nowhere while it shows, the selected row's own
-  among them. Names sharing their first ten cells can read alike. `u` cannot
+  open fold. Showing the band can scroll the table and make a question too
+  tall to send. With two notices and the band at 80×24, `c` and `N` need
+  more room. Hiding the band does not scroll back. Profiles past its cap can
+  include the selected row's own profile, which stays hidden with the others. Names sharing their first ten cells can read alike. `u` cannot
   hide the band from an editor, a draft or the terminal chooser. On the table,
   `q` quits with it shown. Opening it uses the last known readings; Claude's
   cache can predate the last gateway poll. The countdown displays whole
@@ -1705,10 +1745,10 @@ for the palette.
   deadline and the desktop clock. codex
   whole replacement can discard an older complete window. countdown and age
   updates can lag by the browser's five-second tick.
-- the first frame uses the plain palette. a terminal that does not answer the
-  device query can delay first attach by one second. a later reply can reach
-  an attached session. the browser samples the theme once, so theme changes need
-  restart. on the full path the pigments are fixed by the design language.
+- the first frame uses the plain palette, with a 100×30 layout until the
+  window reports its size. a terminal that does not answer the device query
+  can delay first attach by one second. a later reply can reach an attached
+  session. the browser samples the theme once, so theme changes need restart. on the full path the pigments are fixed by the design language.
 - The plain path keeps faint and bright yellow. Faint varies by terminal and
   vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `←`, `→`,
   `…`, `●`, `■`, `≡`, `·`, `—` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧`
@@ -1744,6 +1784,11 @@ for the palette.
   because they can block work, then ready, then interruption, usually the
   owner's own stop. a notice tells how the turn ended and takes precedence over
   the owner's menu. the caption and facts keep the words near the cursor.
+- a row prints the facts that distinguish it. the profile carries the provider
+  association, and the host appears in place only off this machine. keeping
+  headings as labels keeps changes to a row's facts local to that row.
+- a small pane still shows sessions. effects need room for the controls or
+  confirmation the user acts on.
 - usage is a band, not a fold: quota is evidence one keeps in view while
   working, and a fold is the one fold open, takes the keys and locks the
   table. the band is the rule's quota opened out, so it hangs under the rule.

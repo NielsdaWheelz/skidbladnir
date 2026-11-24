@@ -325,8 +325,7 @@ func (m *model) codexTerminalUsage(profile fleetclient.Profile) usageRow {
 	}
 }
 
-// Only claude can read fable.
-func (m *model) usageRows() (rows []usageRow, fableColumn bool) {
+func (m *model) usageProfiles() []fleetclient.Profile {
 	profiles := []fleetclient.Profile{}
 	add := func(profile fleetclient.Profile) {
 		for _, present := range profiles {
@@ -349,7 +348,11 @@ func (m *model) usageRows() (rows []usageRow, fableColumn bool) {
 	for _, known := range m.claudeUsage {
 		add(known.Profile)
 	}
-	rows = make([]usageRow, len(profiles))
+	return profiles
+}
+
+func (m *model) usageRows(profiles []fleetclient.Profile) []usageRow {
+	rows := make([]usageRow, len(profiles))
 	for index, profile := range profiles {
 		switch profile.Provider {
 		case "Codex":
@@ -370,12 +373,11 @@ func (m *model) usageRows() (rows []usageRow, fableColumn bool) {
 			}
 		case "Claude":
 			rows[index] = m.claudeUsageRow(profile)
-			fableColumn = true
 		default:
 			rows[index] = usageRow{profile: profile}
 		}
 	}
-	return rows, fableColumn
+	return rows
 }
 func (m *model) usageDeclarationState() string {
 	full, completed, failed, pending := true, false, false, false
@@ -439,7 +441,7 @@ func (m *model) weeklyQuota(room int) line {
 	if room <= 0 {
 		return nil
 	}
-	rows, _ := m.usageRows()
+	rows := m.usageRows(m.usageProfiles())
 	if len(rows) == 0 {
 		if state := m.usageDeclarationState(); ansi.StringWidth(state) <= room {
 			return line{{text: state}}
@@ -488,13 +490,31 @@ const (
 	usagePercent   = 5
 	usageFable     = 7
 	usageCountdown = 7
+	usageMinLines  = 3
+	usageWidth     = usageName + 2 + usageGauge + 1 + usagePercent + 2 + usageCountdown + 3 + usagePercent + 2 + usageCountdown
 )
 
-func (m *model) usageBand(limit int) []line {
-	if limit < 3 {
+// usageGrid includes the Fable column and its gap when a Claude profile is known.
+func usageGrid(profiles []fleetclient.Profile) int {
+	for _, profile := range profiles {
+		if profile.Provider == "Claude" {
+			return usageWidth + usageFable + 2
+		}
+	}
+	return usageWidth
+}
+
+func (m *model) usageBand(limit, width int) []line {
+	if limit < usageMinLines || width < usageWidth {
 		return nil
 	}
-	rows, fableColumn := m.usageRows()
+	profiles := m.usageProfiles()
+	grid := usageGrid(profiles)
+	if width < grid {
+		return nil
+	}
+	rows := m.usageRows(profiles)
+	fableColumn := grid > usageWidth
 	head := line{{text: cell("usage", usageName) + "  ", role: quietRole, bold: true}}
 	if len(rows) == 0 {
 		return []line{append(head, span{text: m.usageDeclarationState(), role: mutedRole, italic: true})}

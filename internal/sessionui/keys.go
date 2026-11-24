@@ -2,6 +2,7 @@ package sessionui
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -9,12 +10,13 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/charmbracelet/x/ansi"
 )
 
 // onPaste appends to the focused text: a metadata draft or a create field.
 func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
-	if m.busy || m.tooSmall() || m.fold.loss != "" {
+	if m.busy || m.fold.loss != "" {
 		return nil
 	}
 	if m.fold.metadata() && !m.metadata.checking && !m.metadata.saveFocused {
@@ -29,6 +31,9 @@ func (m *model) onPaste(message tea.PasteMsg) tea.Cmd {
 // onKey applies the same admission rule used by the hint and verdict.
 func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 	pressed := message.String()
+	if m.notice != "" && len(m.chrome().notices) == 0 {
+		m.inform("")
+	}
 	if m.busy {
 		m.inform("operation in flight; delivery will be reported")
 		return nil
@@ -41,9 +46,6 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 		if !slices.Contains(entry.keys, pressed) {
 			continue
 		}
-		if m.tooSmall() && !entry.closes {
-			return nil
-		}
 		if refusal := entry.refusal(m); refusal != "" {
 			if entry.onRefusal != nil {
 				entry.onRefusal(m)
@@ -55,9 +57,6 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 			m.fold = fold{}
 		}
 		return entry.act(m)
-	}
-	if m.tooSmall() {
-		return nil
 	}
 	if pressed == "ctrl+r" {
 		return tea.Batch(m.refresh(true), m.refreshUsage(true))
@@ -72,14 +71,14 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 }
 
 type key struct {
-	keys         []string
-	show, label  string
-	group        string
-	rank         int
-	keep, closes bool
-	can          func(*model) string
-	onRefusal    func(*model)
-	act          func(*model) tea.Cmd
+	keys        []string
+	show, label string
+	group       string
+	rank        int
+	keep        bool
+	can         func(*model) string
+	onRefusal   func(*model)
+	act         func(*model) tea.Cmd
 }
 
 func (k key) refusal(m *model) string {
@@ -91,7 +90,7 @@ func (k key) refusal(m *model) string {
 
 func (m *model) keys() []key {
 	if m.fold.loss != "" {
-		return []key{{keys: []string{"esc"}, show: "escape", label: "dismiss", keep: true, closes: true,
+		return []key{{keys: []string{"esc"}, show: "escape", label: "dismiss", keep: true,
 			act: func(m *model) tea.Cmd {
 				if m.fold.metadata() {
 					m.metadata = nil
@@ -114,7 +113,7 @@ func (m *model) keys() []key {
 					m.inform(subject + ": " + question.request.Operation + " in progress")
 					return m.execute(question.request, subject)
 				}},
-			{keys: []string{"esc", "n", "q"}, show: "escape", label: "cancel", keep: true, closes: true,
+			{keys: []string{"esc", "n", "q"}, show: "escape", label: "cancel", keep: true,
 				act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
 			m.usageKey(0),
 		}
@@ -125,7 +124,7 @@ func (m *model) keys() []key {
 	case foldTerminal:
 		return m.terminalKeys()
 	case foldKeys:
-		close := key{keys: []string{"esc", "q", "?"}, show: "escape", label: "close", keep: true, closes: true,
+		close := key{keys: []string{"esc", "q", "?"}, show: "escape", label: "close", keep: true,
 			act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }}
 		entries := []key{close}
 		for _, entry := range m.tableKeys() {
@@ -162,21 +161,28 @@ func (m *model) tableKeys() []key {
 		{keys: []string{"shift+tab"}, show: "shift-tab", label: "previous", group: "session",
 			can: queuedGuard(-1), act: queuedMove(-1)},
 		{keys: []string{"x"}, show: "x", label: "interrupt and close…", group: "session", rank: 4,
-			can: rowGuard("close", false), act: confirmAction("close")},
+			can: confirmGuard("close", "close"), act: confirmAction("close")},
 		{keys: []string{"c"}, show: "c", label: "another like this…", group: "create", rank: 5,
-			can: localRowGuard("create"), act: (*model).seededDraft},
+			can: func(m *model) string {
+				if refusal := localRowGuard("create")(m); refusal != "" {
+					return refusal
+				}
+				return m.foldRoom(fold{kind: foldDraft, seeded: true})
+			},
+			act: (*model).seededDraft},
 		{keys: []string{"N"}, show: "N", label: "new session…", group: "create", rank: 6,
 			can: func(m *model) string {
 				if defaultIndex < 0 {
 					return m.hostRefusal(m.client.DefaultMachine().Label)
 				}
-				return ""
+				return m.foldRoom(fold{kind: foldDraft})
 			},
 			act: func(m *model) tea.Cmd {
 				peer := m.peers[defaultIndex]
 				return m.openDraft(createDraft{machine: peer.Label, launch: launchChoice{kind: fleetclient.LaunchTerminal}, group: m.view.label.String()}, formMachine, false)
 			}},
 		{keys: []string{"n"}, show: "n", label: "new terminal…", group: "create", rank: 7,
+			can: func(m *model) string { return m.foldRoom(fold{kind: foldTerminal}) },
 			act: func(m *model) tea.Cmd {
 				m.fold = fold{kind: foldTerminal, request: fleetclient.Request{
 					Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: m.client.DefaultMachine().Label,
@@ -186,13 +192,13 @@ func (m *model) tableKeys() []key {
 				return nil
 			}},
 		{keys: []string{"s"}, show: "s", label: "interrupt…", group: "session", rank: 8,
-			can: rowGuard("interrupt", false), act: confirmAction("stop")},
+			can: confirmGuard("interrupt", "stop"), act: confirmAction("stop")},
 		{keys: []string{"T"}, show: "T", label: "terminal here", group: "create", rank: 9,
 			can: func(m *model) string {
 				if refusal := localRowGuard("terminal here")(m); refusal != "" {
 					return refusal
 				}
-				return m.ground.attachRefusal("T")
+				return m.attachRefusal("T")
 			},
 			act: func(m *model) tea.Cmd {
 				row := m.selectedRow()
@@ -217,7 +223,20 @@ func (m *model) tableKeys() []key {
 
 func (m *model) usageKey(rank int) key {
 	return key{keys: []string{"u"}, show: "u", label: "usage", group: "browser", rank: rank,
-		can: func(m *model) string { return m.ground.attachRefusal("u") },
+		can: func(m *model) string {
+			if m.band {
+				return ""
+			}
+			if refusal := m.ground.attachRefusal("u"); refusal != "" {
+				return refusal
+			}
+			f := m.chrome()
+			grid := usageGrid(m.usageProfiles())
+			if f.bandLimit() < usageMinLines || f.width < grid {
+				return "window too small to show usage: the band needs " + strconv.Itoa(grid+2) + " columns and three free lines."
+			}
+			return ""
+		},
 		act: func(m *model) tea.Cmd {
 			m.band = !m.band
 			m.revealGeneration++
@@ -237,7 +256,7 @@ func rowGuard(action string, attach bool) func(*model) string {
 			return "no session selected; nothing was sent."
 		}
 		if attach && m.rowAttachable(*row) {
-			return m.ground.attachRefusal("enter")
+			return m.attachRefusal("enter")
 		}
 		if !attach && m.rowAvailable(*row) {
 			return ""
@@ -260,15 +279,41 @@ func localRowGuard(action string) func(*model) string {
 	}
 }
 
+func (m *model) confirmation(operation string) fold {
+	row := m.selectedRow()
+	return fold{
+		kind: foldConfirm, request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference},
+		name: row.Session.Name, machine: row.Label,
+	}
+}
+
+func confirmGuard(action, operation string) func(*model) string {
+	guard := rowGuard(action, false)
+	return func(m *model) string {
+		if refusal := guard(m); refusal != "" {
+			return refusal
+		}
+		return m.foldRoom(m.confirmation(operation))
+	}
+}
+
 func confirmAction(operation string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
-		row := m.selectedRow()
-		m.fold = fold{
-			kind: foldConfirm, request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference},
-			name: row.Session.Name, machine: row.Label,
-		}
+		m.fold = m.confirmation(operation)
 		return nil
 	}
+}
+
+const attachSize = "attach refused: the window must be 20–1024 columns and 5–512 rows"
+
+func (m *model) attachRefusal(key string) string {
+	if refusal := m.ground.attachRefusal(key); refusal != "" {
+		return refusal
+	}
+	if !terminal.ValidSize(m.width, m.height) {
+		return attachSize + "; nothing was sent."
+	}
+	return ""
 }
 
 func (m *model) nextQueued(direction int) int {
@@ -309,11 +354,19 @@ func (m *model) keyHints(width int) line {
 
 	entries := m.keys()
 	slices.SortStableFunc(entries, func(a, b key) int { return a.rank - b.rank })
+	var kept []key
+	reserved := 0
 	for _, entry := range entries {
-		if entry.keep {
-			width -= ansi.StringWidth(entry.show+" "+entry.label) + 2
+		if entry.keep && entry.refusal(m) == "" {
+			kept = append(kept, entry)
+			reserved += ansi.StringWidth(entry.show+" "+entry.label) + 2
 		}
 	}
+	for len(kept) > 0 && reserved-2 > width {
+		reserved -= ansi.StringWidth(kept[0].show+" "+kept[0].label) + 2
+		kept = kept[1:]
+	}
+	width -= reserved
 	var hints line
 	for _, entry := range entries {
 		cells := ansi.StringWidth(entry.show + " " + entry.label)
@@ -322,10 +375,8 @@ func (m *model) keyHints(width int) line {
 			width -= cells + 2
 		}
 	}
-	for _, entry := range entries {
-		if entry.keep {
-			hints = appendHint(hints, entry)
-		}
+	for _, entry := range kept {
+		hints = appendHint(hints, entry)
 	}
 	return hints
 }

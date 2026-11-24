@@ -21,13 +21,18 @@ type metadataEditor struct {
 	failure      *fleetclient.Failure
 }
 
-func editGuard(operation string) func(*model) string {
+func editGuard(kind foldKind, operation string) func(*model) string {
+	guard := rowGuard(operation, false)
 	return func(m *model) string {
 		if m.metadata != nil && m.metadata.checking {
 			row := m.selectedRow()
 			return row.Session.Name + " on " + row.Label + ": checking previous metadata change; refresh before editing"
 		}
-		return rowGuard(operation, false)(m)
+		if refusal := guard(m); refusal != "" {
+			return refusal
+		}
+		row := m.selectedRow()
+		return m.foldRoom(fold{kind: kind, name: row.Session.Name, machine: row.Label})
 	}
 }
 
@@ -60,7 +65,7 @@ func (m *model) openMetadata(operation string) {
 
 func (m *model) metadataKeys() []key {
 	editor := m.metadata
-	entries := []key{{keys: []string{"esc"}, show: "escape", label: "open", keep: true, closes: true,
+	entries := []key{{keys: []string{"esc"}, show: "escape", label: "open", keep: true,
 		act: func(m *model) tea.Cmd {
 			m.fold.kind = foldOpen
 			if !editor.checking {
@@ -74,7 +79,12 @@ func (m *model) metadataKeys() []key {
 	save := func(automatic bool) key {
 		request, refusal, invalidGroup := m.metadataRequest(automatic)
 		entry := key{keys: []string{"enter", "ctrl+s"}, show: "enter", label: "save", rank: 1,
-			can: func(*model) string { return refusal },
+			can: func(m *model) string {
+				if refusal != "" {
+					return refusal
+				}
+				return m.foldRoom(m.fold)
+			},
 			act: func(m *model) tea.Cmd {
 				editor.request, editor.failure, editor.acknowledged = request, nil, false
 				return m.execute(request, m.fold.name+" on "+m.fold.machine)
