@@ -15,6 +15,9 @@ shell with version-manager shims on `PATH`) and on dev-server (a non-interactive
 SSH shell), and went through on arch, whose SSH `PATH` matched. Rerun with the
 `PATH` recorded in each definition, the macbook and dev-server updates reported
 `terminal service unchanged`.
+The same refusal and recovery reproduced on macbook and dev-server for
+v0.30.0. Both gateways advanced while their tmux server lifetimes stayed the
+same.
 
 Workaround: run `skid update` with the `PATH` recorded in the definition. On
 macOS it is under `EnvironmentVariables` in
