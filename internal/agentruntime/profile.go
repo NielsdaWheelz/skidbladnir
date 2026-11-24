@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,12 +27,13 @@ func (provider Provider) String() string { return string(provider) }
 type ProfileKey string
 
 type Profile struct {
-	Key           ProfileKey
-	Label         string
-	ResumeCommand string
-	Command       string
-	Provider      Provider
-	Home          string // canonical; set exactly when Provider is
+	Key             ProfileKey
+	Label           string
+	ResumeCommand   string
+	Command         string
+	Provider        Provider
+	Home            string // canonical; set exactly when Provider is
+	ClaudeConfigDir string // exact native keychain selector; empty for the default home
 }
 
 // ResolveProfiles is the one constructor and the one validation of profiles.
@@ -51,6 +53,13 @@ func ResolveProfiles(configured []hostconfig.Profile) ([]Profile, error) {
 			profile.Provider = ProviderCodex
 		case "claude":
 			profile.Provider = ProviderClaude
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, err
+			}
+			if item.Home != filepath.Join(home, ".claude") {
+				profile.ClaudeConfigDir = item.Home
+			}
 		default:
 			return nil, errors.New("profile provider is invalid")
 		}

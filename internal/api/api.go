@@ -137,19 +137,19 @@ type ContextAgent struct {
 	Label    string `json:"label,omitempty"` // Profile's configured label
 }
 
-// ProfileUsageReport answers both usage routes. Profiles is never null.
+// ProfileUsageReport answers both usage routes. Both arrays are required, including when empty.
 type ProfileUsageReport struct {
-	Machine             Machine        `json:"machine"`
-	ObservedAt          time.Time      `json:"observedAt"`
-	Profiles            []ProfileUsage `json:"profiles"`
-	OtherClaudeAccounts []ClaudeUsage  `json:"otherClaudeAccounts,omitempty"`
+	Machine        Machine        `json:"machine"`
+	ObservedAt     time.Time      `json:"observedAt"`
+	Profiles       []ProfileUsage `json:"profiles"`
+	ClaudeAccounts []ClaudeUsage  `json:"claudeAccounts"`
 }
 
 type ProfileUsage struct {
 	Profile
-	ReadState string       `json:"readState"`
-	Report    *QuotaReport `json:"report,omitempty"`
-	Claude    *ClaudeUsage `json:"claude,omitempty"`
+	ReadState     string       `json:"readState"`
+	Report        *QuotaReport `json:"report,omitempty"`
+	ClaudeAccount string       `json:"claudeAccount,omitempty"`
 }
 
 // QuotaWindow is one displayed or native account quota window.

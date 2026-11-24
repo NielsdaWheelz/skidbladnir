@@ -57,10 +57,11 @@ lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
 
 skid remembers the most recent 5h, general 7d and Fable readings from the
-enrolled machines for each Claude account. The desktop shows remaining
-percentages and counts down each period's reset, even with every source offline.
-The managed Claude footer shows used percentages from the same saved readings.
-See [desktop usage](#desktop-usage).
+enrolled machines for each Claude account. on desktop usage reads, a gateway
+can request one read-only native `/usage` under an existing login on a qualified
+build. the desktop shows remaining percentages and reset countdowns offline.
+the managed claude footer shows used percentages from the same saved readings.
+see [account quota](#account-quota-and-usage) and [desktop usage](#desktop-usage).
 
 ### Guarantees
 
@@ -89,7 +90,7 @@ copied provider history; transcript-derived semantic state; task-completion
 claims; durable command receipts and replay; scheduling, autonomous orchestration
 or a task protocol; execution proxying; cross-machine move, broadcast, failover or
 wake; automatic hub election; durable inventory; quota enforcement, manual reset
-settings or claude account queries; git or project
+settings or general account queries; git or project
 discovery; arbitrary host setup or tailnet policy automation; terminal embedding
 in another app; containment between agents of one user; multi-user anything.
 
@@ -511,7 +512,8 @@ version counts as qualified only after observation's
     conversation route exists. Recovery alone stores selected IDs, profile/home
     scope and evidence source privately. It reads bounded native metadata and
     invokes the owner's exact-ID shell command; it stores no titles or history.
-    The only provider API call remains the read-only Codex quota read.
+    the only account operations are the read-only codex daemon read and the
+    qualified native claude usage read in [§9](#account-quota-and-usage).
 
 ### Inventory
 
@@ -774,7 +776,7 @@ duplicate key.
 | `process` | Kernel foreground, environment, cwd and boot identity: Linux `/proc`; Darwin `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo` and `proc_pidpath`, never parsed `ps` |
 | `group`, `catalog` | Label grammar and order; the frozen dwarf catalogue |
 | `terminalcontext` | Connection registrations |
-| `quota` | Host-local Codex daemon and Claude cache reads (`api.QuotaReport`) |
+| `quota` | Host-local Codex daemon reads, Claude cache observations and bounded native Claude usage requests |
 | `workdir`, `pressure` | Directory admission, listing and search; pressure sampling, policy and history |
 
 sessions imports neither agentcontrol nor quota; the gateway composes them. Log
@@ -939,14 +941,18 @@ failure vocabulary. The contract:
 ### Account quota and usage
 
 1. `GET /v1/profile-usage` reads the configured codex and claude profiles in
-   order, concurrently under one 5 s deadline. for codex it opens a websocket over
+   configuration order with the ordinary 5 s read budget. codex reads run
+   concurrently. each opens a websocket over
    `<home>/app-server-control/app-server-control.sock`, then `initialize` (client
    `skidbladnir`), `initialized` and `account/rateLimits/read`, with no close
    handshake. Server messages are skipped, never answered. It never starts,
    restarts, logs into or updates a daemon, runs no tmux and dispatches nothing to
-   conversations.
-2. the host supplies `machine`, `observedAt` and the `profiles` array.
-   each profile carries `readState` (`ok` or `unavailable`). a codex
+   conversations. the gateway signals due local claude work and returns its
+   snapshot independently. ordinary reads ingest the current native cache.
+   the worker has no separate path into retained history.
+2. the host supplies `machine`, `observedAt`, `profiles` and `claudeAccounts`.
+   both arrays are present even when empty. a codex profile carries `readState`
+   (`ok` or `unavailable`). its
    `report` carries `reportedAt` and optional `fiveHour` and `sevenDay`
    windows with `usedPercent` and an optional `resetsAt`. only the
    `rateLimits` default snapshot counts; windows are named by `windowDurationMins`
@@ -955,20 +961,18 @@ failure vocabulary. The contract:
    unavailable; frames are at most 4 MiB. A report dated after `observedAt` is
    dropped; a settings change during the reads fails the route.
 3. for claude, the gateway reads `~/.claude.json` for the default profile and
-   `<profile home>/.claude.json` for a named one. claude's nonempty legacy
+   `<profile home>/.claude.json` for a named one. claude's nonempty
    `<profile home>/.config.json` takes precedence. if redirecting claude to
    `~/.claude` would select a second, distinct global config, the gateway
    marks that default profile unavailable. the footer knows its actual
    `CLAUDE_CONFIG_DIR` and reads the file claude selected.
    `cachedUsageUtilization.accountUuid` must match `oauthAccount.accountUuid`
-   in the same file. the optional `claude` record identifies the active login
-   by the lowercase hex SHA-256 of `claude-account`, a NUL byte and its account
-   id. the same login has the same identifier on every machine.
-   `fetchedAtMs` independently dates every supplied amount and reset.
-   `five_hour` and `seven_day` are general limits. one model-only
-   `weekly_scoped` fable row supplies its
-   own percentage and reset. each field is optional. reading the cache never
-   starts claude or fetches quota from the provider.
+   in the same file. a matching cache with a positive, nonfuture `fetchedAtMs`
+   independently dates every supplied amount and reset. unique unscoped
+   `session` and `weekly_all` rows supply general fields, using `five_hour` or
+   `seven_day` for fields those rows leave empty. one model-only
+   `weekly_scoped` fable row supplies its own amount and reset. ambiguous rows
+   supply no typed fields for that meter.
    [profile file location](https://code.claude.com/docs/en/claude-directory) ·
    [model-scoped usage rows](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
 4. `accountScope` is lowercase hex `sha256(provider NUL canonical home)`: local
@@ -976,19 +980,40 @@ failure vocabulary. The contract:
    resolved.
 5. each running gateway reads the enrolled machines at startup and once a
    minute using authenticated `GET /v1/claude-usage`. this route reads the
-   answering machine's configured claude caches. it also returns saved
-   measurements for accounts without a current profile row in
-   `otherClaudeAccounts`. a footer can therefore contribute a reading even
-   when its source later switches logins or uses a separate directory. both
-   routes preserve the original fetch time through every hop. each machine
-   keeps one private record per account and the last known login for each
-   enrolled machine's profile. `skid claude-usage` reads the current login
-   and this machine's saved record for the footer without waiting for the fleet.
-6. the owner maps one profile key to one account across hosts. if machines
-   disagree about a key, the desktop uses its local login when known.
-   conflicting remote logins alone leave that key unavailable. observations for
-   distinct accounts stay separate. quota is read-only evidence for the
-   operator. [desktop usage](#desktop-usage)
+   answering machine's configured claude caches and includes saved accounts
+   without a current profile. the plain profile route includes its bound accounts.
+   the passive route and `skid claude-usage` start no native process. the
+   helper reads the current login and the local saved record for the footer.
+6. a claude profile carries `readState=ok` and `claudeAccount` for a verified
+   login, `no_login` for a readable absent/null login, or `unavailable` for a
+   failed read. an account id is lowercase hex SHA-256 of `claude-account`,
+   a NUL byte and the native id. both routes carry its readings once in
+   `claudeAccounts` and keep each fact's original fetch time. a missing/null
+   array imports neither claude facts nor bindings. each machine retains
+   account records and machine bindings under private `state/claude-quota/`.
+   sign-out clears that home's binding. unreadable data preserves a binding
+   only for the same profile key and home. the desktop chooses a verified
+   local login, then agreeing verified peers, then an unambiguous remembered
+   login. distinct accounts never merge.
+7. a matching native measurement under 60 s old, including an empty one, is
+   sufficient. otherwise a full usage read may start one attempt per account
+   and host in configured home order. starts are at least one minute apart.
+   failure or an unchanged measurement holds that account for five minutes
+   from completion. all retries require new desktop demand. one attempt has a
+   separate 30 s process budget. its gateway owns cancellation, group cleanup
+   and join. stdout is bounded at 1 mib and discarded after checking the
+   result. a build without live qualification or a home without verifiable
+   policy eligibility stays cache-only.
+8. the gateway runs the qualified native target directly with safe mode,
+   restricted tools, no session persistence and the matching native config
+   directory. it checks for managed policy, then `auth status` verifies the
+   selected first-party personal login and its expiry. alternate auth and
+   routing never enter the child environment. the gateway accepts only
+   structured builtin completion with zero model use and a valid first or
+   strictly newer cache measurement for the same login and settings. unexpected
+   dispatch blocks that build across restarts. failure to write the block
+   stops further native work in the running gateway and requires operator repair.
+   diagnostics carry no terminal or account content.
 
 ### Pressure
 
@@ -2892,5 +2917,7 @@ link names the rule that owns it.
    undecodable answer is a lost answer ([rules](rules.md#trust-boundaries)).
 3. Producers render copy. The host renders status, recovery notices and errors;
    clients add only what they alone know ([rules](rules.md#copy-and-drafts)).
-4. Host clocks are never compared: ages run on local monotonic time from receipt,
-   and transmitted instants are UTC ([rules](rules.md#timing-and-polling)).
+4. Operational ages run on local monotonic time from receipt, and transmitted
+   instants are UTC ([rules](rules.md#timing-and-polling)). Claude quota facts
+   order by their original fetch instants. Clock skew can misorder close
+   measurements ([quota](#account-quota-and-usage)).

@@ -202,13 +202,14 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		if json.Unmarshal(encoded, &value) != nil || value.Machine.Handle != target.Machine {
 			return nil, false
 		}
-		observed := ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: make([]ProfileUsage, len(value.Profiles)), OtherClaudeAccounts: value.OtherClaudeAccounts}
+		observed := ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: make([]ProfileUsage, len(value.Profiles)), ClaudeAccounts: value.ClaudeAccounts}
 		for index, wire := range value.Profiles {
 			profile, ok := clientProfile(wire.Profile)
-			if !ok || wire.ReadState != "ok" && wire.ReadState != "unavailable" {
+			signedOut := profile.Provider == "Claude" && wire.ReadState == "no_login"
+			if !ok || wire.ReadState != "ok" && wire.ReadState != "unavailable" && !signedOut {
 				return nil, false
 			}
-			observed.Profiles[index] = ProfileUsage{Profile: profile, ReadState: wire.ReadState, Report: wire.Report, Claude: wire.Claude}
+			observed.Profiles[index] = ProfileUsage{Profile: profile, ReadState: wire.ReadState, Report: wire.Report, ClaudeAccount: wire.ClaudeAccount}
 		}
 		return observed, true
 	case "terminal_context":
