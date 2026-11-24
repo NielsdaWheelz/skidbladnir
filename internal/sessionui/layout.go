@@ -254,7 +254,9 @@ func (m *model) tableLines(f frame) []line {
 		selected := index == m.cursor
 		status := m.statusView(row)
 		sign := signSpan(status.Sign)
-		sign.underline = status.WorkContinues
+		if status.WorkContinues {
+			sign.under, sign.underRole = ansi.UnderlineDouble, frostRole
+		}
 		stale := !m.rowAttachable(row)
 		cells := m.rowCells(row)
 		lip := span{text: " "}

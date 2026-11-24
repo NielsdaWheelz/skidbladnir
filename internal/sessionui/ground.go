@@ -11,6 +11,14 @@ import (
 
 const groundQuery = ansi.RequestForegroundColor + ansi.RequestBackgroundColor + ansi.RequestPrimaryDeviceAttributes
 
+var plainPigments = [bronzeRole + 1]color.Color{
+	mutedRole: color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff},
+	goldRole:  ansi.BrightYellow,
+	emberRole: ansi.BrightRed,
+	mossRole:  color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff},
+	frostRole: color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff},
+}
+
 type groundExpired struct{}
 
 type ground struct {
