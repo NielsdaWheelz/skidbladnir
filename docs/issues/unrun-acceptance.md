@@ -41,6 +41,15 @@ Desktop:
   waiting or entering an unchosen row. Judge whether the screen answers what
   the session is doing more often than not. Decide whether the port's third ink
   is wanted. Check legibility over Mosh and under `NO_COLOR`.
+- Session row, owner look in Ghostty (`NOT_RUN`). Check the shared spine
+  with an inline fold, the raise fill's right edge, a split pane, a resize by
+  hand and the light palette.
+- Session row, installed browser on the live fleet (`NOT_RUN`). Check lane
+  stability during inventory changes, cursor visibility on resize and a
+  refused action followed by reopening it with room. Use a disposable
+  session for any effect.
+- Session row, media tape (`NOT_RUN`). Verify its updated row match on the
+  isolated fixture. Demo media is tracked in [stale demo media](stale-demo-media.md).
 - Status signs, owner look in Ghostty (`NOT_RUN`). Check each sign in dark and
   light themes, including bold `?` and `!` beside `●`, and `▸`, `·` and `—`
   told apart. Check the double Frost line under `?`, `!`, `■` and `≡`, directly

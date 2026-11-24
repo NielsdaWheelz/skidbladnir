@@ -14,6 +14,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 	"github.com/charmbracelet/colorprofile"
@@ -272,9 +273,7 @@ func (m *model) settle() {
 			m.forgetScreen()
 		}
 	}
-	if !m.tooSmall() {
-		m.top = m.frame().top
-	}
+	m.top = m.frame().top
 }
 
 func (m *model) onFleet() tea.Cmd {
@@ -335,7 +334,14 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.fold = fold{}
 		value := result.Value.(fleetclient.ObservedSession)
 		if actual >= 0 {
-			return m.adoptCreated(actual, value)
+			if visit := m.adoptCreated(actual, value); visit != nil {
+				return visit
+			}
+			refresh := m.refreshMutation(index)
+			if actual != index {
+				return tea.Batch(refresh, m.refreshInventory(actual, true))
+			}
+			return refresh
 		}
 		m.clearDirectorySearch()
 		m.inform("terminal created on " + value.Label + ".")
@@ -394,7 +400,7 @@ func (m *model) onActionFailure(operation, subject string, failure *fleetclient.
 	m.fail(text)
 }
 
-// adoptCreated reveals a confirmed creation in its group, selects it and enters it.
+// adoptCreated reveals and selects the new session before attempting to attach.
 func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.Cmd {
 	// Creation is a separate sample. Do not attach its observation metadata
 	// to this peer's earlier inventory receipt.
@@ -413,6 +419,11 @@ func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.C
 	m.rebuild()
 	if row := slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return isCreated(row.Session) }); row >= 0 {
 		m.selectRow(row)
+	}
+	if !terminal.ValidSize(m.width, m.height) {
+		m.clearDirectorySearch()
+		m.fail("terminal created on " + value.Label + "; " + attachSize + ".")
+		return nil
 	}
 	m.inform("opening terminal on " + value.Label + "…")
 	return m.enter(created)

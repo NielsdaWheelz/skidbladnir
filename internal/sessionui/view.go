@@ -108,36 +108,39 @@ func signSpan(sign api.StatusSign) span {
 }
 
 func (m *model) View() tea.View {
+	f := m.frame()
+	margin := ""
+	if m.width >= 4 {
+		margin = " "
+	}
 	var lines []string
-	if m.tooSmall() {
-		// Keep the outcome visible even below the table's size floor.
-		lines = wrapped("80 × 24 minimum; ctrl-c quits", m.width)
-		for _, item := range m.outcomeLines(m.width) {
-			lines = append(lines, m.renderLine(item))
+	if f.strip {
+		lines = append(lines, margin+m.renderLine(m.header(f.width)))
+	}
+	if f.blank {
+		lines = append(lines, "")
+	}
+	body := m.tableLines(f)
+	if len(m.rows) == 0 && len(body) > 0 {
+		body[0] = line{{text: margin + ansi.Truncate(m.emptyTable(), f.width, "…")}}
+	}
+	for index, item := range body {
+		if index >= f.foldAt && index < f.foldAt+len(f.fold) {
+			item = f.fold[index-f.foldAt]
 		}
-		lines = lines[:min(len(lines), max(1, m.height))]
-	} else {
-		f := m.frame()
-		lines = []string{" " + m.renderLine(m.header()), ""}
-		body := m.tableLines(f)
-		if len(m.rows) == 0 {
-			body[0] = line{{text: m.emptyTable()}}
-		}
-		for index, item := range body {
-			if index >= f.foldAt && index < f.foldAt+len(f.fold) {
-				lines = append(lines, m.renderLine(f.fold[index-f.foldAt]))
-			} else {
-				lines = append(lines, " "+m.renderLine(item))
-			}
-		}
-		for _, item := range f.notices {
-			lines = append(lines, " "+m.renderLine(item))
-		}
-		lines = append(lines, " "+m.renderLine(f.rule))
-		for _, item := range f.band {
-			lines = append(lines, " "+m.renderLine(item))
-		}
-		lines = append(lines, " "+m.renderLine(f.hints))
+		lines = append(lines, m.renderLine(item))
+	}
+	for _, item := range f.notices {
+		lines = append(lines, margin+m.renderLine(item))
+	}
+	if f.caption {
+		lines = append(lines, margin+m.renderLine(f.rule))
+	}
+	for _, item := range f.band {
+		lines = append(lines, margin+m.renderLine(item))
+	}
+	if f.hintLine {
+		lines = append(lines, margin+m.renderLine(f.hints))
 	}
 	content := strings.Join(lines, "\n")
 	if m.ground.noColor {
@@ -149,7 +152,7 @@ func (m *model) View() tea.View {
 	return view
 }
 
-func (m *model) header() line {
+func (m *model) header(room int) line {
 	tabs, current := []tab{}, 0
 	for index, view := range m.viewOptions() {
 		switch view.kind {
@@ -175,7 +178,31 @@ func (m *model) header() line {
 		}
 	}
 	mark := line{{text: "▜", role: bronzeRole}, {text: "skid"}, {text: "▛", role: bronzeRole}, {text: " "}}
-	return append(mark, strip(tabs, current, m.width-9, m.ground.raise)...)
+	if views := strip(tabs, current, room-mark.width(), m.ground.raise); views != nil {
+		return append(mark, views...)
+	}
+	if views := strip(tabs, current, room, m.ground.raise); views != nil {
+		return views
+	}
+	tabs[0].fixed = ""
+	if views := strip(tabs, current, room, m.ground.raise); views != nil {
+		return views
+	}
+
+	left, right := span{text: " "}, span{text: " "}
+	if current == 0 {
+		left = span{text: "‹", role: goldRole, background: m.ground.raise}
+		right = span{text: "›", role: goldRole, background: m.ground.raise}
+		tabs[0].sign.background = m.ground.raise
+	}
+	views := line{left, tabs[0].sign, right}
+	label := tabs[current].fixed + tabs[current].label
+	if keep := room - views.width() - 2; current != 0 && keep >= 3 {
+		views = append(views, span{text: "‹", role: goldRole, background: m.ground.raise},
+			span{text: ansi.Truncate(label, keep, "…"), bold: true, background: m.ground.raise},
+			span{text: "›", role: goldRole, background: m.ground.raise})
+	}
+	return views
 }
 
 // tab is one view in the strip: fixed is skid's own words and never truncates;
@@ -185,12 +212,8 @@ type tab struct {
 	sign         span
 }
 
-// strip lays out tabs in at most room cells, for room ≥ 45. needs input and all
-// always show whole. group labels share one cap, the largest from 24 down to 7
-// that fits; while a group is current the fit reserves room for the widest
-// label whole, so stepping between groups keeps the cap. below the floor, the
-// groups farthest from the current view hide behind counted markers. the
-// current label shows whole up to 24 cells.
+// strip tries both fixed tabs and the current group, with other groups cut
+// together or hidden behind counted markers. Nil means even these do not fit.
 func strip(tabs []tab, current, room int, raise color.Color) line {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
@@ -230,7 +253,7 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 	for limit > 7 && !fits(limit, first, last) {
 		limit--
 	}
-	for !fits(limit, first, last) && first < last {
+	for !fits(limit, first, last) && (first < last || current < 2 && first <= last) {
 		// hide the group farthest from the current view; ties hide the left
 		// one, and with needs input or all current, groups hide from the right.
 		if current-first >= last-current && first != current {
@@ -239,11 +262,9 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 			last--
 		}
 	}
-	// only a current group standing alone can still overflow; its label
-	// gives up the excess.
-	whole := 24
-	if over := width(limit, whole, first, last) - room; over > 0 && current >= 2 {
-		whole = max(1, min(ansi.StringWidth(tabs[current].label), 24)-over)
+	const currentLimit = 24
+	if width(limit, currentLimit, first, last) > room {
+		return nil
 	}
 	var result line
 	for index, t := range tabs {
@@ -255,7 +276,7 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 		}
 		size := limit
 		if index == current {
-			size = whole
+			size = currentLimit
 		}
 		text := t.fixed
 		if t.label != "" {
@@ -281,24 +302,18 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 	return result
 }
 
-func (m *model) outcomeLines(width int) []line {
-	var lines []line
-	if m.notice == "" {
-		return lines
-	}
-	role := inkRole
-	if m.noticeFailure {
-		role = emberRole
-	}
-	for _, text := range wrapped(m.notice, width) {
-		lines = append(lines, line{{text: text, role: role}})
-	}
-	return lines
-}
-
 func (m *model) noticeLines(width int) []line {
 	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
-	lines := m.outcomeLines(width)
+	var lines []line
+	if m.notice != "" {
+		role := inkRole
+		if m.noticeFailure {
+			role = emberRole
+		}
+		for _, text := range wrapped(m.notice, width) {
+			lines = append(lines, line{{text: text, role: role}})
+		}
+	}
 	if m.notificationFailed {
 		lines = append(lines, line{{text: "notifications unavailable", role: quietRole}})
 	}
@@ -309,12 +324,12 @@ func (m *model) noticeLines(width int) []line {
 			if len(peer.Sessions) > 0 {
 				suffix += "; its listing is stale"
 			}
-			text := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…") + suffix
-			lines = append(lines, line{{text: ansi.Truncate(text, width, "…")}})
+			text := ansi.Truncate(attention.SingleLine(peer.Label), 16, "…") + suffix
+			lines = append(lines, line{{text: text}})
 		} else if checking(peer) && len(peer.Sessions) == 0 {
 			suffix := ": checking inventory"
-			host := ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")
-			lines = append(lines, line{{text: ansi.Truncate(host+suffix, width, "…"), role: quietRole}})
+			host := ansi.Truncate(attention.SingleLine(peer.Label), 16, "…")
+			lines = append(lines, line{{text: host + suffix, role: quietRole}})
 		}
 		peer.OK = peer.Error == nil
 		text, failure := fleetview.RecoveryNotice(peer)
@@ -327,6 +342,10 @@ func (m *model) noticeLines(width int) []line {
 				lines = append(lines, line{{text: part, role: role}})
 			}
 		}
+	}
+	// Trim after wrapping: a single wide grapheme can exceed a one-cell line.
+	for i := range lines {
+		lines[i][0].text = ansi.Truncate(lines[i][0].text, width, "…")
 	}
 	return lines
 }
@@ -348,7 +367,7 @@ func rule(caption, quota line, width int) line {
 	if len(quota) > 0 {
 		room -= edge + 2
 	}
-	result = append(result, span{text: strings.Repeat("─", room), role: quietRole})
+	result = append(result, span{text: strings.Repeat("─", max(0, room)), role: quietRole})
 	if len(quota) > 0 {
 		result = append(result, span{text: " "})
 		result = append(result, quota...)

@@ -121,7 +121,8 @@ commands
 var commandHelp = []struct{ names, text string }{
 	{"browser", `skid
   browses the fleet's sessions and opens their terminals. stdin and stdout
-  need ttys of at least 80x24. ctrl-] then d detaches from an attached terminal.
+  need ttys. attaching needs 20–1024 columns and 5–512 rows.
+  ctrl-] then d detaches from an attached terminal.
   ctrl-] twice sends a literal ctrl-]. ? lists the browser's keys.
 `},
 	{"list", `skid list [--machine HOST] [--group LABEL | --unassigned]

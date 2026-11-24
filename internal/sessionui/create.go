@@ -176,7 +176,10 @@ func (m *model) draftRequest() (fleetclient.Request, string, int) {
 	if launch.kind != fleetclient.LaunchTerminal && !declaresLaunch(m.peerLabeled(machine), launch.profile) {
 		return fleetclient.Request{}, machine + ": choose a launch; nothing was sent.", formCreate
 	}
-	if refusal := m.ground.attachRefusal("enter"); refusal != "" {
+	if refusal := m.foldRoom(m.fold); refusal != "" {
+		return fleetclient.Request{}, refusal, formCreate
+	}
+	if refusal := m.attachRefusal("enter"); refusal != "" {
 		return fleetclient.Request{}, refusal, formCreate
 	}
 	return fleetclient.Request{Operation: "start", Kind: launch.kind, Machine: machine, Profile: launch.profile, Name: m.form.name, CWD: cwd, Group: label}, "", formCreate
@@ -309,25 +312,22 @@ func (m *model) draftKeys() []key {
 	keys := []key{advance,
 		{keys: []string{"shift+tab"}, show: "shift-tab", label: "back", rank: 3,
 			act: func(m *model) tea.Cmd { return m.focusForm((m.field + formCreate) % (formCreate + 1)) }},
-		{keys: []string{"esc"}, show: "escape", label: "cancel", keep: true, closes: true,
+		{keys: []string{"esc"}, show: "escape", label: "cancel", keep: true,
 			act: func(m *model) tea.Cmd { m.fold = fold{}; m.clearDirectorySearch(); return nil }},
 	}
 	switch m.field {
 	case formCreate:
 		keys[0].keys, keys[0].label = []string{"tab"}, "first field"
+		request, refusal, field := m.draftRequest()
 		keys = append(keys, key{keys: []string{"enter"}, show: "enter", label: "create", rank: 2,
-			can: func(m *model) string { _, refusal, _ := m.draftRequest(); return refusal },
+			can: func(*model) string { return refusal },
 			onRefusal: func(m *model) {
-				_, _, field := m.draftRequest()
 				m.field = field
 				if field == formGroup {
 					m.groupSelection.prefill(m.form.group, m.groupChoices(m.form.group))
 				}
 			},
-			act: func(m *model) tea.Cmd {
-				request, _, _ := m.draftRequest()
-				return m.execute(request, request.Machine)
-			}})
+			act: func(m *model) tea.Cmd { return m.execute(request, request.Machine) }})
 	case formMachine, formLaunch, formDirectory, formGroup:
 		keys = append(keys,
 			key{keys: []string{"left"}, show: "←→", label: "choose", rank: 2,
@@ -369,7 +369,7 @@ func (m *model) terminalKeys() []key {
 			act: func(m *model) tea.Cmd { m.chooseTerminalHost(-1); return nil }},
 		{keys: []string{"right"},
 			act: func(m *model) tea.Cmd { m.chooseTerminalHost(1); return nil }},
-		{keys: []string{"esc", "q"}, show: "escape", label: "cancel", keep: true, closes: true,
+		{keys: []string{"esc", "q"}, show: "escape", label: "cancel", keep: true,
 			act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
 	}
 }
@@ -378,7 +378,10 @@ func (m *model) terminalRefusal() string {
 	if refusal := m.hostRefusal(m.fold.request.Machine); refusal != "" {
 		return refusal
 	}
-	return m.ground.attachRefusal("enter")
+	if refusal := m.foldRoom(m.fold); refusal != "" {
+		return refusal
+	}
+	return m.attachRefusal("enter")
 }
 
 func (m *model) chooseTerminalHost(direction int) {
