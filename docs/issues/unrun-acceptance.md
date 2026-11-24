@@ -44,10 +44,9 @@ Desktop:
 - Session row, owner look in Ghostty (`NOT_RUN`). Check the shared spine
   with an inline fold, the raise fill's right edge, a split pane, a resize by
   hand and the light palette.
-- Session row, installed browser on the live fleet (`NOT_RUN`). Check lane
-  stability during inventory changes, cursor visibility on resize and a
-  refused action followed by reopening it with room. Use a disposable
-  session for any effect.
+- Session row, installed browser (`NOT_RUN` for lane stability). Check lane
+  starts while live inventory changes. The v0.30.0 browser passed an installed
+  PTY resize, a narrow refusal, and reopening and cancelling with room.
 - Session row, media tape (`NOT_RUN`). Verify its updated row match on the
   isolated fixture. Demo media is tracked in [stale demo media](stale-demo-media.md).
 - Status signs, owner look in Ghostty (`NOT_RUN`). Check each sign in dark and
