@@ -30,13 +30,6 @@ type ground struct {
 	pigments     [bronzeRole + 1]color.Color
 }
 
-func (g *ground) attachRefusal(key string) string {
-	if g.note == "" {
-		return "reading the terminal's colours; press " + key + " again."
-	}
-	return ""
-}
-
 func (g *ground) settle(answered bool) {
 	defer func() { g.ink, g.base = nil, nil }()
 	switch {

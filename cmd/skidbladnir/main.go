@@ -32,6 +32,8 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		arguments = []string{arguments[1], "-h"}
 	}
 	switch arguments[0] {
+	case "rail", "stage":
+		return agentcli.RunPane(context.Background(), arguments[0], arguments[1:], stdin, stdout)
 	case "claude-usage":
 		if len(arguments) == 2 && (arguments[1] == "-h" || arguments[1] == "--help") {
 			return commandHelp(stdout, "claude-usage")

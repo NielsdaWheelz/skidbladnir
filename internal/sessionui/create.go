@@ -179,7 +179,7 @@ func (m *model) draftRequest() (fleetclient.Request, string, int) {
 	if refusal := m.foldRoom(m.fold); refusal != "" {
 		return fleetclient.Request{}, refusal, formCreate
 	}
-	if refusal := m.attachRefusal("enter"); refusal != "" {
+	if refusal := m.attachRefusal(); refusal != "" {
 		return fleetclient.Request{}, refusal, formCreate
 	}
 	return fleetclient.Request{Operation: "start", Kind: launch.kind, Machine: machine, Profile: launch.profile, Name: m.form.name, CWD: cwd, Group: label}, "", formCreate
@@ -381,7 +381,7 @@ func (m *model) terminalRefusal() string {
 	if refusal := m.foldRoom(m.fold); refusal != "" {
 		return refusal
 	}
-	return m.attachRefusal("enter")
+	return m.attachRefusal()
 }
 
 func (m *model) chooseTerminalHost(direction int) {

@@ -4,7 +4,6 @@ package sessionui
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"slices"
 	"time"
@@ -12,10 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/compositor"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
-	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
-	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -48,7 +46,6 @@ type searchMsg struct {
 	revision int
 	result   fleetclient.Result
 }
-type attachedMsg struct{}
 type revealMsg struct{ generation int }
 
 type model struct {
@@ -56,7 +53,6 @@ type model struct {
 	ctx                   context.Context
 	client                *fleetclient.Client
 	fleetPending          bool
-	input, output         *os.File
 	peers                 []fleetclient.Peer
 	rows                  []fleetclient.Row
 	cursor                int
@@ -88,7 +84,7 @@ type model struct {
 	notifications         attention.State
 	notificationFailed    bool
 	notificationQualified bool
-	attachment            *attachment
+	rail                  rail
 	inventoryLanes        []*inventoryLane
 	notificationLane      lane
 	usageLane             lane
@@ -99,15 +95,18 @@ type model struct {
 	usageNext             time.Time
 }
 
-// Run browses until quit. Its cancel aborts every read and search still in
-// flight; bubble tea joins no commands.
-func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
+// Run browses until quit, cancels its reads and joins any compositor mutation.
+func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File, compositorClient *compositor.Client) error {
+	state, err := compositorClient.State()
+	if err != nil {
+		return err
+	}
 	browserContext, cancel := context.WithCancel(ctx)
-	defer cancel()
 	m := &model{
 		ground: ground{pigments: plainPigments},
-		ctx:    browserContext, client: client, input: input, output: output,
-		cursor: -1, width: 100, height: 30, now: time.Now(),
+		ctx:    browserContext, client: client,
+		rail:   rail{client: compositorClient, state: state},
+		cursor: -1, width: state.Columns, height: state.Rows, now: time.Now(),
 	}
 	m.claudeUsage = client.KnownClaudeUsage()
 	for _, machine := range client.Machines() {
@@ -123,15 +122,17 @@ func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File
 		// The device reply can arrive before Bubble Tea's initial profile message.
 		m.ground.profile = colorprofile.Detect(output, os.Environ())
 	}
-	_, err := tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output), tea.WithColorProfile(m.ground.profile)).Run()
-	return err
+	_, err = tea.NewProgram(m, tea.WithContext(browserContext), tea.WithInput(input), tea.WithOutput(output), tea.WithColorProfile(m.ground.profile)).Run()
+	cancel()
+	m.rail.mutations.Wait()
+	return errors.Join(err, m.rail.err)
 }
 func (m *model) Init() tea.Cmd {
 	var query tea.Cmd
 	if !m.ground.noColor {
 		query = tea.Raw(groundQuery)
 	}
-	return tea.Batch(query, m.refresh(false), m.refreshUsage(false), tick())
+	return tea.Batch(query, m.refresh(false), m.refreshUsage(false), tick(), m.waitForCompositor())
 }
 func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 
@@ -171,21 +172,11 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	var returned, command tea.Cmd
-	m.now = time.Now()
-	if visit := m.attachment; visit != nil && visit.finished {
-		m.attachment = nil
-		if visit.err != nil {
-			var failure *fleetclient.Failure
-			if errors.As(visit.err, &failure) {
-				m.invalidateAccess(visit.ref.Machine, failure)
-			}
-			m.fail(visit.err.Error())
-		} else {
-			m.inform("detached from " + visit.name + " on " + visit.machine + ".")
-		}
-		returned = m.refresh(true)
+	if m.rail.err != nil {
+		return m, tea.Quit
 	}
+	var command tea.Cmd
+	m.now = time.Now()
 	switch message := message.(type) {
 	case tea.RawMsg:
 		if m.ground.note == "" && message.Msg == groundQuery {
@@ -211,14 +202,23 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case uv.PrimaryDeviceAttributesEvent:
 		if m.ground.note == "" {
-			m.ground.settle(true)
+			command = m.settleGround(true)
 		}
 	case groundExpired:
 		if m.ground.note == "" {
-			m.ground.settle(false)
+			command = m.settleGround(false)
 		}
 	case tea.WindowSizeMsg:
-		m.width, m.height = message.Width, message.Height
+		if !m.rail.moving {
+			command = m.readRail(nil)
+		}
+	case compositorWake:
+		command = m.waitForCompositor()
+		if !m.rail.moving {
+			command = tea.Batch(command, m.readRail(nil))
+		}
+	case movementResult:
+		command = m.finishMovement(message)
 	case tea.BlurMsg:
 		m.blurred = true
 		if m.searchState != directorySearchIdle {
@@ -252,17 +252,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		command = m.onAction(message)
 	case searchMsg:
 		command = m.onSearch(message)
-	case tea.PasteMsg:
-		if m.attachment == nil {
-			command = m.onPaste(message)
-		}
-	case tea.KeyPressMsg:
-		if m.attachment == nil {
-			command = m.onKey(message)
-		}
+	case tea.PasteMsg, tea.KeyPressMsg:
+		command = m.browserInput(message)
 	}
 	m.settle()
-	return m, tea.Batch(returned, command)
+	return m, command
 }
 
 // settle follows every message so the table keeps the cursor in view.
@@ -334,10 +328,8 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.fold = fold{}
 		value := result.Value.(fleetclient.ObservedSession)
 		if actual >= 0 {
-			if visit := m.adoptCreated(actual, value); visit != nil {
-				return visit
-			}
-			refresh := m.refreshMutation(index)
+			visit := m.adoptCreated(actual, value)
+			refresh := tea.Batch(visit, m.refreshMutation(index))
 			if actual != index {
 				return tea.Batch(refresh, m.refreshInventory(actual, true))
 			}
@@ -417,10 +409,14 @@ func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.C
 		m.peers[index].Sessions = append(m.peers[index].Sessions, value.Session)
 	}
 	m.rebuild()
-	if row := slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return isCreated(row.Session) }); row >= 0 {
+	if row := m.rowIndex(created); row >= 0 {
 		m.selectRow(row)
 	}
-	if !terminal.ValidSize(m.width, m.height) {
+	after := m.readRail(nil)
+	if m.rail.err != nil {
+		return after
+	}
+	if !m.stageFits() {
 		m.clearDirectorySearch()
 		m.fail("terminal created on " + value.Label + "; " + attachSize + ".")
 		return nil
@@ -500,40 +496,3 @@ func (m *model) selectedRow() *fleetclient.Row {
 	}
 	return &m.rows[m.cursor]
 }
-
-// enter pauses the browser while this exact terminal owns input and output.
-func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
-	m.fold, m.reveal = fold{}, time.Time{}
-	m.revealGeneration++
-	row := m.rowForReference(ref)
-	visit := &attachment{ctx: m.ctx, client: m.client, ref: ref, input: m.input, output: m.output, name: row.Session.Name, machine: row.Label}
-	m.attachment = visit
-	m.usageLane.fence()
-	m.usageLane.trailing = false
-	m.cancelObservations()
-	m.rebuild()
-	m.clearDirectorySearch()
-	return tea.Exec(visit, func(err error) tea.Msg {
-		// Bubble Tea's blocking Exec evaluates the callback on the update
-		// loop before sending its message, which can arrive after a key.
-		visit.err, visit.finished = err, true
-		return attachedMsg{}
-	})
-}
-
-type attachment struct {
-	ctx           context.Context
-	client        *fleetclient.Client
-	ref           fleetclient.Reference
-	input, output *os.File
-	name, machine string
-	err           error
-	finished      bool
-}
-
-func (a *attachment) Run() error {
-	return terminalclient.Run(a.ctx, a.client, a.ref, a.input, a.output).Err
-}
-func (a *attachment) SetStdin(io.Reader)  {}
-func (a *attachment) SetStdout(io.Writer) {}
-func (a *attachment) SetStderr(io.Writer) {}

@@ -60,30 +60,48 @@ func (m *model) rebuild() {
 	if selected == nil {
 		return
 	}
-	indexOf := func(ref fleetclient.Reference) int {
-		return slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return row.Session.Ref.SessionEqual(ref) })
-	}
-	if index := indexOf(selected.Session.Ref.Reference); index >= 0 {
+	if index := m.rowIndex(selected.Session.Ref.Reference); index >= 0 {
 		m.cursor = index
 		return
 	}
 	if retained != nil {
-		m.cursor, m.guest = min(previous, len(m.rows)), true
-		m.rows = slices.Insert(m.rows, m.cursor, *retained)
+		m.selectGuest(previous, *retained)
 		return
 	}
 	for _, row := range previousRows[previous+1:] {
-		if index := indexOf(row.Session.Ref.Reference); index >= 0 {
+		if index := m.rowIndex(row.Session.Ref.Reference); index >= 0 {
 			m.cursor = index
 			return
 		}
 	}
 	for _, row := range slices.Backward(previousRows[:previous]) {
-		if index := indexOf(row.Session.Ref.Reference); index >= 0 {
+		if index := m.rowIndex(row.Session.Ref.Reference); index >= 0 {
 			m.cursor = index
 			return
 		}
 	}
+}
+
+func (m *model) rowIndex(ref fleetclient.Reference) int {
+	return slices.IndexFunc(m.rows, func(row fleetclient.Row) bool { return row.Session.Ref.SessionEqual(ref) })
+}
+
+func (m *model) selectVisit(ref fleetclient.Reference) {
+	if index := m.rowIndex(ref); index >= 0 {
+		if index != m.cursor {
+			m.selectRow(index)
+		}
+	} else if row := m.rowForReference(ref); row != nil {
+		m.selectGuest(m.cursor, *row)
+	}
+}
+
+func (m *model) selectGuest(index int, row fleetclient.Row) {
+	if m.guest {
+		m.rows = slices.Delete(m.rows, m.cursor, m.cursor+1)
+	}
+	m.cursor, m.guest = min(max(0, index), len(m.rows)), true
+	m.rows = slices.Insert(m.rows, m.cursor, row)
 }
 
 // viewOptions includes every group observed in the fleet plus the selected group,

@@ -81,7 +81,11 @@ func (m *model) frame() frame {
 	f := m.chrome()
 	reserved := len(f.fold)
 	tableHeight := f.body - reserved
-	f.columns = m.measureColumns(max(0, f.rowWidth-rowNameStart))
+	nameRoom := f.rowWidth - rowNameStart
+	if m.rail.visit != nil {
+		nameRoom-- // the last row cell names the session shown on the stage
+	}
+	f.columns = m.measureColumns(max(0, nameRoom))
 	if m.cursor >= 0 && tableHeight > 0 {
 		f.top = min(max(0, f.top, m.cursor-tableHeight+1), m.cursor)
 		headings := m.tableHeadings()
@@ -329,6 +333,9 @@ func (m *model) tableLines(f frame) []line {
 		lip := span{text: " "}
 		if selected {
 			lip = span{text: "▌", role: goldRole}
+			if m.rail.state.StageKeys {
+				lip = span{text: "▏", role: quietRole}
+			}
 		}
 		finished := line{lip, sign}
 		if m.width >= 8 {
@@ -359,6 +366,13 @@ func (m *model) tableLines(f frame) []line {
 					used = start + ansi.StringWidth(text)
 				}
 			}
+		}
+		if visit := m.rail.visit; visit != nil && !(selected && m.guest) && row.Session.Ref.SessionEqual(visit.ref) {
+			role := quietRole
+			if m.rail.state.StageKeys {
+				role = goldRole
+			}
+			finished = append(finished, span{text: strings.Repeat(" ", f.rowWidth-1-finished.width())}, span{text: "▐", role: role})
 		}
 		if selected && m.width >= 4 {
 			finished = finished.filled(m.ground.raise, f.rowWidth)
