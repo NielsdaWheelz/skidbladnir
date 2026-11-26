@@ -109,7 +109,8 @@ state
 
 examples
   skid list --machine server --group project
-  skid start reviewer --machine server --profile work --cwd '~/code/project' --stdin < message.txt
+  skid start reviewer --machine server --profile work --cwd '~/code/project' \
+    --model gpt-6.2-astra --effort high --stdin < message.txt
   skid info t-0123456789abcdef --machine server
   skid send t-0123456789abcdef --machine server --stdin < message.txt
   skid read t-0123456789abcdef --machine server
