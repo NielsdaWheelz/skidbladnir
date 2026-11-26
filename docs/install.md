@@ -14,6 +14,7 @@ fleet. The Android app has its own page: [phone](phone.md).
 | macOS | macOS 26 or later on Apple silicon, with [Homebrew](https://brew.sh) |
 | Linux | amd64 with systemd user services, running Ubuntu 24.04 or later or an Arch-family distribution (`ID=arch`, or `arch` in `ID_LIKE` in `/etc/os-release`). Ubuntu derivatives and Debian are refused |
 | Every computer | curl; bash or zsh as your login shell, or a `shell:` set in [configuration](#configuration) |
+| Session browser (`skid`) | tmux 3.8 or later ([after installing](#after-installing)) |
 | Phone | Android 13 or later with Google Play services ([phone](phone.md)) |
 
 The installer installs tmux and Tailscale when they are missing: through Homebrew
@@ -270,8 +271,9 @@ Nothing updates itself. For each computer, then the phone:
 installer itself take effect from the following update; running the new release's
 `install` applies them at once. An older release than the installed one is
 refused. gateway-only updates preserve tmux sessions and programs; an open `skid`
-session browser keeps its old binary until you reopen it. runtime replacement
-requires a drain or the explicit restart below.
+session browser keeps its old binary until you reopen it and starts later visits
+with the new release. runtime replacement requires a drain or the explicit
+restart below.
 installer and bootstrap exit 2 for an action-required refusal, including an
 occupied runtime that needs explicit terminal maintenance, an unmanaged server
 or an unavailable terminal service. exit 1 means installation failed. a staging
@@ -367,6 +369,8 @@ Linux, `launchctl kickstart -k gui/$(id -u)/dev.niels.skidbladnir` on macOS.
 | Symptom or message | Fix |
 | --- | --- |
 | `command not found: skid` | Open a new terminal, or run the `export PATH=...` line the installer printed. Shells other than bash and zsh need `~/.local/bin` on their `PATH` |
+| `skid browser: needs tmux 3.8 or later ...` | Put tmux 3.8 or later on `PATH`. Stock Ubuntu 24.04 ships 3.4. If this changes the path used by the terminal service, the next update needs a drain or [checkpoint-preserving restart](#checkpoint-preserving-runtime-restart). `skid list` and `skid enter` still work |
+| `skid browser: tmux: open terminal failed: missing or unsuitable terminal: ...` | Install your terminal's terminfo on the remote computer. From Ghostty, run `infocmp -x \| ssh HOST -- tic -x -` |
 | `skid is not installed; run skid install` | The gateway has never started successfully. Read the logs |
 | `skid service unavailable; check skid status and network access` | The local gateway, or the hub it needed, did not answer. Read the logs; on a member, check that the hub is online |
 | `skid service: local settings invalid; fix config.yaml and restart skid` (Linux log) | Fix `config.yaml`; a login shell that is not bash or zsh needs `shell:`. Restart the gateway |

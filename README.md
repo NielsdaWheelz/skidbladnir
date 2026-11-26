@@ -21,8 +21,9 @@ Install skid on each of your computers and it runs a small gateway beside that
 computer's tmux. The session browser (a terminal UI on any of those computers) and
 the Android app list every session on every computer. From either you open a
 terminal, or an agent such as Codex or Claude Code, and attach to the same live
-terminal the other sees; detach, and the work keeps running in tmux. The phone is
-a terminal, not a chat view. skid itself hosts nothing and has no account;
+terminal the other sees; detach, and the work keeps running in tmux. On a terminal
+110 columns wide or more, the browser keeps its list beside the session you attach.
+The phone is a terminal, not a chat view. skid itself hosts nothing and has no account;
 Tailscale needs an account, and may carry traffic through its encrypted DERP
 relays when no direct path exists.
 
@@ -43,7 +44,8 @@ Skíðblaðnir is a single-user prototype, built and run by one person
 
 Ubuntu derivatives and Debian are refused; an Arch derivative qualifies when its
 `/etc/os-release` lists `arch` in `ID_LIKE`. The phone pairs only by scanning a QR
-code with Google Play services.
+code with Google Play services. The session browser needs tmux 3.8 or later
+([installation](docs/install.md#after-installing)).
 
 ## Install
 
@@ -93,7 +95,7 @@ runtime replacement can instead use an explicit checkpoint-preserving
    ```
 
 2. Run `skid` to open the session browser. `n`, then `enter`, opens a terminal in
-   your home directory; `ctrl-]` then `d` detaches, and it keeps running in tmux.
+   your home directory; `ctrl-]` then `ctrl-d` detaches, and it keeps running in tmux.
    `q` quits; `skid help browser` lists every key.
 
 3. To start agents too, list them as profiles in the hub's

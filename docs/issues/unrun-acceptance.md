@@ -58,6 +58,17 @@ Desktop:
   and `skid serve` against the installed loopback endpoint. Show the double
   work line on an error or interruption produced by the real gateway. The
   isolated observation corpus has no such frame.
+- Rail in Ghostty (`NOT_RUN`). Check the split, lips, shown mark, divider and
+  dim in dark and light themes, the plain palette and `NO_COLOR`. Resize across
+  110 columns with each side holding the keys, and switch sessions.
+- Agents on the stage (`NOT_RUN`). With Claude Code and Codex, check paste,
+  wheel, tmux copy mode via `ctrl-b [`, and the terminal's own selection.
+- Phone on the shown session (`NOT_RUN`). Enter its session from both layouts
+  and check both clients' sizes before and after typing on the phone.
+- Rail over SSH (`NOT_RUN`). From Ghostty, use the rail and switch on dev-server,
+  close the connection and check that the run's processes and directory are gone.
+- Pending ready (`NOT_RUN`). Enter a row whose ready is pending. Verify that
+  its first output acknowledges it on every device and the sign follows.
 - v0.11.0: pending ready restored after a failed host recovers (terminal-observation-stale-live).
 
 Phone:

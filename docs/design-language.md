@@ -519,7 +519,7 @@ code; fonts outside §9's table without a license entry here.
 
 ## 17. Terminal browser
 
-the browser draws in the owner's terminal, with the layout in
+the browser draws in its compositor pane, with the layout in
 [architecture](architecture.md#browser). it queries default foreground and
 background and primary device attributes once at startup. no query or styling
 under `NO_COLOR`. otherwise it settles on the attributes reply or after one
@@ -537,9 +537,9 @@ steps until it clears both fills.
 | role | carries | dark | light | plain |
 | --- | --- | --- | --- | --- |
 | ink | names, labels, notices, focused input; the band's names, numbers, heavy line, stems and an exhausted general window's countdown | default | default | default |
-| quiet | group, profile, model, place, rules, hint and field labels, unassigned; the band's heads, countdowns, light line, unknown `—`, and faded names and windows | derived | derived | faint |
+| quiet | group, profile, model, place, rules, hint and field labels, unassigned, `▏`, `▐` while the rail has the keys; the band's heads, countdowns, light line, unknown `—`, and faded names and windows | derived | derived | faint |
 | muted | other status and client notes | quiet | quiet | `#AAA69D` |
-| gold | lip, current view chevrons, focused chooser, the band's Fable underline and chomper | `#D6A85F` | `#8A6416` | bright yellow |
+| gold | `▌`, `▐` while the session has the keys, current view chevrons, focused chooser, the band's Fable underline and chomper | `#D6A85F` | `#8A6416` | bright yellow |
 | ember | request or error, failed outcome, question | `#E46C55` | `#B23B24` | bright red |
 | moss | ready | `#76B082` | `#3B7448` | `#76B082` |
 | frost | starting and working, the work line | `#78A9C6` | `#2C6688` | `#78A9C6` |
@@ -556,10 +556,18 @@ a sign takes its ink from §5, with `?` and `!` bold. the work line is a
 double frost underline on the sign's cell. the Fable underline is single or
 dotted beneath the weekly gauge's cells, gold while current and quiet when
 faded.
-the gold `▌` lip marks the cursor's row and every fold line in column 1.
+the cursor's lip in column 1 is gold `▌` while the browser has the keys and
+quiet `▏` while the session has them. every fold line carries gold `▌`.
 names and fold text begin in column 5. one rule heads
 the open row's screen and another separates the body from the usage band, while
 shown, and the controls. hints use ink and quiet.
+
+`▐` marks the shown row before the rail's blank last column. on the full path
+the divider is gold when the stage has the keys and quiet when the rail has
+them. quiet replaces default foreground ink on the inactive side. on the plain
+path the stage's divider is bright yellow and both sides keep their usual ink.
+under `NO_COLOR` the lip's shape, `▐`, the terminal cursor and the hints carry
+the state.
 
 Copy is lowercase and literal. Preserve the host's words for status and the
 shared desktop outcome words. Browser copy names the session and listing host,
