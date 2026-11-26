@@ -50,8 +50,10 @@ or a configured profile's agent, on an explicit machine and directory, or a
 terminal beside an existing session; create quiet child sessions under an exact
 parent on any enrolled machine, browse their tree, and promote a child; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
-phone; detach without stopping anything; interrupt or close an exact, confirmed
-session or a confirmed whole branch; read, write and wait on terminals from the CLI; exchange addressed peer messages; submit a profile-backed
+phone; detach without stopping anything; keep the browser's list beside an
+attached terminal; interrupt or close an exact, confirmed session or a confirmed
+whole branch; read, write and wait on terminals from the CLI; exchange addressed
+peer messages; submit a profile-backed
 assignment through the paired gateway and receive its native result in jarvis;
 choose native model/effort options for a supported profile launch;
 be notified when an agent needs input or is ready again; and rebuild a
@@ -1233,16 +1235,17 @@ creation and inventory report terminal-service unavailability as 503.
 ## 11. Desktop clients
 
 the desktop uses the same gateways as the phone. there is no desktop daemon or
-desktop state on disk. each run reads gateway inventory, the hub's notification
+durable desktop state. each run reads gateway inventory, the hub's notification
 state and `fleet.json`. the browser presents facts from those observations.
 
 | Owner | Owns |
 | --- | --- |
 | `internal/fleetclient` | Peer routing from `fleet.json`, one HTTP/WebSocket transport, references and handles, tolerant decoding, handle resolution, remote-context resolution |
 | `internal/fleetview` | The shared status projection (`ProjectStatus`) and the shared copy (`ErrorMessage`, `WriteText`, `RecoveryNotice`, `GroupHeading`) |
-| `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes |
-| `internal/sessionui` | The browser: one Bubble Tea model holding peers, one selected view, one cursor, one fold and at most one pending operation |
-| `internal/terminalclient` | Lending the local TTY to one exact session over the terminal WebSocket, and acknowledging that visit |
+| `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes, browser launch, and the private `rail` and `stage` commands including the stage's outcome sentence |
+| `internal/sessionui` | The table and rail: one Bubble Tea model holding peers, one selected view, one cursor, one fold, at most one pending operation and the live visit |
+| `internal/terminalclient` | Bridging a TTY to one exact session over the terminal WebSocket and acknowledging the visit |
+| `internal/compositor` | The private browser tmux server: launch, layout, keys, stage lifetime and every control call |
 
 ### Desktop concepts
 
@@ -1259,8 +1262,14 @@ state and `fleet.json`. the browser presents facts from those observations.
   is re-read. the hub supplies ready over an idle sign.
 - **guest**: the selected lifetime when fleet inventory still lists it but its
   group or queue view excludes it. it keeps live facts and action admission.
+  the needs-input view admits top-level sessions only.
 - **captured target**: a confirmation or editor retains its exact reference,
   session name and listing host. an open details fold follows the cursor.
+
+- **Table**, **rail**, **stage**: the browser alone, the browser beside a visit,
+  and the compositor's pane holding that visit. The visit has one **shown row**.
+- **Keys**: tmux's active pane. One side has them.
+- **Compositor**: the browser's private tmux server, absent from fleet inventory.
 
 ### Desktop invariants
 
@@ -1286,25 +1295,24 @@ state and `fleet.json`. the browser presents facts from those observations.
    outcomes). A failed check rejects the whole document as `protocol_error`, a lost
    response: the peer reads unavailable and a possibly sent write is unknown.
 5. availability. attachment needs a listed lifetime and no failed read from
-   its listing host. a checking row admits attach and local inspection. effects
+   its listing host. this gates a visit's start. a checking row admits attach and local inspection. effects
    need a current successful host inventory and any hub read still owed for that
    row. a write fences its host's reads until the post-write inventory. a reply
    sampled before the write cannot restore eligibility. a typed access or machine
-   identity rejection invalidates its host immediately.
+   identity rejection of a browser read or write invalidates its host immediately.
 6. one read per stream. each peer has at most one inventory and one remote-context
    pass in flight. the browser has a hub read and a usage read. busy reads can
    owe one successor. ticks skip occupied
    lanes. inventory and remote context replies must belong to the current read
-   and the same continuous roster membership. entering a terminal fences
-   browser reads and clears the open fold.
+   and the same continuous roster membership. starting a visit clears the open
+   fold. browser reads keep their lanes and ticks during the visit.
 7. fleet-wide views. views and suggestions use retained fleet inventory. failed
-   hosts keep their last rows and a notice. a healthy host is checking before
-   its first read, after the browser writes to it and after a terminal visit.
+   hosts keep their last rows and a notice. a healthy host is checking before its first read and after the browser writes to it. a return starts one
+   coalesced read of every host and marks no row checking. a switch starts none.
    a checking row keeps its sign and queue place. the caption and facts show
    `checking` while it fits.
 8. ready is the hub's verdict for an idle row with the same observed foreground
-   (provider, pid and start identity). after a visit a previously ready row
-   checks until its host and hub have answered. a failed hub read removes ready
+   (provider, pid and start identity). after a visit ready follows the return's hub read. a failed hub read removes ready
    and a visit's acknowledgement error leaves the browser's hub evidence intact.
    the cli keeps no notification state.
 9. creation. `n`, `N`, `T` and `c` reveal and select the returned lifetime before
@@ -1312,8 +1320,11 @@ state and `fleet.json`. the browser presents facts from those observations.
    session's group. failed or unknown creation preserves view and selection, and
    a later attach to a created row does not repeat creation. a closing browser
    does not enter a session it created.
-10. return and selection. detach keeps the view and cursor, prints the session
-    and listing host, then refreshes. every drawn row has a retained lifetime.
+10. return and selection. a visit's end keeps the view and cursor and names the
+    session and listing host with its outcome. when the stage gains the keys the
+    cursor selects the shown lifetime, as a guest when the view excludes it and
+    inventory still lists it. if the shown lifetime is ineligible as a guest,
+    the cursor stays. every drawn row has a retained lifetime.
     a close receipt with `terminal: closed` removes that lifetime immediately,
     independent of the interrupt result. a successful inventory replaces its
     peer's rows. a roster removal drops the peer's rows. a rebuild follows a
@@ -1330,10 +1341,12 @@ state and `fleet.json`. the browser presents facts from those observations.
     through sanitization, which maps ESC to a space. Colour never carries meaning
     alone. `NO_COLOR` keeps the signs and words and strips every style, including
     the work line and the Fable underline.
-12. The TTY is lent, not shared. While attached the browser draws nothing and reads
-    no input. Before returning, terminalclient cancels and joins both readers and
-    restores the local TTY (cooked mode, remote-set presentation modes reset), also
-    after transport loss.
+12. A visit starts on `enter` or a creation and keeps its reference for life.
+    Moving the cursor shows, resizes and acknowledges nothing. Keys move by the
+    owner's key or click or a visit's end. The rail reads who has them from the
+    compositor. Beyond a return's read, the rail sends only what the table would
+    send. Before exiting, terminalclient joins both readers and restores the TTY,
+    resetting remote presentation modes and restoring cooked mode.
 13. Quota is evidence only: usage never supplies readiness, attention, admission
     or control.
 
@@ -1359,10 +1372,16 @@ state and `fleet.json`. the browser presents facts from those observations.
   ([notifications](#12-notifications)).
 - **Terminal WebSocket**: the client requires a 20–1024 × 5–512 TTY, sends `Resize`
   before anything else and waits at most 15 s for `Hello` or `Error`. Binary frames
-  are PTY bytes both ways; `Presence` is ignored. `ctrl-] d` sends `Detach`;
-  `ctrl-] ctrl-]` sends one `0x1d`; every other byte, `ctrl-c` included, reaches
-  the remote program. SIGWINCH resends `Resize`; SIGINT, SIGTERM and SIGHUP end
-  the visit. Each write has 5 s and is never repeated.
+  are PTY bytes both ways; `Presence` is ignored. In `skid enter`, `ctrl-] d` sends
+  `Detach`, `ctrl-] ctrl-]` sends one `0x1d`, and SIGWINCH resends `Resize`.
+  Browser visits decode no chord and resend `Resize` when the size settles and
+  differs from the last send. Other bytes reach the remote program. SIGINT,
+  SIGTERM and SIGHUP end the visit. Each write has 5 s and is never repeated.
+- **Compositor**: `skid` requires tmux 3.8 and starts a private server attached to
+  the terminal. `skid rail` runs the browser and `skid stage` runs each visit. The
+  server binds `ctrl-]`, Home, End and the mouse. It records whether the rail,
+  a window under 110 columns or the stage's exit ended the visit. Stage exit 3
+  means a `ReconnectRequired` after `Hello`: the host ended the connection.
 
 ### CLI
 
@@ -1479,11 +1498,20 @@ a key that opens an effect fold or sends its action checks the current
 window. `x`, `s` and their send keys require the whole question and effect.
 `r`, `g`, `c`, `N` and `n` and their sends require their fields and controls,
 with eight cells for a value. attaching, `T` and creation submits require
-20–1024 columns and 5–512 rows before fencing reads. a creation that returns
+a stage of 20–1024 columns and 5–512 rows before fencing reads. a creation that returns
 outside that range selects the session and reports the refused attach. a fold
 that loses room keeps its text, and its send rearms when it fits. a refusal
 names the action and reason. navigation, inspection, draft input, closing a
 fold, refresh and quit keep their ordinary key rules at every size.
+
+**rail.** from 110 columns a visit sits beside a 28-column rail and a one-cell
+divider. either side holds the keys. under 110 the visit fills the window and
+`ctrl-]` ends it, as does narrowing under 110 while the rail has the keys.
+in the rail `j`, `k`, `tab` and `shift-tab` move. `enter` gives the shown row
+the keys or visits another. `ctrl-]` returns the keys, `ctrl-d` detaches and
+`?` and `ctrl-r` work. unused keys and paste are discarded with a notice.
+a click gives keys to a live pane. wheel and drag reach the active program
+when it asked for mouse input.
 
 **strip.** other group labels share a cap, from 24 to 7 cells. when that no
 longer fits, the farthest groups hide behind counted `←n` and `n→`. as the
@@ -1597,7 +1625,7 @@ old search replies. group suggestions use observed labels. the group editor's
 was typed.
 
 **keys.** the same entries drive dispatch, hints and the `?` map. the map shows
-session, create and browser keys, attach chords, open-row keys and a sign
+session, create and browser keys, `ctrl-]`, open-row keys and a sign
 legend. it names the colour path when there is room. unavailable entries are
 quiet. an admitted listed key closes the map and acts. the hint line takes
 admitted entries by rank when they fit and ends with its kept close or quit
@@ -1607,8 +1635,7 @@ movement keys close an open fold before navigating. arrow and letter keys inside
 an editor or chooser belong to that field. escape closes a fold, returning an
 editor to open. `q` quits from the table, closes open, confirm, terminal and
 keys, and types in a text field. `u` shows and hides the usage band on the
-table, in an open row and in a confirm. it waits for the terminal's colours
-as attach does. showing it requires the whole grid and margin, 80 columns
+table, in an open row and in a confirm. it waits for the terminal's colours. showing it requires the whole grid and margin, 80 columns
 with Claude or 71 without, and room for three band lines. hiding it needs
 no room. the band starts hidden in each run and only `u` changes it.
 `ctrl-r` refreshes inventory and usage in every fold. `ctrl-c` quits from any fold. a write in flight refuses every key until
@@ -1619,7 +1646,7 @@ for the palette.
 ### Desktop usage
 
 - Inventory supplies Codex terminal evidence every five seconds. The browser
-  reads each host's profile usage once a minute while it owns the screen and on
+  reads each host's profile usage once a minute while it runs and on
   `ctrl-r`, whether the band is open or closed. `u` changes visibility.
 - Values show remaining capacity: 100 minus the whole part of the used
   percentage, stopping at 0 when a provider reports more than 100% used. A `~` marks a value
@@ -1745,11 +1772,30 @@ for the palette.
 
 ### Desktop accepted limits
 
-- While attached the browser's chrome and status are gone; navigation needs detach.
+- A visit from the split is 29 columns narrower for every client, including the
+  phone, until another client is used. Resizes wait for one settling interval
+  after tmux applies the final PTY size. A switch costs one blank frame and a
+  process start. Narrowing under 110
+  while the rail has the keys ends the visit.
+- The compositor re-encodes each key. Killing the launcher with SIGKILL leaves
+  its private server and directory. SSH needs the terminal's terminfo on the
+  remote host. Replacing the terminal service's tmux path requires a drain or a
+  checkpoint-preserving restart. The terminal's mouse selection spans the rail.
+  A browser open across an update starts later visits with the new release.
+- The browser accepts a literal `ctrl-]` in a paste. `escape` and `ctrl-c` stay
+  in the rail when it has the keys. A stray movement key then `enter` can switch
+  the session and send subsequent typing there. The rail and table have
+  different movement keys. A view excluding the shown row omits its mark.
+  The rail discards keys it handles while a switch is pending. In the stage,
+  keys wait for the new visit and `ctrl-c` can end it before readiness.
+- A detach, session exit, and the gateway's PTY, resize and presence errors
+  share a notice. A rejection of a visit reaches the table as an outcome. The
+  next read confirms any loss of host access.
 - `ctrl-c` is refused in flight for up to 15 s; a held `ctrl-c` then quits as soon
   as the outcome lands, possibly unread, and a restart keeps no record. After `n`,
-  `N`, `T` or `c`, a creation attaches if the window fits. Detach before
-  quitting. A reflexive `ctrl-c` after `ctrl-] d` quits skid.
+  `N`, `T` or `c`, a creation attaches if the stage fits. Detach before
+  quitting. The table's keys act immediately, even after an unexpected end.
+  Stray keys can create, interrupt or close a session or quit skid.
 - Duplicate suppression lasts only while an action is in flight; a later `n`
   creates another terminal. There is no exactly-once creation or remote
   cancellation.
@@ -1763,8 +1809,7 @@ for the palette.
   alike. directories repeat within a group. a home reads as its last path
   component. rows show execution place while the facts retain the full path
   and context.
-- a returning browser holds signs while it awaits observations and admits
-  attach and local inspection. an external close waits for a successful read.
+- an external close waits for a successful read.
   a guest keeps context after leaving a filter. reorder can move the cursor with the selected lifetime or its old successor.
 - a foot fold can cover the cursor. short windows clip facts, field notes and
   key maps. unfocused draft values may look cut and are sent whole. a narrow
@@ -1809,7 +1854,7 @@ for the palette.
   at all. In MesloLGS NF their sizes differ, so the chew can read as a pulse.
   The design language's §1.4, §1.6, §12, §14, §15 and gold's row stand as
   written against it.
-- usage reads each minute while the browser is visible.
+- usage reads each minute while the browser runs.
 
 - Group views hide other groups and do not sort by urgency; labels share one cap,
   can read like built-in views, and may differ only in invisible characters.
@@ -1824,12 +1869,13 @@ for the palette.
   deadline and the desktop clock. codex
   whole replacement can discard an older complete window. countdown and age
   updates can lag by the browser's five-second tick.
-- the first frame uses the plain palette, with a 100×30 layout until the
-  window reports its size. a terminal that does not answer the device query
-  can delay first attach by one second. a later reply can reach an attached
-  session. the browser samples the theme once, so theme changes need restart. on the full path the pigments are fixed by the design language.
-- The plain path keeps faint and bright yellow. Faint varies by terminal and
-  vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `←`, `→`,
+- the first frame uses the plain palette. a terminal that answers tmux's size
+  queries out of order can type a reply into the pane with the keys. the browser
+  samples the theme once, so theme changes need restart. on the full path the
+  pigments are fixed by the design language.
+- Dimming is partial and requires the full palette. The plain path keeps faint
+  and bright yellow. Faint varies by terminal and
+  vanishes under Mosh. Bright yellow can be weak on light themes. `▌`, `▏`, `←`, `→`,
   `…`, `●`, `■`, `≡`, `·`, `—` and the band's `━`, `─`, `┷`, `┵`, `┴`, `═`, `╧`
   have ambiguous East Asian Width and can wrap a frame. Faint can dim the Fable
   underline in quiet cells of the gauge, including spent, blank and faded cells.
@@ -1842,9 +1888,8 @@ for the palette.
   across the underlined run. `NO_COLOR` strips both marks and the header's
   underlined sample. The Fable column keeps its number. The font places the
   underline within the row and determines its gap below the general line.
-- browser help points to the live key map. visits still join the bounded hub
-  acknowledgement before returning the tty. the
-  [restore resize race](issues/bubbletea-return-resize-race.md) remains open.
+- browser help points to the live key map. a killed visit can outlive its pane
+  briefly while it joins the bounded hub acknowledgement.
 
 - A cancelled browser can race its input reader
   ([issue](issues/bubbletea-canceled-input-race.md)); SIGTERM can be ignored
@@ -1852,10 +1897,13 @@ for the palette.
 
 ### Desktop rationale
 
-- One table with a strip of views: an agents sidebar would be a second rendering of the
-  same rows with its own cursor; the strip gives left and right a visible referent
-  and names views, never sessions. Digits or Tab cycling would name different
+- One table with one cursor forms the rail at its narrower width. The strip
+  gives left and right a visible referent and names views. Digits or Tab cycling would name different
   views on different days, since tabs come from observed labels.
+- tmux composes the rail and stage with the terminal's own input and rendering.
+  A deliberate attach switches the stage, so cursor movement resizes no session.
+  The lip and dim show which side has keys. Under 110 columns `ctrl-]` ends the
+  visit before the layout moves, since unzooming a live stage changes its size.
 - folds preserve the table and put an answer or question beside its subject.
 - one fixed cell for status leaves room for trailing columns. the glyph shapes
   survive `NO_COLOR`. a failed host's rows read `—` so a glance cannot mistake
@@ -2844,7 +2892,8 @@ and, on mac, the signed `Skid.app` and `terminal-runtime/SkidTerminals.app`.
 the gateway and terminal host have distinct stable signed identities. it ships no interpreter; runtime startup
 downloads nothing. supported: `darwin-arm64` on macos 26+; `linux-amd64` on
 ubuntu 24.04+ or arch-family (`ID=arch`, or `arch` in `ID_LIKE`) with systemd
-user services (`internal/install/platform.go`); android 13+ (min sdk 33, target
+user services (`internal/install/platform.go`); the browser needs tmux 3.8 or
+later, absent from stock ubuntu 24.04; android 13+ (min sdk 33, target
 36) with google play services, where the owner waives verification on versions
 older than the test phone's.
 

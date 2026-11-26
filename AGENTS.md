@@ -30,7 +30,8 @@ Unconditional guardrails, regardless of assignment:
 - A gate with no device or no live boundary is `NOT_RUN`, and `NOT_RUN` is
   never a pass.
 - Isolated runs need no approval. A run is isolated when it uses only: tmux as
-  `tmux -L <private socket>` with `TMUX` unset and `TMUX_TMPDIR` in scratch;
+  `tmux -L <private socket>` with `TMUX` unset and `TMUX_TMPDIR` in scratch,
+  or `tmux -S <private path>` inside owned scratch;
   binaries built from your worktree, with scratch `HOME` and `XDG_*`, serving
   127.0.0.1 on a port other than 7341; Android emulators you started, every adb
   call as `adb -s emulator-NNNN`; JVM and Robolectric tests.
@@ -43,7 +44,7 @@ Unconditional guardrails, regardless of assignment:
   environment variable, a prior approval, or a composite test command is not
   approval.
 - Kill only processes and tmux servers your run started, by PID or private
-  socket; never `pkill`, `killall` or `tmux kill-server` without `-L`. Never
+  socket; never `pkill`, `killall` or `tmux kill-server` without its private `-L` or `-S`. Never
   resize or retarget a session or pane your test did not create.
 - Logs and evidence stay credential-free and content-free: no terminal bytes,
   prompts, objectives, tokens, or account data.

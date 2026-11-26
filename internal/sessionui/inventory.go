@@ -20,9 +20,9 @@ type inventoryLane struct {
 	ready []fleetclient.Reference
 }
 
-// observing gates every read: the browser owns the screen and is running.
+// observing gates reads when the browser is closing.
 func (m *model) observing() bool {
-	return m.attachment == nil && m.ctx.Err() == nil
+	return m.ctx.Err() == nil
 }
 
 func (m *model) peerIndex(machine string) int {
@@ -187,17 +187,6 @@ func (m *model) checkInventory(index int) {
 	m.fenceInventory(index)
 }
 
-// cancelObservations retires every browser read while a terminal owns the screen.
-func (m *model) cancelObservations() {
-	for index := range m.inventoryLanes {
-		m.checkInventory(index)
-		m.inventoryLanes[index].trailing = false
-	}
-	m.notificationLane.fence()
-	m.notificationLane.trailing = false
-	m.notificationQualified = false
-}
-
 func (m *model) refreshMutation(index int) tea.Cmd {
 	if index < 0 {
 		return nil
@@ -206,7 +195,7 @@ func (m *model) refreshMutation(index int) tea.Cmd {
 	return m.refreshInventory(index, true)
 }
 
-// Fleet reconciliation runs on the existing inventory cadence, independently of attachment.
+// Fleet reconciliation runs on the inventory cadence.
 func (m *model) refreshFleet() tea.Cmd {
 	if m.fleetPending {
 		return nil

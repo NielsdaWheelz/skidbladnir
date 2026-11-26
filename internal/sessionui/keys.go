@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -58,7 +57,7 @@ func (m *model) onKey(message tea.KeyPressMsg) tea.Cmd {
 		return entry.act(m)
 	}
 	if pressed == "ctrl+r" {
-		return tea.Batch(m.refresh(true), m.refreshUsage(true))
+		return m.refreshManually()
 	}
 	if m.fold.loss == "" && m.fold.metadata() && !m.metadata.checking && !m.metadata.saveFocused && message.Text != "" {
 		m.editMetadataText(m.metadata.draft + message.Text)
@@ -201,7 +200,7 @@ func (m *model) tableKeys() []key {
 				if refusal := localRowGuard("terminal here")(m); refusal != "" {
 					return refusal
 				}
-				return m.attachRefusal("T")
+				return m.attachRefusal()
 			},
 			act: func(m *model) tea.Cmd {
 				row := m.selectedRow()
@@ -220,8 +219,12 @@ func (m *model) tableKeys() []key {
 			act: func(m *model) tea.Cmd { m.step(-1); return nil }},
 		{keys: []string{"right", "l"}, act: func(m *model) tea.Cmd { m.step(1); return nil }},
 		{keys: []string{"ctrl+r"}, show: "ctrl-r", label: "refresh", group: "browser",
-			act: func(m *model) tea.Cmd { return tea.Batch(m.refresh(true), m.refreshUsage(true)) }},
+			act: (*model).refreshManually},
 	}
+}
+
+func (m *model) refreshManually() tea.Cmd {
+	return tea.Batch(m.refresh(true), m.refreshUsage(true))
 }
 
 func (m *model) usageKey(rank int) key {
@@ -230,8 +233,8 @@ func (m *model) usageKey(rank int) key {
 			if m.band {
 				return ""
 			}
-			if refusal := m.ground.attachRefusal("u"); refusal != "" {
-				return refusal
+			if m.ground.note == "" {
+				return "reading the terminal's colours; press u again."
 			}
 			f := m.chrome()
 			grid := usageGrid(m.usageProfiles())
@@ -259,7 +262,7 @@ func rowGuard(action string, attach bool) func(*model) string {
 			return "no session selected; nothing was sent."
 		}
 		if attach && m.rowAttachable(*row) {
-			return m.attachRefusal("enter")
+			return m.attachRefusal()
 		}
 		if !attach && m.rowAvailable(*row) {
 			return ""
@@ -292,11 +295,8 @@ func (m *model) interruption() fold {
 
 const attachSize = "attach refused: the window must be 20–1024 columns and 5–512 rows"
 
-func (m *model) attachRefusal(key string) string {
-	if refusal := m.ground.attachRefusal(key); refusal != "" {
-		return refusal
-	}
-	if !terminal.ValidSize(m.width, m.height) {
+func (m *model) attachRefusal() string {
+	if !m.stageFits() {
 		return attachSize + "; nothing was sent."
 	}
 	return ""
@@ -337,6 +337,9 @@ func queuedMove(direction int) func(*model) tea.Cmd {
 }
 
 func (m *model) keyHints(width int) line {
+	if m.rail.visit != nil {
+		return m.railHints()
+	}
 	if m.busy {
 		return nil
 	}
@@ -378,6 +381,9 @@ func appendHint(hints line, entry key) line {
 }
 
 func (m *model) keyMap(width int) []line {
+	if m.rail.visit != nil {
+		return m.railKeyMap()
+	}
 	groups := []string{"session", "create", "browser"}
 	columns := make([][]span, len(groups))
 	columnWidth := width / len(groups)
@@ -440,7 +446,7 @@ func (m *model) keyMap(width int) []line {
 		used += cells
 	}
 	lines = append(lines, legend)
-	shortcuts := line{{text: "ctrl-] d detach  ctrl-] ctrl-] send ctrl-]", role: quietRole}}
+	shortcuts := line{{text: "ctrl-] browse", role: quietRole}}
 	for _, entry := range m.openKeys() {
 		switch entry.show {
 		case "r", "g", "p":

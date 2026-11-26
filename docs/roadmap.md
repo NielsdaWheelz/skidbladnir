@@ -52,7 +52,6 @@ workspaces.
   [wordmark tracking](issues/wordmark-tracking.md).
 - Desktop: [SIGTERM hang](issues/tui-sigterm-hang.md),
   [canceled input race](issues/bubbletea-canceled-input-race.md),
-  [return resize race](issues/bubbletea-return-resize-race.md),
   [list JSON output limit](issues/list-json-output-limit.md),
   [default machine case](issues/default-machine-case.md).
 - Host: [directory listing FIFO hang](issues/directory-listing-fifo-hang.md),

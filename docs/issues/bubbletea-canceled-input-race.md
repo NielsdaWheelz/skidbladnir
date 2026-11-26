@@ -1,9 +1,8 @@
 # canceled browser shutdown races its terminal input reader
 
 problem: bubbletea v2.0.9's killed shutdown closes cancelreader before its input
-worker has joined, and ultraviolet's pinned `StreamEvents` returns without joining
-its stream worker. `sessionui` passes its caller context to `tea.WithContext`
-(`internal/sessionui/session.go:100`), so canceling the browser takes that path.
+worker has joined. `sessionui.Run` passes its context to `tea.WithContext`, so
+canceling the browser, which runs as `skid rail`, takes that path.
 
 impact: canceling a browser can race `os.File.Close` against `Fd` on darwin's
 kqueue reader, and the input worker can outlive `Program.Run`. no crash, lost input
@@ -17,7 +16,8 @@ v0.2.2. upstream as of 2026-10-20: ultraviolet
 [`0b88c25f3fff`](https://github.com/charmbracelet/ultraviolet/commit/0b88c25f3fff665a5f9dfd226ee71868f5e8d51a)
 joins its worker; bubbletea v2.1.0 still skips the reader wait on killed shutdown
 (its graceful wait times out at 500 ms); cancelreader head keeps the bsd reader.
-upgrading ultraviolet alone, or routing cancellation through quit, is incomplete.
+the pinned ultraviolet joins its stream worker. routing cancellation through
+quit leaves bubbletea's killed shutdown path.
 
 reproduce: in a private pty, run the real browser with a cancelable context,
 cancel after rendering, await `Run`, then close the pty under the race detector.

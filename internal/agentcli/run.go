@@ -23,7 +23,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"golang.org/x/term"
 )
@@ -126,10 +125,12 @@ commands
 // lines, then what it does. names are the commands an entry answers for.
 var commandHelp = []struct{ names, text string }{
 	{"browser", `skid
-  browses the fleet's sessions and opens their terminals. stdin and stdout
-  need ttys. attaching needs 20–1024 columns and 5–512 rows.
-  ctrl-] then d detaches from an attached terminal.
-  ctrl-] twice sends a literal ctrl-]. ? lists the browser's keys.
+  browses the fleet's sessions and opens their terminals inside a private
+  tmux 3.8 or later. stdin and stdout need ttys. an open terminal needs
+  20–1024 columns and 5–512 rows; from 110 columns it sits beside a
+  28-column list. ctrl-] moves the keys between them, and under 110 columns
+  detaches. in the list, ctrl-d detaches and an unused key does nothing.
+  ? lists the keys.
 `},
 	{"list", `skid list [--machine HOST] [--group LABEL | --unassigned]
   sessions on every machine, or only on HOST: machine, session, terminal
@@ -665,31 +666,14 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			return render(parsed, fleetclient.Failed("invalid_input", "not_sent"), stdout, stderr)
 		}
 	}
-	if parsed.config == "" {
-		parsed.config, err = attention.StateDirectory()
-		if err != nil {
-			return render(parsed, fleetclient.Failed("configuration_invalid", "not_sent"), stdout, stderr)
-		}
-	}
-	client, err := fleetclient.Open(parsed.config)
+	config, client, err := openFleet(parsed.config)
 	if err != nil {
 		return render(parsed, fleetclient.Failed("configuration_invalid", "not_sent"), stdout, stderr)
 	}
-	parsed.machines = client.Machines()
 	if parsed.request.Operation == "" {
-		applyCtx, cancelApply := context.WithTimeout(ctx, 10*time.Second)
-		applied := make(chan struct{})
-		go func() {
-			defer close(applied)
-			_ = client.Apply(applyCtx) // justify-ignore-error: cached direct access stays available; skid status reports pending configuration.
-		}()
-		defer func() { cancelApply(); <-applied }()
-		if sessionui.Run(ctx, client, stdin.(*os.File), stdout.(*os.File)) != nil {
-			io.WriteString(stderr, "session browser ended with an error\n")
-			return 1
-		}
-		return 0
+		return launchBrowser(ctx, config, stdin.(*os.File), stdout.(*os.File), stderr)
 	}
+	parsed.machines = client.Machines()
 	if parsed.request.Operation == "enter" {
 		io.WriteString(stderr, "ctrl-] then d detaches; navigation and terminal size are shared\n")
 		ref, failure := client.ResolveTerminal(ctx, parsed.request)
