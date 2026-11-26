@@ -50,7 +50,10 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if row.PaneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session := enrichSession(server, row, manager.settings.Load())
+	session, err := enrichSession(server, row, manager.settings.Load())
+	if err != nil {
+		return Session{}, err
+	}
 	err = manager.RequireServer(ctx, server)
 	// An expired ctx fails the identity read and degrades enrichment without
 	// saying anything about the target, so it outranks the read's failure.

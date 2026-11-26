@@ -79,7 +79,7 @@ internal fun ForgeSheet(
     }
 }
 
-private enum class ForgeEntryField { Directory, Group }
+private enum class ForgeEntryField { Directory, Group, Parent }
 
 @Composable
 private fun ForgeFormContent(
@@ -224,6 +224,43 @@ private fun ForgeFormContent(
             onChange = { text -> controller.updateForgeDraft { it.copy(group = GroupDraft.Chosen(text)) } },
             modifier = Modifier.focusRequester(groupFocus),
         )
+        val choices = machines.filter { it.canMutate }.flatMap { machine ->
+            machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map { session ->
+                ParentChoice(SessionTarget(machine.machine.handle, session).lifetime, "${session.tmuxName} on ${machine.machine.label.text}")
+            }
+        }.sortedBy { it.label }
+        val chosen = forge.form.parent
+        val query = forge.form.parentQuery
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        SuggestionField(
+            text = chosen?.let { bound -> choices.find { it.lifetime == bound.lifetime }?.label ?: bound.label } ?: query,
+            label = "parent (optional)",
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = NidavellirType.Data),
+            enabled = !forge.pending,
+            expanded = expandedField == ForgeEntryField.Parent,
+            onExpandedChange = { if (it) expandedField = ForgeEntryField.Parent else if (expandedField == ForgeEntryField.Parent) expandedField = null },
+            onChange = { text -> controller.updateForgeDraft { it.copy(parent = null, parentQuery = text) } },
+            literal = null, onAccept = { false }, onNext = {}, onFocus = {},
+            maxSuggestionsHeight = maxSuggestionsHeight,
+            message = when {
+                chosen != null && choices.none { it.lifetime == chosen.lifetime } -> "selected parent unavailable"
+                query.isNotEmpty() -> "choose a parent session"
+                else -> null
+            },
+            invalid = false, modifier = Modifier,
+        ) {
+            fun choose(parent: ParentChoice?) {
+                controller.updateForgeDraft { it.copy(parent = parent, parentQuery = "") }
+                expandedField = null
+                focus.clearFocus()
+                keyboard?.hide()
+            }
+            item { SuggestionTextChoice("top-level") { choose(null) } }
+            itemsIndexed(choices.filter { it.label.contains(query, ignoreCase = true) }) { _, parent ->
+                SuggestionTextChoice(parent.label) { choose(parent) }
+            }
+        }
         rejection?.takeIf { it.code != ApiErrorCode.GroupInvalid }?.let {
             Text(it.message, color = noticeToneColor(NoticeTone.Failure))
         }

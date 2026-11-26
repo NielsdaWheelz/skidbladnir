@@ -89,12 +89,40 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
 	}
+	if input.Parent != nil && input.Parent.Machine == manager.recovery.machine.String() {
+		// A local parent can be guarded in the very queue that creates the child.
+		// A remote parent is pinned by the trusted client's durable reservation.
+		b, err := manager.readBranches()
+		if err != nil {
+			return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+		}
+		claims := b.claims(input.Parent.IdentityToken)
+		if claims.Fence != nil || claims.Pending[input.Admission] != input.Parent.Machine {
+			return ObservedSession{}, tmuxclient.ServerIdentity{}, branchChanged()
+		}
+		sourceID = input.Parent.TmuxID
+		sourceServer, err = parseLifetime(sourceID, input.Parent.IdentityToken)
+		if err != nil {
+			return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+		}
+	}
 	if sourceID != "" && server != sourceServer {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
 	current, err := manager.tmux.ReadInventory(ctx, server)
 	if err != nil {
 		return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+	}
+	if input.Parent != nil {
+		for _, row := range current.Rows {
+			f, err := decodeFamily(row.LocalSession.Family)
+			if err != nil {
+				return ObservedSession{}, tmuxclient.ServerIdentity{}, err
+			}
+			if f.Admission == input.Admission {
+				return ObservedSession{}, tmuxclient.ServerIdentity{}, branchChanged()
+			}
+		}
 	}
 	scan := manager.scanCapture(current)
 	name := input.OptionalTmuxName
@@ -139,6 +167,9 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if input.Objective != "" {
 		encodedObjective := base64.RawURLEncoding.EncodeToString([]byte(input.Objective))
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_objective_b64", encodedObjective)
+	}
+	if input.Parent != nil {
+		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", tmuxclient.FamilyOption, encodeFamily(sessionFamily{Parent: input.Parent, Admission: input.Admission}))
 	}
 	if !input.Group.IsUnassigned() {
 		encodedGroup := base64.RawURLEncoding.EncodeToString([]byte(input.Group.String()))
@@ -196,7 +227,11 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	// Under the mutation lock, this is the snapshot validateCreate admitted
 	// the profile from.
-	observed := ObservedSession{ObservedAt: time.Now().UTC(), Session: enrichSession(server, created.Rows[0], manager.settings.Load())}
+	session, err := enrichSession(server, created.Rows[0], manager.settings.Load())
+	if err != nil {
+		return ObservedSession{}, server, err
+	}
+	observed := ObservedSession{ObservedAt: time.Now().UTC(), Session: session}
 	// The target is captured; a later failure retains it for the caller.
 	if err := manager.RequireServer(ctx, server); err != nil {
 		return observed, server, err

@@ -165,7 +165,11 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 		if err = ctx.Err(); err != nil {
 			break
 		}
-		sessions = append(sessions, enrichSession(capture.Server, row, settings))
+		session, rowErr := enrichSession(capture.Server, row, settings)
+		if rowErr != nil {
+			return Inventory{}, rowErr
+		}
+		sessions = append(sessions, session)
 	}
 	if err != nil {
 		return Inventory{}, err
@@ -194,7 +198,15 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	if err := manager.requireManagedLifetime(ctx, server); err != nil {
 		return err
 	}
-	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, server)
+	b, err := manager.readBranches()
+	if err != nil {
+		return err
+	}
+	c := b.claims(input.IdentityToken)
+	if c.Fence == nil || !c.Fence.Dispatching || c.Fence.ID != input.CloseID || len(c.Children)+len(c.Pending) != 0 {
+		return branchChanged()
+	}
+	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, server, c.Fence.PaneID)
 	if errors.Is(err, tmuxclient.ErrDispatchUnknown) {
 		return ErrSessionDeleteUnknown
 	}
@@ -215,7 +227,7 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 // validated identity) and the row id came from tmux ingress, so the token needs
 // no validation. A failed sample is recorded by ForegroundFailed; the session
 // remains a terminal.
-func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow, settings *runtimeSettings) Session {
+func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow, settings *runtimeSettings) (Session, error) {
 	character, _ := catalog.Character(row.LocalSession.Character)
 	panePID := processinfo.PID(row.PanePID)
 	session := Session{
@@ -240,6 +252,11 @@ func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow
 			session.Objective = string(objective)
 		}
 	}
+	family, err := decodeFamily(row.LocalSession.Family)
+	if err != nil {
+		return Session{}, err
+	}
+	session.Parent, session.Promoted, session.Previous = family.Parent, family.Promoted, family.Previous
 	var foregroundErr error
 	session.Agent, session.foreground, foregroundErr = observeAgent(panePID, settings.profiles, launchProfile.Managed)
 	session.foregroundFailed = foregroundErr != nil
@@ -249,14 +266,14 @@ func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow
 			environment, err := processinfo.ObserveForegroundEnvironment(panePID, foreground)
 			if errors.Is(err, processinfo.ErrForegroundMismatch) {
 				session.Agent, session.foreground, session.foregroundFailed = nil, nil, true
-				return session
+				return session, nil
 			}
 			session.Connection = &Connection{Transport: transport, ID: connectionID(environment)}
 			session.Agent = nil
 			session.CWD = ""
 		}
 	}
-	return session
+	return session, nil
 }
 
 // sessionScan is one inventory's rows with their name set and catalogue key

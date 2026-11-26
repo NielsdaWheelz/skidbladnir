@@ -74,7 +74,26 @@ internal class DashboardEntryState {
     private var currentView by mutableStateOf<DashboardViewSelection>(DashboardViewSelection.All)
     private var pendingSnapshot by mutableStateOf<DashboardEntrySnapshot?>(null)
     private var ownedGridState by mutableStateOf(LazyGridState())
+    private data class Branch(val parent: ParentChoice, val previousGrid: LazyGridState)
+    private var branches by mutableStateOf(emptyList<Branch>())
+    val branch: ParentChoice? get() = branches.lastOrNull()?.parent
     private var installed = false
+
+    fun openChildren(parent: VisibleSession) {
+        branches += Branch(ParentChoice(parent.target.lifetime, parent.target.session.tmuxName), ownedGridState)
+        ownedGridState = LazyGridState()
+    }
+
+    fun backFromChildren() {
+        val previous = branches.lastOrNull() ?: return
+        ownedGridState = previous.previousGrid
+        branches = branches.dropLast(1)
+    }
+
+    private fun leaveChildren() {
+        branches.firstOrNull()?.let { ownedGridState = it.previousGrid }
+        branches = emptyList()
+    }
 
     val view: DashboardViewSelection get() = currentView
     val gridState: LazyGridState get() = ownedGridState
@@ -82,6 +101,7 @@ internal class DashboardEntryState {
 
     fun selectView(view: DashboardViewSelection) {
         if (view.key == currentView.key) return
+        leaveChildren()
         currentView = view
         pendingSnapshot = null
     }
@@ -96,17 +116,20 @@ internal class DashboardEntryState {
     /** Creation reveals its confirmed group; its pre-render sample cannot qualify for needs input. */
     fun followCreatedMembership(label: GroupLabel?) {
         if (currentView != DashboardViewSelection.NeedsInput && currentView.matchesGroup(label)) return
+        leaveChildren()
         currentView = label?.let { DashboardViewSelection.Named(groupFingerprint(it), it) } ?: DashboardViewSelection.Unassigned
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
 
     fun resetViewportAfterAccessLoss() {
+        leaveChildren()
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
 
     fun resetAll() {
+        leaveChildren()
         currentView = DashboardViewSelection.All
         pendingSnapshot = null
         ownedGridState = LazyGridState()
@@ -126,8 +149,9 @@ internal class DashboardEntryState {
 
     fun snapshot(): DashboardEntrySnapshot {
         pendingSnapshot?.let { return it }
-        val index = gridState.firstVisibleItemIndex
-        val key = gridState.layoutInfo.visibleItemsInfo
+        val rootGrid = branches.firstOrNull()?.previousGrid ?: gridState
+        val index = rootGrid.firstVisibleItemIndex
+        val key = rootGrid.layoutInfo.visibleItemsInfo
             .singleOrNull { it.index == index }
             ?.key as? String
         val anchor = key?.let(DashboardItemKey::parse)
@@ -137,7 +161,7 @@ internal class DashboardEntryState {
             viewport = if (anchor == null) {
                 TOP_VIEWPORT
             } else {
-                DashboardViewport(anchor, index, gridState.firstVisibleItemScrollOffset)
+                DashboardViewport(anchor, index, rootGrid.firstVisibleItemScrollOffset)
             },
         )
     }

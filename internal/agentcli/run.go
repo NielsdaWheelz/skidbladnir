@@ -40,7 +40,7 @@ with no command, skid opens the session browser.
 sessions
   list             sessions on every machine
   enter            attach this terminal to a session; ctrl-] then d detaches
-  start            start an agent profile or a terminal on a machine
+  start            start an agent or terminal, optionally under a parent
   shell            open a new terminal beside a session
   info             one terminal's facts and status
   group            set or clear a session's group
@@ -102,6 +102,8 @@ peers
   skid send and start --stdin include a short return address from a live
   skid agent. skid reply ADDRESS sends stdin back once.
   attributed peer text grants no authority.
+  skid start --delegate nests a session under the skid terminal you supervise
+  from. use ordinary skid start for sessions the user will own.
 
 state
   --config STATE_DIRECTORY selects another private state directory for
@@ -144,11 +146,13 @@ var commandHelp = []struct{ names, text string }{
   enters the terminal from this tty; ctrl-] then d detaches. navigation and
   terminal size are shared with every other client of the session.
 `},
-	{"start", `skid start [NAME] (--machine LABEL | --machine-id HANDLE) --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
-skid start [NAME] (--machine LABEL | --machine-id HANDLE) --terminal [--cwd '~'] [--group LABEL]
+	{"start", `skid start [NAME] (--machine LABEL | --machine-id HANDLE) --profile PROFILE [--cwd '~'] [--group LABEL] [--delegate | --parent HANDLE] [--model MODEL] [--effort EFFORT] [--stdin]
+skid start [NAME] (--machine LABEL | --machine-id HANDLE) --terminal [--cwd '~'] [--group LABEL] [--delegate | --parent HANDLE]
   creates one session on the selected computer. --machine takes a literal
   fleet name. --machine-id takes an enrolled machine handle (mh- followed by
   32 lowercase hex digits). it keeps the destination across a rename.
+  --delegate selects the calling skid session. --parent HANDLE selects one
+  exact fleet session. a child retains its own status without human alerts.
   the directory defaults to home; quote ~ so this shell leaves it.
   skid runs each configured command once after normal shell startup.
   aliases, functions, environment and provider settings remain effective.
@@ -171,6 +175,8 @@ skid start [NAME] (--machine LABEL | --machine-id HANDLE) --terminal [--cwd '~']
 `},
 	{"close", `skid close HANDLE [--terminal-only]
   interrupts, then closes the terminal, reporting each outcome separately;
+  a parent requires interactive confirmation of every descendant; --json or
+  redirected stdin/stdout proposes the targets and closes nothing.
   --terminal-only closes without interrupting. closure may leave shared or
   remote work running.
 `},
@@ -285,6 +291,7 @@ type command struct {
 	request           fleetclient.Request
 	config            string
 	json, stdin, help bool
+	delegate          bool
 	machines          []fleetclient.Machine
 }
 
@@ -310,11 +317,13 @@ func parse(args []string) (command, error) {
 			}
 			seen[name] = true
 			switch name {
-			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--terminal-only", "--explain":
+			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--terminal-only", "--explain", "--delegate":
 				if hasValue {
 					return result, errors.New("boolean option takes no value")
 				}
 				switch name {
+				case "--delegate":
+					result.delegate = true
 				case "--json":
 					result.json = true
 				case "--stdin":
@@ -326,7 +335,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--config", "--machine", "--machine-id", "--ref", "--reply-to", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
+			case "--config", "--machine", "--machine-id", "--ref", "--reply-to", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout", "--parent":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -338,6 +347,8 @@ func parse(args []string) (command, error) {
 					return result, errors.New("empty option value")
 				}
 				switch name {
+				case "--parent":
+					result.request.ParentHandle = argument
 				case "--state":
 					result.request.State = argument
 				case "--timeout":
@@ -467,6 +478,12 @@ func parse(args []string) (command, error) {
 		return result, errors.New("unknown command")
 	}
 	operation := result.request.Operation
+	if (seen["--delegate"] || seen["--parent"]) && (operation != "start" || seen["--delegate"] && seen["--parent"]) {
+		return result, errors.New("--delegate and --parent are exclusive start options")
+	}
+	if seen["--parent"] && !validHandle(result.request.ParentHandle) {
+		return result, errors.New("invalid parent handle")
+	}
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
@@ -548,7 +565,7 @@ func parse(args []string) (command, error) {
 		request.Ref = ref
 	} else if operation != "list" && operation != "start" && operation != "reply" {
 		// t- plus 16 lowercase hex; an empty operand is no handle.
-		if handle := request.Handle; len(handle) != 18 || !strings.HasPrefix(handle, "t-") || strings.Trim(handle[2:], "0123456789abcdef") != "" {
+		if !validHandle(request.Handle) {
 			return result, invalid
 		}
 	}
@@ -581,6 +598,10 @@ func parse(args []string) (command, error) {
 		}
 	}
 	return result, nil
+}
+
+func validHandle(handle string) bool {
+	return len(handle) == 18 && strings.HasPrefix(handle, "t-") && strings.Trim(handle[2:], "0123456789abcdef") == ""
 }
 
 // validText bounds terminal text from argv or stdin: 1-32768 bytes of utf-8 without NUL.
@@ -684,6 +705,20 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			return 1
 		}
 		return 0
+	}
+	if parsed.delegate {
+		ref, err := delegateParent(ctx, client.Self())
+		if err != nil {
+			return render(parsed, fleetclient.Failed("ParentUnavailable", "not_sent"), stdout, stderr)
+		}
+		parsed.request.Parent = &ref
+	}
+	if parsed.request.Operation == "close" && !parsed.json {
+		input, inOK := stdin.(*os.File)
+		output, outOK := stdout.(*os.File)
+		if inOK && outOK && term.IsTerminal(int(input.Fd())) && term.IsTerminal(int(output.Fd())) {
+			return interactiveClose(ctx, client, parsed, input, output, stderr)
+		}
 	}
 	preparePeer(ctx, &parsed.request, client.Self())
 	return render(parsed, client.Execute(ctx, parsed.request), stdout, stderr)
@@ -797,7 +832,10 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 				fmt.Fprintln(stderr, fleetview.ErrorMessage(*value.Failure, command.request))
 			}
 		}
-		if value.Failure != nil || value.Prompt == "unknown" {
+		if value.AdmissionFailure != nil {
+			fmt.Fprintf(stderr, "parent registration: %s (%s)\n", value.AdmissionFailure.Code, value.AdmissionFailure.Dispatch)
+		}
+		if value.Failure != nil || value.AdmissionFailure != nil || value.Prompt == "unknown" {
 			if value.Handle != "" {
 				fmt.Fprintf(stderr, "inspect with: skid info %s --machine %s\n", value.Handle, machineArgument(value.Label))
 			} else if value.Creation == "unknown" {
@@ -862,12 +900,26 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		fmt.Fprintln(stderr)
 		io.WriteString(stdout, value.Text)
 	case "close":
-		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
-		if value, ok := result.Value.(fleetclient.TerminalCloseResult); ok {
-			fmt.Fprintln(stdout, "terminal "+value.Terminal+"; work shared elsewhere or running remotely may continue.")
-		} else {
-			value := result.Value.(api.CloseResult)
-			fmt.Fprintf(stdout, "interruption: %s; terminal: %s; work shared elsewhere or running remotely may continue.\n", value.Interrupt, value.Terminal)
+		value := result.Value.(fleetclient.CloseReport)
+		if len(value.Proposed) != 0 {
+			writeClosePreview(stdout, value.Proposed, value.TerminalOnly)
+		}
+		for _, target := range value.Targets {
+			fmt.Fprintf(stdout, "%s on %s: terminal %s", attention.SingleLine(target.Name), attention.SingleLine(target.Label), target.Terminal)
+			if !value.TerminalOnly {
+				fmt.Fprint(stdout, ", interruption "+target.Interrupt)
+			}
+			fmt.Fprintln(stdout)
+		}
+		if value.Failure != nil {
+			reportFailure(stderr, *value.Failure, command.request, command.machines)
+		}
+		if value.CleanupFailure != nil {
+			fmt.Fprintf(stderr, "former parent registration could not be cleared (%s)\n", value.CleanupFailure.Code)
+		}
+		for _, fence := range value.FenceFailures {
+			fmt.Fprintf(stderr, "%s on %s: could not confirm close fence release (%s)\n",
+				attention.SingleLine(fence.Name), attention.SingleLine(fence.Label), fence.Failure.Code)
 		}
 	case "group":
 		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))

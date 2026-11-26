@@ -140,6 +140,7 @@ internal fun SkidbladnirApp(
     onNotificationSetup: () -> Unit,
 ) {
     val state = controller.state
+    controller.closeReport?.let { CloseReport(it, controller::dismissCloseReport) }
     val context = LocalContext.current
     BackHandler(enabled = state is SkidbladnirUiState.Dashboard && state.forge != null) {
         controller.dismissForge()

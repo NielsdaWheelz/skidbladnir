@@ -13,9 +13,10 @@ import (
 type phase string
 
 const (
-	quiet phase = "quiet"
-	armed phase = "armed"
-	ready phase = "ready"
+	quiet    phase = "quiet"
+	armed    phase = "armed"
+	ready    phase = "ready"
+	baseline phase = "baseline"
 )
 
 // record is one session lifetime's attention with the owner's acknowledgement.
@@ -23,6 +24,7 @@ const (
 type record struct {
 	Key                  fleetclient.Reference `json:"key"`
 	Foreground           *attention.Foreground `json:"foreground,omitempty"`
+	Promoted             bool                  `json:"promoted,omitempty"`
 	Phase                phase                 `json:"phase"`
 	ReadyGeneration      int64                 `json:"readyGeneration"`
 	AttentionEpisode     int64                 `json:"attentionEpisode"`
@@ -40,7 +42,7 @@ type cause struct {
 // valid admits the closed sets project and text switch on; the rest of the
 // file is this observer's own output.
 func (r record) valid() bool {
-	if r.Phase != quiet && r.Phase != armed && r.Phase != ready {
+	if r.Phase != quiet && r.Phase != armed && r.Phase != ready && r.Phase != baseline {
 		return false
 	}
 	c := r.Cause
@@ -95,11 +97,29 @@ func current(c cause, status api.TerminalStatus) bool {
 // observe retains uncertainty but replaces positive identity and complete
 // causes. It reports whether this evidence is qualified to post or clear.
 func observe(previous record, present bool, ref fleetclient.Reference, session fleetclient.Session, revision int64) (record, bool) {
+	if session.Parent != nil {
+		return record{Key: ref, Phase: quiet}, true
+	}
 	foreground := fleetclient.NotificationForeground(session)
 	status := session.TerminalStatus
+	if session.Promoted && (!present || !previous.Promoted || previous.Phase == baseline) {
+		replaced := previous.Promoted && previous.Foreground != nil && foreground != nil &&
+			!attention.SameForeground(previous.Foreground, foreground)
+		if !replaced {
+			next := record{Key: ref, Foreground: foreground, Phase: baseline, Promoted: true}
+			// A clean sample or a proven replacement ends the baseline. A
+			// sampling gap alone cannot forget the old foreground.
+			if status.Source == api.SourceTerminal && (foreground == nil || idle(status) && status.Notice == api.NoticeNone) {
+				next.Phase = quiet
+			} else if foreground == nil && previous.Promoted {
+				next.Foreground = previous.Foreground
+			}
+			return next, true
+		}
+	}
 	identityKnown := foreground != nil || session.Connection != nil || status.Source == api.SourceTerminal
 	same := present && previous.Key == ref && (!identityKnown || attention.SameForeground(previous.Foreground, foreground))
-	next := record{Key: ref, Foreground: foreground, Phase: quiet}
+	next := record{Key: ref, Foreground: foreground, Phase: quiet, Promoted: session.Promoted}
 	if same {
 		next = previous
 	}

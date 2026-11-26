@@ -39,6 +39,8 @@ type CreateInput struct {
 	OptionalTmuxName string
 	WorkerSocket     string // internal launch: the configured profile owns native setup
 	WorkerResults    string
+	Parent           *api.SessionRef
+	Admission        string
 	Objective        string
 	Group            group.Label
 }
@@ -55,6 +57,7 @@ type SetGroupInput struct {
 }
 
 type KillInput struct {
+	CloseID       string
 	TmuxID        string
 	IdentityToken string
 }
@@ -99,6 +102,9 @@ type Session struct {
 	CWD              string
 	ActiveCommand    string
 	AttachedClients  int
+	Parent           *api.SessionRef
+	Promoted         bool
+	Previous         []api.SessionRef
 }
 
 // ForegroundFailed reports that this sample could not identify the pane's

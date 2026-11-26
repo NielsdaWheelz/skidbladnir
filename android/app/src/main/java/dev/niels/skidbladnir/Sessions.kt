@@ -51,6 +51,8 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     val connection: RemoteConnection? = null,
 )
 
+@Serializable internal data class SessionLifetime(val machine: MachineHandle, val tmuxId: String, val identityToken: String)
+
 /** An [agent] is always the local foreground: the host never reports one beside a [connection]. */
 @Serializable internal data class TmuxSession(
     val tmuxId: String,
@@ -61,6 +63,8 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     val character: CharacterSummary,
     val objective: String? = null,
     val group: GroupLabel? = null,
+    val parent: SessionLifetime? = null,
+    val previous: List<SessionLifetime> = emptyList(),
     val cwd: String? = null,
     val activeCommand: String? = null,
     val agent: AgentRuntime? = null,
@@ -83,6 +87,8 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
 )
 
 internal data class SessionTarget(val machineHandle: MachineHandle, val session: TmuxSession) {
+    val lifetime: SessionLifetime get() = SessionLifetime(machineHandle, session.tmuxId, session.identityToken)
+
     fun sameLifetime(other: SessionTarget): Boolean =
         machineHandle == other.machineHandle && session.sameLifetime(other.session)
 }

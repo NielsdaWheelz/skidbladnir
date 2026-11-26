@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ const (
 
 type Failure struct {
 	TerminalInputMessage string `json:"-"`
+	Message              string `json:"-"`
 	Code                 string `json:"code"`
 	Dispatch             string `json:"dispatch"`
 	Target               Ref    `json:"target,omitzero"`
@@ -72,6 +74,17 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		return client.list(ctx, request.Machine, request.GroupFilter)
 	case "start":
 		return client.start(ctx, request)
+	case "close":
+		plan, failure := client.previewClose(ctx, request)
+		if failure != nil {
+			return Result{Error: failure}
+		}
+		if len(plan.Targets) > 1 {
+			return success(CloseReport{Proposed: plan.Targets, TerminalOnly: plan.TerminalOnly, Failure: Failed("BranchConfirmationRequired", "not_sent").Error})
+		}
+		return success(client.ConfirmClose(ctx, plan))
+	case "promote":
+		return client.promote(ctx, request)
 	case "reply":
 		return client.reply(ctx, request)
 	}
@@ -92,13 +105,9 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	case operation == "rename":
 		body["expectedNaming"], body["naming"] = request.ExpectedNaming, request.Naming
 	case operation == "shell":
-	case operation == "close" && request.TerminalOnly:
-		operation = "terminal_close"
-	default: // read, send, text, keys, stop, close: the selected pane's terminal
+	default: // read, send, text, keys, stop: the selected pane's terminal
 		body["paneId"] = ref.PaneID
-		if operation != "close" {
-			operation = "terminal_" + operation
-		}
+		operation = "terminal_" + operation
 		switch request.Operation {
 		case "read":
 			if request.MaxBytes != 0 {
@@ -129,8 +138,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		result = success(written)
 	case operation == "group":
 		result = success(GroupResult{Group: request.Group.String()})
-	case operation == "terminal_close":
-		result = success(TerminalCloseResult{Terminal: "closed"})
 	}
 	return result
 }
@@ -250,12 +257,20 @@ func (client *Client) resolve(ctx context.Context, request Request) (resolved, *
 		}
 		label = selected.Label
 	}
-	result := client.inventory(ctx, label)
+	discovery := ctx
+	if request.Operation == "close" || request.Operation == "parent" {
+		// An unresponsive unrelated peer must leave time for authoritative
+		// branch requests after fleet handle discovery.
+		bounded, cancel := context.WithTimeout(ctx, 6*time.Second)
+		defer cancel()
+		discovery = bounded
+	}
+	result := client.inventory(discovery, label)
 	if !result.OK {
 		return resolved{}, result.Error
 	}
 	listed := result.Value.(Inventory)
-	if listed.Partial {
+	if listed.Partial && request.Operation != "close" && request.Operation != "parent" {
 		return resolved{}, Failed("inventory_incomplete", "not_sent").Error
 	}
 	matches := []ObservedSession{}
@@ -274,6 +289,8 @@ func (client *Client) resolve(ctx context.Context, request Request) (resolved, *
 	switch {
 	case len(matches) == 0 && !ref.IsZero():
 		return resolved{}, Failed("SessionIdentityMismatch", "not_sent").Error
+	case len(matches) == 0 && listed.Partial:
+		return resolved{}, Failed("inventory_incomplete", "not_sent").Error
 	case len(matches) == 0:
 		return resolved{}, Failed("handle_not_found", "not_sent").Error
 	case len(matches) > 1:
@@ -393,6 +410,9 @@ var routes = map[string]struct {
 	"terminal_keys":    {http.MethodPost, "/v1/sessions/{id}/terminal/keys", true, http.StatusOK},
 	"terminal_stop":    {http.MethodPost, "/v1/sessions/{id}/terminal/stop", true, http.StatusOK},
 	"close":            {http.MethodPost, "/v1/sessions/{id}/terminal/close", true, http.StatusOK},
+	"branch_inspect":   {http.MethodPost, "/v1/sessions/{id}/branch", false, http.StatusOK},
+	"branch_reserve":   {http.MethodPost, "/v1/sessions/{id}/branch", true, http.StatusOK},
+	"branch_mutate":    {http.MethodPost, "/v1/sessions/{id}/branch", true, http.StatusNoContent},
 	"terminal_close":   {http.MethodDelete, "/v1/sessions/{id}", true, http.StatusNoContent},
 	"rename":           {http.MethodPatch, "/v1/sessions/{id}", true, http.StatusNoContent},
 	"group":            {http.MethodPut, "/v1/sessions/{id}/group", true, http.StatusNoContent},
@@ -501,7 +521,7 @@ func decodeFailure(operation string, encoded []byte, dispatch, machine string) *
 	case knownRejection(envelope.Code):
 		dispatch = "not_sent"
 	}
-	failure := &Failure{Code: envelope.Code, Dispatch: dispatch}
+	failure := &Failure{Code: envelope.Code, Dispatch: dispatch, Message: envelope.Message}
 	if envelope.Code == "TerminalInputBlocked" {
 		failure.TerminalInputMessage = envelope.Message
 	}
@@ -517,7 +537,7 @@ func decodeFailure(operation string, encoded []byte, dispatch, machine string) *
 
 func knownRejection(code string) bool {
 	switch code {
-	case "JobConflict", "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
+	case "JobConflict", "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked", "BranchChanged", "BranchPending", "BranchUnresolved", "BranchConfirmationRequired", "BranchClosing":
 		return true
 	default:
 		return false
@@ -533,7 +553,7 @@ func (result Result) Encode(operation string) ([]byte, error) {
 	if operation == "list" {
 		limit = MaximumInventoryBytes
 	}
-	if len(encoded)+1 > limit {
+	if operation != "close" && len(encoded)+1 > limit {
 		return nil, errOutputLimit
 	}
 	return append(encoded, '\n'), nil
@@ -546,7 +566,7 @@ func (result Result) ExitCode(operation string) int {
 	switch operation {
 	case "start":
 		value := result.Value.(StartResult)
-		if value.Creation != "created" || value.Prompt != "not_requested" && value.Prompt != "written" || value.Failure != nil {
+		if value.Creation != "created" || value.Prompt != "not_requested" && value.Prompt != "written" || value.Failure != nil || value.AdmissionFailure != nil {
 			return 1
 		}
 	case "list":
@@ -558,11 +578,10 @@ func (result Result) ExitCode(operation string) int {
 			return 1
 		}
 	case "close":
-		if _, ok := result.Value.(TerminalCloseResult); ok {
-			return 0 // Execute builds it only after a confirmed deletion
-		}
-		value := result.Value.(api.CloseResult)
-		if value.Interrupt != "written" || value.Terminal != "closed" {
+		value := result.Value.(CloseReport)
+		if value.Failure != nil || len(value.FenceFailures) != 0 || slices.ContainsFunc(value.Targets, func(target CloseOutcome) bool {
+			return target.Terminal != "closed" || !value.TerminalOnly && target.Interrupt != "written"
+		}) {
 			return 1
 		}
 	case "wait":

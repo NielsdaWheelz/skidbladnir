@@ -1,6 +1,7 @@
 package sessionui
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
@@ -44,12 +45,23 @@ func (m *model) details(row *fleetclient.Row) [][2]string {
 	if cwd == "" {
 		cwd = "directory unavailable"
 	}
+	children := strconv.Itoa(m.tree[value.Ref.SessionRef()].count)
+	if slices.ContainsFunc(m.peers, func(p fleetclient.Peer) bool { return !p.OK }) {
+		children += " observed · fleet inventory incomplete"
+	}
 	facts := [][2]string{
 		{"state", view.State}, {"availability", availability}, {"name", value.Name},
-		{"running on", machine}, {"directory", cwd}, {"terminal handle", value.TerminalHandle},
+		{"children", children}, {"running on", machine}, {"directory", cwd}, {"terminal handle", value.TerminalHandle},
 		{"naming", value.NameMode}, {"group", fleetview.GroupHeading(value.Group)},
 		{"selected pane", value.ActivePaneID}, {"terminal on", row.Label}, {"machine id", row.Machine},
 		{"command", value.ActiveCommand}, {"attached clients", strconv.Itoa(value.AttachedClients)},
+	}
+	if id := value.Parent; id != nil {
+		parent := "parent unavailable"
+		if node := m.tree[*id]; node != nil && m.rowAttachable(node.row) {
+			parent = node.row.Session.Name + " on " + node.row.Label
+		}
+		facts = slices.Insert(facts, 1, [2]string{"parent", parent})
 	}
 	if current.Agent == nil && current.Kind != "remoteUnknown" {
 		facts = append(facts, [2]string{"agent", "not detected"})

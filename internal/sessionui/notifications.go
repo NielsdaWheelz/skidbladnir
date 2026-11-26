@@ -41,7 +41,7 @@ func (m *model) acceptNotifications(message notificationMsg) tea.Cmd {
 }
 
 func (m *model) heldReady(row fleetclient.Row) bool {
-	if m.notificationFailed || row.Available && m.notificationQualified {
+	if row.Session.Parent != nil || m.notificationFailed || row.Available && m.notificationQualified {
 		return false
 	}
 	index := m.peerIndex(row.Machine)

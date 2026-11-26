@@ -557,9 +557,9 @@ double frost underline on the sign's cell. the Fable underline is single or
 dotted beneath the weekly gauge's cells, gold while current and quiet when
 faded.
 the gold `▌` lip marks the cursor's row and every fold line in column 1.
-names and fold text begin in column 5. one rule heads
-the open row's screen and another separates the body from the usage band, while
-shown, and the controls. hints use ink and quiet.
+names and fold text begin in column 5. a parent puts `▸` or `▾` in column 3.
+children indent inside the name lane. one rule separates the body from the
+usage band, while shown, and the controls. hints use ink and quiet.
 
 Copy is lowercase and literal. Preserve the host's words for status and the
 shared desktop outcome words. Browser copy names the session and listing host,

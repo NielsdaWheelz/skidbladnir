@@ -76,6 +76,8 @@ internal data class CloseState(
     val target: SessionTarget,
     val pending: Boolean,
     val terminalOnly: Boolean = false,
+    val plan: BranchPlan? = null,
+    val error: String? = null,
 )
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
@@ -155,6 +157,11 @@ internal class SkidbladnirController(
         }
         override fun accessLost(handle: MachineHandle, failure: GatewayFailure.Api) = machineAccessLost(handle, failure)
     })
+    private val branches = Branches(machines)
+    private var closing = false
+    var closeReport by mutableStateOf<BranchOutcome?>(null)
+        private set
+    fun dismissCloseReport() { closeReport = null }
     private val textSize = TerminalTextSize(applicationContext, app, ::publish)
     private var attachment: TerminalAttachment? = null
     /** The machine a dashboard stop is in flight on: that machine's access loss drops the stop's completion. */
@@ -623,15 +630,21 @@ internal class SkidbladnirController(
                 surface = ForgeSurface.Form,
             ),
         )
-        machines.mutate(handle, Reservation.Inventory, { GatewayClient.createSession(it, draft) }) { _, result ->
+        machines.mutate(handle, Reservation.Inventory, { branches.create(it, draft) }) { _, result ->
             machines.refresh(handle)
             val active = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return@mutate
             if (!active.pending || active.form !== forge.form) return@mutate
             when (result) {
-                is GatewayResult.Success -> enterCreatedTerminal(SessionTarget(handle, result.value))
+                is GatewayResult.Success -> {
+                    result.value.warning?.let {
+                        pendingDashboardNotice = it
+                        android.widget.Toast.makeText(applicationContext, it, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    enterCreatedTerminal(SessionTarget(handle, result.value.session))
+                }
                 is GatewayResult.Failure -> {
                     val failure = result.failure
-                    if (failure is GatewayFailure.Api && createFailureIsDefinitive(failure)) {
+                    if (failure is GatewayFailure.Api && gatewayRefusedBeforeDispatch(failure)) {
                         machines.settle(handle)
                         updateForge { it.copy(pending = false, failure = ForgeFailure.Definite(failure), surface = ForgeSurface.Form) }
                     } else {
@@ -682,7 +695,7 @@ internal class SkidbladnirController(
             when (result) {
                 is GatewayResult.Success -> enterCreatedTerminal(SessionTarget(handle, result.value))
                 is GatewayResult.Failure -> {
-                    val definite = createFailureIsDefinitive(result.failure)
+                    val definite = gatewayRefusedBeforeDispatch(result.failure)
                     if (definite) machines.settle(handle) else machines.fail(handle, result.failure)
                     val active = state as? SkidbladnirUiState.Terminal ?: return@mutate
                     state = active.copy(shellPending = false)
@@ -1017,12 +1030,29 @@ internal class SkidbladnirController(
         }
     }
 
+    fun promote(target: SessionTarget) {
+        val handle = target.machineHandle
+        if (target.session.parent == null || !machines.canMutate(handle)) return
+        machines.mutate(handle, Reservation.Inventory, { branches.promote(target) }) { _, result ->
+            val message = when (result) {
+                is GatewayResult.Success -> result.value
+                is GatewayResult.Failure -> gatewayFailureMessage(result.failure)
+            }
+            if (message != null) {
+                pendingDashboardNotice = message
+                android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+            machines.refresh(handle)
+        }
+    }
+
     fun requestClose(target: SessionTarget) = prepareClose(target, terminalOnly = false)
 
     fun requestTerminalClose(target: SessionTarget) = prepareClose(target, terminalOnly = true)
 
     private fun prepareClose(target: SessionTarget, terminalOnly: Boolean) {
         val machine = machines[target.machineHandle] ?: return
+        if (closing) return
         val close = CloseState(machine.machine, target, false, terminalOnly)
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate && current.groupEditor == null && current.close == null && !current.terminalControlPending) current.copy(close = close) else return
@@ -1036,6 +1066,18 @@ internal class SkidbladnirController(
                     return
                 }
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
+        }
+        foreground?.launch {
+            val result = branches.preview(target, terminalOnly)
+            val next = when (result) {
+                is GatewayResult.Success -> close.copy(plan = result.value)
+                is GatewayResult.Failure -> close.copy(error = gatewayFailureMessage(result.failure))
+            }
+            when (val current = state) {
+                is SkidbladnirUiState.Dashboard -> if (current.close === close) state = current.copy(close = next)
+                is SkidbladnirUiState.Terminal -> if (current.close === close) state = current.copy(close = next)
+                else -> Unit
+            }
         }
     }
 
@@ -1054,60 +1096,35 @@ internal class SkidbladnirController(
             is SkidbladnirUiState.Terminal -> current.close
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> null
         } ?: return
-        if (close.pending) return
-        val handle = close.target.machineHandle
-        val machine = machines[handle] ?: return
-        if (!machines.canMutate(handle)) return
+        val plan = close.plan ?: return
+        if (closing || close.pending || !machines.canMutate(close.target.machineHandle)) return
         val pending = close.copy(pending = true)
         state = when (current) {
             is SkidbladnirUiState.Dashboard -> current.copy(close = pending)
-            is SkidbladnirUiState.Terminal ->
-                if (terminalActionAdmissible(machine.canMutate, current.connection)) {
-                    leaveTerminal()
-                    current.copy(close = pending)
-                } else {
-                    return
-                }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
-        }
-        // Terminal-only closure has no interrupt half, so its success carries no result.
-        machines.mutate<TerminalCloseResult?>(handle, Reservation.Inventory, { credential ->
-            if (close.terminalOnly) {
-                when (val closed = GatewayClient.closeTerminal(credential, close.target)) {
-                    is GatewayResult.Success -> GatewayResult.Success(null)
-                    is GatewayResult.Failure -> closed
-                }
-            } else GatewayClient.interruptAndCloseTerminal(credential, close.target)
-        }) { _, result ->
-            leaveTerminal()
-            when (result) {
-                is GatewayResult.Success -> {
-                    val closed = result.value?.terminal ?: TerminalClosure.Closed
-                    val interrupt = result.value?.interrupt
-                    if (closed == TerminalClosure.Closed) machines.forget(close.target)
-                    machines.refresh(handle)
-                    val message = result.value?.let(::terminalCloseMessage) ?: "terminal closed. $TERMINAL_SHARED_WORK"
-                    val partial = closed != TerminalClosure.Closed || interrupt != null && interrupt != TerminalInterrupt.Written
-                    publishDashboard(notice = if (partial) message else null)
-                    if (!partial) {
-                        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
-                    }
-                }
-                is GatewayResult.Failure -> {
-                    val failure = result.failure
-                    // Definite: never dispatched, or rejected before any effect. Access codes never reach here.
-                    val definite = failure is GatewayFailure.Api && (failure.dispatch == MutationDispatch.NotSent ||
-                        failure.code in setOf(
-                            ApiErrorCode.InvalidRequest,
-                            ApiErrorCode.RequestTooLarge,
-                            ApiErrorCode.SessionNotFound,
-                            ApiErrorCode.SessionIdentityMismatch,
-                        ))
-                    machines.fail(handle, failure)
-                    machines.refresh(handle)
-                    publishDashboard(notice = if (definite) machineError(close.machine, failure) else TERMINAL_CLOSE_UNKNOWN)
-                }
+            is SkidbladnirUiState.Terminal -> {
+                if (!terminalActionAdmissible(current.machine.canMutate, current.connection)) return
+                current.copy(close = pending)
             }
+            else -> return
+        }
+        closing = true
+        app.launch {
+            try {
+                val outcome = branches.close(plan)
+                for (ref in outcome.closed) machines.forget(ref)
+                for (machine in plan.members.map { it.lifetime.machine }.distinct()) machines.refresh(machine)
+                when (val latest = state) {
+                    is SkidbladnirUiState.Dashboard -> state = latest.copy(close = null)
+                    is SkidbladnirUiState.Terminal -> if (latest.target.lifetime in outcome.closed) {
+                        leaveTerminal()
+                        publishDashboard()
+                    } else state = latest.copy(close = null)
+                    else -> Unit
+                }
+                if (outcome.complete && plan.members.size == 1) {
+                    android.widget.Toast.makeText(applicationContext, outcome.message, android.widget.Toast.LENGTH_LONG).show()
+                } else closeReport = outcome
+            } finally { closing = false }
         }
     }
 
