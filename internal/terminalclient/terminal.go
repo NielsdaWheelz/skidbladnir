@@ -21,6 +21,15 @@ import (
 )
 
 var errDimensions = errors.New("terminal size must be 20–1024 columns and 5–512 rows; detached, work continues")
+var errDetached = errors.New("terminal detached")
+
+// ErrClientEnded matches a stage's ReconnectRequired frame after Hello.
+var ErrClientEnded = errors.New("the host ended the terminal connection")
+
+type clientEnded struct{ frame terminal.ErrorFrame }
+
+func (err clientEnded) Error() string { return err.frame.Message }
+func (err clientEnded) Unwrap() error { return ErrClientEnded }
 
 // Result keeps optional notification failures separate from terminal ownership.
 type Result struct {
@@ -30,7 +39,16 @@ type Result struct {
 
 // Run owns one exact terminal visit. Notification failures remain secondary.
 // The caller holds input and output as ttys.
-func Run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Reference, input, output *os.File) (result Result) {
+func Run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Reference, input, output *os.File) Result {
+	return run(ctx, client, ref, input, output, false, 0)
+}
+
+// RunStage forwards input unchanged and sends later resizes only after the size settles and changes.
+func RunStage(ctx context.Context, client *fleetclient.Client, ref fleetclient.Reference, input, output *os.File, settle time.Duration) Result {
+	return run(ctx, client, ref, input, output, true, settle)
+}
+
+func run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Reference, input, output *os.File, stage bool, settle time.Duration) (result Result) {
 	resized := make(chan os.Signal, 1)
 	signal.Notify(resized, syscall.SIGWINCH)
 	defer signal.Stop(resized)
@@ -77,7 +95,7 @@ func Run(ctx context.Context, client *fleetclient.Client, ref fleetclient.Refere
 			result.Err = errors.Join(result.Err, errors.New("terminal restoration failed"))
 		}
 	}()
-	result.Err = stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, presented)
+	result.Err = stream(ctx, connection, input, output, columns, rows, resized, presented, stage, settle)
 	return result
 }
 
@@ -115,13 +133,10 @@ func acknowledgeVisit(ctx context.Context, client *fleetclient.Client, encodedRe
 
 // stream cancels and joins both readers before returning ownership of stdin.
 // It closes presented after the first nonempty output is written.
-func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), presented chan<- struct{}) (result error) {
+func stream(ctx context.Context, connection *websocket.Conn, input, output *os.File, columns, rows int, resized <-chan os.Signal, presented chan<- struct{}, stage bool, settle time.Duration) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
-	if !terminal.ValidSize(columns, rows) {
-		return errDimensions
-	}
 	if err := write(ctx, connection, websocket.MessageText, terminal.EncodeResize(columns, rows)); err != nil {
 		return err
 	}
@@ -185,20 +200,64 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 		}
 	}()
 	defer func() { cancel(); reader.Cancel(); connection.CloseNow(); workers.Wait(); reader.Close() }()
+	size := func() (int, int, error) { return term.GetSize(int(output.Fd())) }
+	resize := func(width, height int, err error) error {
+		if err != nil {
+			return errors.New("cannot measure terminal; detached")
+		}
+		if !terminal.ValidSize(width, height) {
+			return errDimensions
+		}
+		if stage && width == columns && height == rows {
+			return nil
+		}
+		if err := write(ctx, connection, websocket.MessageText, terminal.EncodeResize(width, height)); err != nil {
+			return err
+		}
+		columns, rows = width, height
+		return nil
+	}
+	var timer *time.Timer
+	var settled <-chan time.Time
+	var pendingColumns, pendingRows int
+	if settle > 0 {
+		timer = time.NewTimer(settle)
+		timer.Stop()
+		settled = timer.C
+		defer timer.Stop()
+	}
 	prefix := false
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.New("terminal detached")
+			return errDetached
 		case <-resized:
-			columns, rows, err := size()
-			if err != nil {
-				return errors.New("cannot measure terminal; detached")
+			if timer != nil {
+				pendingColumns, pendingRows, _ = size()
+				timer.Reset(settle)
+				continue
 			}
-			if !terminal.ValidSize(columns, rows) {
-				return errDimensions
+			if err := resize(size()); err != nil {
+				return err
 			}
-			if err := write(ctx, connection, websocket.MessageText, terminal.EncodeResize(columns, rows)); err != nil {
+		case <-settled:
+			if ctx.Err() != nil {
+				return errDetached
+			}
+			width, height, err := size()
+			// The pane can change before its next SIGWINCH reaches this process.
+			resizedAgain := err == nil && (width != pendingColumns || height != pendingRows)
+			select {
+			case <-resized:
+				resizedAgain = true
+			default:
+			}
+			if resizedAgain {
+				pendingColumns, pendingRows = width, height
+				timer.Reset(settle)
+				continue
+			}
+			if err := resize(width, height, err); err != nil {
 				return err
 			}
 		case event := <-outputs:
@@ -224,28 +283,34 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 			switch frame := frame.(type) {
 			case terminal.PresenceFrame:
 			case terminal.ErrorFrame:
+				if stage && frame.Code == terminal.ErrorReconnectRequired {
+					return clientEnded{frame}
+				}
 				return errors.New(frame.Message)
 			default:
 				return errors.New("unexpected terminal greeting")
 			}
 		case event := <-inputs:
-			forwarded := make([]byte, 0, len(event.body)+1)
+			forwarded := event.body
 			detach := false
-			for _, b := range event.body {
-				if prefix {
-					prefix = false
-					if b == 'd' {
-						detach = true
-						break
-					}
-					forwarded = append(forwarded, 0x1d)
-					if b != 0x1d {
+			if !stage {
+				forwarded = make([]byte, 0, len(event.body)+1)
+				for _, b := range event.body {
+					if prefix {
+						prefix = false
+						if b == 'd' {
+							detach = true
+							break
+						}
+						forwarded = append(forwarded, 0x1d)
+						if b != 0x1d {
+							forwarded = append(forwarded, b)
+						}
+					} else if b == 0x1d {
+						prefix = true
+					} else {
 						forwarded = append(forwarded, b)
 					}
-				} else if b == 0x1d {
-					prefix = true
-				} else {
-					forwarded = append(forwarded, b)
 				}
 			}
 			if len(forwarded) > 0 {
