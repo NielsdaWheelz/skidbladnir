@@ -30,6 +30,7 @@ type Profile struct {
 	Key             ProfileKey
 	Label           string
 	ResumeCommand   string
+	Managed         bool
 	Command         string
 	Provider        Provider
 	Home            string // canonical; set exactly when Provider is
@@ -46,7 +47,7 @@ func ResolveProfiles(configured []hostconfig.Profile) ([]Profile, error) {
 	profiles := make([]Profile, 0, len(configured))
 	keys := make(map[ProfileKey]bool, len(configured))
 	for _, item := range configured {
-		profile := Profile{Key: ProfileKey(item.Name), Label: item.Label, Command: item.Command, ResumeCommand: item.ResumeCommand}
+		profile := Profile{Key: ProfileKey(item.Name), Label: item.Label, Command: item.Command, ResumeCommand: item.ResumeCommand, Managed: item.Managed}
 		switch item.Provider {
 		case "":
 		case "codex":

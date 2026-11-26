@@ -36,8 +36,8 @@ semantics, topology and trust. Most mechanisms below follow from five constraint
 Specs keep what the code cannot show: [terminal observation](terminal-observation.md)
 with its [Codex](terminal-observation-codex.md) and
 [Claude](terminal-observation-claude.md) grammars, [workspace recovery](session-recovery.md),
-the [tmux exec budget](tmux-exec-budget.md) and the
-[design language](design-language.md). [Rules](rules.md) bind implementation, the
+the [tmux exec budget](tmux-exec-budget.md),
+[agent delegation](agent-delegation.md), and the [design language](design-language.md). [Rules](rules.md) bind implementation, the
 [codebase map](codebase-map.md) locates code, [issues](issues) hold open problems
 one per file, and the [roadmap](roadmap.md) holds what is next.
 
@@ -51,7 +51,9 @@ terminal beside an existing session; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
 phone; detach without stopping anything; interrupt or close an exact, confirmed
 session; read a session's screen in the browser and read, write and wait on terminals
-from the CLI, which is how jarvis drives workers; choose native model/effort options for a supported profile launch;
+from the CLI; exchange addressed peer messages; submit a profile-backed
+assignment through the paired gateway and receive its native result in jarvis;
+choose native model/effort options for a supported profile launch;
 be notified when an agent needs input or is ready again; and rebuild a
 lost tmux workspace with exact-ID native conversation resume requests from its
 private checkpoint, using current configured commands.
@@ -73,6 +75,9 @@ see [account quota](#account-quota-and-usage) and [desktop usage](#desktop-usage
 - Provider credentials stay on their host. They never enter clients, push
   messages or skid state.
 - A gateway or client restart re-lists surviving tmux; it never replays input.
+- A peer reply names one live foreground lifetime. A delegated job reports
+  one bound native turn's result, held on the worker host until jarvis acknowledges
+  its durable copy. Both devices can operate the same worker in tmux.
 - the native user service manager supervises tmux independently of the gateway.
   gateway restart, crash and gateway-only updates preserve terminal processes;
   clients can reattach after their gateway connection closes.
@@ -85,10 +90,10 @@ see [account quota](#account-quota-and-usage) and [desktop usage](#desktop-usage
 
 ### Non-goals
 
-Provider conversation search, history, inboxes, live targeting or hooks; chat UI;
-copied provider history; transcript-derived semantic state; task-completion
-claims; durable command receipts and replay; scheduling, autonomous orchestration
-or a task protocol; execution proxying; cross-machine move, broadcast, failover or
+Provider conversation search, history, inboxes or generic hooks; chat UI;
+copied provider history; transcript-derived semantic state; task-success
+judgments; durable receipts or replay for arbitrary terminal input; a worker
+queue, scheduling, a mailbox, autonomous orchestration; execution proxying; cross-machine move, broadcast, failover or
 wake; automatic hub election; durable inventory; quota enforcement, manual reset
 settings or general account queries; git or project
 discovery; arbitrary host setup or tailnet policy automation; terminal embedding
@@ -854,6 +859,7 @@ uncertainty never disables stop or close.
 | --- | --- | --- | --- |
 | inspect | `explain?` | `{terminalStatus, diagnostics?:{rules}}` | Fresh resolve, one sample, 2 s; `rules` present iff explain, possibly empty; a failure after admission is `200` unavailable |
 | read | `maxBytes?` 1–32,768, default 16,384 | `{text, source:"terminal", scope:"terminal_history"\|"visible", truncated}` | The visible screen under an alternate screen, else the retained tail; a foreground change across the read is `TerminalUnavailable`; the newest text fitting one response |
+| address | `foreground?` | `{sender,digest}` | Resolve a named pane and its recognized foreground; a launch stamp must match the current process |
 | send | `text`, `initialProfile?` | `{method:"terminal", outcome:"written"\|"unknown"}` | Paste and Enter only if the sample admits it ([observation §5](terminal-observation.md#5-controls-and-diagnostic-api)); `initialProfile` also needs that observed profile, idle and no notice, else `initial_not_ready` |
 | text | `text` | Write receipt | Deliberate paste and Enter |
 | keys | 1–16 of `enter escape ctrl-c up down left right tab backspace page-up page-down` | Write receipt | Deliberate keys |
@@ -888,6 +894,18 @@ the guarantee is the exactness of the target, not semantic safety.
    defines. An unavailable sample fails the wait; `TerminalTargetChanged`,
    `SessionNotFound` or `SessionIdentityMismatch` end it `target_changed`. Provider
    exit or restart in the same pane is the same target.
+
+Peer replies use `POST /v1/peer-replies/{digest}` with literal text. The host
+resolves one recognized foreground lifetime and uses the ordinary guard.
+Delegation uses `PUT/GET/DELETE /v1/jobs/{id}`. GET can hold for 25 s and accepts
+one canonical `offset` for answer paging. The [delegation contract](agent-delegation.md)
+defines the worker and result lifetime.
+
+Managed workers classify their status and ordinary composer through their local
+socket. Guarded sends join the same input path as the terminal and refuse a draft
+or request. Managed codex consumes ctrl-c. Ordinary explicit read, text and keys
+retain the terminal path. The managed process and its pending job are live only
+for their exact lifetime; workspace restore never resubmits an assignment.
 
 Accepted limits: terminal input is not atomic with consumption; remote panes get
 generic controls only.
@@ -2967,11 +2985,13 @@ Mac serve stderr is discarded ([issue](issues/macos-serve-stderr-discarded.md)).
   alone writes `config.yaml` (`0600`) from its own source and runs `skid apply`.
   Its next run replaces hand edits, so lasting changes belong in dev-server;
   membership and generated state stay skid's.
-- jarvis drives workers through the public [CLI](#cli) and its JSON and reads no
-  fleet files: it captures a full `--ref` before admitting a worker and executes
-  with it. Its cross-user access to installed state is its own record
-  ([topology](#trust-invariants), invariant 6); skid provisions no jarvis
-  credentials and gains no watcher, task protocol or receipt store for it.
+- jarvis uses the public [CLI](#cli) and reads no fleet files. It pins the
+  enrolled machine and its own action id for a delegated assignment, receives
+  its saved outcome, and acknowledges that copy. Explicit terminal intervention
+  captures a full `--ref` before acting. Its cross-user access to installed state
+  is its own record ([topology](#trust-invariants), invariant 6); skid provisions
+  no jarvis credentials. The [delegation contract](agent-delegation.md) owns job
+  storage, delivery, and release qualification.
 
 ## 16. Cross-cutting invariants
 

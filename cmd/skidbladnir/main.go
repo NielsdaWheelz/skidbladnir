@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strconv"
 )
 
 const (
@@ -47,6 +48,22 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	case "terminal-context":
 		if err := terminalContext(arguments[1:]); err != nil {
 			fmt.Fprintln(stderr, "terminal context unavailable")
+			return exitFailure
+		}
+		return 0
+	case "peer-address":
+		if len(arguments) != 3 {
+			return exitUsage
+		}
+		pid, err := strconv.Atoi(arguments[2])
+		if err != nil {
+			return exitUsage
+		}
+		address, err := agentcli.StampPeer(context.Background(), arguments[1], pid)
+		if err != nil {
+			return exitFailure
+		}
+		if _, err := fmt.Fprintln(stdout, address); err != nil {
 			return exitFailure
 		}
 		return 0

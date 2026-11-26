@@ -40,6 +40,7 @@ type Profile struct {
 	Label         string `yaml:"label,omitempty" json:"label"`
 	Command       string `yaml:"command" json:"command"`
 	ResumeCommand string `yaml:"resume_command,omitempty" json:"resume_command,omitempty"`
+	Managed       bool   `yaml:"managed,omitempty" json:"managed,omitempty"`
 	Provider      string `yaml:"provider,omitempty" json:"provider,omitempty"`
 	Home          string `yaml:"home,omitempty" json:"home,omitempty"`
 }
@@ -168,6 +169,9 @@ func validate(c *Config) error {
 		}
 		if p.ResumeCommand != "" && (strings.TrimSpace(p.ResumeCommand) == "" || !utf8.ValidString(p.ResumeCommand) || strings.ContainsRune(p.ResumeCommand, 0)) {
 			return fmt.Errorf("%s.resume_command: expected nonblank command without nul bytes", prefix)
+		}
+		if p.Managed && p.Provider == "" {
+			return fmt.Errorf("%s.managed: requires a codex or claude profile", prefix)
 		}
 		if p.ResumeCommand != "" && p.Provider == "" {
 			return fmt.Errorf("%s.resume_command: requires provider", prefix)

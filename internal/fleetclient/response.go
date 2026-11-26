@@ -111,14 +111,15 @@ type ObservedSession struct {
 
 // StartResult keeps creation and optional terminal input as independent facts.
 type StartResult struct {
-	Label    string           `json:"label"`
-	Machine  string           `json:"machine"`
-	Creation string           `json:"creation"`
-	Prompt   string           `json:"prompt"`
-	Target   Ref              `json:"target,omitzero"`
-	Handle   string           `json:"handle,omitempty"`
-	Terminal *ObservedSession `json:"terminal,omitempty"`
-	Failure  *Failure         `json:"failure,omitempty"`
+	Label                string           `json:"label"`
+	Machine              string           `json:"machine"`
+	Creation             string           `json:"creation"`
+	Prompt               string           `json:"prompt"`
+	ReplyAddressIncluded *bool            `json:"replyAddressIncluded,omitempty"`
+	Target               Ref              `json:"target,omitzero"`
+	Handle               string           `json:"handle,omitempty"`
+	Terminal             *ObservedSession `json:"terminal,omitempty"`
+	Failure              *Failure         `json:"failure,omitempty"`
 }
 
 type TerminalCloseResult struct {
@@ -224,13 +225,31 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		return value, true
+	case "job_submit":
+		var wire *api.JobReceipt
+		if json.Unmarshal(encoded, &wire) != nil || wire == nil || wire.State != api.JobAccepted && !wire.State.Terminal() {
+			return nil, false
+		}
+		return projectJob(*wire, target.Machine), true
+	case "job_result":
+		var wire *api.JobResult
+		if json.Unmarshal(encoded, &wire) != nil || wire == nil || !wire.State.Terminal() {
+			return nil, false
+		}
+		return jobResult{projectJob(wire.JobReceipt, target.Machine), wire.Length, wire.SHA256, wire.Offset, wire.Page}, true
 	case "terminal_read":
 		var value api.ReadResult
 		if json.Unmarshal(encoded, &value) != nil {
 			return nil, false
 		}
 		return value, true
-	case "terminal_send", "terminal_keys", "terminal_text", "terminal_stop":
+	case "terminal_address":
+		var value api.PeerAddress
+		if json.Unmarshal(encoded, &value) != nil || value.Sender == "" || value.Digest == "" {
+			return nil, false
+		}
+		return value, true
+	case "terminal_send", "terminal_keys", "terminal_text", "terminal_stop", "peer_reply":
 		var value api.WriteResult
 		if json.Unmarshal(encoded, &value) != nil || value.Outcome != "written" && value.Outcome != "unknown" {
 			return nil, false

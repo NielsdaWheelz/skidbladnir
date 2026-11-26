@@ -35,7 +35,8 @@ func terminalExec(arguments []string) error {
 	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		name, _, _ := strings.Cut(entry, "=")
 		return strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || slices.Contains([]string{"SKIDBLADNIR_SHELL",
-			"SKIDBLADNIR_AGENT", "SKIDBLADNIR_CLAUDE_COMMAND", "SKIDBLADNIR_CONNECTION", "SKIDBLADNIR_TERMINAL_CONTEXT"}, name)
+			"SKIDBLADNIR_AGENT", "SKIDBLADNIR_CLAUDE_COMMAND", "SKIDBLADNIR_CONNECTION", "SKIDBLADNIR_TERMINAL_CONTEXT",
+			"SKID_REPLY_TO", "SKID_MANAGED_SOCKET", "SKID_MANAGED_RESULTS", "SKID_MANAGED_PROVIDER"}, name)
 	})
 	environment = append(environment,
 		"SKIDBLADNIR_SHELL=1",

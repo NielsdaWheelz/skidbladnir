@@ -89,7 +89,9 @@ func allowedEnvironment(contents []byte) (map[string]string, error) {
 			return nil, errors.New("process environment has an incomplete record")
 		}
 		key := string(name)
-		if key != "CODEX_HOME" && key != "CLAUDE_CONFIG_DIR" && key != "HOME" && key != "SKIDBLADNIR_CONNECTION" {
+		switch key {
+		case "CODEX_HOME", "CLAUDE_CONFIG_DIR", "HOME", "SKIDBLADNIR_CONNECTION", "SKID_MANAGED_SOCKET", "SKID_MANAGED_PROVIDER":
+		default:
 			continue
 		}
 		if _, exists := result[key]; exists {

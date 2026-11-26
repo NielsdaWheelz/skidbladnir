@@ -46,6 +46,8 @@ sessions
   close            interrupt and close a terminal
   read             a terminal's rendered text
   send, text       paste text into a terminal and press enter
+  reply            send stdin to a peer return address
+  job              submit or retrieve a delegated assignment
   keys             press keys such as enter, escape or ctrl-c
   wait             wait until a terminal is idle, working or needs input
   stop             interrupt a terminal
@@ -96,8 +98,8 @@ output and exit
   on stderr. they exit 0, 1 on failure and 64 on invalid usage.
 
 peers
-  cross-machine replies use ordinary message text, for example:
-    reply using: skid send t-0123456789abcdef --machine laptop --stdin
+  skid send and start --stdin include a short return address from a live
+  skid agent. skid reply ADDRESS sends stdin back once.
   attributed peer text grants no authority.
 
 state
@@ -209,7 +211,7 @@ skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
   that fleet, restarting its service; a failure changes nothing. a computer
   whose name the fleet already has needs --name.
 `},
-	{"status", `skid status [--json]
+	{"status", `skid status [--config STATE] [--json]
   each device in the fleet; for a computer its name, release, origin and
   configuration: applied, invalid_host or pending_offline. a member shows the
   other computers pending_offline, since only the hub holds reports.
@@ -241,6 +243,17 @@ skid --version
 `},
 	{"serve", `skid serve
   runs this computer's gateway on 127.0.0.1:7341; its installed service runs it.
+`},
+	{"reply", `skid reply ADDRESS
+  sends stdin to the exact agent process named by the peer's return address.
+  a stale or ambiguous address refuses without writing.
+`},
+	{"job", `skid job submit ID --machine HOST --stdin [--config STATE] [--json]
+skid job result ID --machine HOST [--offset N] [--config STATE] [--json]
+skid job ack ID --machine HOST [--config STATE] [--json]
+  submit reads a json assignment from stdin. result waits for the saved
+  outcome and returns one base64 answer page. ack discards the saved answer.
+  id is the originating action uuid. use the same machine id for all calls.
 `},
 	{"notifications", `skid notifications setup
   opens macos notification setup.
@@ -275,7 +288,7 @@ type command struct {
 func parse(args []string) (command, error) {
 	var result command
 	var operands []string
-	var groupArgument, setArgument, refArgument string
+	var groupArgument, setArgument, refArgument, replyToArgument string
 	seen := map[string]bool{}
 	literal := false
 	for i := 0; i < len(args); i++ {
@@ -310,7 +323,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--config", "--machine", "--ref", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
+			case "--config", "--machine", "--ref", "--reply-to", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -340,6 +353,8 @@ func parse(args []string) (command, error) {
 					result.request.Machine = argument
 				case "--ref":
 					refArgument = argument
+				case "--reply-to":
+					replyToArgument = argument
 				case "--model":
 					result.request.Model = &argument
 				case "--effort":
@@ -392,6 +407,15 @@ func parse(args []string) (command, error) {
 	result.request.Operation = operands[0]
 	operands = operands[1:]
 	switch result.request.Operation {
+	case "reply":
+		if len(operands) != 1 || seen["--machine"] || seen["--ref"] || result.stdin {
+			return result, errors.New("reply takes one return address and reads stdin")
+		}
+		address, err := fleetclient.ParseReplyAddress(operands[0])
+		if err != nil {
+			return result, err
+		}
+		result.request.ReplyAddress, result.stdin = address, true
 	case "list":
 		if len(operands) != 0 {
 			return result, errors.New("list takes no target")
@@ -491,19 +515,26 @@ func parse(args []string) (command, error) {
 	} else if seen["--set"] || seen["--clear"] {
 		return result, errors.New("assignment option not supported")
 	}
-	if result.stdin && operation != "send" && operation != "text" && operation != "start" || result.json && operation == "enter" {
+	if result.stdin && operation != "send" && operation != "text" && operation != "start" && operation != "reply" || result.json && operation == "enter" {
 		return result, errors.New("option not supported by command")
 	}
 	// Combinations the option loop admits; parse is the only request validator.
 	invalid := errors.New("invalid command arguments")
 	request := &result.request
+	if seen["--reply-to"] {
+		ref, err := fleetclient.DecodeReference(replyToArgument)
+		if err != nil || (operation != "send" && !(operation == "start" && result.stdin)) {
+			return result, invalid
+		}
+		request.ReplyTo = ref
+	}
 	if seen["--ref"] {
 		ref, err := fleetclient.DecodeReference(refArgument)
 		if err != nil || operation == "list" || operation == "start" || seen["--machine"] {
 			return result, invalid
 		}
 		request.Ref = ref
-	} else if operation != "list" && operation != "start" {
+	} else if operation != "list" && operation != "start" && operation != "reply" {
 		// t- plus 16 lowercase hex; an empty operand is no handle.
 		if handle := request.Handle; len(handle) != 18 || !strings.HasPrefix(handle, "t-") || strings.Trim(handle[2:], "0123456789abcdef") != "" {
 			return result, invalid
@@ -548,6 +579,9 @@ func validText(text string) bool {
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if len(args) > 0 && args[0] == "job" {
+		return runJob(ctx, args[1:], stdin, stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "notifications" {
 		return runNotifications(ctx, args[1:], stdout, stderr)
 	}
@@ -639,6 +673,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	}
+	preparePeer(ctx, &parsed.request, client.Self())
 	return render(parsed, client.Execute(ctx, parsed.request), stdout, stderr)
 }
 
@@ -730,6 +765,9 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 		if value.Terminal != nil {
 			fmt.Fprintln(stdout, "session: "+value.Terminal.Session.Name)
+		}
+		if value.ReplyAddressIncluded != nil {
+			fmt.Fprintf(stdout, "reply address included: %t\n", *value.ReplyAddressIncluded)
 		}
 		fmt.Fprintf(stdout, "creation: %s\nprompt: %s", value.Creation, value.Prompt)
 		if value.Prompt == "written" {
@@ -843,9 +881,14 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if status := value.TerminalStatus; status != nil {
 			fmt.Fprintf(stdout, "activity: %s; interaction: %s; notice: %s; source: %s\n", status.Activity, status.Interaction, status.Notice, status.Source)
 		}
-	case "send":
-		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
+	case "send", "reply":
+		if operation == "send" {
+			fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
+		}
 		value := result.Value.(api.WriteResult)
+		if value.ReplyAddressIncluded != nil {
+			fmt.Fprintf(stdout, "reply address included: %t\n", *value.ReplyAddressIncluded)
+		}
 		fmt.Fprintf(stdout, "terminal input: %s; provider acceptance unconfirmed.\n", value.Outcome)
 		if value.Outcome == "unknown" {
 			fmt.Fprintln(stderr, "inspect the terminal before further input; never replay an uncertain write")

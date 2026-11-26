@@ -29,7 +29,10 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	command := arguments[0]
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	asJSON, name := false, ""
+	asJSON, name, directory := false, "", ""
+	if command == "status" {
+		flags.StringVar(&directory, "config", "", "")
+	}
 	if command != "connect" {
 		flags.BoolVar(&asJSON, "json", false, "")
 	}
@@ -57,10 +60,12 @@ func fleetCommand(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	directory, err := attention.StateDirectory()
-	if err != nil {
-		fmt.Fprintln(stderr, "skid state unavailable")
-		return exitFailure
+	if directory == "" {
+		directory, err = attention.StateDirectory()
+		if err != nil {
+			fmt.Fprintln(stderr, "skid state unavailable")
+			return exitFailure
+		}
 	}
 	local, err := fleet.ReadLocal(directory)
 	if err != nil {
