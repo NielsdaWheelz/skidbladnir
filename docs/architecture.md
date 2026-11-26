@@ -1350,9 +1350,11 @@ beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
 - **wait** follows [terminal control](#terminal-control), item 4.
 - **stop** interrupts; **close** interrupts, then closes regardless, reporting both;
   `close --terminal-only` closes without interrupting.
-- **start**: `start [NAME] --machine HOST (--profile PROFILE [--model MODEL]
+- **start**: `start [NAME] (--machine LABEL | --machine-id HANDLE) (--profile PROFILE [--model MODEL]
   [--effort EFFORT] [--stdin] | --terminal)
-  [--cwd DIR] [--group LABEL]` creates once, then, with `--stdin`, inspects only its captured terminal every 500 ms
+  [--cwd DIR] [--group LABEL]` creates once. `--machine` selects the literal
+  enrolled name. `--machine-id` selects an enrolled handle across renames and
+  fails before dispatch if that handle is absent. with `--stdin`, skid then inspects only its captured terminal every 500 ms
   within the one 15 s start budget and sends the prompt once, only when the
   terminal reads idle with no interaction or notice; a request or notice ends it
   `TerminalInputBlocked` with `not_sent`, and the gateway's `initialProfile` guard

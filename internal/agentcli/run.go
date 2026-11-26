@@ -22,6 +22,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"golang.org/x/term"
@@ -142,13 +143,14 @@ var commandHelp = []struct{ names, text string }{
   enters the terminal from this tty; ctrl-] then d detaches. navigation and
   terminal size are shared with every other client of the session.
 `},
-	{"start", `skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
-skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
-  creates one session on HOST running a configured profile, or a plain
-  terminal, in a directory on HOST (home by default; quote ~ so this shell
-  leaves it). skid runs each configured command once after normal shell
-  startup. aliases, functions, environment and provider settings remain
-  effective.
+	{"start", `skid start [NAME] (--machine LABEL | --machine-id HANDLE) --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
+skid start [NAME] (--machine LABEL | --machine-id HANDLE) --terminal [--cwd '~'] [--group LABEL]
+  creates one session on the selected computer. --machine takes a literal
+  fleet name. --machine-id takes an enrolled machine handle (mh- followed by
+  32 lowercase hex digits). it keeps the destination across a rename.
+  the directory defaults to home; quote ~ so this shell leaves it.
+  skid runs each configured command once after normal shell startup.
+  aliases, functions, environment and provider settings remain effective.
   --model and --effort select native provider options for this launch. overrides
   require a codex/claude profile whose plain command forwards provider arguments.
   omitted options preserve its configured command; provider acceptance is separate.
@@ -323,7 +325,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--config", "--machine", "--ref", "--reply-to", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
+			case "--config", "--machine", "--machine-id", "--ref", "--reply-to", "--profile", "--model", "--effort", "--cwd", "--max-bytes", "--group", "--set", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -351,6 +353,12 @@ func parse(args []string) (command, error) {
 					result.config = argument
 				case "--machine":
 					result.request.Machine = argument
+				case "--machine-id":
+					handle, err := machine.Parse(argument)
+					if err != nil {
+						return result, err
+					}
+					result.request.MachineID = handle
 				case "--ref":
 					refArgument = argument
 				case "--reply-to":
@@ -461,6 +469,9 @@ func parse(args []string) (command, error) {
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
+	if seen["--machine-id"] && operation != "start" {
+		return result, errors.New("--machine-id is start-only")
+	}
 	if seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
 	}
@@ -545,7 +556,7 @@ func parse(args []string) (command, error) {
 	}
 	switch operation {
 	case "start":
-		if request.Machine == "" || (request.Kind == fleetclient.LaunchAgent) != (request.Profile != "") {
+		if seen["--machine"] == seen["--machine-id"] || (request.Kind == fleetclient.LaunchAgent) != (request.Profile != "") {
 			return result, invalid
 		}
 	case "send", "text":

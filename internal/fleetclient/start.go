@@ -10,7 +10,13 @@ import (
 
 // start owns one bounded create/readiness/input composition. It never retries a write.
 func (client *Client) start(ctx context.Context, request Request) Result {
-	selected, found := client.peerByLabel(request.Machine)
+	var selected peer
+	var found bool
+	if id := request.MachineID.String(); id != "" {
+		selected, found = client.peerByMachine(id)
+	} else {
+		selected, found = client.peerByLabel(request.Machine)
+	}
 	if !found {
 		return Failed("machine_unknown", "not_sent")
 	}
