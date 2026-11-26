@@ -409,7 +409,7 @@ func (m *model) emptyTable() string {
 }
 
 func (m *model) statusView(row fleetclient.Row) fleetview.StatusView {
-	ready := row.Available && m.notificationQualified && m.notificationReady(row.Session) || m.heldReady(row)
+	ready := row.Session.Parent == nil && row.Available && m.notificationQualified && m.notificationReady(row.Session) || m.heldReady(row)
 	return fleetview.ProjectStatus(row.Session, m.rowAttachable(row), ready)
 }
 

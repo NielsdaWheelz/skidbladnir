@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/tmux"
@@ -27,10 +28,12 @@ type Request struct {
 	Name           string
 	Handle         string
 	Machine        string
-	MachineID      machine.Handle // start by captured identity
-	Ref            Reference      // the exact captured target; zero means resolve Handle
-	ReplyTo        Reference      // an explicit return destination
-	PeerSource     PeerSource     // automatic return destination
+	MachineID      machine.Handle  // start by captured identity
+	Parent         *api.SessionRef // exact selection, independent of pane
+	ParentHandle   string          // explicit CLI selection to resolve
+	Ref            Reference       // the exact captured target; zero means resolve Handle
+	ReplyTo        Reference       // an explicit return destination
+	PeerSource     PeerSource      // automatic return destination
 	ReplyAddress   ReplyAddress
 	Kind           LaunchKind
 	Profile        string
@@ -88,6 +91,10 @@ func (ref Reference) Handle() string {
 	_ = encoder.Encode([]string{"skid-terminal-handle", ref.Machine, ref.TmuxID, ref.IdentityToken})
 	digest := sha256.Sum256(bytes.TrimSuffix(encoded.Bytes(), []byte{'\n'}))
 	return "t-" + hex.EncodeToString(digest[:8])
+}
+
+func (ref Reference) SessionRef() api.SessionRef {
+	return api.SessionRef{Machine: ref.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken}
 }
 
 // SessionEqual compares session lifetime, independently of pane selection and name.

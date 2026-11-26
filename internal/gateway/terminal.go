@@ -342,7 +342,12 @@ func terminalCodeForSessionError(err error) terminal.ErrorCode {
 // closeSession ends the session's live connections, waits for their cleanup for at most six seconds while
 // keeping the last two seconds of ctx's deadline for deletion, then deletes the session only if its lifetime
 // still matches identityToken. Cleanup failure is logged and never vetoes deletion.
-func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken string) error {
+func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken, closeID string) (closeErr error) {
+	defer func() {
+		if !errors.Is(closeErr, sessions.ErrSessionDeleteUnknown) {
+			gateway.finishClose(ctx, identityToken, closeID, closeErr == nil)
+		}
+	}()
 	startedAt := time.Now()
 	deadline, _ := ctx.Deadline()
 	cleanupDeadline := startedAt.Add(6 * time.Second)
@@ -360,7 +365,7 @@ func (gateway *Gateway) closeSession(ctx context.Context, tmuxID, identityToken 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := gateway.sessions.Kill(ctx, sessions.KillInput{TmuxID: tmuxID, IdentityToken: identityToken}); err != nil {
+	if err := gateway.sessions.Kill(ctx, sessions.KillInput{TmuxID: tmuxID, IdentityToken: identityToken, CloseID: closeID}); err != nil {
 		return err
 	}
 	gateway.logger.Info("Session.Killed", "skidbladnir.duration.ms", time.Since(startedAt).Milliseconds(), "skidbladnir.session.tmux_id", tmuxID)

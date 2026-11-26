@@ -326,9 +326,13 @@ func (manager *Manager) reconcileRecovery() {
 		return
 	}
 	manager.recovery.recipe = &claimed
-	paneMap, err := manager.tmux.WithShell(settings.shellPath).RestoreWorkspace(restore, destination, shell, recipe.workspace(), startup)
+	mapping, err := manager.tmux.WithShell(settings.shellPath).RestoreWorkspace(restore, destination, shell, recipe.workspace(), startup)
 	if err != nil {
 		manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseRestore, "restore_execute", err), api.RecoveryBroken)
+		return
+	}
+	if err := manager.restoreBranches(restore, *recipe, destination, mapping.Sessions); err != nil {
+		manager.failRecovery(tmuxFailure(restore, api.RecoveryPhaseRestore, "restore_ownership", err), api.RecoveryBroken)
 		return
 	}
 	capture, err := manager.tmux.ReadInventory(restore, destination)
@@ -346,7 +350,7 @@ func (manager *Manager) reconcileRecovery() {
 		return
 	}
 	for oldKey, agent := range dispatched {
-		saved.Agents[paneMap[oldKey]] = agent
+		saved.Agents[mapping.Panes[oldKey]] = agent
 	}
 	if restore.Err() != nil {
 		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseRestore, cause: api.RecoveryCauseTimeout, operation: "restore_execute"}, api.RecoveryBroken)
@@ -558,6 +562,14 @@ func (manager *Manager) saveCurrentCheckpoint(ctx context.Context, expected tmux
 		manager.failRecovery(&recoveryFailure{phase: api.RecoveryPhaseCapture, cause: api.RecoveryCauseTimeout, operation: "capture"}, api.RecoveryDelayed)
 		return
 	}
+	if anchor != nil && gone && len(anchor.Sessions) == 0 && anchor.Source.Server != fresh.Source.Server {
+		// Consuming an empty workspace proves that none of its old session
+		// lifetimes can be reconstructed, including children registered remotely.
+		if err := manager.restoreBranches(ctx, *anchor, fresh.Source.Server, nil); err != nil {
+			manager.failRecovery(osFailure(api.RecoveryPhaseCheckpointWrite, "branch_ownership", err, api.RecoveryCauseIO), api.RecoveryDelayed)
+			return
+		}
+	}
 	if failure := manager.writeCheckpoint(fresh); failure != nil {
 		manager.failRecovery(failure, api.RecoveryDelayed)
 		return
@@ -640,6 +652,9 @@ func (manager *Manager) captureCheckpoint(ctx context.Context, server tmuxclient
 // value; restore must never build what verification will refuse.
 func (manager *Manager) restorable(workspace tmuxclient.Workspace) bool {
 	for _, session := range workspace.Sessions {
+		if _, err := decodeFamily(session.Family); err != nil {
+			return false
+		}
 		if _, found := catalog.Character(session.Character); !found {
 			return false
 		}
@@ -718,7 +733,7 @@ func sameRecoveryGraph(before, after tmuxclient.Workspace) bool {
 	}
 	for i, left := range before.Sessions {
 		right := after.Sessions[i]
-		if left.Key != right.Key || left.Character != right.Character || left.NativeGroup != right.NativeGroup || left.ActiveWindowIndex != right.ActiveWindowIndex || !slices.Equal(left.Links, right.Links) {
+		if left.Key != right.Key || left.Character != right.Character || left.Family != right.Family || left.NativeGroup != right.NativeGroup || left.ActiveWindowIndex != right.ActiveWindowIndex || !slices.Equal(left.Links, right.Links) {
 			return false
 		}
 	}

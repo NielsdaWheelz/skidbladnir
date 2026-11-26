@@ -137,43 +137,63 @@ internal sealed interface DashboardItem {
         override val key = label?.let { DashboardItemKey.Group(groupFingerprint(it)) }
             ?: DashboardItemKey.Unassigned
     }
-    data class Session(val visible: VisibleSession) : DashboardItem { override val key = visible.cardKey }
+    data class Session(
+        val visible: VisibleSession,
+        val childCount: Int = 0,
+        val parentUnavailable: Boolean = false,
+        val context: Boolean = false,
+    ) : DashboardItem { override val key = visible.cardKey }
 }
 
-/** One projection owns queue priority, group order, rendering keys and restored anchors. */
-internal fun dashboardItems(
-    machines: List<MachineState>,
-    view: DashboardViewSelection,
-): List<DashboardItem> {
+/** The dashboard, including each disclosure, projects the same exact session edges. */
+internal class SessionTree(machines: List<MachineState>) {
+    private val available = machines.filter {
+        it.access == MachineAccess.Ready && (it.inventory is InventoryState.Fresh || it.inventory is InventoryState.Superseded)
+    }.map { it.machine.handle }.toSet()
     val sessions = machines.flatMap { state ->
-        state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
-            .filter { view.matchesGroup(it.group) }
-            .map { session ->
-                val target = SessionTarget(state.machine.handle, session)
-                VisibleSession(state.machine, target, state.executionContext(session), sessionStatusContent(state, target))
-            }
+        state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map { session ->
+            val target = SessionTarget(state.machine.handle, session)
+            VisibleSession(state.machine, target, state.executionContext(session), sessionStatusContent(state, target))
+        }
     }.sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
         .thenBy { it.machine.label.text }
         .thenBy { it.machine.handle.encoded }
         .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
-    return when (view) {
-        DashboardViewSelection.NeedsInput -> sessions.filter { it.status.queued }
-            .sortedBy { it.status.sign }.map { DashboardItem.Session(it) }
-        is DashboardViewSelection.Named, DashboardViewSelection.Unassigned ->
-            sessions.map { DashboardItem.Session(it) }
-        DashboardViewSelection.All -> {
-            val grouped = sessions.groupBy { it.target.session.group }
-            val labels = grouped.keys.filterNotNull()
-                .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
-            buildList {
-                labels.forEach { label ->
-                    add(DashboardItem.Heading(label))
-                    grouped.getValue(label).forEach { add(DashboardItem.Session(it)) }
-                }
-                grouped[null]?.let { unassigned ->
-                    add(DashboardItem.Heading(null))
-                    unassigned.forEach { add(DashboardItem.Session(it)) }
-                }
+
+    private val byLifetime = buildMap {
+        for (row in sessions) {
+            put(row.target.lifetime, row)
+            for (old in row.target.session.previous) put(old, row)
+        }
+    }
+    fun parentOf(session: TmuxSession): VisibleSession? =
+        session.parent?.takeIf { it.machine in available }?.let(byLifetime::get)
+
+    fun items(view: DashboardViewSelection, branch: SessionLifetime? = null): List<DashboardItem> {
+        if (view == DashboardViewSelection.NeedsInput) {
+            return sessions.filter { it.target.session.parent == null && it.status.queued }
+                .sortedBy { it.status.sign }.map { DashboardItem.Session(it) }
+        }
+        val included = mutableSetOf<SessionLifetime>()
+        for (match in sessions) {
+            if (!view.matchesGroup(match.target.session.group)) continue
+            var ancestor: VisibleSession? = match
+            while (ancestor != null && included.add(ancestor.target.lifetime)) ancestor = parentOf(ancestor.target.session)
+        }
+        val branches = sessions.filter { it.target.lifetime in included }.groupBy { parentOf(it.target.session)?.target?.lifetime }
+        val rows = branches[branch].orEmpty().map { row ->
+            DashboardItem.Session(
+                row, branches[row.target.lifetime]?.size ?: 0,
+                row.target.session.parent != null && parentOf(row.target.session) == null,
+                !view.matchesGroup(row.target.session.group),
+            )
+        }
+        if (branch != null || view != DashboardViewSelection.All) return rows
+        val grouped = rows.groupBy { it.visible.target.session.group }
+        val labels = grouped.keys.filterNotNull().sortedWith { a, b -> compareCaseInsensitiveUtf8(a.text, b.text) }
+        return buildList {
+            for (label in labels + listOf(null)) {
+                grouped[label]?.let { add(DashboardItem.Heading(label)); addAll(it) }
             }
         }
     }

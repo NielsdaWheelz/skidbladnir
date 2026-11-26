@@ -40,6 +40,9 @@ type Session struct {
 	Ref             Ref                 `json:"ref"`
 	CWD             string              `json:"cwd,omitempty"`
 	ActiveCommand   string              `json:"activeCommand,omitempty"`
+	Parent          *api.SessionRef     `json:"parent,omitempty"`
+	Previous        []api.SessionRef    `json:"-"`
+	Promoted        bool                `json:"-"`
 	LaunchProfile   string              `json:"launchProfile,omitempty"`
 	AttachedClients int                 `json:"attachedClients"`
 	Agent           *Agent              `json:"agent,omitempty"`
@@ -120,11 +123,9 @@ type StartResult struct {
 	Handle               string           `json:"handle,omitempty"`
 	Terminal             *ObservedSession `json:"terminal,omitempty"`
 	Failure              *Failure         `json:"failure,omitempty"`
+	AdmissionFailure     *Failure         `json:"admissionFailure,omitempty"`
 }
 
-type TerminalCloseResult struct {
-	Terminal string `json:"terminal"`
-}
 type GroupResult struct {
 	Group string `json:"group"`
 }
@@ -151,7 +152,7 @@ func clientSession(wire api.Session, machine string) (Session, bool) {
 	if !ref.valid() || err != nil || !wire.TerminalStatus.Known() || wire.NameMode != api.NameAutomatic && wire.NameMode != api.NameManual {
 		return Session{}, false
 	}
-	row := Session{TerminalStatus: wire.TerminalStatus, TerminalUsage: wire.TerminalUsage, TerminalFooter: wire.TerminalFooter, ActivePaneID: wire.ActivePaneID, Name: wire.TmuxName, NameMode: string(wire.NameMode), TerminalHandle: ref.Handle(), Ref: Ref{ref}, CWD: wire.CWD, ActiveCommand: wire.ActiveCommand, LaunchProfile: wire.LaunchProfile, AttachedClients: wire.AttachedClients, Connection: wire.Connection, Group: label}
+	row := Session{TerminalStatus: wire.TerminalStatus, TerminalUsage: wire.TerminalUsage, TerminalFooter: wire.TerminalFooter, ActivePaneID: wire.ActivePaneID, Name: wire.TmuxName, NameMode: string(wire.NameMode), TerminalHandle: ref.Handle(), Ref: Ref{ref}, CWD: wire.CWD, ActiveCommand: wire.ActiveCommand, LaunchProfile: wire.LaunchProfile, AttachedClients: wire.AttachedClients, Connection: wire.Connection, Group: label, Parent: wire.Parent, Previous: wire.Previous, Promoted: wire.Promoted}
 	if agent := wire.Agent; agent != nil {
 		if agent.Provider != "Codex" && agent.Provider != "Claude" {
 			return Session{}, false
@@ -237,6 +238,18 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		return jobResult{projectJob(wire.JobReceipt, target.Machine), wire.Length, wire.SHA256, wire.Offset, wire.Page}, true
+	case "branch_inspect":
+		var value api.BranchNode
+		if json.Unmarshal(encoded, &value) != nil {
+			return nil, false
+		}
+		return value, true
+	case "branch_reserve":
+		var value api.BranchReservation
+		if json.Unmarshal(encoded, &value) != nil || value.ID == "" {
+			return nil, false
+		}
+		return value, true
 	case "terminal_read":
 		var value api.ReadResult
 		if json.Unmarshal(encoded, &value) != nil {

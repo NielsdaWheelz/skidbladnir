@@ -16,7 +16,7 @@ This document is the contract: concepts, invariants, interfaces, owners, error
 semantics, topology and trust. Most mechanisms below follow from five constraints:
 
 1. tmux is the store and the process supervisor. skid keeps no session database,
-   its private files (fleet, handle, observer, workspace recipe, terminal
+   its private files (fleet, handle, observer, workspace recipe, branch admissions, terminal
    contexts, the phone's text size and saved-state capsule) never stand in for
    inventory, and a restart re-lists tmux ([§6](#6-host-sessions-and-tmux)).
 2. Every effect is guarded in tmux on an exact lifetime and attempted at most
@@ -47,11 +47,11 @@ From a desktop browser, the CLI or the phone the owner can: see every tmux sessi
 of every enrolled computer in one collection, with its machine, its foreground
 provider and account when recognized, and its inferred status; create a terminal,
 or a configured profile's agent, on an explicit machine and directory, or a
-terminal beside an existing session; attach the same tmux client view the laptop
+terminal beside an existing session; create quiet child sessions under an exact
+parent on any enrolled machine, browse their tree, and promote a child; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
 phone; detach without stopping anything; interrupt or close an exact, confirmed
-session; read a session's screen in the browser and read, write and wait on terminals
-from the CLI; exchange addressed peer messages; submit a profile-backed
+session or a confirmed whole branch; read, write and wait on terminals from the CLI; exchange addressed peer messages; submit a profile-backed
 assignment through the paired gateway and receive its native result in jarvis;
 choose native model/effort options for a supported profile launch;
 be notified when an agent needs input or is ready again; and rebuild a
@@ -67,7 +67,9 @@ see [account quota](#account-quota-and-usage) and [desktop usage](#desktop-usage
 
 ### Guarantees
 
-- skid never closes a tmux session other than the exact confirmed target.
+- skid closes only the exact confirmed session or branch. a parent closes after
+  every enumerated descendant. unresolved membership or a changed branch
+  prevents the first effect.
 - Detach and close are visibly different actions; the browser and the phone
   confirm every close.
 - Creation validates its directory and launches only the configured shell or a
@@ -134,6 +136,9 @@ carries one catalogue key; the key seeds its seal and never its tmux name.
   `{machine, tmuxId, identityToken, paneId}` carries one across clients; a
   **handle** `t-…` names a session lifetime for humans
   ([CLI](#cli)).
+- **Parent**: an optional reference to a session lifetime, independent of pane,
+  foreground and group. the child holds the edge and stays quiet with any
+  process. the parent host registers admissions, including pending creation.
 - **Foreground**: the pane terminal's foreground process-group leader, one kernel
   sample. Exec keeps PID and start identity, so only an equal before/after
   bracket proves a foreground unchanged.
@@ -180,7 +185,7 @@ Desktop clients and the phone call every gateway directly.
 
 | Owner | Owns | Never |
 | --- | --- | --- |
-| A computer's gateway | Its tmux server, processes, observation, terminal controls | Another host's tmux; execution on another's behalf |
+| A computer's gateway | Its tmux server, processes, observation, terminal controls and direct child admissions | Another host's tmux; execution on another's behalf |
 | Desktop clients, phone | Composing enrolled gateways; their own presentation | Durable copies of inventory or attention |
 | Hub | Fleet state, settings acceptance, invitations, attention and acknowledgement, Android push | Carrying terminal traffic; election; failover |
 | Providers, the user | Provider installs, accounts, settings, history, daemons; Tailscale login and tailnet policy | |
@@ -189,8 +194,8 @@ Desktop clients and the phone call every gateway directly.
 
 1. Execution is host-local. A gateway observes and mutates only its own default
    tmux server. There is no proxy, coordinator or cross-host transaction, and one
-   unavailable machine neither blocks nor authorizes action on another: one host
-   out is the federation's normal state. skid manages tmux only where it is
+   unavailable machine neither authorizes an effect nor blocks an independent
+   session. a branch needs evidence from each host that owns one of its members. skid manages tmux only where it is
    installed and enrolled; SSH or mosh from a skid terminal is ordinary use of the
    source terminal, never inventory of the destination.
 2. Local use needs nothing remote. The gateway listens on `127.0.0.1:7341`; a
@@ -246,6 +251,7 @@ machines hub first, then in join order. Phones get the public view: machines and
 | State `authority.lock` | Fleet | flock for serve's lifetime |
 | State `notification-observer-v2.json` | Hub notifier | Attention, acknowledgements, receivers |
 | State `workspace.json`, `workspace.lock` | Sessions | [Workspace recovery](session-recovery.md) |
+| State `session-branches-<machine>.json` | Sessions | Direct admissions, exact close fences and verified recovery mappings |
 | State `serve.log`, `serve.log.1` | Logging | Mac only |
 | State `install.lock` | Installer | |
 
@@ -412,8 +418,9 @@ profiles:                    # ordered; [] is valid and the installed default
 ## 6. Host sessions and tmux
 
 Each gateway serves one host: its local default tmux server, that server's
-sessions and the processes in their panes. tmux is the store; the gateway keeps no
-session database and replays nothing. §6 to §9 are the contract of
+sessions and the processes in their panes. tmux owns live session metadata. the
+gateway persists direct admissions that may outlive its tmux server, and replays
+no terminal effect. §6 to §9 are the contract of
 `internal/{sessions,tmux,terminalservice,group,catalog,terminalcontext,agentcontrol,agentruntime,process,quota,workdir,pressure}`.
 
 ### terminal service
@@ -729,6 +736,52 @@ duplicate key.
 5. Invalid or absent local metadata projects unassigned; globals are never
    inherited.
 
+### Nested sessions
+
+a child starts with its parent reference and admission id in its tmux creation
+queue. the parent host first records the reservation against the exact parent
+and enrolled destination. the client calls each host directly and completes
+the reservation after receiving a child lifetime or a definitive no-create.
+cross-host admission and unlink rely on the authenticated, same-release
+client to carry these receipts between owners.
+unknown creation keeps the pending admission, which blocks branch close.
+provider-native subagents, managed jobs and peer addresses establish no edge.
+
+a parent-owned branch observation includes its exact local target, children
+and pending admission evidence. clients follow those edges directly and list
+every target on the confirmation. neither inventory nor a same-name
+replacement authorizes a close. confirmation revalidates every node, including
+pane for interrupt and close, then obtains an exact mode-bound fence on each.
+a failed preflight dispatches zero terminal effects. with every fence in
+place the client closes leaves first and retires each registration only after
+a positive receipt and the child host's proof it cannot restore the old
+registration from its checkpoint. the root closes last. uncertainty stops dispatch and
+leaves explicit closed, remaining and unknown results. cancellation before
+confirmation makes no change. raw close routes refuse a parent or pending
+admission before interrupt, attachment teardown or deletion.
+
+the host serializes its admissions, promotions and fences with exact session
+checks. durable fences survive gateway restart. clients release unspent
+fences at a failed or partial close. a fence that cannot be released, or a
+pending admission that cannot be resolved, requires repair using the exact
+records and observed outcomes. there is no automatic expiry or effect replay.
+each host still owns only its own effects. no client holds a fence while the user
+considers a preview.
+
+promotion removes the selected child's edge and preserves its descendants.
+the client retires the former registration after confirmation. a former
+parent that is gone or unavailable cannot veto promotion. a separately
+confirmed child close retires its former registration in the same way. old
+cross-host references resolve only with a proven workspace mapping. if a
+parent is unavailable the child stays independently discoverable and quiet.
+
+`POST /v1/sessions/{id}/branch` carries the exact lifetime and one of
+`inspect`, `reserve`, `complete`, `prepare`, `release`, `unlink` or
+`promote`. [the wire types](../internal/api/branch.go) give the request and
+response shapes. the two exact close routes spend the prepared `closeId`
+when supplied. the session inventory carries the optional `parent`,
+`promoted` and proven `previous` lifetime metadata.
+
 ### Remote context
 
 1. Inside skid shells and tracked inbound connections, `terminal-context-init`
@@ -762,6 +815,7 @@ duplicate key.
 | `@skid_character` | Session | Catalogue key | Creation, inventory repair, recovery |
 | `@skid_auto_name_b64` | Session | base64url automatic name | Creation without a name, naming; unset by recovery |
 | `@skid_space_b64` | Session | base64url label | Creation, group route, recovery |
+| `@skid_family_b64` | Session | Parent reference, admission, promotion and verified prior lifetimes | Creation, promotion, recovery |
 | `@skid_profile` | Session | Launch profile key | Agent creation |
 | `@skid_objective_b64` | Session | base64url objective | Creation |
 
@@ -867,7 +921,7 @@ uncertainty never disables stop or close.
 | close | None | `{interrupt:written\|not_sent\|unknown, terminal:closed\|not_closed\|unknown}` | Validate the lifetime, one stop, end owned connections, delete the exact session |
 
 Text is nonempty valid UTF-8 of at most 32 KiB, without NUL. `DELETE
-/v1/sessions/{tmuxId}` with exactly `{identityToken}` is close without the
+/v1/sessions/{tmuxId}` takes `{identityToken, closeId?}` and closes without the
 interrupt: one guarded `kill-session` queue after the gateway closes its owned
 connections, answering `204`. Only the selected session is removed; shared windows
 or processes of a tmux session group may survive. There is no working or idle gate:
@@ -883,10 +937,11 @@ the guarantee is the exactness of the target, not semantic safety.
    No step joins job control, the screen read and consumption, and no supervisor
    pretends to.
 3. close inside its 10 s: validation ends 2 s before the deadline; the interrupt
-   gets at most 2 s, ending by deadline − 8 s; connection cleanup at most 6 s,
-   keeping the last 2 s for deletion; each phase has its own context; cleanup
-   failure is logged and never vetoes deletion. `not_closed` means refused before
-   deletion; `unknown` means possibly deleted. Closure proves nothing about
+   gets at most 2 s, ending by deadline − 8 s. an unsuccessful or uncertain
+   interrupt stops the close before deletion. connection cleanup gets at most
+   6 s, keeping the last 2 s for guarded deletion. cleanup failure is logged
+   and the exact still-matching target can close. `not_closed` means refused
+   before deletion and `unknown` means possibly deleted. Closure proves nothing about
    shared-window, background or remote work.
 4. wait is a client loop over inspect: capture the target once, sample at once and
    every 5 s, 60 s by default, at most 1 h, matching the states
@@ -1179,7 +1234,7 @@ creation and inventory report terminal-service unavailability as 503.
 
 the desktop uses the same gateways as the phone. there is no desktop daemon or
 desktop state on disk. each run reads gateway inventory, the hub's notification
-state and `fleet.json`. the browser also reads an open row's screen on request.
+state and `fleet.json`. the browser presents facts from those observations.
 
 | Owner | Owns |
 | --- | --- |
@@ -1221,7 +1276,9 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
    lifetime disables its action. the gateway rechecks lifetime and pane.
 3. One resolution. A handle resolves once per invocation over one complete
    inventory of its scope (`--machine` narrows it). An exact reference needs no
-   inventory, except `info`, which reports its row.
+   inventory, except `info`, which reports its row. parent and close handle
+   discovery can take an exact match from a successful peer when an unrelated
+   peer is offline. branch membership is then resolved at the parent hosts.
 4. Tolerant same-release reading. Responses decode with plain `encoding/json`:
    null is absent, unknown keys are ignored. The client checks only what it
    branches on: the answering machine handle, IDs that form a reference, and the
@@ -1235,8 +1292,8 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
    sampled before the write cannot restore eligibility. a typed access or machine
    identity rejection invalidates its host immediately.
 6. one read per stream. each peer has at most one inventory and one remote-context
-   pass in flight. the browser has a hub read, a usage read and one screen read
-   on explicit request. busy reads can owe one successor. ticks skip occupied
+   pass in flight. the browser has a hub read and a usage read. busy reads can
+   owe one successor. ticks skip occupied
    lanes. inventory and remote context replies must belong to the current read
    and the same continuous roster membership. entering a terminal fences
    browser reads and clears the open fold.
@@ -1293,9 +1350,6 @@ state and `fleet.json`. the browser also reads an open row's screen on request.
   Request bodies are at most 64 KiB; responses at most 64 KiB, inventories 1 MiB.
   An operation has 15 s, a directory search 2 s, a remote-context pass 2 s, a hub
   call 3 s. No proxy; redirects are never followed.
-- **browser screen** uses the existing exact-pane terminal `read` with a
-  4,096-byte budget. the gateway supplies visible alternate screen or retained
-  history. the same fold renders either as screen evidence.
 - **Remote context**: for an SSH/mosh row the client follows the connection chain
   through `GET /v1/terminal-contexts/{id}` on every unfailed peer
   ([remote context](#remote-context), item 4).
@@ -1348,11 +1402,16 @@ beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
   status, reason and rule IDs from that sample, replacing the row's status and
   clearing its usage and footer, which inspect does not carry.
 - **wait** follows [terminal control](#terminal-control), item 4.
-- **stop** interrupts; **close** interrupts, then closes regardless, reporting both;
-  `close --terminal-only` closes without interrupting.
+- **stop** interrupts. **close** sends an interrupt, then closes only after
+  confirmed input delivery, and reports both outcomes.
+  `close --terminal-only` closes without interrupting. a parent lists its
+  complete branch before interactive confirmation. redirected input/output
+  or `--json` returns the proposed targets and performs no close.
 - **start**: `start [NAME] (--machine LABEL | --machine-id HANDLE) (--profile PROFILE [--model MODEL]
   [--effort EFFORT] [--stdin] | --terminal)
-  [--cwd DIR] [--group LABEL]` creates once. `--machine` selects the literal
+  [--cwd DIR] [--group LABEL] [--delegate | --parent HANDLE]` creates once.
+  `--delegate` verifies the calling skid session. `--parent` resolves an exact
+  session selected by the caller. `--machine` selects the literal
   enrolled name. `--machine-id` selects an enrolled handle across renames and
   fails before dispatch if that handle is absent. with `--stdin`, skid then inspects only its captured terminal every 500 ms
   within the one 15 s start budget and sends the prompt once, only when the
@@ -1365,7 +1424,7 @@ beside the fleet commands of [§4](#fleet-interfaces) and `update`/`uninstall`.
   exits nonzero with its facts. `written` proves terminal delivery, not provider
   acceptance; a cold startup can return `created` with the prompt `not_sent`.
 - **Consumers**: jarvis or the owner decides reuse, steering and waiting. skid
-  enforces no workflow, reservation or reply protocol, keeps no durable receipts,
+  enforces no provider workflow or completion protocol, keeps no durable terminal input receipts,
   and never certifies task completion; longer waits and persistence belong to the
   caller.
 
@@ -1377,7 +1436,7 @@ then unassigned. A selected group stays while empty; a label appearing or
 vanishing moves tabs, never the view. Built-in views and same-named groups remain
 distinct: views are typed values, never indices or label text.
 
-Needs input holds rows signed request, error, ready ([desktop](#desktop-invariants),
+Needs input holds top-level rows signed request, error, ready ([desktop](#desktop-invariants),
 [phone](#phone-invariants)) or interrupted, in that order. Ties keep each client's
 stable session order. A request or notice outranks a stored ready. Membership
 and order derive from the typed sign. A failed host's rows leave the list and a
@@ -1390,8 +1449,11 @@ or fresh non-idle replaces it; a request or notice when a fresh observation no
 longer shows it. A replaced foreground never inherits ready. Selecting, opening
 a row, changing views and failed entry acknowledge nothing; opening a terminal never
 answers a request or clears a notice; there is no manual dismiss; tmux visits
-outside skid acknowledge nothing. `all` and group views keep group, then session
-order, and include terminals and stale rows; only `all` draws group headings.
+outside skid acknowledge nothing. `all` groups the roots and shows children under
+their parent in stable order. a group view keeps matching children reachable,
+including when their parent is outside the filter, and identifies that parent.
+unavailable parents leave their children visible with `parent unavailable`.
+counts describe observed children, with incomplete inventory indicated.
 a selected browser guest can remain in a view it has left. group choices come
 from complete retained inventory. A hub read
 failure hides ready, keeps requests and notices, and shows
@@ -1479,21 +1541,19 @@ cursor but cannot cover a notice. fold text fits the window. an inline fold
 draws nothing in a one-line body, and a clipped fold keeps its focused line
 visible.
 
-open shows handle, pane, directory, command and any attached clients, then the
-sampled screen. `i` switches to facts, with state and availability first, then
-full name, execution host, directory and handle. the short view counts facts it
-cannot show. screen reads come only from opening, carry with tab or shift-tab,
-or explicit refresh. an unavailable row's request waits for its own next
-inventory and can start once while still on that row. closing, moving, entering a
-terminal, changing panes, roster removal or access rejection retires the sample.
-the fold shows the client's receipt age; a failed inventory dates retained
-screen evidence and names the unavailable host. screen and status are independent
-samples. the fold sanitizes terminal lines, drops blank and drawing-only lines,
-and shows the latest lines that fit.
+space opens the row's facts and expands its direct children. down selects
+the first child, and enter attaches as for any other row. ancestors stay
+expanded while navigating. space on an expanded parent folds it. the cursor,
+status and branch disclosure occupy cells one, two and three, with a blank
+fourth cell and indentation within the name lane. the info fold includes the
+direct-child count and a `make top-level` action on a child. opening or carrying
+the fold, refreshing or reconnecting reads no terminal. explicit cli reads,
+attach and status observation retain their own routes.
 
-`x` and `s` open an inline question naming the captured session and host above
-the literal effect. enter or `y` sends once if the captured lifetime is
-available and the whole question and effect fit. escape, `n` and `q` cancel.
+`x` previews interrupt and close with exact targets and machine names. the
+branch confirmation scrolls through its full list. `s` opens an inline
+question for the selected pane. enter or `y` confirms once against the captured
+mode and targets. escape, `n` and `q` cancel.
 sending or canceling returns to the table. `r` and `g` open inline editors
 from an open row. a write's draft and uncertainty survive until a
 fresh read settles them. pending reconciliation blocks another edit. matching
@@ -1523,7 +1583,9 @@ eligible while that machine declares it. the shell and a declared profile named
 launch seeds terminal. a missing launch needs a choice before create. a seeded
 draft with a known launch opens on create.
 
-drafts keep machine, launch, name, directory, group and create in focus order.
+drafts keep machine, launch, name, directory, group, parent and create in focus
+order. parent starts blank, including for seeded drafts, and searches exact
+sessions across the fleet by name or machine.
 blank name follows the terminal title. the directory chooser first offers the
 draft value, home, and up to four directories from that machine's sessions by
 frequency. typed absolute paths and home paths are literal. other text starts
@@ -1549,8 +1611,7 @@ table, in an open row and in a confirm. it waits for the terminal's colours
 as attach does. showing it requires the whole grid and margin, 80 columns
 with Claude or 71 without, and room for three band lines. hiding it needs
 no room. the band starts hidden in each run and only `u` changes it.
-`ctrl-r` refreshes inventory and usage in every fold and reads the open row's
-screen. `ctrl-c` quits from any fold. a write in flight refuses every key until
+`ctrl-r` refreshes inventory and usage in every fold. `ctrl-c` quits from any fold. a write in flight refuses every key until
 its result lands. see `?` for the
 remaining keys and the [design language](design-language.md#17-terminal-browser)
 for the palette.
@@ -1748,9 +1809,7 @@ for the palette.
   at all. In MesloLGS NF their sizes differ, so the chew can read as a pulse.
   The design language's §1.4, §1.6, §12, §14, §15 and gold's row stand as
   written against it.
-- one screen read costs a direct peer call and a bounded tmux capture, on a key.
-  a retained idle tail can consist mostly of the agent's composer. usage reads
-  each minute while the browser has the screen.
+- usage reads each minute while the browser is visible.
 
 - Group views hide other groups and do not sort by urgency; labels share one cap,
   can read like built-in views, and may differ only in invisible characters.
@@ -1858,6 +1917,12 @@ gateways (5 s per machine) -> hub notifier: records -> projection
   revisions: monotonic, never timestamps, never served.
 
 ### Attention invariants
+
+a child retains its actual status without an attention episode. the hub clears
+any obsolete notice for it and neither allocates its notice nor projects one
+onto the parent. after promotion, the first settled or known non-agent
+observation, or a proven foreground replacement, starts a new baseline. clients can still
+show a promoted session's current actionable status.
 
 1. Evidence: non-idle is a request interaction, a menu, or activity starting or
    working; idle is activity idle with interaction none; everything else is a
@@ -2177,6 +2242,14 @@ Copy follows the [product language](#product-language).
 
 ### Dashboard
 
+a card opens its terminal. the separate child-count control opens an accessible
+list with each child's own status and machine and no acknowledgement. back
+returns to the originating branch view. session details offer `make top-level`
+for a child, including an orphan. the needs-input view and count exclude nested
+sessions. branch close uses the same complete preview, mode and leaf-first
+dispatch as the desktop and lists all targets, including sessions outside
+the current view.
+
 Order: the header (`Dwarves` led by the Hlíðskjálf mark, and a
 `dashboard options` overflow holding `machines` and `notification settings`);
 the view strip; one notice line per machine whose availability or pressure is
@@ -2249,6 +2322,9 @@ every supported metric with its word: informational, normal, warm, hot or no
 data.
 
 ### Creation sheet
+
+the optional `parent` field follows `group`. choices search the fleet by name and
+machine and store an exact session reference. a stale choice refuses creation.
 
 The forge opens only while some machine can act and no group editor is open.
 Its draft starts with no machine and no launch choice, empty name, objective

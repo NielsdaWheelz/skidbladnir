@@ -19,6 +19,7 @@ const (
 	foldNone foldKind = iota
 	foldOpen
 	foldConfirm
+	foldBranch
 	foldRename
 	foldGroup
 	foldDraft
@@ -30,7 +31,8 @@ type fold struct {
 	kind          foldKind
 	request       fleetclient.Request
 	name, machine string
-	facts, seeded bool
+	seeded        bool
+	branch        *branchDialog
 	loss          string
 }
 
@@ -66,20 +68,9 @@ func (m *model) reconcileRowLoss(lostMachine string) {
 	}
 }
 
-func (f fold) confirmationAction() string {
-	if f.request.Operation == "stop" {
-		return "interrupt"
-	}
-	return "interrupt and close"
-}
-
-// confirmationText owns the words used by both admission and rendering.
 func (f fold) confirmationText() (question, effect string) {
-	effect = "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
-	if f.request.Operation == "stop" {
-		effect = "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
-	}
-	return attention.SingleLine(f.confirmationAction() + " " + f.name + " on " + f.machine + "?"), effect
+	return attention.SingleLine("interrupt " + f.name + " on " + f.machine + "?"),
+		"send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
 }
 
 func (f fold) capacity(body int) int {
@@ -88,6 +79,9 @@ func (f fold) capacity(body int) int {
 	}
 	if body < 2 {
 		return 0
+	}
+	if f.kind == foldOpen {
+		return max(1, (body-1)/2)
 	}
 	return max(1, min(16, (body-1)/2))
 }
@@ -112,7 +106,7 @@ func (m *model) foldRoom(f fold) string {
 		for _, word := range strings.Fields(question) {
 			cells = max(cells, ansi.StringWidth(word))
 		}
-		action = "to confirm " + f.confirmationAction() + " of " + subject
+		action = "to confirm interruption of " + subject
 	case foldRename:
 		count, cells, action = 1, len("name  ")+8, "to rename "+subject
 	case foldGroup:
@@ -123,7 +117,7 @@ func (m *model) foldRoom(f fold) string {
 			count++
 		}
 	case foldTerminal:
-		count, cells, action = 4, len("directory  home (~)"), "for the terminal chooser"
+		count, cells, action = 5, len("directory  home (~)"), "for the terminal chooser"
 	default:
 		panic("size predicate without an effect")
 	}
@@ -134,19 +128,21 @@ func (m *model) foldRoom(f fold) string {
 }
 
 func (m *model) openKeys() []key {
-	i := "all facts"
-	if m.fold.facts {
-		i = "screen"
-	}
 	entries := []key{
-		{keys: []string{"i"}, show: "i", label: i, rank: 3,
-			act: func(m *model) tea.Cmd { m.fold.facts = !m.fold.facts; return nil }},
 		{keys: []string{"r"}, show: "r", label: "rename", rank: 5,
 			can: editGuard(foldRename, "rename"), act: func(m *model) tea.Cmd { m.openMetadata("rename"); return nil }},
 		{keys: []string{"g"}, show: "g", label: "group", rank: 6,
 			can: editGuard(foldGroup, "group"), act: func(m *model) tea.Cmd { m.openMetadata("group"); return nil }},
-		{keys: []string{"space", " ", "esc", "q"}, show: "space", label: "fold", keep: true,
-			act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
+		{keys: []string{"space", " "}, show: "space", label: "fold", keep: true,
+			act: (*model).toggleInfo},
+		{keys: []string{"esc", "q"}, show: "escape", label: "close info", act: func(m *model) tea.Cmd { m.fold = fold{}; return nil }},
+	}
+	if row := m.selectedRow(); row != nil && row.Session.Parent != nil {
+		entries = append(entries, key{keys: []string{"p"}, show: "p", label: "make top-level", rank: 1, can: rowGuard("make top-level", false),
+			act: func(m *model) tea.Cmd {
+				row := m.selectedRow()
+				return m.execute(fleetclient.Request{Operation: "promote", Ref: row.Session.Ref.Reference, Parent: row.Session.Parent}, row.Session.Name+" on "+row.Label)
+			}})
 	}
 	for _, entry := range m.tableKeys() {
 		switch entry.keys[0] {
@@ -154,9 +150,7 @@ func (m *model) openKeys() []key {
 		case "tab":
 			entry.rank = 2
 		case "ctrl+r":
-			entry.rank, entry.label = 4, "read again"
-			refresh := entry.act
-			entry.act = func(m *model) tea.Cmd { return tea.Batch(refresh(m), m.askScreen()) }
+			entry.rank = 4
 		case "x":
 			entry.rank = 7
 		case "s":
@@ -224,7 +218,7 @@ func (f *frame) composeInline(cursor int, lines []line) {
 }
 
 func (f fold) foot() bool {
-	return f.kind == foldTerminal || f.kind == foldKeys || f.kind == foldDraft && !f.seeded
+	return f.kind == foldBranch || f.kind == foldTerminal || f.kind == foldKeys || f.kind == foldDraft && !f.seeded
 }
 
 func (f *frame) composeFoot(lines []line) {
@@ -254,7 +248,7 @@ func (m *model) foldLines(capacity, columns int) []line {
 				field = "group"
 			}
 		} else {
-			action, verdict = m.fold.confirmationAction(), "nothing sent"
+			action, verdict = "interrupt", "nothing sent"
 		}
 		title := action + " " + target(m.fold.name, m.fold.machine, width-ansi.StringWidth(action)-1)
 		loss := m.fold.loss + " · " + verdict
@@ -267,6 +261,8 @@ func (m *model) foldLines(capacity, columns int) []line {
 			lines = append(lines, line{{text: field + "  ", role: quietRole}, {text: m.metadataDraftDisplay()}})
 		}
 		lines = append(lines, line{{text: loss, role: quietRole}})
+	case m.fold.kind == foldBranch:
+		lines = m.fold.branch.lines(capacity, width)
 	case m.fold.kind == foldConfirm:
 		question, effect := m.fold.confirmationText()
 		for _, part := range wrapped(question, width) {
@@ -277,44 +273,24 @@ func (m *model) foldLines(capacity, columns int) []line {
 		}
 	case m.fold.kind == foldOpen:
 		row := m.selectedRow()
-		if m.fold.facts {
-			facts := m.details(row)
-			for index, fact := range facts {
-				label := fact[0]
-				if label != "" {
-					label += "  "
-				}
-				parts := wrapped(label+fact[1], width)
-				reserve := 0
-				if index+1 < len(facts) {
-					reserve = 1
-				}
-				if len(lines)+len(parts)+reserve > capacity {
-					lines = append(lines, line{{text: fmt.Sprintf("… %d more facts in a taller window", len(facts)-index), role: quietRole}})
-					break
-				}
-				for _, part := range parts {
-					lines = append(lines, line{{text: part}})
-				}
+		facts := m.details(row)
+		for index, fact := range facts {
+			label := fact[0]
+			if label != "" {
+				label += "  "
 			}
-		} else {
-			current := m.current(row)
-			cwd := current.CWD
-			if cwd == "" {
-				cwd = "directory unavailable"
+			parts := wrapped(label+fact[1], width)
+			reserve := 0
+			if index+1 < len(facts) {
+				reserve = 1
 			}
-			summary := row.Session.TerminalHandle + "  pane " + row.Session.ActivePaneID + "  in " + cwd
-			if row.Session.ActiveCommand != "" {
-				summary += "  runs " + row.Session.ActiveCommand
+			if len(lines)+len(parts)+reserve > capacity {
+				lines = append(lines, line{{text: fmt.Sprintf("… %d more facts in a taller window", len(facts)-index), role: quietRole}})
+				break
 			}
-			if row.Session.AttachedClients > 0 {
-				summary += "  attached clients " + strconv.Itoa(row.Session.AttachedClients)
-			}
-			parts := wrapped(summary, width)
-			for _, part := range parts[:min(2, len(parts))] {
+			for _, part := range parts {
 				lines = append(lines, line{{text: part}})
 			}
-			lines = append(lines, m.screenLines(row, capacity-len(lines), width)...)
 		}
 	case m.fold.metadata():
 		editor := m.metadata
@@ -358,6 +334,7 @@ func (m *model) foldLines(capacity, columns int) []line {
 			{{text: "machine  ", role: quietRole}, {text: "‹ " + m.fold.request.Machine + " ›", role: goldRole, bold: true}},
 			{{text: "directory  ", role: quietRole}, {text: "home (~)"}},
 			{{text: "group  ", role: quietRole}, {text: fleetview.GroupHeading(m.fold.request.Group)}},
+			{{text: "parent  ", role: quietRole}, {text: "top-level"}},
 		}
 		if refusal := m.terminalRefusal(); refusal != "" {
 			lines = append(lines, line{{text: refusal, role: quietRole}})
@@ -422,8 +399,8 @@ func (m *model) draftLines(capacity, width int) []line {
 		title = []line{{{text: "new session", bold: true}}}
 		capacity--
 	}
-	names := [...]string{"machine", "launch", "name", "directory", "group"}
-	values := [...]string{m.form.machine, m.form.launch.label(), m.form.name, m.form.directory, m.form.group}
+	names := [...]string{"machine", "launch", "name", "directory", "group", "parent"}
+	values := [...]string{m.form.machine, m.form.launch.label(), m.form.name, m.form.directory, m.form.group, m.form.parentQuery}
 	lines := make([]line, 0, formCreate+2)
 	note := ""
 	noteRole := quietRole
@@ -459,6 +436,16 @@ func (m *model) draftLines(capacity, width int) []line {
 			}
 			if value == "" {
 				value = "home (~)"
+			}
+		case formParent:
+			selected, _ := m.parentChoice()
+			value = selected
+			if focused {
+				value = m.form.parentQuery
+				if value == "" {
+					value = "search sessions"
+				}
+				note, noteRole = "‹ "+selected+" ›", goldRole
 			}
 		case formGroup:
 			if focused {

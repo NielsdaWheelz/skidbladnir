@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.AlertDialog
@@ -75,11 +77,16 @@ internal fun DashboardScreen(
     val context = LocalContext.current
     val openNotificationSettings = { context.startActivity(context.notificationOwner().settingsIntent()) }
     var machineSelection by remember { mutableStateOf<DashboardMachineSelection?>(null) }
+    var inspecting by remember { mutableStateOf<SessionTarget?>(null) }
     val machines = state.machines
     val view = entry.view
-    val items = dashboardItems(machines, view)
+    val tree = SessionTree(machines)
+    val branch = entry.branch
+    val items = tree.items(view, branch?.lifetime)
+    BackHandler(enabled = branch != null && state.close == null && state.forge == null && state.groupEditor == null &&
+        machineSelection == null && inspecting == null, onBack = entry::backFromChildren)
     val needsInput = if (view == DashboardViewSelection.NeedsInput) items
-        else dashboardItems(machines, DashboardViewSelection.NeedsInput)
+        else tree.items(DashboardViewSelection.NeedsInput)
     val needsInputSign = needsInput.firstOrNull()?.let { (it as DashboardItem.Session).visible.status.sign }
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -89,6 +96,10 @@ internal fun DashboardScreen(
             )
 
             DashboardViewStrip(dashboardViews(machines, view), view, needsInputSign, entry::selectView)
+            if (branch != null) {
+                val name = tree.sessions.firstOrNull { it.target.lifetime == branch.lifetime }?.target?.session?.tmuxName ?: branch.label
+                TextButton(onClick = entry::backFromChildren) { Text("‹  children of $name") }
+            }
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     machineNotice(machine)?.let { MachineNoticeText(it, Modifier.padding(horizontal = 28.dp, vertical = 2.dp)) }
@@ -118,7 +129,7 @@ internal fun DashboardScreen(
                 )
             }
 
-            DwarfCollection(state, entry, items, controller)
+            DwarfCollection(state, entry, items, controller, onInspect = { inspecting = it })
         }
 
         // The margin is the wrapper's, so the seal's semantics bounds stay the 56dp the grid's clearance measures.
@@ -136,6 +147,35 @@ internal fun DashboardScreen(
                 machineSelection = null
                 controller.requestFleetReconnect()
             },
+        )
+    }
+    inspecting?.let { captured ->
+        val row = tree.sessions.find { it.target.sameLifetime(captured) }
+        AlertDialog(
+            onDismissRequest = { inspecting = null },
+            title = { Text(row?.target?.session?.tmuxName ?: captured.session.tmuxName) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (row == null) Text("session unavailable") else {
+                        Text(row.machine.label.text)
+                        Text(listOfNotNull(row.status.label, row.status.detail, row.status.evidence).joinToString(" · "))
+                        if (row.target.session.parent != null) {
+                            val parent = tree.parentOf(row.target.session)
+                            Text(if (parent == null) "parent unavailable" else "parent: ${parent.target.session.tmuxName} on ${parent.machine.label.text}")
+                        }
+                        val count = tree.sessions.count { tree.parentOf(it.target.session)?.target?.lifetime == captured.lifetime }
+                        Text(if (count == 1) "1 child" else "$count children")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { inspecting = null }) { Text("dismiss") } },
+            dismissButton = {
+                if (row?.target?.session?.parent != null) TextButton(
+                    enabled = machines.any { it.machine.handle == captured.machineHandle && it.canMutate },
+                    onClick = { inspecting = null; controller.promote(row.target) },
+                ) { Text("make top-level") }
+            },
+            shape = NidavellirShapes.Card,
         )
     }
     state.forge?.let { ForgeSheet(it, machines, controller) }
@@ -159,6 +199,7 @@ private fun DwarfCollection(
     entry: DashboardEntryState,
     items: List<DashboardItem>,
     controller: SkidbladnirController,
+    onInspect: (SessionTarget) -> Unit,
 ) {
     val machines = state.machines
     val needsInputView = entry.view == DashboardViewSelection.NeedsInput
@@ -284,10 +325,17 @@ private fun DwarfCollection(
                                     visible,
                                     machine,
                                     needsInputView = needsInputView,
+                                    childCount = item.childCount,
+                                    parentUnavailable = item.parentUnavailable,
+                                    contextOnly = item.context,
+                                    onChildren = { entry.openChildren(visible) },
                                     actions = listOf(
+                                        MenuAction("session details", true, false) { onInspect(target) },
                                         MenuAction("change group", machine.canMutate, destructive = false) {
                                             controller.openGroupEditor(target)
                                         },
+                                    ) + listOfNotNull(
+                                        target.session.parent?.let { MenuAction("make top-level", machine.canMutate, false) { controller.promote(target) } },
                                     ) + terminalLifetimeActions(
                                         machine.canMutate && !state.terminalControlPending,
                                         onStop = { controller.stopTerminal(target) },
@@ -503,20 +551,34 @@ internal fun CloseConfirmation(
     // No ornament near destructive surfaces: the cut-corner shape only.
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(closeConfirmationTitle(state.machine.label, state.target, state.terminalOnly)) },
+        title = {
+            val count = state.plan?.members?.size ?: 0
+            val members = state.plan?.members.orEmpty()
+            Text(if (count > 1) {
+                val hosts = members.distinctBy { it.lifetime.machine }.size
+                "$verb: ${members.last().node.name} and all ${count - 1} ${if (count == 2) "descendant" else "descendants"} on $hosts ${if (hosts == 1) "machine" else "machines"}?"
+            } else closeConfirmationTitle(state.machine.label, state.target, state.terminalOnly))
+        },
         text = {
-            Text(when {
-                state.pending -> "$verb is in progress on ${state.machine.label.text}."
-                !actionAdmissible ->
-                    "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
-                        "Cancel, return to Dwarves, then pull down to check again."
-                else -> closeConfirmationBody(state.machine.label, state.target, state.terminalOnly)
-            })
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(when {
+                    state.pending -> "$verb in progress…"
+                    state.error != null -> state.error
+                    state.plan == null -> "reading the branch…"
+                    !actionAdmissible -> "${state.machine.label.text} inventory is not fresh. cancel and check again."
+                    state.plan.members.size == 1 -> closeConfirmationBody(state.machine.label, state.target, state.terminalOnly)
+                    state.terminalOnly -> "close these sessions, descendants first, without sending interrupts."
+                    else -> "send an interrupt to each captured pane, descendants first. close its session only after the write is confirmed and that pane is still selected."
+                })
+                if (state.plan != null && state.plan.members.size > 1) {
+                    state.plan.members.forEach { Text(it.label, fontFamily = NidavellirType.Data) }
+                }
+            }
         },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                enabled = actionAdmissible && !state.pending,
+                enabled = actionAdmissible && !state.pending && state.plan != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = noticeToneColor(NoticeTone.Failure),
                     contentColor = Ink,
@@ -527,6 +589,17 @@ internal fun CloseConfirmation(
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !state.pending) { Text("Cancel") } },
+        shape = NidavellirShapes.Card,
+    )
+}
+
+@Composable
+internal fun CloseReport(outcome: BranchOutcome, dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(if (outcome.complete) "branch closed" else "close results") },
+        text = { Text(outcome.message, Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = { TextButton(onClick = dismiss) { Text("dismiss") } },
         shape = NidavellirShapes.Card,
     )
 }

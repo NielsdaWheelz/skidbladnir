@@ -37,7 +37,7 @@ Owner decisions:
 
 | Preserved | Contract |
 | --- | --- |
-| Sessions | Exact names, dwarf character, skid group label, active window index |
+| Sessions | Exact names, dwarf character, skid group label, branch metadata, active window index |
 | Windows | Names, indexed session links, shared-window identity, native tmux session-group membership |
 | Panes | Order, local cwd, split layout, active pane, zoom state |
 | Geometry | Saved dimensions for reconstruction; ordinary client sizing applies after attachment |
@@ -45,7 +45,12 @@ Owner decisions:
 Native tmux group names are regenerated; skid group labels stay exact. Each shared
 window is saved once: copying it per session would duplicate processes and change
 close semantics. SSH and mosh panes become local shells at their **local** cwd.
-Window names are restored with automatic renaming disabled.
+Window names are restored with automatic renaming disabled. A restored session
+starts with its saved parent metadata. Only the verified session mapping can
+rebind exact local edges or supply a prior lifetime for a remote edge. The
+parent's independent admissions record is carried across that mapping, including
+pending children. An unfamiliar or partially restored lifetime gives no proof of
+absence.
 
 Non-goals: process or memory preservation; fresh agent launch; provider history
 storage, authentication, conversation browsing or live controls; input replay,
@@ -136,7 +141,7 @@ checkpoint = {
   savedAt: utc-rfc3339nano,
   source: {bootId, processStartIdentity, server: {epoch, pid, startTime}},
   attempted: boolean,
-  sessions: [{key, name, character, group?, nativeGroup?, activeWindowIndex,
+  sessions: [{key, name, character, group?, nativeGroup?, family?, activeWindowIndex,
               links: [{index, windowKey}]}],
   windows: [{key, name, width, height, layout, activePaneKey, zoomed,
              panes: [{key, cwd}]}],
@@ -438,7 +443,7 @@ identity) proves it; an observation failure does not. There is no PID-only test.
    lost reply or final-save failure stay broken, never rolled back, merged or
    replayed.
 
-skid checkpoints right after confirmed create, shell, rename, group and kill,
+skid checkpoints right after confirmed create, shell, rename, group, promotion and kill,
 after releasing their gate, within the existing request deadline. A failed save never changes the mutation's result and never
 invites repeating a confirmed terminal effect. Input, resize and agent stop are not
 structural. 30 s is the healthy cadence, not a real-time guarantee.

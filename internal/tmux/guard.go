@@ -57,8 +57,12 @@ func (client Client) guarded(ctx context.Context, id string, server ServerIdenti
 
 // kill-session runs before the applied marker in the same queue, so the marker
 // proves the kill completed.
-func (client Client) KillSessionIfIdentity(ctx context.Context, id string, server ServerIdentity) (bool, error) {
-	return client.guarded(ctx, id, server, nil, commandText("kill-session", "-t", id))
+func (client Client) KillSessionIfIdentity(ctx context.Context, id string, server ServerIdentity, pane string) (bool, error) {
+	var conditions []string
+	if pane != "" {
+		conditions = []string{"#{==:#{pane_id}," + pane + "}"}
+	}
+	return client.guarded(ctx, id, server, conditions, commandText("kill-session", "-t", id))
 }
 
 func (client Client) SetSessionGroupIfIdentity(ctx context.Context, id string, label group.Label, server ServerIdentity) (bool, error) {
@@ -104,4 +108,8 @@ func (client Client) SetNamingIfUnchanged(ctx context.Context, guard NamingGuard
 		action = commandText("rename-session", "-t", guard.ID, name) + " ; " + action
 	}
 	return client.guarded(ctx, guard.ID, guard.Server, conditions, action)
+}
+
+func (client Client) SetSessionFamily(ctx context.Context, id string, server ServerIdentity, expected, value string) (bool, error) {
+	return client.guarded(ctx, id, server, []string{"#{==:#{" + FamilyOption + "}," + formatLiteral(expected) + "}"}, commandText("set-option", "-t", id, FamilyOption, value))
 }

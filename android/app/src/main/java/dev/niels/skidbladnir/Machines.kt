@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -235,6 +236,20 @@ internal class Machines(
         complete: (fence: Long, result: GatewayResult<T>) -> Unit,
     ) {
         val poll = checkNotNull(polls[handle])
+        val (fence, outcome) = dispatch(handle, reservation) { call(poll.credential) }
+        poll.scope.launch {
+            val result = outcome.await()
+            if (result is GatewayResult.Failure && accessFailure(handle, result.failure)) return@launch
+            complete(fence, result)
+        }
+    }
+
+    /** A branch spends one confirmed close in its own machine's mutation lane, including while the app backgrounds. */
+    suspend fun <T> changeInventory(handle: MachineHandle, call: suspend () -> GatewayResult<T>): GatewayResult<T> =
+        dispatch(handle, Reservation.Inventory, call).second.await()
+
+    private fun <T> dispatch(handle: MachineHandle, reservation: Reservation, call: suspend () -> GatewayResult<T>):
+        Pair<Long, Deferred<GatewayResult<T>>> {
         val lane = lanes.getOrPut(handle, ::Lane)
         val fence = ++lane.reserved
         when (reservation) {
@@ -247,14 +262,10 @@ internal class Machines(
         }
         val outcome = app.async {
             lane.mutex.withLock {
-                try { call(poll.credential) } finally { lane.completed = fence }
+                try { call() } finally { lane.completed = fence }
             }
         }
-        poll.scope.launch {
-            val result = outcome.await()
-            if (result is GatewayResult.Failure && accessFailure(handle, result.failure)) return@launch
-            complete(fence, result)
-        }
+        return fence to outcome
     }
 
     /** One lane read outside coalescing, applied like a poll read; access loss is routed instead of [complete]. */
@@ -316,10 +327,10 @@ internal class Machines(
     }
 
     /** A closed lifetime leaves the snapshot before the read that confirms it. */
-    fun forget(target: SessionTarget) = update(target.machineHandle) { machine ->
+    fun forget(target: SessionLifetime) = update(target.machine) { machine ->
         val snapshot = machine.inventory.lastSnapshot() ?: return@update machine
         val trimmed = InventorySnapshot(snapshot.inventory.copy(
-            sessions = snapshot.inventory.sessions.filterNot { it.sameLifetime(target.session) },
+            sessions = snapshot.inventory.sessions.filterNot { it.tmuxId == target.tmuxId && it.identityToken == target.identityToken },
         ))
         machine.copy(inventory = when (val inventory = machine.inventory) {
             is InventoryState.Fresh -> InventoryState.Fresh(trimmed)

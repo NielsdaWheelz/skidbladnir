@@ -54,6 +54,7 @@ internal data class ForgeDraft(
     val optionalTmuxName: String,
     val objective: String,
     val group: GroupLabel? = null,
+    val parent: ParentChoice? = null,
 )
 
 internal fun compareCaseInsensitiveUtf8(first: String, second: String): Int {
@@ -84,6 +85,8 @@ private fun compareUtf8(first: String, second: String): Int {
     return firstBytes.size - secondBytes.size
 }
 
+internal data class ParentChoice(val lifetime: SessionLifetime, val label: String)
+
 internal data class ForgeForm(
     val machineHandle: MachineHandle?,
     val cwd: String,
@@ -91,6 +94,8 @@ internal data class ForgeForm(
     val optionalTmuxName: String,
     val objective: String,
     val group: GroupDraft = GroupDraft.Chosen(""),
+    val parent: ParentChoice? = null,
+    val parentQuery: String = "",
 ) {
     constructor(draft: ForgeDraft) : this(
         draft.machineHandle,
@@ -99,17 +104,18 @@ internal data class ForgeForm(
         draft.optionalTmuxName,
         draft.objective,
         GroupDraft.Chosen(draft.group?.text.orEmpty()),
+        draft.parent,
     )
 
     fun submission(): ForgeDraft? {
-        if (machineHandle == null || launch == null) return null
+        if (machineHandle == null || launch == null || parentQuery.isNotEmpty()) return null
         val directory = when (val input = classifyWorkingDirectory(cwd)) {
             WorkingDirectoryInput.Home -> "~"
             is WorkingDirectoryInput.Literal -> input.path.encoded
             is WorkingDirectoryInput.Query, WorkingDirectoryInput.Invalid -> return null
         }
         val chosen = group as? GroupDraft.Chosen ?: return null
-        return ForgeDraft(machineHandle, directory, launch, optionalTmuxName, objective, groupLabelOf(chosen.text))
+        return ForgeDraft(machineHandle, directory, launch, optionalTmuxName, objective, groupLabelOf(chosen.text), parent)
     }
 }
 
@@ -367,7 +373,7 @@ internal fun sessionStatusContent(machine: MachineState, target: SessionTarget):
         MachineAvailability.AuthRequired, MachineAvailability.IdentityChanged, MachineAvailability.Reading,
         is MachineAvailability.Stale, is MachineAvailability.Unavailable -> false
     }
-    val ready = held && status.sign == SessionSign.Idle && notification.ready
+    val ready = session.parent == null && held && status.sign == SessionSign.Idle && notification.ready
     return SessionStatusContent(
         sign = when {
             !held -> SessionSign.Unknown
@@ -382,7 +388,7 @@ internal fun sessionStatusContent(machine: MachineState, target: SessionTarget):
         },
         detail = status.detail ?: session.activeCommand.takeIf { status.evidence == null && session.connection == null },
         evidence = status.evidence,
-        secondary = if (notification.unavailable) "notifications unavailable" else null,
+        secondary = if (session.parent == null && notification.unavailable) "notifications unavailable" else null,
     )
 }
 

@@ -27,6 +27,7 @@ var (
 
 type terminalRequest struct {
 	IdentityToken  string              `json:"identityToken"`
+	CloseID        string              `json:"closeId,omitempty"`
 	PaneID         string              `json:"paneId"`
 	Text           *string             `json:"text"`
 	InitialProfile *string             `json:"initialProfile"`
@@ -41,7 +42,7 @@ type terminalRequest struct {
 // agentcontrol, sessions and tmux take the values as given. Key names and
 // initialProfile are admitted downstream, where their sets live.
 func (input terminalRequest) shaped(operation string) bool {
-	if input.IdentityToken == "" || !tmux.ValidID(input.PaneID, '%') ||
+	if input.CloseID != "" && (operation != "close" || !sessions.ValidBranchID(input.CloseID)) || input.IdentityToken == "" || !tmux.ValidID(input.PaneID, '%') ||
 		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") ||
 		input.Foreground != nil && (operation != "address" || !validPeerForeground(*input.Foreground)) {
 		return false
@@ -145,10 +146,8 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		// Admission is the session lifetime, not the current pane or foreground.
 		deadline, _ := ctx.Deadline()
 		validationContext, cancelValidation := context.WithDeadline(ctx, deadline.Add(-2*time.Second))
-		validationErr := gateway.sessions.ResolveSession(validationContext, id, target.IdentityToken)
-		if validationErr == nil {
-			validationErr = validationContext.Err()
-		}
+		closeID, validationErr := gateway.sessions.BeginClose(validationContext, id, target.IdentityToken, target.PaneID, "interrupt", input.CloseID)
+
 		cancelValidation()
 		if validationErr != nil {
 			writeError(writer, terminalFailure(validationErr))
@@ -167,7 +166,14 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		} else if terminalFailure(stopErr).Dispatch == "unknown" {
 			closed.Interrupt = "unknown"
 		}
-		closeErr := gateway.closeSession(ctx, id, target.IdentityToken)
+		if closed.Interrupt != "written" {
+			// The captured pane was refused or its input outcome is unknown.
+			// No deletion was dispatched; finish only this local close attempt.
+			gateway.finishClose(ctx, target.IdentityToken, closeID, false)
+			result = closed
+			break
+		}
+		closeErr := gateway.closeSession(ctx, id, target.IdentityToken, closeID)
 		if closeErr == nil {
 			closed.Terminal = "closed"
 		} else if terminalFailure(closeErr).Dispatch == "unknown" {
@@ -186,6 +192,8 @@ func terminalFailure(err error) apiError {
 	var failure apiError
 	var blocked *agentcontrol.TerminalInputBlockedError
 	switch {
+	case errors.Is(err, sessions.ErrBranchWriteUnknown):
+		failure = branchFailure(err)
 	case errors.Is(err, agentcontrol.ErrReplyUnavailable):
 		failure = errorReplyAddressUnavailable
 	case errors.Is(err, agentcontrol.ErrReplyAmbiguous):

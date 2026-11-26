@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,10 @@ internal fun SessionCard(
     visibleSession: VisibleSession,
     machine: MachineState,
     needsInputView: Boolean,
+    childCount: Int,
+    parentUnavailable: Boolean,
+    contextOnly: Boolean,
+    onChildren: () -> Unit,
     actions: List<MenuAction>,
     onOpen: () -> Unit,
 ) {
@@ -62,6 +67,7 @@ internal fun SessionCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(bottom = if (childCount > 0) 48.dp else 0.dp)
                     .clickable(
                         interactionSource = null,
                         indication = AngularIndication(NidavellirShapes.Card),
@@ -94,7 +100,7 @@ internal fun SessionCard(
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 StatusSign(status.sign, status.workContinues, Modifier.alignByBaseline())
                                 when {
-                                    needsInputView ->
+                                    needsInputView || session.parent != null ->
                                         Text(
                                             text = buildAnnotatedString {
                                                 withStyle(SpanStyle(color = signFace(status.sign).ink, fontWeight = FontWeight.Bold)) {
@@ -130,6 +136,8 @@ internal fun SessionCard(
                         }
                     }
                 }
+                if (parentUnavailable) CardFact("parent unavailable", Muted)
+                if (contextOnly) CardFact("parent of a session in this view", Muted)
                 availability?.let { CardFact(it.label, noticeToneColor(it.tone)) }
                 status.secondary?.let { CardFact(it, Muted) }
                 session.objective?.let {
@@ -172,6 +180,11 @@ internal fun SessionCard(
                 modifier = Modifier.align(Alignment.TopEnd),
                 markCenterY = CardVerticalPadding + nameLineHeight / 2,
             )
+            if (childCount > 0) {
+                TextButton(onClick = onChildren, modifier = Modifier.align(Alignment.BottomStart)) {
+                    Text(if (childCount == 1) "1 child" else "$childCount children")
+                }
+            }
         }
     }
 }

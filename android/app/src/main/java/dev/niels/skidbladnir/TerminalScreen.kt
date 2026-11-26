@@ -449,6 +449,10 @@ private fun TerminalSessionSheet(
             listOfNotNull(
                 context,
                 directory,
+                session.parent?.let {
+                    val parent = SessionTree(state.machines).parentOf(session)
+                    if (parent == null) "parent unavailable" else "parent: ${parent.target.session.tmuxName} on ${parent.machine.label.text}"
+                },
                 status.secondary,
             ).forEach { line ->
                 Text(line, color = Muted, style = MaterialTheme.typography.labelMedium, fontFamily = NidavellirType.Data,
@@ -467,7 +471,7 @@ private fun TerminalSessionSheet(
                             destructive = false,
                             controller::openTextSize,
                         ),
-                    ) + terminalLifetimeActions(
+                    ) + listOfNotNull(session.parent?.let { MenuAction("make top-level", actionsEnabled, false) { controller.promote(state.target) } }) + terminalLifetimeActions(
                         actionsEnabled,
                         onStop = { controller.stopTerminal(state.target) },
                         onTerminalClose = { controller.requestTerminalClose(state.target) },

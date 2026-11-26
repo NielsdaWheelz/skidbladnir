@@ -90,6 +90,7 @@ func New(config Config) *Gateway {
 	gateway.routes.HandleFunc("GET /v1/sessions", gateway.listSessions)
 	mutation("POST /v1/sessions", gateway.createSession)
 	mutation("POST /v1/sessions/{tmuxId}/shell", gateway.createShell)
+	mutation("POST /v1/sessions/{tmuxId}/branch", gateway.sessionBranch)
 	mutation("PUT /v1/sessions/{tmuxId}/group", gateway.setSessionGroup)
 	gateway.routes.HandleFunc("PATCH /v1/sessions/{tmuxId}", gateway.renameSession)
 	mutation("DELETE /v1/sessions/{tmuxId}", gateway.killSession)
@@ -282,6 +283,8 @@ func sessionFailure(err error) apiError {
 		return errorInternal
 	}
 	switch sessionError.Code {
+	case sessions.ErrorBranchChanged, sessions.ErrorBranchConfirmationRequired, sessions.ErrorBranchUnresolved:
+		return apiError{api.Error{Code: string(sessionError.Code), Message: sessionError.Message}, http.StatusConflict}
 	case sessions.ErrorTerminalServiceUnavailable:
 		return apiError{api.Error{Code: string(sessionError.Code), Message: sessionError.Message}, http.StatusServiceUnavailable}
 	case sessions.ErrorWorkingDirectoryInvalid:

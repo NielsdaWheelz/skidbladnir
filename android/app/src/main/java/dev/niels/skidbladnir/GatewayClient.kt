@@ -40,7 +40,7 @@ internal fun gatewayFailureMessage(failure: GatewayFailure): String = when (fail
     GatewayFailure.Transport -> "Could not reach this machine over your Tailnet."
 }
 
-internal fun createFailureIsDefinitive(failure: GatewayFailure): Boolean =
+internal fun gatewayRefusedBeforeDispatch(failure: GatewayFailure): Boolean =
     failure is GatewayFailure.Api && failure.dispatch == MutationDispatch.NotSent
 
 @Serializable private class ErrorEnvelope(val code: String, val message: String, val dispatch: String? = null)
@@ -73,9 +73,11 @@ internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFail
     val optionalTmuxName: String? = null,
     val objective: String? = null,
     val group: String? = null,
+    val parent: SessionLifetime? = null,
+    val admission: String? = null,
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
-@Serializable private data class CloseTerminalRequest(val identityToken: String)
+@Serializable private data class CloseTerminalRequest(val identityToken: String, val closeId: String? = null)
 @Serializable private data class WireSessionNaming(val mode: NameMode, val name: String? = null)
 @Serializable private data class RenameSessionRequest(
     val identityToken: String,
@@ -91,7 +93,7 @@ private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
 @Serializable private data class GroupRequest(val identityToken: String, val group: String)
 @Serializable private data class SessionIdentityRequest(val identityToken: String)
 @Serializable private data class WireDirectorySearchRequest(val terms: List<String>)
-@Serializable private data class TerminalControlRequest(val identityToken: String, val paneId: String)
+@Serializable private data class TerminalControlRequest(val identityToken: String, val paneId: String, val closeId: String? = null)
 
 internal object GatewayClient {
     /**
@@ -134,7 +136,7 @@ internal object GatewayClient {
         200, { productJson.decodeFromString<TerminalContext>(it) },
     )
 
-    suspend fun createSession(credential: MachineCredential, draft: ForgeDraft): GatewayResult<TmuxSession> = call(
+    suspend fun createSession(credential: MachineCredential, draft: ForgeDraft, admission: String? = null): GatewayResult<TmuxSession> = call(
         credential, "POST", listOf("v1", "sessions"),
         productJson.encodeToString(
             CreateSessionRequest(
@@ -147,6 +149,7 @@ internal object GatewayClient {
                 draft.optionalTmuxName.ifEmpty { null },
                 draft.objective.ifEmpty { null },
                 draft.group?.text,
+                draft.parent?.lifetime, admission,
             ),
         ),
         201, ::decodeCreatedSession,
@@ -163,15 +166,15 @@ internal object GatewayClient {
         200, { productJson.decodeFromString<TerminalWriteResult>(it) }, AGENT_CALL_TIMEOUT_MILLIS,
     )
 
-    suspend fun interruptAndCloseTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalCloseResult> = call(
-        credential, "POST", listOf("v1", "sessions", target.session.tmuxId, "terminal", "close"),
-        productJson.encodeToString(TerminalControlRequest(target.session.identityToken, target.session.activePaneId)),
+    suspend fun interruptAndCloseTerminal(credential: MachineCredential, session: SessionLifetime, paneId: String, closeId: String): GatewayResult<TerminalCloseResult> = call(
+        credential, "POST", listOf("v1", "sessions", session.tmuxId, "terminal", "close"),
+        productJson.encodeToString(TerminalControlRequest(session.identityToken, paneId, closeId)),
         200, { productJson.decodeFromString<TerminalCloseResult>(it) }, AGENT_CALL_TIMEOUT_MILLIS,
     )
 
-    suspend fun closeTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> = call(
-        credential, "DELETE", listOf("v1", "sessions", target.session.tmuxId),
-        productJson.encodeToString(CloseTerminalRequest(target.session.identityToken)), 204, {},
+    suspend fun closeTerminal(credential: MachineCredential, session: SessionLifetime, closeId: String): GatewayResult<Unit> = call(
+        credential, "DELETE", listOf("v1", "sessions", session.tmuxId),
+        productJson.encodeToString(CloseTerminalRequest(session.identityToken, closeId)), 204, {},
     )
 
     suspend fun renameSession(
@@ -215,7 +218,7 @@ internal object GatewayClient {
      * One round trip, cancelled with its caller. A failed connection, a body over 64 KiB, a body that is not
      * UTF-8 and a body that does not decode are all [GatewayFailure.Transport]: the response is lost.
      */
-    private suspend fun <Value> call(
+    internal suspend fun <Value> call(
         credential: MachineCredential,
         method: String,
         segments: List<String>,
