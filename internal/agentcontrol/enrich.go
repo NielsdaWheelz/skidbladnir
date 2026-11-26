@@ -43,7 +43,7 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 	reads := make([]detection, len(observed))
 	elapsed := make([]time.Duration, len(observed))
 	settled := make(map[sessions.ScreenKey]detection) // this round's reusable detections
-	var pending []int
+	var pending, fallback []int
 
 	service.mu.Lock()
 	if stepped(service.last, startedAt) {
@@ -53,6 +53,10 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 	for index, session := range observed {
 		if read, ok := unobserved(session); ok {
 			reads[index] = read
+			continue
+		}
+		if session.Agent.WorkerSocket != "" {
+			fallback = append(fallback, index)
 			continue
 		}
 		key := session.ScreenKey()
@@ -71,7 +75,6 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 		targets[position] = observed[index]
 	}
 	captures, batchErr := service.sessions.CapturePanes(ctx, inventory.Server, targets)
-	var fallback []int
 	switch {
 	case errors.Is(batchErr, tmuxclient.WorkspaceSourceChanged):
 		return sessions.Inventory{}, nil, batchErr
@@ -79,7 +82,7 @@ func (service *Service) Inventory(parent context.Context) (sessions.Inventory, [
 		// No bracketed transcript: every pane falls back, and the lifetime is
 		// proved after the captures. After a deadline overrun the fallbacks
 		// have no time left, so every pending pane reads observation_timeout.
-		fallback = pending
+		fallback = append(fallback, pending...)
 	default:
 		for position, index := range pending {
 			switch capture := captures[position]; {

@@ -115,8 +115,9 @@ type ReadResult struct {
 }
 
 type WriteResult struct {
-	Method  string `json:"method"`
-	Outcome string `json:"outcome"`
+	Method               string `json:"method"`
+	Outcome              string `json:"outcome"`
+	ReplyAddressIncluded *bool  `json:"replyAddressIncluded,omitempty"`
 }
 
 type CloseResult struct {

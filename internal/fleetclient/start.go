@@ -29,21 +29,26 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		}
 		return result
 	}
+	text, included, failure := client.withReplyAddress(ctx, request)
+	if failure != nil {
+		value.Failure = failure
+		return finish()
+	}
 	inputTarget := struct {
 		IdentityToken  string `json:"identityToken"`
 		PaneID         string `json:"paneId"`
 		Text           string `json:"text"`
 		InitialProfile string `json:"initialProfile"`
 	}{
-		// The shortest valid session lifetime and pane, not a metadata reserve.
-		IdentityToken:  "v1-00000000000000000000000000000000.1.1.0",
-		PaneID:         "%0",
-		Text:           request.Text,
+		// Reserve the widest tmux id, pid and start time before creation.
+		IdentityToken:  "v1-00000000000000000000000000000000.2147483647.9223372036854775807.4294967295",
+		PaneID:         "%4294967295",
+		Text:           text,
 		InitialProfile: request.Profile,
 	}
 	if request.Text != "" {
-		minimumInput, _ := json.Marshal(inputTarget)
-		if len(minimumInput) > MaximumInputBytes {
+		maximumInput, _ := json.Marshal(inputTarget)
+		if len(maximumInput) > MaximumInputBytes {
 			value.Failure = &Failure{Code: "input_limit", Dispatch: "not_sent"}
 			return finish()
 		}
@@ -122,6 +127,7 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		}
 		if status.Activity == api.ActivityIdle && status.Interaction == api.InteractionNone {
 			sent := client.call(ctx, selected, "terminal_send", ref.TmuxID, input)
+			value.ReplyAddressIncluded = &included
 			if !sent.OK {
 				value.Failure = sent.Error
 				if sent.Error.Dispatch == "unknown" {

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -221,7 +220,7 @@ func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow
 	panePID := processinfo.PID(row.PanePID)
 	session := Session{
 		TmuxID: row.ID, TmuxName: row.Name, NameMode: effectiveNameMode(row.Name, row.LocalSession.AutoName),
-		IdentityToken: strings.Join([]string{server.Epoch, server.PID, server.StartTime, strings.TrimPrefix(row.ID, "$")}, "."), Character: character,
+		IdentityToken: server.SessionToken(row.ID), Character: character,
 		ActivePaneID: row.PaneID, AttachedClients: row.AttachedClients,
 		CWD: row.CWD, ActiveCommand: row.Command, Group: group.DecodeMetadata(row.LocalSession.Group),
 		activity: row.WindowActivity,
@@ -231,7 +230,8 @@ func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow
 		PanePID:    row.PanePID, Width: row.PaneWidth, Height: row.PaneHeight, Alternate: row.AlternateOn,
 	}
 	key := agentruntime.ProfileKey(row.LocalSession.Profile)
-	if _, valid := settings.byKey[key]; valid {
+	launchProfile, valid := settings.byKey[key]
+	if valid {
 		session.LaunchProfile = key
 	}
 	if encoded := row.LocalSession.Objective; encoded != "" {
@@ -241,7 +241,7 @@ func enrichSession(server tmuxclient.ServerIdentity, row tmuxclient.InventoryRow
 		}
 	}
 	var foregroundErr error
-	session.Agent, session.foreground, foregroundErr = observeAgent(panePID, settings.profiles)
+	session.Agent, session.foreground, foregroundErr = observeAgent(panePID, settings.profiles, launchProfile.Managed)
 	session.foregroundFailed = foregroundErr != nil
 	if session.foreground != nil {
 		foreground := *session.foreground

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,19 +18,22 @@ import (
 )
 
 var (
-	errorTerminalTargetChanged = apiError{api.Error{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again."}, http.StatusConflict}
-	errorTerminalUnavailable   = apiError{api.Error{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again."}, http.StatusConflict}
-	errorTerminalInputBlocked  = apiError{api.Error{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys."}, http.StatusConflict}
+	errorTerminalTargetChanged   = apiError{api.Error{Code: "TerminalTargetChanged", Message: "the terminal changed. refresh before trying again."}, http.StatusConflict}
+	errorTerminalUnavailable     = apiError{api.Error{Code: "TerminalUnavailable", Message: "the terminal is unavailable. open it to inspect before trying again."}, http.StatusConflict}
+	errorReplyAddressUnavailable = apiError{api.Error{Code: "ReplyAddressUnavailable", Message: "the original terminal process is unavailable."}, http.StatusConflict}
+	errorReplyAddressAmbiguous   = apiError{api.Error{Code: "ReplyAddressAmbiguous", Message: "the reply address matches more than one terminal."}, http.StatusConflict}
+	errorTerminalInputBlocked    = apiError{api.Error{Code: "TerminalInputBlocked", Message: "send unavailable for this screen. open the terminal or use text/keys."}, http.StatusConflict}
 )
 
 type terminalRequest struct {
-	IdentityToken  string   `json:"identityToken"`
-	PaneID         string   `json:"paneId"`
-	Text           *string  `json:"text"`
-	InitialProfile *string  `json:"initialProfile"`
-	Keys           []string `json:"keys"`
-	MaxBytes       *int     `json:"maxBytes"`
-	Explain        *bool    `json:"explain"`
+	IdentityToken  string              `json:"identityToken"`
+	PaneID         string              `json:"paneId"`
+	Text           *string             `json:"text"`
+	InitialProfile *string             `json:"initialProfile"`
+	Keys           []string            `json:"keys"`
+	MaxBytes       *int                `json:"maxBytes"`
+	Explain        *bool               `json:"explain"`
+	Foreground     *api.PeerForeground `json:"foreground"`
 }
 
 // shaped reports whether input names a target and only the members operation
@@ -38,20 +42,21 @@ type terminalRequest struct {
 // initialProfile are admitted downstream, where their sets live.
 func (input terminalRequest) shaped(operation string) bool {
 	if input.IdentityToken == "" || !tmux.ValidID(input.PaneID, '%') ||
-		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") {
+		input.InitialProfile != nil && (operation != "send" || *input.InitialProfile == "") ||
+		input.Foreground != nil && (operation != "address" || !validPeerForeground(*input.Foreground)) {
 		return false
 	}
 	switch operation {
 	case "inspect":
 		return input.Text == nil && input.Keys == nil && input.MaxBytes == nil
-	case "stop", "close":
+	case "stop", "close", "address":
 		return input.Text == nil && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "read":
 		return input.Text == nil && input.Keys == nil && input.Explain == nil &&
 			(input.MaxBytes == nil || *input.MaxBytes >= 1 && *input.MaxBytes <= 32768)
 	case "send", "text":
 		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil && input.Text != nil &&
-			*input.Text != "" && len(*input.Text) <= 32768 && utf8.ValidString(*input.Text) && !strings.ContainsRune(*input.Text, 0)
+			validTerminalText(*input.Text)
 	case "keys":
 		return input.Text == nil && input.MaxBytes == nil && input.Explain == nil && len(input.Keys) >= 1 && len(input.Keys) <= 16
 	}
@@ -126,6 +131,8 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 			read.Truncated = true
 		}
 		result = read
+	case "address":
+		result, err = gateway.agents.TerminalAddress(ctx, gateway.machine.String(), target, input.Foreground)
 	case "send":
 		result, err = gateway.agents.TerminalSend(ctx, target, valueOf(input.Text), agentruntime.ProfileKey(valueOf(input.InitialProfile)))
 	case "text":
@@ -179,6 +186,10 @@ func terminalFailure(err error) apiError {
 	var failure apiError
 	var blocked *agentcontrol.TerminalInputBlockedError
 	switch {
+	case errors.Is(err, agentcontrol.ErrReplyUnavailable):
+		failure = errorReplyAddressUnavailable
+	case errors.Is(err, agentcontrol.ErrReplyAmbiguous):
+		failure = errorReplyAddressAmbiguous
 	case errors.Is(err, sessions.ErrTerminalTargetChanged):
 		failure = errorTerminalTargetChanged
 	case errors.As(err, &blocked):
@@ -207,4 +218,44 @@ func terminalFailure(err error) apiError {
 		failure = sessionFailure(err)
 	}
 	return failure
+}
+
+func validTerminalText(text string) bool {
+	return text != "" && len(text) <= 32768 && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
+}
+
+func validPeerForeground(foreground api.PeerForeground) bool {
+	return (foreground.Provider == string(agentruntime.ProviderCodex) || foreground.Provider == string(agentruntime.ProviderClaude)) &&
+		foreground.PID > 0 && foreground.StartIdentity != "" && len(foreground.StartIdentity) <= 20 &&
+		strings.Trim(foreground.StartIdentity, "0123456789") == ""
+}
+
+func (gateway *Gateway) peerReply(writer http.ResponseWriter, request *http.Request) {
+	digest := request.PathValue("address")
+	if len(digest) != 16 {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	if decoded, err := base64.RawURLEncoding.Strict().DecodeString(digest); err != nil || len(decoded) != 12 {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	input, ok := decodeJSON[struct {
+		Text string `json:"text"`
+	}](writer, request)
+	if !ok {
+		return
+	}
+	if !validTerminalText(input.Text) {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
+	defer cancel()
+	result, err := gateway.agents.TerminalReply(ctx, gateway.machine.String(), digest, input.Text)
+	if err != nil {
+		writeError(writer, terminalFailure(err))
+		return
+	}
+	writeJSON(writer, http.StatusOK, result, nil)
 }

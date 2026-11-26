@@ -18,6 +18,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleet"
+	"github.com/NielsdaWheelz/skidbladnir/internal/jobs"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/quota"
@@ -44,6 +45,7 @@ type Gateway struct {
 	agents        *agentcontrol.Service
 	sessions      *sessions.Manager
 	workdir       *workdir.Service
+	jobs          *jobs.Store
 	pressure      *pressure.Monitor
 	fleet         *fleet.Service
 	notifications http.Handler
@@ -66,6 +68,7 @@ func New(config Config) *Gateway {
 		agents:        config.Agents,
 		sessions:      config.Sessions,
 		workdir:       config.Workdir,
+		jobs:          jobs.New(config.StateDir, config.Sessions),
 		pressure:      config.Pressure,
 		fleet:         config.Fleet,
 		notifications: config.Notifications,
@@ -92,6 +95,10 @@ func New(config Config) *Gateway {
 	mutation("DELETE /v1/sessions/{tmuxId}", gateway.killSession)
 	gateway.routes.HandleFunc("GET /v1/sessions/{tmuxId}/terminal", gateway.openTerminal)
 	mutation("POST /v1/sessions/{tmuxId}/terminal/{operation}", gateway.terminalOperation)
+	mutation("POST /v1/peer-replies/{address}", gateway.peerReply)
+	mutation("PUT /v1/jobs/{id}", gateway.submitJob)
+	gateway.routes.HandleFunc("GET /v1/jobs/{id}", gateway.resultJob)
+	gateway.routes.HandleFunc("DELETE /v1/jobs/{id}", gateway.ackJob)
 	gateway.routes.HandleFunc("POST /v1/directory-listings", gateway.listDirectory)
 	gateway.routes.HandleFunc("POST /v1/directory-searches", gateway.searchDirectories)
 	gateway.routes.HandleFunc("GET /v1/terminal-contexts/{connectionId}", gateway.readTerminalContext)
@@ -162,7 +169,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		writeError(tracked, errorMachineIdentityMismatch)
 		return
 	}
-	if request.URL.RawQuery != "" {
+	if request.URL.RawQuery != "" && !(request.Method == http.MethodGet && route == "/v1/jobs/{id}") {
 		writeError(tracked, errorInvalidRequest)
 		return
 	}

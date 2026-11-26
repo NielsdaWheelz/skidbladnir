@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 )
 
-// Read returns one private (0600) regular file of at most limit bytes. A missing
-// file reports an error that matches os.ErrNotExist.
-func Read(path string, limit int) ([]byte, error) {
+// Open opens a private regular file. Callers own the directory and access it
+// only through private file producers.
+func Open(path string) (*os.File, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,13 @@ func Read(path string, limit int) ([]byte, error) {
 	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
 		return nil, errors.New("private state must be a private regular file")
 	}
-	file, err := os.Open(path)
+	return os.Open(path)
+}
+
+// Read returns one private (0600) regular file of at most limit bytes. A missing
+// file reports an error that matches os.ErrNotExist.
+func Read(path string, limit int) ([]byte, error) {
+	file, err := Open(path)
 	if err != nil {
 		return nil, err
 	}

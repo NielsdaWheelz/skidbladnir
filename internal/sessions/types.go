@@ -37,6 +37,8 @@ type CreateInput struct {
 	Model            *string
 	Effort           *string
 	OptionalTmuxName string
+	WorkerSocket     string // internal launch: the configured profile owns native setup
+	WorkerResults    string
 	Objective        string
 	Group            group.Label
 }

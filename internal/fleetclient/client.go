@@ -72,6 +72,8 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		return client.list(ctx, request.Machine, request.GroupFilter)
 	case "start":
 		return client.start(ctx, request)
+	case "reply":
+		return client.reply(ctx, request)
 	}
 	resolved, failure := client.resolve(ctx, request)
 	if failure != nil {
@@ -83,6 +85,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	ref := resolved.ref
 	body := map[string]any{"identityToken": ref.IdentityToken}
 	operation := request.Operation
+	var replyAddressIncluded *bool
 	switch {
 	case operation == "group":
 		body["group"] = request.Group.String()
@@ -101,7 +104,13 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			if request.MaxBytes != 0 {
 				body["maxBytes"] = request.MaxBytes
 			}
-		case "send", "text":
+		case "send":
+			text, included, failure := client.withReplyAddress(ctx, request)
+			if failure != nil {
+				return Result{Error: failure}
+			}
+			body["text"], replyAddressIncluded = text, &included
+		case "text":
 			body["text"] = request.Text
 		case "keys":
 			body["keys"] = request.Keys
@@ -114,6 +123,10 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	result := client.call(ctx, resolved.peer, operation, ref.TmuxID, encoded)
 	switch {
 	case !result.OK:
+	case operation == "terminal_send":
+		written := result.Value.(api.WriteResult)
+		written.ReplyAddressIncluded = replyAddressIncluded
+		result = success(written)
 	case operation == "group":
 		result = success(GroupResult{Group: request.Group.String()})
 	case operation == "terminal_close":
@@ -373,6 +386,8 @@ var routes = map[string]struct {
 	"terminal_inspect": {http.MethodPost, "/v1/sessions/{id}/terminal/inspect", false, http.StatusOK},
 	"terminal_explain": {http.MethodPost, "/v1/sessions/{id}/terminal/inspect", false, http.StatusOK},
 	"terminal_read":    {http.MethodPost, "/v1/sessions/{id}/terminal/read", false, http.StatusOK},
+	"terminal_address": {http.MethodPost, "/v1/sessions/{id}/terminal/address", false, http.StatusOK},
+	"peer_reply":       {http.MethodPost, "/v1/peer-replies/{id}", true, http.StatusOK},
 	"terminal_send":    {http.MethodPost, "/v1/sessions/{id}/terminal/send", true, http.StatusOK},
 	"terminal_text":    {http.MethodPost, "/v1/sessions/{id}/terminal/text", true, http.StatusOK},
 	"terminal_keys":    {http.MethodPost, "/v1/sessions/{id}/terminal/keys", true, http.StatusOK},
@@ -383,6 +398,9 @@ var routes = map[string]struct {
 	"group":            {http.MethodPut, "/v1/sessions/{id}/group", true, http.StatusNoContent},
 	"shell":            {http.MethodPost, "/v1/sessions/{id}/shell", true, http.StatusCreated},
 	"start":            {http.MethodPost, "/v1/sessions", true, http.StatusCreated},
+	"job_submit":       {http.MethodPut, "/v1/jobs/{id}", true, http.StatusOK},
+	"job_result":       {http.MethodGet, "/v1/jobs/{id}", false, http.StatusOK},
+	"job_ack":          {http.MethodDelete, "/v1/jobs/{id}", true, http.StatusNoContent},
 }
 
 func (client *Client) call(ctx context.Context, target peer, operation, id string, body []byte) Result {
@@ -395,7 +413,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 		return Failed("unavailable", dispatch)
 	}
 	var reader io.Reader
-	if route.method != http.MethodGet {
+	if route.method != http.MethodGet && operation != "job_ack" {
 		// No GetBody: net/http cannot replay a possibly delivered mutation.
 		reader = io.NopCloser(bytes.NewReader(body))
 	}
@@ -412,7 +430,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, id strin
 	if route.write {
 		dispatch = "unknown"
 	}
-	response, err := client.http.Do(request)
+	httpClient := *client.http
+	if operation == "job_result" {
+		httpClient.Timeout = 0 // the caller's deadline bounds the held result request
+	}
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -495,7 +517,7 @@ func decodeFailure(operation string, encoded []byte, dispatch, machine string) *
 
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
+	case "JobConflict", "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
 		return true
 	default:
 		return false
@@ -531,7 +553,7 @@ func (result Result) ExitCode(operation string) int {
 		if result.Value.(Inventory).Partial {
 			return 1
 		}
-	case "send", "text", "keys", "stop":
+	case "send", "reply", "text", "keys", "stop":
 		if result.Value.(api.WriteResult).Outcome == "unknown" {
 			return 1
 		}

@@ -2,7 +2,11 @@ package agentcontrol
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -14,6 +18,11 @@ import (
 // TerminalInputBlockedError refuses a guarded send before anything is written.
 // Reason is dialog, draft, initial_not_ready or unknown.
 type TerminalInputBlockedError struct{ Reason string }
+
+var (
+	ErrReplyUnavailable = errors.New("reply address is unavailable")
+	ErrReplyAmbiguous   = errors.New("reply address is ambiguous")
+)
 
 func (err *TerminalInputBlockedError) Error() string { return "terminal input blocked: " + err.Reason }
 
@@ -55,6 +64,9 @@ func failedDetection(ctx context.Context, err error) detection {
 func (service *Service) sample(ctx context.Context, session sessions.Session) (detection, error) {
 	if read, ok := unobserved(session); ok {
 		return read, nil
+	}
+	if session.Agent.WorkerSocket != "" {
+		return sampleWorker(ctx, session.Agent.WorkerSocket), nil
 	}
 	observation, err := service.sessions.ObservePane(ctx, session)
 	switch {
@@ -115,6 +127,16 @@ func (service *Service) TerminalSend(ctx context.Context, target sessions.Termin
 	if err != nil {
 		return api.WriteResult{}, err
 	}
+	return service.send(ctx, session, target, text, initialProfile)
+}
+
+func (service *Service) send(ctx context.Context, session sessions.Session, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (api.WriteResult, error) {
+	if session.Agent != nil && session.Agent.WorkerSocket != "" {
+		if initialProfile != "" {
+			return api.WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
+		}
+		return service.sendWorker(ctx, session, target, text)
+	}
 	read, err := service.sample(ctx, session)
 	if err != nil {
 		return api.WriteResult{}, err
@@ -139,6 +161,55 @@ func (service *Service) TerminalSend(ctx context.Context, target sessions.Termin
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, session.Agent))
 }
 
+// TerminalAddress issues a digest only for the named pane's freshly sampled
+// provider. A stamped foreground also has to match the current launch.
+func (service *Service) TerminalAddress(ctx context.Context, machine string, target sessions.TerminalTarget, expected *api.PeerForeground) (api.PeerAddress, error) {
+	session, err := service.sessions.ResolveTerminal(ctx, target)
+	if err != nil {
+		return api.PeerAddress{}, err
+	}
+	if session.Agent == nil || session.Connection != nil {
+		return api.PeerAddress{}, ErrReplyUnavailable
+	}
+	agent := session.Agent
+	if expected != nil && (expected.Provider != agent.Provider.String() || expected.PID != int64(agent.PID) || expected.StartIdentity != string(agent.StartIdentity)) {
+		return api.PeerAddress{}, ErrReplyUnavailable
+	}
+	return api.PeerAddress{Sender: session.TmuxName, Digest: peerDigest(machine, session)}, nil
+}
+
+// TerminalReply resolves a short address once on its owner. The same sampled
+// foreground is then required at both the screen guard and the paste.
+func (service *Service) TerminalReply(ctx context.Context, machine, digest, text string) (api.WriteResult, error) {
+	inventory, err := service.sessions.List(ctx)
+	if err != nil {
+		return api.WriteResult{}, err
+	}
+	var matched *sessions.Session
+	for _, session := range inventory.Sessions {
+		if session.Agent == nil || session.Connection != nil || peerDigest(machine, session) != digest {
+			continue
+		}
+		if matched != nil {
+			return api.WriteResult{}, ErrReplyAmbiguous
+		}
+		matched = &session
+	}
+	if matched == nil {
+		return api.WriteResult{}, ErrReplyUnavailable
+	}
+	target := sessions.TerminalTarget{TmuxID: matched.TmuxID, IdentityToken: matched.IdentityToken, PaneID: matched.ActivePaneID}
+	return service.send(ctx, *matched, target, text, "")
+}
+
+func peerDigest(machine string, session sessions.Session) string {
+	agent := session.Agent
+	encoded, _ := json.Marshal([]string{"skid-peer-reply-v1", machine, session.IdentityToken, session.ActivePaneID,
+		agent.Provider.String(), strconv.FormatInt(int64(agent.PID), 10), string(agent.StartIdentity)})
+	digest := sha256.Sum256(encoded)
+	return base64.RawURLEncoding.EncodeToString(digest[:12])
+}
+
 func (service *Service) Text(ctx context.Context, target sessions.TerminalTarget, text string) (api.WriteResult, error) {
 	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, nil))
 }
@@ -154,7 +225,7 @@ func (service *Service) TerminalStop(ctx context.Context, target sessions.Termin
 	}
 	// Agent is nil for a shell or a remote connection, which take an unguarded ctrl-c.
 	key := "ctrl-c"
-	if session.Agent != nil && session.Agent.Provider == agentruntime.ProviderCodex {
+	if session.Agent != nil && session.Agent.WorkerSocket == "" && session.Agent.Provider == agentruntime.ProviderCodex {
 		key = "escape"
 	}
 	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, []string{key}, session.Agent))

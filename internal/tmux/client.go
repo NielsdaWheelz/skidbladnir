@@ -38,6 +38,11 @@ type ServerIdentity struct {
 	StartTime string `json:"startTime"`
 }
 
+// SessionToken binds a tmux session id to this server lifetime.
+func (server ServerIdentity) SessionToken(sessionID string) string {
+	return strings.Join([]string{server.Epoch, server.PID, server.StartTime, strings.TrimPrefix(sessionID, "$")}, ".")
+}
+
 // ParseServerIdentity is the one identity grammar for tmux output, client tokens
 // and checkpoints: epoch "" or v1-<32 lowercase hex>, canonical positive pid and
 // start time. Anything else is WorkspaceProtocolInvalid.

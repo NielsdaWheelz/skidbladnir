@@ -27,7 +27,10 @@ type Request struct {
 	Name           string
 	Handle         string
 	Machine        string
-	Ref            Reference // the exact captured target; zero means resolve Handle
+	Ref            Reference  // the exact captured target; zero means resolve Handle
+	ReplyTo        Reference  // an explicit return destination
+	PeerSource     PeerSource // automatic return destination
+	ReplyAddress   ReplyAddress
 	Kind           LaunchKind
 	Profile        string
 	Model          *string

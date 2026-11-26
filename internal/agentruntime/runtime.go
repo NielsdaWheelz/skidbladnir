@@ -16,6 +16,7 @@ type Agent struct {
 	PID           processinfo.PID
 	StartIdentity processinfo.StartIdentity
 	Profile       ProfileKey
+	WorkerSocket  string
 }
 
 // Classify recognizes a provider from one foreground sample: an executable

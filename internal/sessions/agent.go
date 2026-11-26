@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -31,18 +32,26 @@ func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 // and attributes its profile from profiles. A foreground change during the
 // environment read fails the sample; another failed read leaves the profile
 // unattributed.
-func observeAgent(panePID processinfo.PID, profiles []agentruntime.Profile) (*agentruntime.Agent, *processinfo.Observation, error) {
+func observeAgent(panePID processinfo.PID, profiles []agentruntime.Profile, admitsManaged bool) (*agentruntime.Agent, *processinfo.Observation, error) {
 	foreground, err := paneForeground(panePID)
 	if err != nil || foreground == nil {
 		return nil, nil, err
 	}
 	agent, found := agentruntime.Classify(*foreground)
-	if !found {
+	if !found && !admitsManaged {
 		return nil, foreground, nil
 	}
 	environment, err := processinfo.ObserveForegroundEnvironment(panePID, *foreground)
 	if errors.Is(err, processinfo.ErrForegroundMismatch) {
 		return nil, nil, err
+	}
+	if !found {
+		socket := environment["SKID_MANAGED_SOCKET"]
+		provider := agentruntime.Provider(environment["SKID_MANAGED_PROVIDER"])
+		if err != nil || !filepath.IsAbs(socket) || (provider != agentruntime.ProviderCodex && provider != agentruntime.ProviderClaude) {
+			return nil, foreground, nil
+		}
+		agent = agentruntime.Agent{Provider: provider, PID: foreground.PID, StartIdentity: foreground.StartIdentity, WorkerSocket: socket}
 	}
 	if err == nil {
 		agent.Profile = agentruntime.MatchProfile(profiles, agent.Provider, environment)

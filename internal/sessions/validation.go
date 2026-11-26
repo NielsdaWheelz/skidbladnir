@@ -63,6 +63,9 @@ func (manager *Manager) validateCreate(input CreateInput) (string, agentruntime.
 		if !found {
 			return "", agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 		}
+		if input.WorkerSocket != "" && !profile.Managed {
+			return "", agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "This profile does not support delegated jobs.")
+		}
 	case LaunchTerminal:
 		if input.Model != nil || input.Effort != nil {
 			return "", agentruntime.Profile{}, newSessionError(ErrorLaunchOptionsInvalid, "terminal launches do not accept model or effort options.")
@@ -126,7 +129,11 @@ func launchCommand(profile agentruntime.Profile, model, effort *string) (string,
 		}
 	}
 	for index, argument := range arguments {
-		arguments[index] = "'" + strings.ReplaceAll(argument, "'", "'\\''") + "'"
+		arguments[index] = quoteLaunchArgument(argument)
 	}
 	return profile.Command + " " + strings.Join(arguments, " "), nil
+}
+
+func quoteLaunchArgument(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

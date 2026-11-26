@@ -6,6 +6,10 @@ contract; each item's evidence and resolution criteria live in its
 
 ## Next
 
+Deploy [agent delegation](agent-delegation.md) on macbook and dev-server.
+The [cutover issue](issues/managed-collaboration.md) tracks release proof and
+deferred placements.
+
 Qualify the independent [terminal service](issues/terminal-service-qualification.md)
 through the remaining native smoke and Mac privacy checks. The approved macbook
 and devbox cutovers and subsequent gateway updates preserved their reconstructed
@@ -103,7 +107,6 @@ journeys. Its proposals, each with trade-offs and rejected alternatives:
 [search](issues/fleet-search.md),
 [profiles and accounts](issues/profile-setup-usage.md),
 [attention](issues/attention-dispositions.md),
-[managed collaboration](issues/managed-collaboration.md),
 [handoff](issues/session-handoff.md),
 [clients and customization](issues/client-extensibility.md),
 [agent action discovery](issues/agent-action-discovery.md),

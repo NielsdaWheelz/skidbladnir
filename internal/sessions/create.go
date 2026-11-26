@@ -113,6 +113,13 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	// agent-exec decodes it for the initialized shell (one binary produces and
 	// consumes it).
 	launch := ""
+	if input.WorkerSocket != "" {
+		socket := quoteLaunchArgument(input.WorkerSocket)
+		results := quoteLaunchArgument(input.WorkerResults)
+		// Evaluate the same profile command after shell startup so aliases,
+		// options, account setup and tool environment stay profile-owned.
+		command = "SKID_MANAGED_SOCKET=" + socket + " SKID_MANAGED_RESULTS=" + results + " " + command
+	}
 	if input.Kind == LaunchAgent {
 		launch = base64.RawURLEncoding.EncodeToString([]byte(command))
 	}
