@@ -1,9 +1,10 @@
 # qualify the delegation cutover
 
 the [delegation contract](../agent-delegation.md) has a cross-repo source
-candidate. release requires the complete 15-cell profile matrix, paired
-takeover, and a stopped jarvis cut. until then, candidate verification and
-production release are separate.
+candidate. the owner approved a macbook and dev-server rollout with the
+nine qualified profile placements. arch and dev-server `claude-work` are
+deferred. verify an installed cross-host peer reply before the stopped jarvis
+cut, then verify an installed assignment and its attributed result.
 
 candidate checks passed for all five profiles on macbook and four on dev-server.
 dev-server `claude-work` reported logged out through its normal native command;

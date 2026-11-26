@@ -6,9 +6,9 @@ contract; each item's evidence and resolution criteria live in its
 
 ## Next
 
-Qualify the [agent delegation candidate](agent-delegation.md) across the five
-configured profiles on all three hosts. The [cutover issue](issues/managed-collaboration.md)
-tracks remaining live proof and the lockstep release.
+Deploy [agent delegation](agent-delegation.md) on macbook and dev-server.
+The [cutover issue](issues/managed-collaboration.md) tracks release proof and
+deferred placements.
 
 Qualify the independent [terminal service](issues/terminal-service-qualification.md)
 through the remaining native smoke and Mac privacy checks. The approved macbook
