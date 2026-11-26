@@ -558,9 +558,9 @@ dotted beneath the weekly gauge's cells, gold while current and quiet when
 faded.
 the cursor's lip in column 1 is gold `▌` while the browser has the keys and
 quiet `▏` while the session has them. every fold line carries gold `▌`.
-names and fold text begin in column 5. one rule heads
-the open row's screen and another separates the body from the usage band, while
-shown, and the controls. hints use ink and quiet.
+names and fold text begin in column 5. a parent puts `▸` or `▾` in column 3.
+children indent inside the name lane. one rule separates the body from the
+usage band, while shown, and the controls. hints use ink and quiet.
 
 `▐` marks the shown row before the rail's blank last column. on the full path
 the divider is gold when the stage has the keys and quiet when the rail has

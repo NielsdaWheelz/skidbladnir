@@ -58,6 +58,7 @@ type WorkspaceSession struct {
 	Character         string          `json:"character"`
 	Group             string          `json:"group,omitempty"`
 	NativeGroup       string          `json:"nativeGroup,omitempty"`
+	Family            string          `json:"family,omitempty"`
 	ActiveWindowIndex int             `json:"activeWindowIndex"`
 	Links             []WorkspaceLink `json:"links"`
 }
@@ -181,6 +182,8 @@ func (client Client) ValidateRecoveryServer(ctx context.Context, expected Server
 	return shell, nil
 }
 
+type WorkspaceMapping struct{ Sessions, Panes map[string]string }
+
 // RestoreWorkspace builds a nonempty recipe admitted by ValidateWorkspace, with
 // preflighted cwds, into the empty server whose default shell
 // ValidateRecoveryServer returned; the first construction guard pins that
@@ -188,7 +191,7 @@ func (client Client) ValidateRecoveryServer(ctx context.Context, expected Server
 // ids and returns their old-to-new pane map after verifying a fresh capture.
 // Startup applies only to final unique panes. Any error can leave visible
 // partial work; the manager must never replay it.
-func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity, shell string, recipe Workspace, startupByPane map[string]WorkspaceStartup) (map[string]string, error) {
+func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity, shell string, recipe Workspace, startupByPane map[string]WorkspaceStartup) (*WorkspaceMapping, error) {
 	var entropy [16]byte
 	rand.Read(entropy[:]) // never fails since go 1.24
 	prefix := "skid-recovery-" + hex.EncodeToString(entropy[:])
@@ -218,6 +221,9 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 			branch = commandText("new-session", append(args, terminal...)...)
 		}
 		branch += " ; " + commandText("set-option", "-t", "="+name+":", "renumber-windows", "off")
+		if session.Family != "" {
+			branch += " ; " + commandText("set-option", "-t", "="+name+":", FamilyOption, session.Family)
+		}
 		condition := serverLifetimeConditions(server)
 		if index == 0 {
 			condition = append(condition, "#{==:#{server_sessions},0}", "#{==:#{default-shell},"+formatLiteral(shell)+"}", "#{==:#{default-command},}", "#{==:#{exit-empty},0}", "#{==:#{exit-unattached},0}")
@@ -420,7 +426,7 @@ func (client Client) RestoreWorkspace(ctx context.Context, server ServerIdentity
 	if err := verifyRestoredWorkspace(recipe, actual, sessionIDs, windowIDs, paneIDs, startupByPane); err != nil {
 		return nil, err
 	}
-	return paneIDs, nil
+	return &WorkspaceMapping{Sessions: sessionIDs, Panes: paneIDs}, nil
 }
 
 func (client Client) recoveryQueue(ctx context.Context, conditions []string, branch string) (string, error) {
@@ -455,7 +461,7 @@ func verifyRestoredWorkspace(expected, actual Workspace, sessionIDs, windowIDs, 
 	groups := make(map[string]string)
 	for _, session := range expected.Sessions {
 		fresh, exists := sessions[sessionIDs[session.Key]]
-		if !exists || fresh.Name != session.Name || fresh.Character != session.Character || fresh.Group != session.Group || fresh.ActiveWindowIndex != session.ActiveWindowIndex || len(fresh.Links) != len(session.Links) || (session.NativeGroup == "") != (fresh.NativeGroup == "") {
+		if !exists || fresh.Name != session.Name || fresh.Character != session.Character || fresh.Group != session.Group || fresh.Family != session.Family || fresh.ActiveWindowIndex != session.ActiveWindowIndex || len(fresh.Links) != len(session.Links) || (session.NativeGroup == "") != (fresh.NativeGroup == "") {
 			return fmt.Errorf("%w: session facts", invalid)
 		}
 		for _, link := range session.Links {
@@ -748,6 +754,7 @@ func parseWorkspace(input []byte, ids []string) (Workspace, error) {
 			changed = true
 			continue
 		}
+		workspace.Sessions[session].Family = metadata.Family
 		workspace.Sessions[session].Character = metadata.Character
 		workspace.Sessions[session].Group = group.DecodeMetadata(metadata.Group).String()
 	}

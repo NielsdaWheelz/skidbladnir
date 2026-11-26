@@ -225,7 +225,7 @@ func (m *model) reconcileMetadata(machine string, observed []group.Label) {
 		return
 	}
 	selected := m.selectedRow()
-	visible := m.fold.kind != foldNone && m.fold.kind != foldConfirm && selected != nil && editor.request.Ref.SessionEqual(selected.Session.Ref.Reference)
+	visible := m.fold.kind != foldNone && m.fold.kind != foldConfirm && m.fold.kind != foldBranch && selected != nil && editor.request.Ref.SessionEqual(selected.Session.Ref.Reference)
 	if editor.checking {
 		editor.checking = false
 		matches := row.Session.Group == editor.request.Group

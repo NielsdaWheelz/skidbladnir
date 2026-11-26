@@ -4,9 +4,11 @@
 package fleetview
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -97,6 +99,9 @@ func ErrorMessage(failure fleetclient.Failure, request fleetclient.Request) stri
 		if request.Operation == "start" || request.Operation == "shell" {
 			return "could not confirm terminal creation. refresh before taking another action."
 		}
+		if request.Operation == "promote" {
+			return "could not confirm promotion. refresh before taking another action."
+		}
 		if request.Operation == "close" {
 			if request.TerminalOnly {
 				return "could not confirm terminal deletion. refresh before taking another action."
@@ -121,9 +126,48 @@ func ErrorMessage(failure fleetclient.Failure, request fleetclient.Request) stri
 		return "send unavailable for this screen. open the terminal or use text/keys."
 	case "TerminalUnavailable":
 		return "terminal action unavailable. open the terminal or refresh before trying again."
+	case "ParentUnavailable":
+		return "run from a skid terminal or select an existing session with --parent."
+	case "BranchChanged":
+		if failure.Message != "" {
+			return failure.Message
+		}
+		return "the branch changed. open a fresh preview."
+	case "BranchPending", "BranchUnresolved":
+		if failure.Message != "" {
+			return failure.Message
+		}
+		return "branch membership is unresolved. inspect the involved machines."
+	case "BranchConfirmationRequired":
+		return "confirm the complete branch from an interactive terminal or the session browser."
 	default:
 		return failure.Code + " (" + failure.Dispatch + ")"
 	}
+}
+
+// CloseQuestion names the confirmed mode and the full branch.
+func CloseQuestion(targets []fleetclient.CloseTarget, terminalOnly bool) string {
+	action, suffix := "interrupt and close", ""
+	if terminalOnly {
+		action, suffix = "close", " without interrupting"
+	}
+	root := targets[len(targets)-1]
+	name := attention.SingleLine(root.Name)
+	if len(targets) == 1 {
+		return action + " " + name + " on " + attention.SingleLine(root.Label) + suffix + "?"
+	}
+	machines := map[string]bool{}
+	for _, target := range targets {
+		machines[target.Ref.Machine] = true
+	}
+	descendants, hosts := "descendant", "machine"
+	if len(targets) > 2 {
+		descendants = "descendants"
+	}
+	if len(machines) > 1 {
+		hosts = "machines"
+	}
+	return fmt.Sprintf("%s %s and %d %s on %d %s%s?", action, name, len(targets)-1, descendants, len(machines), hosts, suffix)
 }
 
 func WriteText(operation string, receipt api.WriteResult) string {

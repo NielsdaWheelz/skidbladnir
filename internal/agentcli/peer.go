@@ -27,7 +27,7 @@ func preparePeer(ctx context.Context, request *fleetclient.Request, machine stri
 		request.PeerSource, _ = fleetclient.DecodePeerSource(value)
 		return
 	}
-	ref, panePID, err := tmuxReplyReference(ctx, machine)
+	ref, panePID, err := callerTerminal(ctx, machine, true)
 	if err != nil {
 		return
 	}
@@ -78,7 +78,7 @@ func StampPeer(ctx context.Context, provider string, pid int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ref, _, err := tmuxReplyReference(ctx, local.Machine)
+	ref, _, err := callerTerminal(ctx, local.Machine, true)
 	if err != nil {
 		return "", err
 	}
@@ -98,9 +98,9 @@ func peerSource(ref fleetclient.Reference, provider agentruntime.Provider, obser
 	}
 }
 
-// tmuxReplyReference reads the inherited client socket without starting a
+// callerTerminal reads the inherited client socket without starting a
 // server. The gateway validates this session lifetime and selected pane again.
-func tmuxReplyReference(ctx context.Context, machine string) (fleetclient.Reference, process.PID, error) {
+func callerTerminal(ctx context.Context, machine string, active bool) (fleetclient.Reference, process.PID, error) {
 	unavailable := errors.New("peer terminal unavailable")
 	pane := os.Getenv("TMUX_PANE")
 	// A socket path can contain commas. Only the last two components
@@ -121,12 +121,26 @@ func tmuxReplyReference(ctx context.Context, machine string) (fleetclient.Refere
 	}
 	child, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	command := exec.CommandContext(child, "tmux", "-N", "-S", socket, "display-message", "-p", "-t", sessionID,
-		"#{session_id} #{pane_id} #{@skid_server_epoch} #{pid} #{start_time} #{pane_pid}")
+	const format = "#{session_id} #{pane_id} #{@skid_server_epoch} #{pid} #{start_time} #{pane_pid}"
+	args := []string{"list-panes", "-s", "-t", sessionID, "-F", format}
+	if active {
+		args = []string{"display-message", "-p", "-t", sessionID, format}
+	}
+	command := exec.CommandContext(child, "tmux", append([]string{"-N", "-S", socket}, args...)...)
 	command.WaitDelay = 100 * time.Millisecond
 	output, err := command.Output()
-	fields := strings.Fields(string(output))
-	if err != nil || len(fields) != 6 || fields[0] != sessionID || fields[1] != pane || fields[3] != pid {
+	if err != nil {
+		return fleetclient.Reference{}, 0, unavailable
+	}
+	var fields []string
+	for line := range strings.SplitSeq(string(output), "\n") {
+		row := strings.Fields(line)
+		if len(row) == 6 && row[0] == sessionID && row[1] == pane && row[3] == pid {
+			fields = row
+			break
+		}
+	}
+	if fields == nil {
 		return fleetclient.Reference{}, 0, unavailable
 	}
 	server, err := tmux.ParseServerIdentity(fields[2], fields[3], fields[4])
@@ -136,4 +150,24 @@ func tmuxReplyReference(ctx context.Context, machine string) (fleetclient.Refere
 	}
 	return fleetclient.Reference{Machine: machine, TmuxID: sessionID, PaneID: pane,
 		IdentityToken: server.SessionToken(sessionID)}, process.PID(panePID), nil
+}
+
+// A live tmux environment can be inherited by an unrelated process. Confirm
+// that the actual caller descends from the pane's process, including shells.
+func delegateParent(ctx context.Context, machine string) (api.SessionRef, error) {
+	ref, panePID, err := callerTerminal(ctx, machine, false)
+	if err != nil {
+		return api.SessionRef{}, err
+	}
+	for pid := process.PID(os.Getpid()); pid > 1; {
+		if pid == panePID {
+			return ref.SessionRef(), nil
+		}
+		parent, err := process.Observe(pid)
+		if err != nil || parent.ParentPID == pid {
+			break
+		}
+		pid = parent.ParentPID
+	}
+	return api.SessionRef{}, errors.New("caller does not belong to a skid session")
 }

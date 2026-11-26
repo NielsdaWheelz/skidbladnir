@@ -6,6 +6,9 @@ contract; each item's evidence and resolution criteria live in its
 
 ## Next
 
+qualify [nested sessions](issues/nested-sessions.md) on the enrolled fleet and
+native notification delivery paths.
+
 Deploy [agent delegation](agent-delegation.md) on macbook and dev-server.
 The [cutover issue](issues/managed-collaboration.md) tracks release proof and
 deferred placements.

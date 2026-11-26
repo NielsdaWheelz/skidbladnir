@@ -66,6 +66,6 @@ internal fun terminalCloseMessage(result: TerminalCloseResult): String = when (r
 
 internal fun closeConfirmationBody(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean): String {
     val effect = if (terminalOnly) "close this entire session without sending an interrupt."
-    else "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails."
+    else "send one interrupt to the selected pane. close the session only after the write is confirmed and the same pane is still selected."
     return "${target.session.tmuxName} on ${label.text}: $effect $TERMINAL_SHARED_WORK"
 }

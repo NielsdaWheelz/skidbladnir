@@ -54,6 +54,9 @@ type Session struct {
 	Connection      *Connection     `json:"connection,omitempty"`
 	Objective       string          `json:"objective,omitempty"`
 	Group           string          `json:"group,omitempty"`
+	Parent          *SessionRef     `json:"parent,omitempty"`
+	Promoted        bool            `json:"promoted,omitempty"`
+	Previous        []SessionRef    `json:"previous,omitempty"`
 	CWD             string          `json:"cwd,omitempty"`
 	ActiveCommand   string          `json:"activeCommand,omitempty"`
 	AttachedClients int             `json:"attachedClients"`

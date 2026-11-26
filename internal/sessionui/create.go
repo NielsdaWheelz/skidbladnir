@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
@@ -31,12 +32,16 @@ const (
 	formName
 	formDirectory
 	formGroup
+	formParent
 	formCreate
 )
 
 type createDraft struct {
 	machine, name, directory, group string
 	launch                          launchChoice
+	parent                          *api.SessionRef
+	parentQuery                     string
+	parentAccepted                  bool
 }
 
 type launchChoice struct {
@@ -156,6 +161,39 @@ func (m *model) defaultDirectories() {
 	m.searchDirectories, m.directorySelection.choice = choices, &choices[0]
 }
 
+// Keep the selected lifetime even if it disappears while the form is open.
+func (m *model) parentChoices() []api.SessionRef {
+	var choices []api.SessionRef
+	query := strings.Fields(strings.ToLower(m.form.parentQuery))
+	for _, peer := range m.peers {
+		if !peer.OK {
+			continue
+		}
+		sessions := slices.Clone(peer.Sessions)
+		slices.SortStableFunc(sessions, fleetclient.CompareSessions)
+		for _, s := range sessions {
+			label := strings.ToLower(s.Name + " on " + peer.Label)
+			if !slices.ContainsFunc(query, func(word string) bool { return !strings.Contains(label, word) }) {
+				choices = append(choices, s.Ref.SessionRef())
+			}
+		}
+	}
+	return choices
+}
+func (m *model) parentChoice() (string, string) {
+	if id := m.form.parent; id != nil {
+		node := m.tree[*id]
+		if node == nil || node.row.Session.Ref.SessionRef() != *id || !node.row.Available {
+			return "selected parent unavailable", "selected parent is unavailable. choose a parent or clear the field."
+		}
+		return node.row.Session.Name + " on " + node.row.Label, ""
+	}
+	if m.form.parentQuery != "" {
+		return "no parent selected", "choose a matching parent or clear the field."
+	}
+	return "top-level", ""
+}
+
 func (m *model) draftRequest() (fleetclient.Request, string, int) {
 	machine := m.form.machine
 	cwd, terms, problem := parseDirectoryDraft(m.form.directory)
@@ -168,6 +206,12 @@ func (m *model) draftRequest() (fleetclient.Request, string, int) {
 	label, err := group.ParseDraft(m.form.group)
 	if err != nil {
 		return fleetclient.Request{}, machine + ": " + group.ErrInvalid.Error() + "; nothing was sent.", formGroup
+	}
+	if m.form.parent != nil && !m.form.parentAccepted {
+		return fleetclient.Request{}, "confirm the selected parent before creating.", formParent
+	}
+	if _, problem := m.parentChoice(); problem != "" {
+		return fleetclient.Request{}, problem, formParent
 	}
 	if refusal := m.hostRefusal(machine); refusal != "" {
 		return fleetclient.Request{}, refusal, formCreate
@@ -182,13 +226,15 @@ func (m *model) draftRequest() (fleetclient.Request, string, int) {
 	if refusal := m.attachRefusal(); refusal != "" {
 		return fleetclient.Request{}, refusal, formCreate
 	}
-	return fleetclient.Request{Operation: "start", Kind: launch.kind, Machine: machine, Profile: launch.profile, Name: m.form.name, CWD: cwd, Group: label}, "", formCreate
+	return fleetclient.Request{Operation: "start", Kind: launch.kind, Machine: machine, Profile: launch.profile, Name: m.form.name, CWD: cwd, Group: label, Parent: m.form.parent}, "", formCreate
 }
 
 func (m *model) advanceChoice() (string, string) {
 	switch m.field {
 	case formDirectory:
 		return m.directoryAcceptance()
+	case formParent:
+		return m.parentChoice()
 	case formGroup:
 		label, err := m.groupSelection.accept(m.form.group, m.groupChoices(m.form.group))
 		if err != nil {
@@ -205,6 +251,8 @@ func (m *model) advanceForm() tea.Cmd {
 	case formDirectory:
 		m.form.directory, _ = m.directoryAcceptance()
 		m.clearDirectorySearch()
+	case formParent:
+		m.form.parentAccepted = true
 	case formGroup:
 		m.form.group, _ = m.advanceChoice()
 	}
@@ -245,6 +293,21 @@ func (m *model) chooseForm(direction int) tea.Cmd {
 	switch m.field {
 	case formDirectory:
 		m.directorySelection.cycle(m.searchDirectories, direction < 0)
+	case formParent:
+		m.form.parentAccepted = false
+		choices := m.parentChoices()
+		var choice api.SessionRef
+		if m.form.parent != nil {
+			choice = *m.form.parent
+		}
+		if m.form.parentQuery == "" {
+			choices = append([]api.SessionRef{{}}, choices...)
+		}
+		choice = cycleChoice(choices, choice, direction)
+		m.form.parent = nil
+		if choice != (api.SessionRef{}) {
+			m.form.parent = &choice
+		}
 	case formGroup:
 		m.groupSelection.cycle(m.groupChoices(m.form.group), direction < 0)
 	case formLaunch:
@@ -284,6 +347,8 @@ func (m *model) draftText() string {
 		return m.form.name
 	case formDirectory:
 		return m.form.directory
+	case formParent:
+		return m.form.parentQuery
 	case formGroup:
 		return m.form.group
 	default:
@@ -298,6 +363,13 @@ func (m *model) setDraftText(value string) tea.Cmd {
 	case formDirectory:
 		m.form.directory = value
 		return m.searchDirectory()
+	case formParent:
+		m.form.parentAccepted = false
+		m.form.parentQuery = value
+		m.form.parent = nil
+		if choices := m.parentChoices(); value != "" && len(choices) > 0 {
+			m.form.parent = &choices[0]
+		}
 	case formGroup:
 		m.form.group = value
 		m.groupSelection.reset(value, m.groupChoices(value))
@@ -328,7 +400,7 @@ func (m *model) draftKeys() []key {
 				}
 			},
 			act: func(m *model) tea.Cmd { return m.execute(request, request.Machine) }})
-	case formMachine, formLaunch, formDirectory, formGroup:
+	case formMachine, formLaunch, formDirectory, formGroup, formParent:
 		keys = append(keys,
 			key{keys: []string{"left"}, show: "←→", label: "choose", rank: 2,
 				act: func(m *model) tea.Cmd { return m.chooseForm(-1) }},
@@ -349,6 +421,8 @@ func (m *model) draftKeys() []key {
 	case formDirectory:
 		keys = append(keys, key{keys: []string{"ctrl+u"}, show: "ctrl-u", label: "home", rank: 4,
 			act: func(m *model) tea.Cmd { return m.setDraftText("") }})
+	case formParent:
+		keys = append(keys, key{keys: []string{"ctrl+u"}, show: "ctrl-u", label: "top-level", rank: 4, act: func(m *model) tea.Cmd { return m.setDraftText("") }})
 	case formGroup:
 		keys = append(keys, key{keys: []string{"ctrl+u"}, show: "ctrl-u", label: "unassigned", rank: 4,
 			act: func(m *model) tea.Cmd { return m.setDraftText("") }})
@@ -358,6 +432,12 @@ func (m *model) draftKeys() []key {
 
 func (m *model) terminalKeys() []key {
 	return []key{
+		{keys: []string{"p"}, show: "p", label: "choose parent", rank: 3,
+			act: func(m *model) tea.Cmd {
+				r := m.fold.request
+				return m.openDraft(createDraft{machine: r.Machine, launch: launchChoice{kind: fleetclient.LaunchTerminal}, group: r.Group.String()}, formParent, false)
+			}},
+
 		{keys: []string{"enter"}, show: "enter", label: "open terminal", rank: 1, can: (*model).terminalRefusal,
 			act: func(m *model) tea.Cmd {
 				request := m.fold.request

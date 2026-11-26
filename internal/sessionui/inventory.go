@@ -66,7 +66,7 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 	if !landed {
 		return nil
 	}
-	var usage, screen tea.Cmd
+	var usage tea.Cmd
 	if current && m.observing() {
 		machine := m.peers[index].Machine
 		owner.settled = true
@@ -94,23 +94,17 @@ func (m *model) acceptInventory(message inventoryMsg) tea.Cmd {
 		} else {
 			m.peers[index].OK, m.peers[index].Error = false, message.result.Error
 			m.forgetContext(index)
-			if m.screen.ref.Machine == machine && accessRejected(message.result.Error) {
-				m.forgetScreen()
-			}
 		}
 		if !message.result.OK || m.notificationQualified || m.notificationFailed {
 			owner.ready = nil
 		}
 		m.afterInventory(machine)
-		if message.result.OK && m.screen.ref.Machine == machine {
-			screen = m.readScreen()
-		}
 	}
 	var trailing tea.Cmd
 	if owner.trailing {
 		trailing = m.refreshInventory(index, false)
 	}
-	return tea.Batch(usage, screen, trailing, m.readContext(index))
+	return tea.Batch(usage, trailing, m.readContext(index))
 }
 
 func (m *model) rebuildFromPeers() {

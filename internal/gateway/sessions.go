@@ -25,6 +25,8 @@ type createSessionRequest struct {
 	OptionalTmuxName *string             `json:"optionalTmuxName"`
 	Objective        *string             `json:"objective"`
 	Group            *string             `json:"group"`
+	Parent           *api.SessionRef     `json:"parent"`
+	Admission        string              `json:"admission"`
 	Model            *string             `json:"model"`
 	Effort           *string             `json:"effort"`
 }
@@ -106,7 +108,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	if input.CWD == nil {
+	if input.CWD == nil || (input.Parent == nil) != (input.Admission == "") || input.Parent != nil && (!sessions.ValidSessionRef(*input.Parent) || !sessions.ValidBranchID(input.Admission)) {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -140,7 +142,8 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		return
 	}
 	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
-		Kind:             input.Kind,
+		Kind:   input.Kind,
+		Parent: input.Parent, Admission: input.Admission,
 		CWD:              *input.CWD,
 		Profile:          valueOf(input.Profile),
 		OptionalTmuxName: valueOf(input.OptionalTmuxName),
@@ -206,19 +209,24 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
 	defer cancel()
 	tmuxID := request.PathValue("tmuxId")
-	input, ok := decodeJSON[identityRequest](writer, request)
+	input, ok := decodeJSON[struct {
+		IdentityToken string `json:"identityToken"`
+		CloseID       string `json:"closeId,omitempty"`
+	}](writer, request)
 	if !ok {
 		return
 	}
-	if input.IdentityToken == "" {
+	if input.IdentityToken == "" || input.CloseID != "" && !sessions.ValidBranchID(input.CloseID) {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	if err := gateway.sessions.ResolveSession(ctx, tmuxID, input.IdentityToken); err != nil {
+	closeID, err := gateway.sessions.BeginClose(ctx, tmuxID, input.IdentityToken, "", "terminal", input.CloseID)
+	if err != nil {
 		writeError(writer, terminalFailure(err))
 		return
 	}
-	if err := gateway.closeSession(ctx, tmuxID, input.IdentityToken); err != nil {
+	err = gateway.closeSession(ctx, tmuxID, input.IdentityToken, closeID)
+	if err != nil {
 		writeError(writer, terminalFailure(err))
 		return
 	}
@@ -288,7 +296,7 @@ func apiProfile(profile agentruntime.Profile) api.Profile {
 
 // apiSession maps one observed session; profiles labels its agent's profile.
 func apiSession(session sessions.Session, profiles []agentruntime.Profile) api.Session {
-	wire := api.Session{
+	wire := api.Session{Parent: session.Parent, Promoted: session.Promoted, Previous: session.Previous,
 		TerminalStatus:  session.TerminalStatus,
 		TerminalUsage:   session.TerminalUsage,
 		TerminalFooter:  session.TerminalFooter,

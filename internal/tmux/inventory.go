@@ -27,11 +27,13 @@ type InventoryRow struct {
 	// holds the session-local values admitted as [A-Za-z0-9_.-]+ tokens, else "".
 	Format, LocalSession SessionMetadata
 }
-type SessionMetadata struct{ Character, AutoName, Group, Profile, Objective string }
+type SessionMetadata struct{ Character, AutoName, Group, Profile, Objective, Family string }
 
-var metadataOptions = [...]string{"@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64"}
+var metadataOptions = [...]string{"@skid_character", AutoNameOption, GroupOption, "@skid_profile", "@skid_objective_b64", FamilyOption}
 
-// rowFormat has 17 fields: 8 builtins, the 5 metadata options, then the
+const FamilyOption = "@skid_family_b64"
+
+// rowFormat includes eight builtins, the local metadata, then the
 // selected pane's screen facts.
 var rowFormat = "S" + inventoryFields("session_id", "session_name", "pane_id", "pane_pid", "session_attached", "pane_title", "pane_current_path", "pane_current_command") +
 	inventoryFields(metadataOptions[:]...) + inventoryFields("pane_width", "pane_height", "alternate_on", "window_activity")
@@ -76,7 +78,7 @@ func (client Client) ReadCurrentInventory(ctx context.Context, admitted ServerId
 		}
 		seen[row.ID] = true
 		transcript = rest
-		row.LocalSession = SessionMetadata{Character: token(row.Format.Character), AutoName: token(row.Format.AutoName), Group: token(row.Format.Group), Profile: token(row.Format.Profile), Objective: token(row.Format.Objective)}
+		row.LocalSession = SessionMetadata{Character: token(row.Format.Character), AutoName: token(row.Format.AutoName), Group: token(row.Format.Group), Profile: token(row.Format.Profile), Objective: token(row.Format.Objective), Family: row.Format.Family}
 		rows = append(rows, row)
 	}
 	if !shadowed || len(rows) == 0 {
@@ -173,15 +175,15 @@ func parseRow(input []byte) (InventoryRow, []byte, error) {
 	if len(input) == 0 || input[0] != 'S' {
 		return InventoryRow{}, nil, &ProtocolError{Record: "inventory_row", Reason: "unexpected_marker"}
 	}
-	fields, rest, err := parseInventoryFields(input[1:], 17, "inventory_row")
+	fields, rest, err := parseInventoryFields(input[1:], 18, "inventory_row")
 	if err != nil {
 		return InventoryRow{}, nil, err
 	}
 	pid, pidErr := strconv.Atoi(fields[3])
 	attached, attachedErr := strconv.Atoi(fields[4])
-	width, widthErr := strconv.Atoi(fields[13])
-	height, heightErr := strconv.Atoi(fields[14])
-	activity, activityErr := strconv.ParseInt(fields[16], 10, 64)
+	width, widthErr := strconv.Atoi(fields[14])
+	height, heightErr := strconv.Atoi(fields[15])
+	activity, activityErr := strconv.ParseInt(fields[17], 10, 64)
 	invalidField := 0
 	switch {
 	case !ValidID(fields[0], '$'):
@@ -195,13 +197,13 @@ func parseRow(input []byte) (InventoryRow, []byte, error) {
 	case attachedErr != nil || attached < 0:
 		invalidField = 5
 	case widthErr != nil || width < 0:
-		invalidField = 14
-	case heightErr != nil || height < 0:
 		invalidField = 15
-	case fields[15] != "0" && fields[15] != "1":
+	case heightErr != nil || height < 0:
 		invalidField = 16
-	case activityErr != nil || activity < 0:
+	case fields[16] != "0" && fields[16] != "1":
 		invalidField = 17
+	case activityErr != nil || activity < 0:
+		invalidField = 18
 	}
 	if invalidField != 0 {
 		return InventoryRow{}, nil, &ProtocolError{Record: "inventory_row", Field: invalidField, Reason: "invalid_value"}
@@ -209,8 +211,8 @@ func parseRow(input []byte) (InventoryRow, []byte, error) {
 	return InventoryRow{
 		ID: fields[0], Name: fields[1], PaneID: fields[2], PanePID: pid, AttachedClients: attached,
 		Title: fields[5], CWD: fields[6], Command: fields[7],
-		PaneWidth: width, PaneHeight: height, AlternateOn: fields[15] == "1", WindowActivity: activity,
-		Format: SessionMetadata{Character: fields[8], AutoName: fields[9], Group: fields[10], Profile: fields[11], Objective: fields[12]},
+		PaneWidth: width, PaneHeight: height, AlternateOn: fields[16] == "1", WindowActivity: activity,
+		Format: SessionMetadata{Character: fields[8], AutoName: fields[9], Group: fields[10], Profile: fields[11], Objective: fields[12], Family: fields[13]},
 	}, rest, nil
 }
 
@@ -269,9 +271,13 @@ func parseMetadata(input []byte, id string) (SessionMetadata, bool, []byte, erro
 		if _, duplicate := options[option]; duplicate {
 			return SessionMetadata{}, false, nil, &ProtocolError{Record: "session_metadata", Field: field, Reason: "duplicate"}
 		}
-		options[option] = token(value)
+		if option == FamilyOption {
+			options[option] = value
+		} else {
+			options[option] = token(value)
+		}
 	}
-	return SessionMetadata{Character: options["@skid_character"], AutoName: options[AutoNameOption], Group: options[GroupOption], Profile: options["@skid_profile"], Objective: options["@skid_objective_b64"]}, true, input, nil
+	return SessionMetadata{Character: options["@skid_character"], AutoName: options[AutoNameOption], Group: options[GroupOption], Profile: options["@skid_profile"], Objective: options["@skid_objective_b64"], Family: options[FamilyOption]}, true, input, nil
 }
 
 // inheritedScript prints a line for every @skid_ definition that format lookup

@@ -63,18 +63,44 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 	if cwd == "" {
 		cwd = "~"
 	}
+	parent := request.Parent
+	if request.ParentHandle != "" {
+		resolved, failure := client.resolve(ctx, Request{Operation: "parent", Handle: request.ParentHandle})
+		if failure != nil {
+			value.Failure = failure
+			return finish()
+		}
+		exact := resolved.ref.SessionRef()
+		parent = &exact
+	}
+	admission := ""
+	if parent != nil {
+		admission = newBranchID()
+	}
 	body, _ := json.Marshal(struct {
-		Kind    LaunchKind `json:"kind"`
-		CWD     string     `json:"cwd"`
-		Profile string     `json:"profile,omitempty"`
-		Name    string     `json:"optionalTmuxName,omitempty"`
-		Group   string     `json:"group,omitempty"`
-		Model   *string    `json:"model,omitempty"`
-		Effort  *string    `json:"effort,omitempty"`
-	}{request.Kind, cwd, request.Profile, request.Name, request.Group.String(), request.Model, request.Effort})
+		Kind      LaunchKind      `json:"kind"`
+		CWD       string          `json:"cwd"`
+		Profile   string          `json:"profile,omitempty"`
+		Name      string          `json:"optionalTmuxName,omitempty"`
+		Group     string          `json:"group,omitempty"`
+		Model     *string         `json:"model,omitempty"`
+		Effort    *string         `json:"effort,omitempty"`
+		Parent    *api.SessionRef `json:"parent,omitempty"`
+		Admission string          `json:"admission,omitempty"`
+	}{request.Kind, cwd, request.Profile, request.Name, request.Group.String(), request.Model, request.Effort, parent, admission})
 	if len(body) > MaximumInputBytes {
 		value.Failure = &Failure{Code: "input_limit", Dispatch: "not_sent"}
 		return finish()
+	}
+	if parent != nil {
+		reservation := client.branch(ctx, *parent, api.BranchRequest{Action: "reserve", ID: admission, Machine: selected.Machine})
+		if !reservation.OK {
+			value.Failure = reservation.Error
+			if reservation.Error.Dispatch == "unknown" {
+				value.AdmissionFailure = client.completeAdmission(ctx, *parent, admission, nil)
+			}
+			return finish()
+		}
 	}
 	created := client.call(ctx, selected, "start", "", body)
 	if !created.OK {
@@ -87,11 +113,23 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		} else if failure.Dispatch == "unknown" {
 			value.Creation = "unknown"
 		}
+		if parent != nil && value.Creation != "unknown" {
+			var child *api.SessionRef
+			if value.Creation == "created" {
+				exact := value.Target.SessionRef()
+				child = &exact
+			}
+			value.AdmissionFailure = client.completeAdmission(ctx, *parent, admission, child)
+		}
 		return finish()
 	}
 	observed := created.Value.(ObservedSession)
 	value.Creation, value.Target, value.Handle, value.Terminal = "created", observed.Session.Ref, observed.Session.TerminalHandle, &observed
-	if request.Text == "" {
+	if parent != nil {
+		child := value.Target.SessionRef()
+		value.AdmissionFailure = client.completeAdmission(ctx, *parent, admission, &child)
+	}
+	if request.Text == "" || value.AdmissionFailure != nil {
 		return finish()
 	}
 	ref := value.Target.Reference
@@ -151,4 +189,12 @@ func (client *Client) start(ctx context.Context, request Request) Result {
 		case <-timer.C:
 		}
 	}
+}
+
+// Completion is a distinct mutation from creation and runs once even if the
+// creation deadline elapsed. An uncertain creation keeps the admission pending.
+func (client *Client) completeAdmission(ctx context.Context, parent api.SessionRef, id string, child *api.SessionRef) *Failure {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	return client.branch(ctx, parent, api.BranchRequest{Action: "complete", ID: id, Child: child}).Error
 }

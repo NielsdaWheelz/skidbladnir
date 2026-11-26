@@ -88,8 +88,8 @@ type model struct {
 	inventoryLanes        []*inventoryLane
 	notificationLane      lane
 	usageLane             lane
-	screen                screen
-	screenLane            lane
+	tree                  map[api.SessionRef]*treeNode
+	expanded              map[api.SessionRef]bool
 	usagePeers            []usagePeer
 	claudeUsage           []fleetclient.ProfileUsage
 	usageNext             time.Time
@@ -238,8 +238,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case fleetMsg:
 		command = m.onFleet()
-	case screenMsg:
-		command = m.acceptScreen(message)
 	case usageMsg:
 		command = m.acceptUsage(message)
 	case inventoryMsg:
@@ -250,6 +248,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		command = m.acceptNotifications(message)
 	case actionMsg:
 		command = m.onAction(message)
+	case branchPreviewMsg:
+		m.onPreview(message)
+	case branchClosedMsg:
+		command = m.onBranchClosed(message)
 	case searchMsg:
 		command = m.onSearch(message)
 	case tea.PasteMsg, tea.KeyPressMsg:
@@ -261,12 +263,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 // settle follows every message so the table keeps the cursor in view.
 func (m *model) settle() {
-	if ref := m.screen.ref; !ref.IsZero() {
-		row := m.selectedRow()
-		if m.fold.kind != foldOpen || row == nil || row.Session.Ref.Reference != ref || m.peerIndex(ref.Machine) < 0 {
-			m.forgetScreen()
-		}
-	}
 	m.top = m.frame().top
 }
 
@@ -339,32 +335,11 @@ func (m *model) onAction(message actionMsg) tea.Cmd {
 		m.inform("terminal created on " + value.Label + ".")
 	case "group", "rename":
 		m.completeMetadata(message.subject, nil)
-	case "close":
-		receipt := result.Value.(api.CloseResult)
-		if receipt.Terminal == "closed" {
-			ref := m.pending.Ref
-			// Refresh fences a pre-close read even if the machine rejoined mid-write.
-			index = m.peerIndex(ref.Machine)
-			if index >= 0 {
-				peer := &m.peers[index]
-				if closed := slices.IndexFunc(peer.Sessions, func(session fleetclient.Session) bool { return session.Ref.SessionEqual(ref) }); closed >= 0 {
-					peer.Sessions = slices.Delete(peer.Sessions, closed, closed+1)
-					m.rebuild()
-				}
-			}
-		}
-		var text string
-		switch {
-		case receipt.Terminal != "closed":
-			text = "interruption: " + receipt.Interrupt + "; terminal: " + receipt.Terminal + ". work shared elsewhere or running remotely may continue."
-		case receipt.Interrupt != "written":
-			text = "terminal closed; interruption unconfirmed."
-		default:
-			text = "interrupt key sent; terminal closed. work shared elsewhere or running remotely may continue."
-		}
-		text = message.subject + ": " + text
-		if result.ExitCode("close") != 0 {
-			m.fail(text)
+	case "promote":
+		m.fold = fold{}
+		text := message.subject + " is now top-level."
+		if cleanup, _ := result.Value.(*fleetclient.Failure); cleanup != nil {
+			m.fail(text + " could not confirm cleanup on the former parent (" + cleanup.Code + ").")
 		} else {
 			m.inform(text)
 		}
@@ -407,6 +382,17 @@ func (m *model) adoptCreated(index int, value fleetclient.ObservedSession) tea.C
 		m.peers[index].Sessions[row] = value.Session
 	} else {
 		m.peers[index].Sessions = append(m.peers[index].Sessions, value.Session)
+	}
+	for id := value.Session.Parent; id != nil; {
+		if m.expanded == nil {
+			m.expanded = make(map[api.SessionRef]bool)
+		}
+		m.expanded[*id] = true
+		parent := m.tree[*id]
+		if parent == nil {
+			break
+		}
+		id = parent.row.Session.Parent
 	}
 	m.rebuild()
 	if row := m.rowIndex(created); row >= 0 {
@@ -485,9 +471,6 @@ func (m *model) invalidateAccess(machine string, failure *fleetclient.Failure) {
 	m.inventoryLanes[index].trailing = true
 	m.inventoryLanes[index].ready = nil
 	m.peers[index].OK, m.peers[index].Error = false, failure
-	if m.screen.ref.Machine == machine {
-		m.forgetScreen()
-	}
 	m.rebuildFromPeers()
 }
 func (m *model) selectedRow() *fleetclient.Row {

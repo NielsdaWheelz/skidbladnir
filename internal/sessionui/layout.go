@@ -17,7 +17,7 @@ const (
 	placeColumn
 	columnCount
 
-	rowNameStart = 4 // lip, sign, two blank cells
+	rowNameStart = 4 // lip, sign, branch, blank
 	unknownPlace = "remote context unknown"
 	unknownPath  = "directory unavailable"
 )
@@ -150,7 +150,7 @@ func (m *model) tableHeadings() []bool {
 		return headings
 	}
 	for index, row := range m.rows {
-		headings[index] = index == 0 || m.rows[index-1].Session.Group != row.Session.Group
+		headings[index] = index == 0 || m.tree[m.rows[index-1].Session.Ref.SessionRef()].heading != m.tree[row.Session.Ref.SessionRef()].heading
 	}
 	return headings
 }
@@ -190,7 +190,8 @@ func (m *model) measureColumns(room int) tableColumns {
 			columns.width[profileColumn] = max(columns.width[profileColumn], width)
 		}
 		for _, session := range peer.Sessions {
-			target = max(target, ansi.StringWidth(attention.SingleLine(session.Name)))
+			node := m.tree[session.Ref.SessionRef()]
+			target = max(target, node.depth*2+ansi.StringWidth(attention.SingleLine(node.name())))
 			width := ansi.StringWidth(attention.SingleLine(fleetview.GroupHeading(session.Group)))
 			columns.width[groupColumn] = max(columns.width[groupColumn], width)
 		}
@@ -289,6 +290,17 @@ func tail(text string, cells int) string {
 	return text
 }
 
+func (node *treeNode) name() string {
+	name := node.row.Session.Name
+	if node.row.Session.Parent != nil {
+		name += " · " + node.row.Label
+		if node.context != "" {
+			name += " · " + node.context
+		}
+	}
+	return name
+}
+
 func cutName(name, mode string, room int) string {
 	if ansi.StringWidth(name) <= room {
 		return name
@@ -312,10 +324,11 @@ func (m *model) tableLines(f frame) []line {
 	for _, placement := range f.rows {
 		index := placement.index
 		row := m.rows[index]
+		node := m.tree[row.Session.Ref.SessionRef()]
 		if placement.heading >= 0 {
-			heading := ansi.Truncate(attention.SingleLine(fleetview.GroupHeading(row.Session.Group)), f.width, "…")
+			heading := ansi.Truncate(attention.SingleLine(fleetview.GroupHeading(node.heading)), f.width, "…")
 			role := inkRole
-			if row.Session.Group.IsUnassigned() {
+			if node.heading.IsUnassigned() {
 				role = quietRole
 			}
 			lines[placement.heading] = line{{text: " "}, {text: heading, role: role, bold: true}}
@@ -338,16 +351,27 @@ func (m *model) tableLines(f frame) []line {
 			}
 		}
 		finished := line{lip, sign}
+		if m.width >= 3 {
+			branch := " "
+			if m.view.kind != viewNeedsInput && len(node.children) > 0 {
+				branch = "▸"
+				if m.expanded[row.Session.Ref.SessionRef()] {
+					branch = "▾"
+				}
+			}
+			finished = append(finished, span{text: branch, role: mutedRole})
+		}
 		if m.width >= 8 {
+			indent := min(node.depth*2, max(0, f.columns.name-3))
 			name := span{
-				text: cutName(attention.SingleLine(row.Session.Name), row.Session.NameMode, f.columns.name),
+				text: strings.Repeat(" ", indent) + cutName(attention.SingleLine(node.name()), row.Session.NameMode, f.columns.name-indent),
 				role: inkRole,
-				bold: selected || fleetview.QueueRank(status.Sign) >= 0,
+				bold: selected || m.queued(row),
 			}
 			if !m.rowAttachable(row) {
 				name.role = quietRole
 			}
-			finished = append(finished, span{text: "  "}, name)
+			finished = append(finished, span{text: " "}, name)
 			used := rowNameStart + ansi.StringWidth(name.text)
 			cells := m.rowCells(row)
 			for column, start := range f.columns.start {

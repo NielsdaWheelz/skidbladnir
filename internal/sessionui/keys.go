@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/api"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/fleetview"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -101,6 +100,8 @@ func (m *model) keys() []key {
 	switch m.fold.kind {
 	case foldOpen:
 		return m.openKeys()
+	case foldBranch:
+		return m.branchKeys()
 	case foldConfirm:
 		return []key{
 			{keys: []string{"enter", "y"}, show: "enter", label: "send", rank: 1,
@@ -151,16 +152,13 @@ func (m *model) tableKeys() []key {
 				}
 				return ""
 			},
-			act: func(m *model) tea.Cmd {
-				m.fold = fold{kind: foldOpen}
-				return m.askScreen()
-			}},
+			act: (*model).toggleInfo},
 		{keys: []string{"tab"}, show: "tab", label: "next needing input", group: "session", rank: 3,
 			can: queuedGuard(1), act: queuedMove(1)},
 		{keys: []string{"shift+tab"}, show: "shift-tab", label: "previous", group: "session",
 			can: queuedGuard(-1), act: queuedMove(-1)},
 		{keys: []string{"x"}, show: "x", label: "interrupt and close…", group: "session", rank: 4,
-			can: confirmGuard("close", "close"), act: confirmAction("close")},
+			can: rowGuard("close", false), act: (*model).openClose},
 		{keys: []string{"c"}, show: "c", label: "another like this…", group: "create", rank: 5,
 			can: func(m *model) string {
 				if refusal := localRowGuard("create")(m); refusal != "" {
@@ -191,7 +189,12 @@ func (m *model) tableKeys() []key {
 				return nil
 			}},
 		{keys: []string{"s"}, show: "s", label: "interrupt…", group: "session", rank: 8,
-			can: confirmGuard("interrupt", "stop"), act: confirmAction("stop")},
+			can: func(m *model) string {
+				if refusal := rowGuard("interrupt", false)(m); refusal != "" {
+					return refusal
+				}
+				return m.foldRoom(m.interruption())
+			}, act: func(m *model) tea.Cmd { m.fold = m.interruption(); return nil }},
 		{keys: []string{"T"}, show: "T", label: "terminal here", group: "create", rank: 9,
 			can: func(m *model) string {
 				if refusal := localRowGuard("terminal here")(m); refusal != "" {
@@ -282,28 +285,11 @@ func localRowGuard(action string) func(*model) string {
 	}
 }
 
-func (m *model) confirmation(operation string) fold {
+func (m *model) interruption() fold {
 	row := m.selectedRow()
 	return fold{
-		kind: foldConfirm, request: fleetclient.Request{Operation: operation, Ref: row.Session.Ref.Reference},
+		kind: foldConfirm, request: fleetclient.Request{Operation: "stop", Ref: row.Session.Ref.Reference},
 		name: row.Session.Name, machine: row.Label,
-	}
-}
-
-func confirmGuard(action, operation string) func(*model) string {
-	guard := rowGuard(action, false)
-	return func(m *model) string {
-		if refusal := guard(m); refusal != "" {
-			return refusal
-		}
-		return m.foldRoom(m.confirmation(operation))
-	}
-}
-
-func confirmAction(operation string) func(*model) tea.Cmd {
-	return func(m *model) tea.Cmd {
-		m.fold = m.confirmation(operation)
-		return nil
 	}
 }
 
@@ -320,7 +306,7 @@ func (m *model) nextQueued(direction int) int {
 	count := len(m.rows)
 	for distance := 1; distance < count; distance++ {
 		index := (m.cursor + count + direction*distance) % count
-		if fleetview.QueueRank(m.statusView(m.rows[index]).Sign) >= 0 {
+		if m.queued(m.rows[index]) {
 			return index
 		}
 	}
@@ -339,9 +325,12 @@ func queuedGuard(direction int) func(*model) string {
 func queuedMove(direction int) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		m.selectRow(m.nextQueued(direction))
-		if m.fold.kind == foldOpen {
-			m.fold.facts = false
-			return m.askScreen()
+		if m.fold.kind == foldOpen && m.view.kind != viewNeedsInput {
+			id := m.selectedRow().Session.Ref.SessionRef()
+			if len(m.tree[id].children) > 0 {
+				m.expanded[id] = true
+				m.rebuild()
+			}
 		}
 		return nil
 	}
@@ -460,12 +449,8 @@ func (m *model) keyMap(width int) []line {
 	shortcuts := line{{text: "ctrl-] browse", role: quietRole}}
 	for _, entry := range m.openKeys() {
 		switch entry.show {
-		case "i", "r", "g":
-			label := entry.label
-			if entry.show == "i" {
-				label = "facts"
-			}
-			shortcuts = append(shortcuts, span{text: "  " + entry.show + " " + label, role: quietRole})
+		case "r", "g", "p":
+			shortcuts = append(shortcuts, span{text: "  " + entry.show + " " + entry.label, role: quietRole})
 		}
 	}
 	note := m.ground.note
