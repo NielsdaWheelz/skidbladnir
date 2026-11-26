@@ -263,8 +263,8 @@ func (store *Store) dispatch(ctx context.Context, value *record, request api.Job
 		return api.JobAccepted, ""
 	case response.State == string(api.JobAccepted):
 		return api.JobAccepted, ""
-	case response.State == string(api.JobFailed) && response.Reason == "busy":
-		return api.JobFailed, "busy"
+	case response.State == string(api.JobFailed):
+		return api.JobFailed, response.Reason
 	default:
 		return api.JobAccepted, ""
 	}
