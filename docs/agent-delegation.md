@@ -42,6 +42,15 @@ the managed worker shows progress and one input line in the existing terminal. s
 
 the result response carries the outcome, terminal ref, immutable byte length and digest, and the first page. additional pages use the same get with a byte offset. the worker writes one metadata line and raw utf-8 bytes in a private file, so serving a page reads only the header and that range. 32 kib raw base64 pages fit the existing envelope. jarvis verifies and stores the original bytes in its action result before ack. the usual wake displays the whole answer when it fits, otherwise an explicitly shortened preview and the exact `receipt.read` selection `worker_answer` for that job. use the existing 16 mib provider ceiling and one projection for both sizes. the cost is one open request per active job. idle fleets issue no job-result requests. [jarvis’s existing wake](https://github.com/NielsdaWheelz/jarvis/blob/f8d0dfd43855a235d1f986a36b38c7728f2b7ae4/docs/delegated-follow-through.md#L79-L99)
 
+the cost of exact peer delivery is a live process check and a separate native
+codex process for stamped panes. automatic sends without a proved address stay
+one-way. create preflight reserves room for the widest runtime ids, so a brief
+near the encoded limit can be refused before launch. a timed-out result request
+opens again by id, and acknowledged jobs retain a small tombstone per
+assignment to prevent replay. the worker's simple terminal shares the provider
+conversation and controls, with fewer native menus. jarvis shows a bounded wake
+and keeps the full answer available by receipt.
+
 ## 3. work split and cutover
 
 | exclusive owner | files and deliverable |

@@ -5,12 +5,19 @@ candidate. release requires the complete 15-cell profile matrix, paired
 takeover, and a stopped jarvis cut. until then, candidate verification and
 production release are separate.
 
-the personal codex profile reported native quota exhaustion on macbook and
-dev-server. verify successful exact answers on both after quota is available.
-arch was offline to tailscale and unreachable through both skid and ssh, so
-its five profile cells are unrun. verify native auth refresh under simultaneous
-same-account workers at an actual renewal. a normal concurrent launch covers
-state sharing but cannot establish refresh behavior without a renewal.
+candidate checks passed for all five profiles on macbook and four on dev-server.
+dev-server `claude-work` reported logged out through its normal native command;
+prove an exact successful result after the owner restores its login. arch was
+offline to tailscale and unreachable through both skid and ssh, so its five
+profile cells are unrun. two simultaneous macbook codex jobs used the same
+account successfully. verify auth refresh at an actual renewal to establish
+the concurrent refresh behavior.
+
+the paired phone steered a deterministic turn, answered a real claude question
+and confirmed a real claude interruption in its original worker. isolated
+prompt-enabled native runs also exercised allow and deny for both providers.
+verify the installed worker status and attention journey with the same phone
+during the named cutover.
 
 bind the provisioner to the reviewed worker commit and locked environment.
 publish the matching skid artifact, qualify its gateway and cli on each host,
