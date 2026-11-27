@@ -52,6 +52,7 @@ func (m *model) waitForCompositor() tea.Cmd {
 // Only a key handoff can be in flight. Read and discard any queued rail input
 // until its result has been reconciled against the compositor.
 func (m *model) moveKeys(change func() movementResult) tea.Cmd {
+	m.pressedPointer = pointerTarget{}
 	m.rail.moving = true
 	done := make(chan movementResult, 1)
 	m.rail.mutations.Go(func() { done <- change() })
@@ -69,10 +70,14 @@ func (m *model) finishMovement(result movementResult) tea.Cmd {
 }
 
 func (m *model) enter(ref fleetclient.Reference) tea.Cmd {
+	row := m.rowForReference(ref)
+	if row == nil || row.Session.Ref.Reference != ref {
+		m.fail("session no longer listed at that pane; nothing was sent.")
+		return nil
+	}
 	m.fold, m.reveal = fold{}, time.Time{}
 	m.revealGeneration++
 	m.clearDirectorySearch()
-	row := m.rowForReference(ref)
 	candidate := visit{
 		ref: ref, name: attention.SingleLine(row.Session.Name), host: attention.SingleLine(row.Label),
 	}
@@ -98,6 +103,10 @@ func (m *model) readRail(attempt *visit) tea.Cmd {
 		return tea.Quit
 	}
 	returned := state.Returns != m.rail.state.Returns
+	if old := m.rail.state; state.Columns != old.Columns || state.Rows != old.Rows ||
+		state.Live != old.Live || state.StageKeys != old.StageKeys || state.Visit != old.Visit || returned {
+		m.pressedPointer = pointerTarget{}
+	}
 	m.rail.state = state
 	m.width, m.height = state.Columns, state.Rows
 	if state.Live {
@@ -153,7 +162,7 @@ func (m *model) readRail(attempt *visit) tea.Cmd {
 
 const discardedRailInput = "the rail has the keys; nothing was sent."
 
-func (m *model) browserInput(message tea.Msg) tea.Cmd {
+func (m *model) browserInput(message tea.Msg, painted pointerHit) tea.Cmd {
 	if m.rail.moving {
 		return nil
 	}
@@ -177,6 +186,8 @@ func (m *model) browserInput(message tea.Msg) tea.Cmd {
 		} else {
 			action = m.onPaste(message)
 		}
+	case tea.MouseMsg:
+		action = m.pointerInput(message, painted)
 	}
 	return tea.Batch(ended, action)
 }
@@ -202,21 +213,10 @@ func (m *model) railKey(pressed string) tea.Cmd {
 		} else {
 			return queuedMove(direction)(m)
 		}
-	case "ctrl+]", "enter":
-		if pressed == "enter" {
-			row := m.selectedRow()
-			if row == nil || !row.Session.Ref.SessionEqual(current.ref) {
-				if refusal := rowGuard("attach", true)(m); refusal != "" {
-					m.fail(refusal)
-					return nil
-				}
-				return m.enter(row.Session.Ref.Reference)
-			}
-		}
-		client := m.rail.client
-		return m.moveKeys(func() movementResult {
-			return movementResult{err: client.Keys(current.id, true)}
-		})
+	case "enter":
+		return m.attachSelected()
+	case "ctrl+]":
+		return m.returnStageKeys(current.id)
 	case "ctrl+d":
 		err := m.rail.client.Table(current.id)
 		command := m.readRail(nil)
@@ -242,6 +242,13 @@ func (m *model) railKey(pressed string) tea.Cmd {
 		m.fail(discardedRailInput)
 	}
 	return nil
+}
+
+func (m *model) returnStageKeys(visitID string) tea.Cmd {
+	client := m.rail.client
+	return m.moveKeys(func() movementResult {
+		return movementResult{err: client.Keys(visitID, true)}
+	})
 }
 
 func (m *model) settleGround(answered bool) tea.Cmd {

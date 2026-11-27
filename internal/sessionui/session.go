@@ -81,6 +81,8 @@ type model struct {
 	searchDirectories     []string
 	directorySelection    fieldSelection[string]
 	blurred               bool
+	paintedPointer        pointerHit
+	pressedPointer        pointerTarget
 	notifications         attention.State
 	notificationFailed    bool
 	notificationQualified bool
@@ -172,6 +174,8 @@ func (m *model) execute(request fleetclient.Request, subject string) tea.Cmd {
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	painted := m.paintedPointer
+	m.paintedPointer = pointerHit{}
 	if m.rail.err != nil {
 		return m, tea.Quit
 	}
@@ -209,6 +213,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			command = m.settleGround(false)
 		}
 	case tea.WindowSizeMsg:
+		if message.Width != m.width || message.Height != m.height {
+			m.pressedPointer = pointerTarget{}
+		}
 		if !m.rail.moving {
 			command = m.readRail(nil)
 		}
@@ -221,6 +228,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		command = m.finishMovement(message)
 	case tea.BlurMsg:
 		m.blurred = true
+		m.pressedPointer = pointerTarget{}
 		if m.searchState != directorySearchIdle {
 			m.clearDirectorySearch()
 		}
@@ -255,7 +263,12 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case searchMsg:
 		command = m.onSearch(message)
 	case tea.PasteMsg, tea.KeyPressMsg:
-		command = m.browserInput(message)
+		m.pressedPointer = pointerTarget{}
+		command = m.browserInput(message, painted)
+	case tea.MouseMotionMsg:
+		m.pressedPointer = pointerTarget{}
+	case tea.MouseMsg:
+		command = m.browserInput(message, painted)
 	}
 	m.settle()
 	return m, command
