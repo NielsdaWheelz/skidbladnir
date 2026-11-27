@@ -99,25 +99,44 @@ func (d *branchDialog) text(width int) (header, rows []string) {
 	return
 }
 
+func (d *branchDialog) page(capacity, width int) (header, rows []string, room int, scroll bool) {
+	header, rows = d.text(width)
+	room = max(0, capacity-len(header))
+	scroll = len(rows) > room && room >= 2
+	if scroll {
+		room--
+	}
+	return
+}
+
 func (d *branchDialog) lines(capacity, width int) []line {
-	header, rows := d.text(width)
+	header, rows, room, scroll := d.page(capacity, width)
 	var lines []line
 	for _, s := range header {
 		lines = append(lines, line{{text: s, role: emberRole, bold: true}})
 	}
-	room := max(0, capacity-len(lines))
-	scroll := len(rows) > room && room >= 2
-	if scroll {
-		room--
-	}
 	at := min(d.offset, max(0, len(rows)-room))
 	for _, s := range rows[at:min(len(rows), at+room)] {
-		lines = append(lines, line{{text: s}})
+		part := span{text: s}
+		if d.plan != nil && d.report == nil {
+			part.preview = d
+		}
+		lines = append(lines, line{part})
 	}
 	if scroll {
 		lines = append(lines, line{{text: fmt.Sprintf("lines %d–%d of %d · ↑↓ scroll", at+1, at+room, len(rows)), role: quietRole}})
 	}
 	return lines
+}
+
+func (m *model) scrollBranch(delta int) {
+	d := m.fold.branch
+	f := m.chrome()
+	_, rows, room, _ := d.page(m.fold.capacity(f.body), max(0, f.rowWidth-rowNameStart))
+	if room > 0 {
+		last := max(0, len(rows)-room)
+		d.offset = min(max(0, min(d.offset, last)+delta), last)
+	}
 }
 
 func (m *model) branchKeys() []key {
@@ -128,14 +147,8 @@ func (m *model) branchKeys() []key {
 	}
 	keys := []key{
 		{keys: []string{"esc", "n", "q"}, show: "escape", label: dismiss, keep: true, act: func(m *model) tea.Cmd { d.cancel(); m.fold = fold{}; return nil }},
-		{keys: []string{"up", "k"}, show: "↑↓", label: "scroll", rank: 2, act: func(*model) tea.Cmd { d.offset = max(0, d.offset-1); return nil }},
-		{keys: []string{"down", "j"}, act: func(m *model) tea.Cmd {
-			f := m.chrome()
-			header, rows := d.text(max(1, f.rowWidth-rowNameStart))
-			room := max(1, m.fold.capacity(f.body)-len(header)-1)
-			d.offset = min(d.offset+1, max(0, len(rows)-room))
-			return nil
-		}},
+		{keys: []string{"up", "k"}, show: "↑↓", label: "scroll", rank: 2, act: func(m *model) tea.Cmd { m.scrollBranch(-1); return nil }},
+		{keys: []string{"down", "j"}, act: func(m *model) tea.Cmd { m.scrollBranch(1); return nil }},
 	}
 	if d.plan != nil && d.report == nil {
 		keys = append(keys, key{keys: []string{"enter", "y"}, show: "enter", label: "confirm close", rank: 1,

@@ -51,8 +51,10 @@ terminal beside an existing session; create quiet child sessions under an exact
 parent on any enrolled machine, browse their tree, and promote a child; attach the same tmux client view the laptop
 sees; type, paste and dictate through Gboard; select and copy terminal text on the
 phone; detach without stopping anything; keep the browser's list beside an
-attached terminal; interrupt or close an exact, confirmed session or a confirmed
-whole branch; read, write and wait on terminals from the CLI; exchange addressed
+attached terminal; navigate the desktop browser with two-axis scrolling and
+clicks on session names, disclosures and views; interrupt or close an exact,
+confirmed session or a confirmed whole branch; read, write and wait on terminals
+from the CLI; exchange addressed
 peer messages; submit a profile-backed
 assignment through the paired gateway and receive its native result in jarvis;
 choose native model/effort options for a supported profile launch;
@@ -1245,7 +1247,7 @@ state and `fleet.json`. the browser presents facts from those observations.
 | `internal/agentcli` | `skid` argument parsing (the only request validator), help text, human and `--json` rendering, exit codes, browser launch, and the private `rail` and `stage` commands including the stage's outcome sentence |
 | `internal/sessionui` | The table and rail: one Bubble Tea model holding peers, one selected view, one cursor, one fold, at most one pending operation and the live visit |
 | `internal/terminalclient` | Bridging a TTY to one exact session over the terminal WebSocket and acknowledging the visit |
-| `internal/compositor` | The private browser tmux server: launch, layout, keys, stage lifetime and every control call |
+| `internal/compositor` | The private browser tmux server: launch, layout, pane focus and pointer routing, stage lifetime and every control call |
 
 ### Desktop concepts
 
@@ -1341,7 +1343,8 @@ state and `fleet.json`. the browser presents facts from those observations.
     through sanitization, which maps ESC to a space. Colour never carries meaning
     alone. `NO_COLOR` keeps the signs and words and strips every style, including
     the work line and the Fable underline.
-12. A visit starts on `enter` or a creation and keeps its reference for life.
+12. A visit starts on `enter`, a session name click or a creation and keeps its
+    reference for life.
     Moving the cursor shows, resizes and acknowledges nothing. Keys move by the
     owner's key or click or a visit's end. The rail reads who has them from the
     compositor. Beyond a return's read, the rail sends only what the table would
@@ -1349,6 +1352,32 @@ state and `fleet.json`. the browser presents facts from those observations.
     resetting remote presentation modes and restoring cooked mode.
 13. Quota is evidence only: usage never supplies readiness, attention, admission
     or control.
+
+### Desktop pointer acceptance
+
+- In the table and the 28-column rail, each focused vertical wheel event moves
+  one visible row, including children. Each horizontal event steps through needs
+  input, all and the ordered groups. Both clamp at the ends. Neither visits or
+  acknowledges a session. The terminal owns acceleration.
+- The first primary click focuses the pane and acts on release if the same
+  painted control is still eligible. A visible session name, including clipped
+  text and the rendered child suffix, follows `enter` admission. Clicking the
+  shown lifetime returns its keys. A disclosure selects its parent and toggles
+  children alone. It preserves that parent's open facts. Switching away closes
+  prior facts. Each complete click on the same disclosure toggles once even
+  before the arrow repaints. Tabs and group headings select the exact view and
+  keep a surviving selection or pick the first row. Tab delimiters count. Blank
+  cells, metadata, status signs and overflow counts are inert.
+- The painted frame owns pane-cell hit areas, including clipping and overlays.
+  A release cannot redirect a press to a replacement. Drag, resize or focus
+  loss cancels a press. An open sheet owns input. A close-branch preview permits
+  vertical wheel over its list. Pending or disabled actions cannot dispatch.
+- Wheel never transfers focus and browser gestures deliver no stage input.
+  A subscribed stage receives its own mouse events. Native terminal text
+  selection stays available through the terminal's mouse reporting override.
+  The injected outer PTY journey covers native event counts, focus, clipping,
+  overlays, target replacement and stage isolation in a 110-column split.
+- Pointer navigation leaves sidebar Space behavior to the drawer work.
 
 ### Desktop interfaces
 

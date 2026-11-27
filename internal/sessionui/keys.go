@@ -275,6 +275,25 @@ func rowGuard(action string, attach bool) func(*model) string {
 	}
 }
 
+func (m *model) attachSelected() tea.Cmd {
+	if row := m.selectedRow(); row != nil {
+		return m.attach(row.Session.Ref.Reference)
+	}
+	m.fail("no session selected; nothing was sent.")
+	return nil
+}
+
+func (m *model) attach(ref fleetclient.Reference) tea.Cmd {
+	if current := m.rail.visit; current != nil && ref.SessionEqual(current.ref) {
+		return m.returnStageKeys(current.id)
+	}
+	if refusal := rowGuard("attach", true)(m); refusal != "" {
+		m.fail(refusal)
+		return nil
+	}
+	return m.enter(ref)
+}
+
 func localRowGuard(action string) func(*model) string {
 	available := rowGuard(action, false)
 	return func(m *model) string {
@@ -332,8 +351,7 @@ func queuedMove(direction int) func(*model) tea.Cmd {
 		if m.fold.kind == foldOpen && m.view.kind != viewNeedsInput {
 			id := m.selectedRow().Session.Ref.SessionRef()
 			if len(m.tree[id].children) > 0 {
-				m.expanded[id] = true
-				m.rebuild()
+				m.setExpanded(id, true)
 			}
 		}
 		return nil

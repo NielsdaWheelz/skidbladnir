@@ -118,15 +118,22 @@ func (m *model) viewOptions() []selectedView {
 func (m *model) step(delta int) {
 	options := m.viewOptions()
 	index := slices.Index(options, m.view)
-	view := options[min(max(0, index+delta), len(options)-1)]
+	m.chooseView(options[min(max(0, index+delta), len(options)-1)])
+}
+
+func (m *model) chooseView(view selectedView) {
 	if m.view == view {
 		return
+	}
+	var previous fleetclient.Reference
+	if row := m.selectedRow(); row != nil {
+		previous = row.Session.Ref.Reference
 	}
 	m.fold = fold{}
 	m.view = view
 	m.rebuild()
 	// keep a surviving selection; otherwise begin at the first row of the view.
-	if m.guest {
+	if row := m.selectedRow(); row != nil && (m.guest || !row.Session.Ref.SessionEqual(previous)) {
 		m.selectRow(0)
 	}
 	m.top = 0
@@ -135,8 +142,18 @@ func (m *model) step(delta int) {
 func (m *model) move(delta int) {
 	next := m.cursor + delta
 	if next >= 0 && next < len(m.rows) {
-		m.selectRow(next)
+		m.navigateRow(next)
 	}
+}
+
+func (m *model) navigateRow(index int) {
+	if index == m.cursor {
+		return
+	}
+	if m.fold.kind == foldOpen {
+		m.fold = fold{}
+	}
+	m.selectRow(index)
 }
 
 // selectRow uses the drawn index before removing the guest.
@@ -256,9 +273,8 @@ func (m *model) toggleInfo() tea.Cmd {
 	id := row.Session.Ref.SessionRef()
 	node := m.tree[id]
 	if m.view.kind != viewNeedsInput && len(node.children) > 0 && m.expanded[id] {
-		delete(m.expanded, id)
 		m.fold = fold{}
-		m.rebuild()
+		m.setExpanded(id, false)
 		return nil
 	}
 	if m.fold.kind == foldOpen {
@@ -267,8 +283,16 @@ func (m *model) toggleInfo() tea.Cmd {
 	}
 	m.fold = fold{kind: foldOpen}
 	if m.view.kind != viewNeedsInput && len(node.children) > 0 {
-		m.expanded[id] = true
-		m.rebuild()
+		m.setExpanded(id, true)
 	}
 	return nil
+}
+
+func (m *model) setExpanded(id api.SessionRef, expand bool) {
+	if expand {
+		m.expanded[id] = true
+	} else {
+		delete(m.expanded, id)
+	}
+	m.rebuild()
 }

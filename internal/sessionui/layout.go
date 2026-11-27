@@ -324,14 +324,17 @@ func (m *model) tableLines(f frame) []line {
 	for _, placement := range f.rows {
 		index := placement.index
 		row := m.rows[index]
-		node := m.tree[row.Session.Ref.SessionRef()]
+		ref := row.Session.Ref.SessionRef()
+		node := m.tree[ref]
 		if placement.heading >= 0 {
 			heading := ansi.Truncate(attention.SingleLine(fleetview.GroupHeading(node.heading)), f.width, "…")
 			role := inkRole
 			if node.heading.IsUnassigned() {
 				role = quietRole
 			}
-			lines[placement.heading] = line{{text: " "}, {text: heading, role: role, bold: true}}
+			title := line{{text: " "}, {text: heading, role: role, bold: true}}
+			title[1:].mark(pointerTarget{kind: pointerChoose, view: selectedView{kind: viewGroup, label: node.heading}})
+			lines[placement.heading] = title
 		}
 		selected := index == m.cursor
 		status := m.statusView(row)
@@ -352,27 +355,29 @@ func (m *model) tableLines(f frame) []line {
 		}
 		finished := line{lip, sign}
 		if m.width >= 3 {
-			branch := " "
+			finished = append(finished, span{text: " ", role: mutedRole})
 			if m.view.kind != viewNeedsInput && len(node.children) > 0 {
-				branch = "▸"
-				if m.expanded[row.Session.Ref.SessionRef()] {
-					branch = "▾"
+				arrow := finished[len(finished)-1:]
+				arrow[0].text = "▸"
+				if m.expanded[ref] {
+					arrow[0].text = "▾"
 				}
+				arrow.mark(pointerTarget{kind: pointerDisclose, parent: ref})
 			}
-			finished = append(finished, span{text: branch, role: mutedRole})
 		}
 		if m.width >= 8 {
 			indent := min(node.depth*2, max(0, f.columns.name-3))
 			name := span{
-				text: strings.Repeat(" ", indent) + cutName(attention.SingleLine(node.name()), row.Session.NameMode, f.columns.name-indent),
+				text: cutName(attention.SingleLine(node.name()), row.Session.NameMode, f.columns.name-indent),
 				role: inkRole,
 				bold: selected || m.queued(row),
 			}
 			if !m.rowAttachable(row) {
 				name.role = quietRole
 			}
-			finished = append(finished, span{text: " "}, name)
-			used := rowNameStart + ansi.StringWidth(name.text)
+			finished = append(finished, span{text: strings.Repeat(" ", 1+indent)}, name)
+			finished[len(finished)-1:].mark(pointerTarget{kind: pointerAttach, ref: row.Session.Ref.Reference})
+			used := rowNameStart + indent + ansi.StringWidth(name.text)
 			cells := m.rowCells(row)
 			for column, start := range f.columns.start {
 				if start == 0 {

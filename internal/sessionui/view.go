@@ -27,10 +27,37 @@ const (
 	bronzeRole
 )
 
+type pointerKind uint8
+
+const (
+	pointerAttach pointerKind = iota + 1
+	pointerDisclose
+	pointerChoose
+)
+
+type pointerTarget struct {
+	kind   pointerKind
+	ref    fleetclient.Reference
+	parent api.SessionRef
+	view   selectedView
+}
+
+type pointerHit struct {
+	target  pointerTarget
+	preview *branchDialog
+}
+
+type pointerControl struct {
+	target pointerTarget
+	cells  int
+}
+
 // Layout uses plain sanitized text; finished fragments receive design-language
 // accents. Labels remain complete without color.
 type span struct {
 	background   color.Color
+	pointer      *pointerControl
+	preview      *branchDialog
 	text         string
 	role         role
 	under        ansi.Underline
@@ -46,6 +73,13 @@ func (l line) width() int {
 		width += ansi.StringWidth(part.text)
 	}
 	return width
+}
+
+// The first styled fragment carries the range for the whole control.
+func (l line) mark(target pointerTarget) {
+	if cells := l.width(); cells > 0 {
+		l[0].pointer = &pointerControl{target: target, cells: cells}
+	}
 }
 
 func (m *model) renderLine(l line) string {
@@ -107,40 +141,73 @@ func signSpan(sign api.StatusSign) span {
 	panic("invalid status sign")
 }
 
-func (m *model) View() tea.View {
-	f := m.frame()
-	margin := ""
-	if m.width >= 4 {
-		margin = " "
+type paintedBrowser struct {
+	lines           []line
+	width, rowWidth int
+}
+
+func (p paintedBrowser) at(x, y int) pointerHit {
+	if x < 0 || x >= p.width || y < 0 || y >= len(p.lines) {
+		return pointerHit{}
 	}
-	var lines []string
+	left := 0
+	for _, part := range p.lines[y] {
+		if part.preview != nil && x >= left && x < p.rowWidth {
+			return pointerHit{preview: part.preview}
+		}
+		if c := part.pointer; c != nil && x >= left && x < left+c.cells {
+			return pointerHit{target: c.target}
+		}
+		left += ansi.StringWidth(part.text)
+	}
+	return pointerHit{}
+}
+
+func (m *model) currentPointer(x, y int) pointerHit {
+	return m.paint().at(x, y)
+}
+
+func (m *model) paint() paintedBrowser {
+	f := m.frame()
+	margin := func(l line) line {
+		if m.width >= 4 {
+			return append(line{{text: " "}}, l...)
+		}
+		return l
+	}
+	lines := make([]line, 0, m.height)
 	if f.strip {
-		lines = append(lines, margin+m.renderLine(m.header(f.width)))
+		lines = append(lines, margin(m.header(f.width)))
 	}
 	if f.blank {
-		lines = append(lines, "")
+		lines = append(lines, nil)
 	}
 	body := m.tableLines(f)
 	if len(m.rows) == 0 && len(body) > 0 {
-		body[0] = line{{text: margin + ansi.Truncate(m.emptyTable(), f.width, "…")}}
+		body[0] = margin(line{{text: ansi.Truncate(m.emptyTable(), f.width, "…")}})
 	}
-	for index, item := range body {
-		if index >= f.foldAt && index < f.foldAt+len(f.fold) {
-			item = f.fold[index-f.foldAt]
-		}
-		lines = append(lines, m.renderLine(item))
-	}
+	copy(body[f.foldAt:], f.fold)
+	lines = append(lines, body...)
 	for _, item := range f.notices {
-		lines = append(lines, margin+m.renderLine(item))
+		lines = append(lines, margin(item))
 	}
 	if f.caption {
-		lines = append(lines, margin+m.renderLine(f.rule))
+		lines = append(lines, margin(f.rule))
 	}
 	for _, item := range f.band {
-		lines = append(lines, margin+m.renderLine(item))
+		lines = append(lines, margin(item))
 	}
 	if f.hintLine {
-		lines = append(lines, margin+m.renderLine(f.hints))
+		lines = append(lines, margin(f.hints))
+	}
+	return paintedBrowser{lines: lines, width: m.width, rowWidth: f.rowWidth}
+}
+
+func (m *model) View() tea.View {
+	painted := m.paint()
+	lines := make([]string, len(painted.lines))
+	for y, l := range painted.lines {
+		lines[y] = m.renderLine(l)
 	}
 	content := strings.Join(lines, "\n")
 	if m.ground.noColor {
@@ -149,26 +216,33 @@ func (m *model) View() tea.View {
 	view := tea.NewView(content)
 	view.AltScreen = true
 	view.ReportFocus = true
+	view.MouseMode = tea.MouseModeCellMotion
+	// Bubble Tea calls the last flushed view's handler before Update.
+	view.OnMouse = func(msg tea.MouseMsg) tea.Cmd {
+		mouse := msg.Mouse()
+		m.paintedPointer = painted.at(mouse.X, mouse.Y)
+		return nil
+	}
 	return view
 }
 
 func (m *model) header(room int) line {
 	tabs, current := []tab{}, 0
 	for index, view := range m.viewOptions() {
+		t := tab{view: view}
 		switch view.kind {
 		case viewNeedsInput:
-			sign := span{text: " "}
+			t.fixed, t.sign = "needs input ", span{text: " "}
 			if queue := m.queue(); len(queue) > 0 {
-				sign = signSpan(m.statusView(queue[0]).Sign)
+				t.sign = signSpan(m.statusView(queue[0]).Sign)
 			}
-			tabs = append(tabs, tab{fixed: "needs input ", sign: sign})
 		case viewAll:
-			tabs = append(tabs, tab{fixed: "all"})
+			t.fixed = "all"
 		case viewGroup:
 			if view.label.IsUnassigned() {
-				tabs = append(tabs, tab{fixed: "unassigned"})
+				t.fixed = "unassigned"
 			} else {
-				tabs = append(tabs, tab{label: attention.SingleLine(view.label.String())})
+				t.label = attention.SingleLine(view.label.String())
 			}
 		default:
 			panic("invalid selected view")
@@ -176,6 +250,7 @@ func (m *model) header(room int) line {
 		if view == m.view {
 			current = index
 		}
+		tabs = append(tabs, t)
 	}
 	mark := line{{text: "▜", role: bronzeRole}, {text: "skid"}, {text: "▛", role: bronzeRole}, {text: " "}}
 	if views := strip(tabs, current, room-mark.width(), m.ground.raise); views != nil {
@@ -196,11 +271,21 @@ func (m *model) header(room int) line {
 		tabs[0].sign.background = m.ground.raise
 	}
 	views := line{left, tabs[0].sign, right}
+	needs := pointerTarget{kind: pointerChoose, view: tabs[0].view}
+	if current == 0 {
+		views.mark(needs)
+	} else if tabs[0].sign.text != " " {
+		views[1:2].mark(needs)
+	}
 	label := tabs[current].fixed + tabs[current].label
 	if keep := room - views.width() - 2; current != 0 && keep >= 3 {
-		views = append(views, span{text: "‹", role: goldRole, background: m.ground.raise},
-			span{text: ansi.Truncate(label, keep, "…"), bold: true, background: m.ground.raise},
-			span{text: "›", role: goldRole, background: m.ground.raise})
+		active := line{
+			{text: "‹", role: goldRole, background: m.ground.raise},
+			{text: ansi.Truncate(label, keep, "…"), bold: true, background: m.ground.raise},
+			{text: "›", role: goldRole, background: m.ground.raise},
+		}
+		active.mark(pointerTarget{kind: pointerChoose, view: tabs[current].view})
+		views = append(views, active...)
 	}
 	return views
 }
@@ -208,6 +293,7 @@ func (m *model) header(room int) line {
 // tab is one view in the strip: fixed is skid's own words and never truncates;
 // label is an operator's group label and may.
 type tab struct {
+	view         selectedView
 	fixed, label string
 	sign         span
 }
@@ -290,11 +376,18 @@ func strip(tabs []tab, current, room int, raise color.Color) line {
 			name.bold, name.background = true, raise
 			t.sign.background = raise
 		}
+		start := len(result)
 		result = append(result, left, name)
 		if t.sign.text != "" {
 			result = append(result, t.sign)
 		}
 		result = append(result, right)
+		choice := pointerTarget{kind: pointerChoose, view: t.view}
+		if index == current {
+			result[start:].mark(choice)
+		} else if text != "" || strings.TrimSpace(t.sign.text) != "" {
+			result[start+1 : len(result)-1].mark(choice)
+		}
 	}
 	if last < len(tabs)-1 {
 		result = append(result, span{text: " " + strconv.Itoa(len(tabs)-1-last) + "→ ", role: quietRole})
