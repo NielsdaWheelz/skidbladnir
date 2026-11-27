@@ -64,8 +64,59 @@ func claudeViewer(screen *claudeScreen, hint int) (string, api.Interaction, bool
 // claudeSettingsTabs is the settings menu's tab row.
 var claudeSettingsTabs = regexp.MustCompile(`^   Settings +Status +Config +Usage`)
 
+// The 2.1.332 menus share a ruled header and an inset footer. Tab padding
+// depends on selection, and the resume footer changes when sessions exist.
+var claudeMenus = [...]struct{ title, hint, id string }{
+	{"Select model", "s to use this session only · Enter to save · Esc to cancel", "claude.menu.model"},
+	{"Help General Commands Custom commands", "←/→ to switch · Esc to close", "claude.menu.help"},
+	{"Settings Status Config Usage Stats", "←/→ to switch · Esc to close", "claude.menu.settings"},
+	{"Settings Status Config Usage Stats", "↓ to navigate · ↑ to switch tabs · Esc to go back", "claude.menu.settings"},
+	{"Settings Status Config Usage Stats", "↓ to navigate · ←/→ to switch · Esc to close", "claude.menu.settings"},
+	{"Theme", "Enter to select · Esc to cancel", "claude.menu.theme"},
+	{"Resume session", "Ctrl+A to show all projects · Ctrl+B to only show current branch · Esc to close", "claude.menu.resume"},
+	{"Resume session", "Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type to search · Enter to resume · Esc to close", "claude.menu.resume"},
+	{"Permissions Recently blocked Allow Ask Deny Auto mode Workspace", "↓ to navigate · ←/→ to switch · / to search · Esc to close", "claude.menu.permissions"},
+	{"Background", "Esc to close", "claude.menu.tasks"},
+	{"Effort", "←/→ to adjust · s to use this session only · Enter to save · Esc to cancel", "claude.menu.effort"},
+	{"Memory", "↑/↓ to navigate · Enter to select · Esc to close", "claude.menu.memory"},
+	{"Rewind", "Enter to continue · Esc to cancel", "claude.menu.rewind"},
+	{"/btw", "c to copy · f to fork · Esc to close", "claude.menu.btw"},
+}
+
+// 2.1.332 draws the dialog title directly below its divider, in bold at
+// the dialog's inset. Stop at the first row left of that inset so a
+// title in the transcript or behind another dialog cannot supply the header.
+func claudeDialogTitle(screen *claudeScreen, above, inset int, allowEdge bool) string {
+	r, ok := screen.find(above-1, func(line claudeLine) bool {
+		return line.presence != rowParsed || !line.blank() && line.col < inset
+	})
+	if !ok || r+1 >= above {
+		return ""
+	}
+	divider := screen.lines[r]
+	if !screen.ruleRow(divider) && !(allowEdge && screen.edge(divider) && strings.Trim(divider.plain, "▔") == "") {
+		return ""
+	}
+	title := screen.lines[r+1]
+	if title.col != inset || !title.cell(inset).style.bold {
+		return ""
+	}
+	return strings.Join(strings.Fields(title.plain), " ")
+}
+
 // claudeMenu reads the model, settings, theme, resume and side-question menus.
 func claudeMenu(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
+	if text, top, ok := screen.block(2, hint); ok && (strings.HasSuffix(text, "Esc to cancel") || strings.HasSuffix(text, "Esc to close") || strings.HasSuffix(text, "Esc to go back")) {
+		title := claudeDialogTitle(screen, top, 2, true)
+		if strings.HasPrefix(title, "/btw ") {
+			title = "/btw"
+		}
+		for _, menu := range claudeMenus {
+			if title == menu.title && text == menu.hint {
+				return menu.id, api.InteractionMenu, true
+			}
+		}
+	}
 	if text, _, ok := screen.block(3, hint); ok {
 		switch {
 		case strings.HasPrefix(text, "Enter to set as default · "):
@@ -156,8 +207,21 @@ func claudeQuestion(screen *claudeScreen, hint int) (string, api.Interaction, bo
 			}
 		}
 	}
-	options, _, ok := screen.options(0, hint)
+	options, top, ok := screen.options(0, hint)
 	if ok && len(options) == 2 && options[0].label == "Submit answers" && options[1].label == "Cancel" {
+		// 2.1.332 omits the confirmation sentence. The submit tab and
+		// review heading frame the indented answers above these choices.
+		if options[0].selected || options[1].selected {
+			r, found := screen.find(top-1, func(line claudeLine) bool { return line.presence != rowParsed || line.col == 0 })
+			if found && screen.lines[r].plain == "Review your answers" && screen.lines[r].cell(0).style.bold {
+				tabs, ok := screen.line(r - 2)
+				rule, ruled := screen.line(r - 3)
+				if ok && strings.HasPrefix(tabs.plain, "←  ☒ ") && strings.HasSuffix(tabs.plain, " ✔ Submit  →") &&
+					screen.blankAt(r-1) && ruled && screen.ruleRow(rule) {
+					return "claude.question.review", api.InteractionQuestion, true
+				}
+			}
+		}
 		if screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Ready to submit your answers?") }) &&
 			screen.textBlock(0, hint, func(text string) bool { return strings.Contains(text, "Review your answers") }) {
 			return "claude.question.review", api.InteractionQuestion, true
@@ -260,11 +324,33 @@ func claudePlan(screen *claudeScreen, hint int) (string, api.Interaction, bool) 
 			return "claude.confirmation.exit_plan", api.InteractionConfirmation, true
 		}
 	}
+	// 2.1.332 insets the exit form inside its own rule and aligns the
+	// two choices with the title. Keep the form bound to that heading.
+	if options, top, ok := screen.options(3, hint); ok && len(options) == 2 &&
+		strings.HasPrefix(options[0].label, "Yes, and switch to ") && options[1].label == "No" &&
+		(options[0].selected || options[1].selected) {
+		if text, body, _, ok := screen.above(3, top); ok && text == "Claude wants to exit plan mode" {
+			title := body - 2
+			line, ok := screen.line(title)
+			rule, ruled := screen.line(title - 1)
+			outer, framed := screen.line(title - 3)
+			if ok && line.plain == "   Exit plan mode?" && line.cell(3).style.bold &&
+				screen.blankAt(title+1) && screen.blankAt(title-2) && framed && screen.edge(outer) &&
+				ruled && rule.col == 2 && len(rule.cells) == screen.width-2 && strings.Trim(rule.plain[2:], "─") == "" {
+				return "claude.confirmation.exit_plan", api.InteractionConfirmation, true
+			}
+		}
+	}
 	// Entering plan mode draws no hint; its confirm label names the mode.
 	if options, optionsTop, ok := screen.unnumbered(2, hint); ok && strings.HasSuffix(options, "No, start implementing now") {
 		if screen.titled(optionsTop, " Enter plan mode?") {
 			return "claude.confirmation.enter_plan", api.InteractionConfirmation, true
 		}
+	}
+	if options, top, ok := screen.unnumbered(1, hint); ok && strings.Contains(options, "❯ ") &&
+		strings.Replace(options, "❯ ", "", 1) == "Yes, and switch to plan mode (research and propose changes without making them) for this session No, start implementing now" &&
+		claudeDialogTitle(screen, top, 1, false) == "Enter plan mode?" {
+		return "claude.confirmation.enter_plan", api.InteractionConfirmation, true
 	}
 	return "", "", false
 }
@@ -281,6 +367,11 @@ var (
 // column 2 under a full rule, and its variants differ by their anchors.
 func claudeSetup(screen *claudeScreen, hint int) (string, api.Interaction, bool) {
 	const confirm = "Enter to confirm · Esc to cancel"
+	if options, top, ok := screen.unnumbered(2, hint); ok && strings.Contains(options, "❯ ") &&
+		strings.Replace(options, "❯ ", "", 1) == "Yes, set auto mode as my default permission mode No, keep manual mode" &&
+		claudeDialogTitle(screen, top, 2, false) == "Make auto mode your default permission mode?" {
+		return "claude.setup.auto_default", api.InteractionSetup, true
+	}
 	hint1, top1, ok1 := screen.block(1, hint)
 	hint2, top2, ok2 := screen.block(2, hint)
 	if ok1 && hint1 == confirm {
@@ -292,7 +383,7 @@ func claudeSetup(screen *claudeScreen, hint int) (string, api.Interaction, bool)
 			}
 		}
 	}
-	if ok2 && hint2 == confirm {
+	if ok2 && (hint2 == confirm || hint2 == "Enter to confirm · Esc to reject") {
 		apiKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Detected a custom API key in your environment") })
 		useKey := screen.textBlock(2, hint, func(text string) bool { return strings.Contains(text, "Do you want to use this API key?") })
 		bypass := screen.textBlock(2, hint, func(text string) bool {
@@ -317,7 +408,7 @@ func claudeSetup(screen *claudeScreen, hint int) (string, api.Interaction, bool)
 		case ok && settings && labels["Exit and fix manually"] && labels["Continue without these settings"]:
 			id, optionsTop = "claude.setup.settings_error", numberedTop
 		}
-		if id != "" {
+		if id != "" && (hint2 == confirm || id == "claude.setup.mcp_server") {
 			if _, found := screen.find(optionsTop-1, screen.ruleRow); found {
 				return id, api.InteractionSetup, true
 			}

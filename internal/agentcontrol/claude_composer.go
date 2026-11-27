@@ -183,13 +183,16 @@ func claudeMargin(screen *claudeScreen, top int) int {
 	return row
 }
 
-// claudeNotice reads how the latest turn ended (2.8): the interruption row as
-// the transcript's last row above the composer, or a failure block as the last
-// block above the turn's completion row. Claude draws an API error, a model or
-// usage failure and other turn-ending warnings as a `⏺` block whose glyph and
-// text share one explicit colour; replies, tool calls and agent notices never
-// colour both alike. A later prompt or turn moves an older marker away from the
-// composer, so only the latest one counts. No notice is zero.
+// Claude uses the same coloured bullet for failures and housekeeping. Only
+// known failure copy in the latest styled block can supply an error notice.
+var claudeFailureText = regexp.MustCompile(`^(?:API Error(?:$|:| \()|There's an issue with the selected model \(|` +
+	`Usage limit reached\b|You've hit your (?:session|5-hour|weekly|Opus|Sonnet|Fable|usage credit|monthly spend) limit\b|` +
+	`You're out of usage credits\b|Credit balance is too low\b|Prompt is too long\b|` +
+	`Not logged in · |Please run /login · |Invalid API key · |` +
+	`Invalid auth token · |OAuth token revoked · |Login expired · |Failed to authenticate[:.])`)
+
+// claudeNotice reads the last transcript block above the composer or turn
+// duration row. A later prompt or turn displaces an older marker.
 func claudeNotice(screen *claudeScreen, top int) api.Notice {
 	row := claudeMargin(screen, top)
 	line, ok := screen.line(row)
@@ -205,6 +208,37 @@ func claudeNotice(screen *claudeScreen, top int) api.Notice {
 			row--
 		}
 	}
+	end := row
+	// Compaction failures hang from the user's prompt. Tool output has the
+	// same elbow and may contain the same words.
+	for continued := 0; continued < 12; continued++ {
+		if line, ok = screen.line(row); !ok || line.col != 5 {
+			break
+		}
+		row--
+	}
+	if line, ok = screen.line(row); ok && strings.HasPrefix(line.plain, "  ⎿  ") {
+		result := screen.joined(row, end)
+		manual := strings.HasPrefix(result, "⎿  Error during compaction:")
+		auto := strings.HasPrefix(result, "⎿  Prompt is too long · automatic compaction failed:")
+		if (!manual && !auto) || line.cells[5].style.fg.kind == colorDefault {
+			return ""
+		}
+		for r := row - 1; ; r-- {
+			prompt, found := screen.line(r)
+			if !found || len(prompt.cells) == 0 || prompt.cells[0].style.bg.kind == colorDefault {
+				return ""
+			}
+			if prompt.col >= 2 {
+				continue // wrapped user input retains its background
+			}
+			if strings.HasPrefix(prompt.plain, "❯ ") && (auto || prompt.plain == "❯ /compact" || strings.HasPrefix(prompt.plain, "❯ /compact ")) {
+				return api.NoticeError
+			}
+			return ""
+		}
+	}
+	row = end
 	// The block's head is the column-0 row above its wrapped continuation rows.
 	for continued := 0; continued < 12; continued++ {
 		if line, ok = screen.line(row); !ok || line.col != 2 || strings.HasPrefix(line.plain, "  ⎿") {
@@ -212,7 +246,8 @@ func claudeNotice(screen *claudeScreen, top int) api.Notice {
 		}
 		row--
 	}
-	if !ok || line.col != 0 || !strings.HasPrefix(line.plain, "⏺ ") {
+	if !ok || line.col != 0 || !strings.HasPrefix(line.plain, "⏺ ") ||
+		!claudeFailureText.MatchString(strings.TrimPrefix(screen.joined(row, end), "⏺ ")) {
 		return ""
 	}
 	glyph := line.cells[0].style.fg
@@ -270,7 +305,7 @@ const (
 
 var (
 	claudeSpinnerShape = regexp.MustCompile(`^[·✢✳✶✻✽*●] \S.*?(?:…|\.\.\.)(?: \(.*)?$`)
-	claudeRetryShape   = regexp.MustCompile(`^✻ .*(?: · Retrying in | · will retry in | · next try in |No response from the API after )`)
+	claudeRetryShape   = regexp.MustCompile(`^✻ .*(?: · [Rr]etrying in | · will retry in | · next try in |No response from the API after )`)
 	claudeWaitShape    = regexp.MustCompile(`^✻ Waiting for(?: \d+ background agents?)?(?: and)?(?: \d+ dynamic workflows?)? to finish$`)
 )
 
@@ -404,10 +439,14 @@ func claudeReadFooter(screen *claudeScreen, bottom, last int, bash bool) claudeF
 	first := screen.lines[bottom+1].plain
 	switch {
 	case bash:
-		if first != "  ! for shell mode" {
+		// Bash can keep the custom statusline above its mode row.
+		for tail <= last && screen.lines[tail].plain != "  ! for shell mode" {
+			tail++
+		}
+		if tail > last {
 			return void
 		}
-		footer.kind, tail = claudeFooterBash, bottom+2
+		footer.kind, tail = claudeFooterBash, tail+1
 	case strings.HasPrefix(first, "  ! for shell mode "):
 		// The help grid replaces the whole footer.
 		for r := bottom + 1; r <= last; r++ {

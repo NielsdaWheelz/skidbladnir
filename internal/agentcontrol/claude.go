@@ -6,9 +6,8 @@ import (
 	"strings"
 )
 
-// detectClaude reads a claude 2.1.286 screen, and 2.1.284's numbered theme
-// picker, by the frozen grammar of docs/terminal-observation-claude.md sections
-// 2-3, whose section numbers the comments below cite. It finds the lowest drawn
+// detectClaude reads the screen grammar in docs/terminal-observation-claude.md
+// sections 2–3, whose section numbers the comments below cite. It finds the lowest drawn
 // row and tries the surfaces in order: the composer, then the request and menu
 // families.
 // Idle comes only from a complete current ready layout; a request or menu

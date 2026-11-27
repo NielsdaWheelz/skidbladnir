@@ -7,13 +7,15 @@ feeds. Qualified live for Claude 2.1.286 on Darwin (tmux 3.7c; fullscreen and
 classic) and Claude 2.1.284 on Linux (devbox tmux 3.4, arch tmux 3.7c; fullscreen,
 and classic for idle, draft, work, a single question, bash permission and tall
 panes), as §1 records; §2.6 rule 24 (theme setup) is qualified on both versions,
-except the narrow widths §5 c18 accepts.
+except the narrow widths §5 c18 accepts. the [screen atlas](research/claude-status/README.md)
+records the families rechecked with 2.1.332 on darwin, tmux 3.8, alongside
+screenshots, replay inputs and remaining coverage gaps. qualification applies
+to the sampled version, renderer and geometry.
 
 Sources: `S`, string and code inspection of the bundled JavaScript in the
 executable's `__BUN` segment (minified identifiers are build-specific and serve
 only as orientation); `D`, the public statusline and accessibility docs; live
-runs of the stock TUI against a local deterministic mock of the messages API. No
-real screen, prompt, path, title or account datum was kept.
+runs of the stock TUI against a local deterministic mock of the messages API. The atlas keeps cropped provider chrome from isolated sessions. Replay frames carry authored dummy content.
 
 ## 1. Frozen capability table
 
@@ -38,7 +40,7 @@ name, and each such `NOT_RUN` is a blocker under spec §7
 | 3 | Reduced motion (`●`, frozen timer) | R | working | `claude.activity.spinner` | Darwin (classic), Linux (fullscreen) |
 | 4 | Spinner at narrow width: details dropped; spinner row wrapped | R | working | `claude.activity.spinner` | Darwin (drop); wrap source-only |
 | 5 | Spinner `⎿` child block: tip (wrapping, `spinnerTipLabel`), `Next: <task>`, expanded task list, compaction hint | R | working (S above the block) | `claude.activity.spinner` | Darwin (wrapped tip); the others source-only |
-| 6 | Retry row `· Retrying in` | R | working | `claude.activity.retry` | Darwin |
+| 6 | Retry row `· Retrying in` or `· retrying in` | R | working | `claude.activity.retry` | Darwin |
 | 7 | Retry with overload child `⎿  If it persists, check …` | R | working | `claude.activity.retry` | source-only: repeated 529s ended in an `API Error` row with no retry row |
 | 8 | Retry variants: stalled, no-response, low-priority, auto-mode check | R | working (no-response: hint only) | `claude.activity.retry` | source-only |
 | 9 | Interrupt hint in the mode row | R | working (conflict with a ready chevron) | `claude.activity.hint` | Darwin |
@@ -75,18 +77,18 @@ name, and each such `NOT_RUN` is a blocker under spec §7
 | 49 | Setup: project MCP server (single / several) | R | setup | `claude.setup.mcp_server` / `claude.setup.mcp_servers` | Darwin (single at 80/40; several at 80/40/26) |
 | 50 | Setup: bypass-permissions warning | R | setup | `claude.setup.bypass` | Darwin, Linux |
 | 51 | Setup: settings error (invalid settings file) | R | setup | `claude.setup.settings_error` | Darwin (80/40) |
-| 52 | Setup: auto-mode default offer | R | No rule: unknown/unknown | — | source-only (§5 c15) |
+| 52 | Setup: auto-mode default offer | R | setup | `claude.setup.auto_default` | Darwin (2.1.332) |
 | 53 | Setup/input: rate-limit options, consumer-terms update, trial expired | R | No rule: unknown/unknown | — | source-only (§5 c15) |
 | 55 | Provider announcement modal | P | interaction unknown | — | source-only |
 | 56 | Digit band above the composer (2.3) | P | composer unknown | `claude.composer.band` | source-only |
 | 57 | Usage-limit wait, in the pinned column (2.3) | P | Never idle; interaction and composer unknown; activity from spinner, hint or panel | `claude.limit.wait` | Darwin (the pinned column's placement); the wait itself source-only (§5 c17) |
-| 58 | Menus: model, settings, theme, resume, help, /btw | R | menu | `claude.menu.<variant>` | Darwin (fullscreen); classic `/model` fails live: unknown/unknown at every width, its hint at col 2 under a `RULE` where rule 4 reads col 3 under an `EDGE`; the other menus not run in classic |
+| 58 | Menus: model, settings, theme, resume, help, /btw | R | menu | `claude.menu.<variant>` | Darwin (fullscreen); 2.1.332 classic and fullscreen in the atlas; 2.1.286 classic `/model` fails live: unknown/unknown at every width, its hint at col 2 under a `RULE` where rule 4 reads col 3 under an `EDGE`; the other menus not run in classic |
 | 59 | Menus: transcript viewer, agents view | R | menu | `claude.menu.transcript` / `.agents_view` | Darwin |
 | 60 | Menu whose hint is obscured (narrow or short pane) | P | unknown/unknown | — | Darwin (§5 c19: fullscreen `/model` reads menu only while its whole box fits the pane) |
 | 61 | Viewed subagent (viewed glyph on a non-main panel row) | R | menu; activity from the panel | `claude.menu.subagent` | Darwin, Linux |
 | 62 | Panel focus footer `↑/↓ to select …` | P | Void surface: unknown | — | Darwin, Linux |
 | 63 | Left-labelled top rule (`── History N/M ──…`) | P | interaction and composer unknown | — | source-only |
-| 64 | Other panes (/mcp, /agents, /permissions, /effort, task detail) | P | unknown unless a menu rule matches | — | source-only |
+| 64 | Other panes (/mcp, /agents, /permissions, /effort, task detail) | P | menu on the qualified pickers; otherwise unknown unless another rule matches | §2.6 | Darwin (2.1.332 permissions, tasks, effort, memory, rewind; see atlas) |
 | 65 | Interruption row `⎿  Interrupted · What should Claude do instead?` as the transcript's last row above the composer | R | notice interrupted | `claude.notice.interrupted` | Darwin |
 | 66 | Failure block (`⏺ API Error: …`, a model or usage-limit message) as the turn's last block: glyph and text in one explicit colour | R | notice error | `claude.notice.error` | Darwin |
 | 67 | Footer notifications: effort (right-aligned), tmux notices | P | `notification` rows (2.0) | — | Darwin (tmux notices drawn because the pane's own `TMUX` is set) |
@@ -96,7 +98,7 @@ name, and each such `NOT_RUN` is a blocker under spec §7
 | 71 | Stale frame of a dead Claude under a relaunched Claude | R neg | unknown/unknown | — | Darwin |
 | 72 | Teammate view, cloud sessions, ultraplan | P | unknown | — | source-only |
 | 73 | Vim editor mode: `-- INSERT/VISUAL/VISUAL LINE --` prefix / NORMAL | R / U | Prefix tolerated / NORMAL invisible | — | source-only |
-| 74 | Compaction / hook spinners | R | working | `claude.activity.spinner` | source-only |
+| 74 | Manual and automatic compaction / hook spinners | R | working | `claude.activity.spinner` | Darwin (2.1.332, manual and automatic compaction); hook source-only |
 | 75 | Title, progress (OSC 9;4), bell | X | Never read | — | — |
 | 76 | Classic tall pane, composer in the top region | R | As bottom | `claude.layout.composer` | Darwin, Linux |
 | 77 | Tall pane, pre-REPL dialog in the top region or straddling it | R | As bottom | Family rule | Darwin (trust at 100 and 70 rows) |
@@ -282,7 +284,8 @@ never does.
   wait, then the statusline rows), the mode row `M` (the lowest row matching 2.4),
   then the **tail**: zero or more `notification` rows, then optionally exactly one
   blank row and the panel.
-- **Bash:** row `b+1` has `plain == "  ! for shell mode"`, the chevron is `!`, then
+- **Bash:** the chevron is `!`. zero or more statusline rows follow the bottom
+  rule before the row `plain == "  ! for shell mode"`, then
   the tail. Claude returns this footer early in bash mode, so no hint or pill
   segment can coexist with it (S).
 - **Help grid (`claude.menu.help`):** the first footer row starts
@@ -292,10 +295,11 @@ never does.
 
 Any other footer leaves the surface **void**: activity, interaction and composer
 unknown, idle impossible, rules `claude.layout.composer` only. This covers
-autocomplete, history search, `Press … again to exit`, `Pasting…`,
+autocomplete below the rule, history search, `Press … again to exit`, `Pasting…`,
 `paste again to expand`, the panel focus footer, any block drawn under the prompt,
 an unrecognized col-2 notification, and the resume hint and shell prompt printed
 under a dead process's frame while a relaunched Claude has not yet painted.
+2.1.332 can put [command suggestions above the rule](issues/claude-command-suggestions.md).
 
 **Panel.** Claude draws it one blank row below the footer (`marginTop 1`, S).
 Rows, in order:
@@ -354,7 +358,7 @@ not part of the test: named sessions draw the same banner.
 | Shape | Regex |
 | --- | --- |
 | `SP` | `^[·✢✳✶✻✽*●] \S.*?(…\|\.\.\.)( \(.*)?$` and not `DONE`/`WAIT`. Messages are free (spinnerVerbs, `Compacting conversation`, hook runs, an in-progress task's `activeForm`); never whitelist verbs |
-| `RT` | `^✻ .*( · Retrying in \| · will retry in \| · next try in \|No response from the API after )` |
+| `RT` | `^✻ .*( · [Rr]etrying in \| · will retry in \| · next try in \|No response from the API after )` |
 | `DONE` | `^✻ (Baked\|Brewed\|Churned\|Cogitated\|Cooked\|Crunched\|Sautéed\|Worked) for ` |
 | `WAIT` | `^✻ Waiting for( \d+ background agents?)?( and)?( \d+ dynamic workflows?)? to finish$`, with at least one count |
 
@@ -687,9 +691,28 @@ occupies `L′`. Composer is `blocked` for every family.
 | 25 | `claude.setup.login` | None; `opt(1, L′)` | Option 1 starts `Claude account with subscription`; `texts(1)` contains `Select login method:` | setup |
 | 26 | `claude.setup.security` | `blk(1)` == `Press Enter to continue…` | `texts(1)` contains `Security notes:` | setup |
 
+in 2.1.332 both renderers put the menu title and terminal hint at column 2.
+the title starts bold on the row directly below the nearest full-width divider
+(`─` in classic, `▔` in fullscreen). both title and hint must match the same
+picker. this recognizes model, settings tabs, theme, resume, help, side
+questions, permissions settings, background tasks, effort, memory and rewind.
+tab spacing varies with the selection. a later divider cuts off an older title.
+the footer may wrap. an off-screen header or missing hint cannot prove a menu.
+
+the auto-mode default offer has a full rule, bold title, and both choices at
+column 2 with a single selection. it requests setup. the enter-plan confirmation
+has the title and two choices at column 1. the no-plan exit has an inset rule,
+a bold title at column 3, an exit-plan body and two numbered choices. the
+single-server mcp offer ends in `Esc to reject` on this build. other setup
+families keep their own hints.
+
+the multi-question submit review can omit the confirmation sentence in rule 13.
+it has a full-width rule over the completed-question tabs and submit tab,
+a blank row, a bold review heading, indented answers, and the selected submit
+or cancel choice at the bottom.
+
 Hint and option copy uses remappable chords only where written `<chord>` or `\S+`;
-everything else is the fixed copy of the qualified versions (2.1.286, and 2.1.284
-where §1 names it).
+everything else is the fixed copy of the qualified versions in §1 and the atlas.
 
 The order resolves every shared `L′` signature. Rules 19–22 share hint and column
 (Claude's shared dialog: rule at col 0, title, body, options and hint at col 2) and
@@ -714,9 +737,6 @@ option row, so numbering cannot change the theme menu.
 
 **Not implemented** (no rule; the pane reads unknown/unknown, §5 c15):
 
-- Auto-mode default offer: title `Make auto mode your default permission mode?`,
-  unnumbered options `Yes, set auto mode as my default permission mode` /
-  `No, keep <mode>` inside `paddingX 2` (S).
 - Rate-limit options, consumer-terms update, trial expired (S).
 
 **Question preview layout.** The options column is 30 cells wide and shrinks with
@@ -771,8 +791,8 @@ the only `❯` to `❯ N. Chat about this`.
   `claude.region.clipped` when a dimension became unknown by the cut; the composer
   surface's layout rule `claude.layout.composer`; the family, menu or limit rule;
   the activity rule; the composer rule (`claude.composer.empty|draft|blocked|band`).
-  A 2.6 family has no layout rule; a void surface emits only its layout rule. 43
-  rule IDs, each a literal of `[a-z0-9_.-]`.
+  A 2.6 family has no layout rule; a void surface emits only its layout rule.
+  Rule IDs are literals of `[a-z0-9_.-]`.
 
 ### 2.8 Notices
 
@@ -781,12 +801,17 @@ past at most six notification rows and blank rows (as the slot walk does):
 
 - The first row is `  ⎿  Interrupted…` at column 2 → notice interrupted
   (`claude.notice.interrupted`);
-- The turn's last block (above a completion row `✻ <verb> for …` when one is drawn,
-  read from its column-0 head past wrapped continuation rows) is a `⏺` block whose
-  glyph and text share one explicit colour → notice error (`claude.notice.error`).
-  Claude draws API errors, model and usage-limit failures that way (red, the
-  warning colour, the inactive grey); replies, tool calls and agent notices never
-  colour glyph and text alike;
+- a final `⏺` block must have a known failure lead and the same explicit
+  foreground on the bullet and its first row of text. the classifier recognizes
+  provider api, selected-model, usage-limit, context, credit and authentication
+  failures. it reads wrapped text above an optional turn-duration row. claude
+  also draws idle-compaction bulletins in one colour. these carry no notice.
+- an explicit-foreground `⎿` result immediately under a background-styled user
+  prompt may report automatic compaction failure. the manual failure lead also
+  requires that the parent command was `/compact`, optionally with arguments.
+  wrapped prompt and result rows are allowed. a failure printed by a tool or
+  above a subsequent turn carries no notice. both current failures use
+  `claude.notice.error`.
 - Otherwise none. The same rows above a later prompt or turn are history and set
   nothing; footer notifications are not task notices.
 
@@ -857,8 +882,8 @@ each unknown or none, never a false claim unless the item says otherwise:
   pill and spinner. For Claude, `working + permission|question` is
   unrepresentable.
 - **c2** Notices (2.8) come from the turn's last row or block, so a reply that ends with
-  a quoted `⎿  Interrupted` row reads interrupted, and any turn-ending system message
-  drawn in one colour (an auto-continuing usage limit included) reads error.
+  a quoted `⎿  Interrupted` row reads interrupted. an unfamiliar failure lead
+  can miss its notice. known usage-limit copy can read error even if the turn will resume.
   Claude cancels a turn interrupted before any output or tool call silently,
   restoring the prompt as a draft, so that turn reads idle without a notice.
 - **c3** A loading chevron with no corroborator is unknown. Teammate views never
@@ -919,7 +944,7 @@ each unknown or none, never a false claim unless the item says otherwise:
   attention, ready or needs-input entry; guarded send refuses, `start --stdin`
   ends in `readiness_timeout` and `wait` never matches. stop and close are
   unaffected.
-- **c15** Human-request dialogs without a rule (auto-mode offer, rate-limit options,
+- **c15** Human-request dialogs without a rule (rate-limit options,
   consumer terms, trial expired) read unknown/unknown. Live qualification of each
   is an [open blocker](issues/claude-unruled-request-dialogs.md).
 - **c16** `← N agent(s)` reports other sessions' pending input; this terminal keeps

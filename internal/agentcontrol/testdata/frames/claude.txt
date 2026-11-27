@@ -2437,3 +2437,277 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 05|❯⍽«d»Try«/»«g» «/»«d»"dummy example prompt"«/»
 06|«f»─{80}«/f»
 07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== N64_idle_compaction w=120 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|«f»⏺«/f» «f»Compacted while idle, before the prompt cache expired ·⍽turn off with "idleCompaction": false in settings.json«/f»
+08|«f»─{120}«/f»
+09|❯⍽«i» «/»
+10|«f»─{120}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N65_idle_compaction_summary w=40 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|«f»⏺«/f» «f»Compacted using a summary written«/f»
+02|  «f»while you were away ·⍽turn off with«/f»
+03|  «f»"idleCompaction": false in«/f»
+04|  «f»settings.json«/f»
+08|«f»─{40}«/f»
+09|❯⍽«i» «/»
+10|«f»─{40}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N66_styled_information w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|«f2»⏺«/f» «f2»Dummy informational update«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F79_api_error_about_compaction w=80 h=12 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+01|«f2»⏺«/f» «f2»API Error: 400 dummy compaction failure«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F80_manual_compaction_success w=100 h=7 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»/compact«/»
+01|  «f»⎿ ⍽«/f»«d»Compacted (ctrl+o to see full summary)«/»
+03|«f»─{100}«/f»
+04|❯⍽«i» «/»
+05|«f»─{100}«/f»
+06|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F81_manual_compaction_failure w=100 h=7 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+00|«g»«f»❯ «/f»/compact«/»
+01|  «f»⎿ ⍽«f2»Error during compaction: API Error: 400 dummy failure«/f»
+03|«f»─{100}«/f»
+04|❯⍽«i» «/»
+05|«f»─{100}«/f»
+06|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F82_automatic_compaction_failure w=100 h=8 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+00|«g»«f»❯ «/f»dummy«/»
+01|  «f»⎿ ⍽«f2»Prompt is too long · automatic compaction failed: API Error: 400 dummy failure · /clear to«/f»
+02|     «f2»start fresh«/f»
+03|⟩«f»auto-compact next«/f»
+04|«f»─{100}«/f»
+05|❯⍽«i»O«/»«d»nce fixed, resend your message«/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N67_compaction_error_in_tool_output w=100 h=7 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«f2»⏺«/f» «b»Bash«/»(dummy)
+01|  «f»⎿ ⍽«f2»Error during compaction: API Error: 400 dummy failure«/f»
+03|«f»─{100}«/f»
+04|❯⍽«i» «/»
+05|«f»─{100}«/f»
+06|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N68_historical_compaction_failure w=100 h=11 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»/compact«/»
+01|  «f»⎿ ⍽«f2»Error during compaction: API Error: 400 dummy failure«/f»
+03|«g»«f»❯ «/f»dummy«/»
+05|⏺ Dummy reply.
+07|«f»─{100}«/f»
+08|❯⍽«i» «/»
+09|«f»─{100}«/f»
+10|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F83_automatic_compaction_working w=100 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+00|«g»«f»❯ «/f»/compact«/»
+01|  «f»⎿ ⍽«f2»Error during compaction: API Error: 400 dummy failure«/f»
+03|«f2»✢«/f» «f2»Compacting conversation… «f»(0s)«/f»
+04|  «f»⎿ ⍽Tip: dummy«/f»
+05|⟩«f»auto-compact next«/f»
+06|«f»─{100}«/f»
+07|«f»❯⍽«/f»«i» «/»
+08|«f»─{100}«/f»
+09|  «f»⏸ manual mode on · esc to interrupt«/f»
+
+=== F84_retry_lowercase w=100 h=6 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.retry,claude.composer.empty
+00|«f2»✻«/f» «f2»API error«f» · retrying in 9s · attempt 1/10«/f»
+02|«f»─{100}«/f»
+03|«f»❯⍽«/f»«i» «/»
+04|«f»─{100}«/f»
+05|  «f»⏸ manual mode on · esc to interrupt«/f»
+
+=== F85_current_model w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.model,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Select model«/»
+03|  ❯ 1. Dummy model
+05|  «it»«f»s to use this session only · Enter to save · Esc to cancel«/»
+
+=== F86_current_config w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.settings,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Settings  Status   Config   Usage   Stats«/»
+03|  ❯ Auto-compact     on
+05|  «it»«f»↓ to navigate · ↑ to switch tabs · Esc to go back«/»
+
+=== F87_current_status w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.settings,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Settings  Status   Config   Usage   Stats«/»
+03|  Version:   2.1.332
+05|  «it»«f»←/→ to switch · Esc to close«/»
+
+=== F88_current_stats w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.settings,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Settings  Status   Config   Usage   Stats«/»
+03|  No activity
+05|  «it»«f»↓ to navigate · ←/→ to switch · Esc to close«/»
+
+=== F89_current_theme w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.theme,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Theme«/»
+03|  ❯ ✔ Dark mode
+05|  «it»«f»Enter to select · Esc to cancel«/»
+
+=== F90_current_help w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.help,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Help  General   Commands   Custom commands«/»
+03|  Shortcuts
+05|  «it»«f»←/→ to switch · Esc to close«/»
+
+=== F91_current_resume w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.resume,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Resume session«/»
+03|  No sessions in this project yet
+05|  «it»«f»Ctrl+A to show all projects · Ctrl+B to only show current branch · Esc to close«/»
+
+=== F92_current_tasks w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.tasks,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Background«/»
+03|  No tasks currently running
+05|  «it»«f»Esc to close«/»
+
+=== F93_current_permissions w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.permissions,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Permissions  Recently blocked   Allow   Ask   Deny   Auto mode   Workspace«/»
+03|  ❯ Add a new rule…
+05|  «it»«f»↓ to navigate · ←/→ to switch · / to search · Esc to close«/»
+
+=== F94_current_rewind w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.rewind,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Rewind«/»
+03|  ❯ (current)
+05|  «it»«f»Enter to continue · Esc to cancel«/»
+
+=== F95_current_effort w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.effort,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Effort«/»
+03|  low    medium    high
+05|  «it»«f»←/→ to adjust · s to use this session only · Enter to save · Esc to cancel«/»
+
+=== F96_current_memory w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.memory,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Memory«/»
+03|  ❯ Auto-memory  on
+05|  «it»«f»↑/↓ to navigate · Enter to select · Esc to close«/»
+
+=== F97_current_btw w=100 h=6 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.btw,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»/btw dummy«/»
+03|    Dummy response.
+05|  «it»«f»c to copy · f to fork · Esc to close«/»
+
+=== F98_auto_default_offer w=100 h=7 alt=1 full expect=unknown/setup/none blocked reason=partial rules=claude.setup.auto_default,claude.composer.blocked
+00|«f2»─{100}«/f»
+01|  «b»«f2»Make auto mode your default permission mode?«/»
+03|  Auto mode lets Claude handle permission prompts automatically.
+05|  «f2»❯ Yes, set auto mode as my default permission mode«/f»
+06|    No, keep manual mode
+
+=== N69_auto_default_unfocused w=100 h=5 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=none
+00|«f2»─{100}«/f»
+01|  «b»«f2»Make auto mode your default permission mode?«/»
+03|    Yes, set auto mode as my default permission mode
+04|    No, keep manual mode
+
+=== N70_stale_menu_title w=100 h=7 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=none
+00|«f2»▔{100}«/f»
+01|  «b»Select model«/»
+03|«f2»▔{100}«/f»
+04|  «b»Other dialog«/»
+06|  s to use this session only · Enter to save · Esc to cancel
+
+=== F99_current_enter_plan w=100 h=7 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.enter_plan,claude.composer.blocked
+00|«f»─{100}«/f»
+01| «b»«f2»Enter plan mode?«/»
+03| Claude wants to enter plan mode to explore and design an implementation approach.
+05| «f2»❯ Yes, and switch to plan mode (research and propose changes without making them) for this session«/f»
+06|   No, start implementing now
+
+=== F100_current_exit_plan w=100 h=9 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.exit_plan,claude.composer.blocked
+00|«f»▔{100}«/f»
+02|  «f»─{96}«/f»
+03|   «b»«f2»Exit plan mode?«/»
+05|   Claude wants to exit plan mode
+07|   «f2»❯ 1. Yes, and switch to default (ask each time) for this session«/f»
+08|     2. No
+
+=== F101_classic_model w=100 h=8 alt=0 classic expect=unknown/menu/none blocked reason=partial rules=claude.menu.model,claude.composer.blocked
+00|«f2»─{100}«/f»
+01|  «b»«f2»Select model«/»
+03|  ❯ 1. Dummy model
+05|  ◐ Medium effort (default) ←/→ to adjust
+07|  «it»«f»s to use this session only · Enter to save · Esc to cancel«/»
+
+=== F102_current_resume_populated w=100 h=7 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.resume,claude.composer.blocked
+00|«f2»▔{100}«/f»
+01|  «b»«f2»Resume session«/»
+03|  ❯ Dummy session
+05|  «it»«f»Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to«/»
+06|  «it»«f»rename · Type to search · Enter to resume · Esc to close«/»
+
+=== F103_automatic_compaction_failure_wrapped_prompt w=80 h=11 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+01|«g»«f»❯ «/f»dummy input wrapped across two rows«/»
+02|«g»  dummy continuation«/»
+03|  «f»⎿ ⍽«f2»Prompt is too long · automatic compaction failed: API Error: 400«/f»
+04|     «f2»dummy failure · /clear to start fresh«/f»
+06|⟩«f»auto-compact next«/f»
+07|«f»─{80}«/f»
+08|❯⍽«i»O«/»«d»nce fixed, resend your message«/»
+09|«f»─{80}«/f»
+10|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F104_current_project_mcp w=100 h=12 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_server,claude.composer.blocked
+01|«f2»─{100}«/f»
+02|  «b»«f2»New MCP server found in this project: dummy«/»
+04|  MCP servers may execute code or access system resources.
+07|    Use this MCP server
+08|    Use this and all future MCP servers in this project
+09|  «f2»❯ Continue without using this MCP server«/f»
+11|  «f»Enter to confirm · Esc to reject«/f»
+
+=== N71_reject_hint_other_setup w=100 h=10 alt=0 pre expect=unknown/unknown/none unknown reason=layout_unknown rules=none
+00|«f2»─{100}«/f»
+01|  «b»«f2»WARNING: Claude Code running in Bypass Permissions mode«/»
+04|  «f2»❯ No, exit«/f»
+05|    Yes, I accept
+07|  «f»Enter to confirm · Esc to reject«/f»
+
+=== F105_bash_custom_statusline w=100 h=9 alt=1 full expect=unknown/none/none draft reason=partial rules=claude.layout.composer,claude.composer.draft
+04|«f2»─{100}«/f»
+05|«f2»!⍽«/f»«i» «/»
+06|«f2»─{100}«/f»
+07|  dummy status
+08|  «f2»! for shell mode«/f»
+
+=== F106_current_question_review w=100 h=12 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.review,claude.composer.blocked
+00|«f»─{100}«/f»
+01|←  ☒ One  ☒ Two  «g»✔ Submit«/g»  →
+03|«b»Review your answers«/»
+05| ● Dummy first?
+06|   → One
+07| ● Dummy second?
+08|   → Two
+10|❯ 1. Submit answers
+11|  2. Cancel
+
+=== N72_question_review_without_tabs w=100 h=12 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=none
+00|«f»─{100}«/f»
+01|←  ☒ One  ☒ Two  →
+03|«b»Review your answers«/»
+05| ● Dummy first?
+06|   → One
+10|❯ 1. Submit answers
+11|  2. Cancel
