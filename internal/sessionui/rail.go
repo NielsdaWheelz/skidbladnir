@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"slices"
 	"sync"
 	"time"
 
@@ -185,11 +186,12 @@ func (m *model) railKey(pressed string) tea.Cmd {
 	if m.notice == discardedRailInput {
 		m.inform("")
 	}
+	for _, entry := range movementKeys {
+		if slices.Contains(entry.keys, pressed) {
+			return entry.act(m)
+		}
+	}
 	switch pressed {
-	case "j":
-		m.move(1)
-	case "k":
-		m.move(-1)
 	case "tab", "shift+tab":
 		direction := 1
 		if pressed == "shift+tab" {
@@ -272,19 +274,25 @@ func (m *model) railHints() line {
 }
 
 func (m *model) railKeyMap() []line {
-	return []line{
+	lines := []line{
 		{{text: "rail keys", bold: true}},
 		{{text: "ctrl-] back"}},
 		{{text: "enter attach"}},
 		{{text: "ctrl-d detach"}},
-		{{text: "jk move"}},
-		{{text: "tab next needing input"}},
-		{{text: "shift-tab previous"}},
-		{{text: "ctrl-r refresh"}},
-		{{text: "escape close"}},
-		{{text: "▌", role: goldRole}, {text: " rail has keys", role: quietRole}},
-		{{text: "▏", role: quietRole}, {text: " session has keys", role: quietRole}},
-		{{text: "▐ shown at right", role: quietRole}},
-		{{text: "other keys do nothing"}},
 	}
+	for _, entry := range movementKeys {
+		if entry.show != "" {
+			lines = append(lines, line{{text: entry.show + " " + entry.label}})
+		}
+	}
+	return append(lines,
+		line{{text: "tab next needing input"}},
+		line{{text: "shift-tab previous"}},
+		line{{text: "ctrl-r refresh"}},
+		line{{text: "escape close"}},
+		line{{text: "▌", role: goldRole}, {text: " rail has keys", role: quietRole}},
+		line{{text: "▏", role: quietRole}, {text: " session has keys", role: quietRole}},
+		line{{text: "▐ shown at right", role: quietRole}},
+		line{{text: "other keys do nothing"}},
+	)
 }

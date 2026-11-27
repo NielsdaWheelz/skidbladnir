@@ -1507,9 +1507,11 @@ fold, refresh and quit keep their ordinary key rules at every size.
 **rail.** from 110 columns a visit sits beside a 28-column rail and a one-cell
 divider. either side holds the keys. under 110 the visit fills the window and
 `ctrl-]` ends it, as does narrowing under 110 while the rail has the keys.
-in the rail `j`, `k`, `tab` and `shift-tab` move. `enter` gives the shown row
-the keys or visits another. `ctrl-]` returns the keys, `ctrl-d` detaches and
-`?` and `ctrl-r` work. unused keys and paste are discarded with a notice.
+in the rail up/down and `j`/`k` move between rows. left/right and `h`/`l` step
+between views. `tab` and `shift-tab` move among rows needing input. `enter`
+gives the shown row the keys or visits another. `ctrl-]` returns the keys,
+`ctrl-d` detaches and `?` and `ctrl-r` work. session management stays in the
+full table. unused keys and paste are discarded with a notice.
 a click gives keys to a live pane. wheel and drag reach the active program
 when it asked for mouse input.
 
@@ -1784,8 +1786,8 @@ for the palette.
   A browser open across an update starts later visits with the new release.
 - The browser accepts a literal `ctrl-]` in a paste. `escape` and `ctrl-c` stay
   in the rail when it has the keys. A stray movement key then `enter` can switch
-  the session and send subsequent typing there. The rail and table have
-  different movement keys. A view excluding the shown row omits its mark.
+  the session and send subsequent typing there. A view excluding the shown row
+  omits its mark.
   The rail discards keys it handles while a switch is pending. In the stage,
   keys wait for the new visit and `ctrl-c` can end it before readiness.
 - A detach, session exit, and the gateway's PTY, resize and presence errors
