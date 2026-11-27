@@ -141,7 +141,7 @@ func (m *model) keys() []key {
 // The table is the authority for input, visible hints and the key map.
 func (m *model) tableKeys() []key {
 	defaultIndex := m.peerIndex(m.client.DefaultMachine().Handle)
-	return []key{
+	keys := []key{
 		{keys: []string{"enter"}, show: "enter", label: "attach", group: "session", rank: 1,
 			can: rowGuard("attach", true),
 			act: func(m *model) tea.Cmd { return m.enter(m.selectedRow().Session.Ref.Reference) }},
@@ -212,15 +212,19 @@ func (m *model) tableKeys() []key {
 			act: func(m *model) tea.Cmd { m.fold = fold{kind: foldKeys}; return nil }},
 		{keys: []string{"q"}, show: "q", label: "quit", group: "browser", keep: true,
 			act: func(*model) tea.Cmd { return tea.Quit }},
-		{keys: []string{"up", "k"}, show: "↑↓ jk", label: "move", group: "browser",
-			act: func(m *model) tea.Cmd { m.move(-1); return nil }},
-		{keys: []string{"down", "j"}, act: func(m *model) tea.Cmd { m.move(1); return nil }},
-		{keys: []string{"left", "h"}, show: "←→ hl", label: "step view", group: "browser",
-			act: func(m *model) tea.Cmd { m.step(-1); return nil }},
-		{keys: []string{"right", "l"}, act: func(m *model) tea.Cmd { m.step(1); return nil }},
-		{keys: []string{"ctrl+r"}, show: "ctrl-r", label: "refresh", group: "browser",
-			act: (*model).refreshManually},
 	}
+	keys = append(keys, movementKeys...)
+	return append(keys, key{keys: []string{"ctrl+r"}, show: "ctrl-r", label: "refresh", group: "browser",
+		act: (*model).refreshManually})
+}
+
+var movementKeys = []key{
+	{keys: []string{"up", "k"}, show: "↑↓ jk", label: "move", group: "browser",
+		act: func(m *model) tea.Cmd { m.move(-1); return nil }},
+	{keys: []string{"down", "j"}, act: func(m *model) tea.Cmd { m.move(1); return nil }},
+	{keys: []string{"left", "h"}, show: "←→ hl", label: "step view", group: "browser",
+		act: func(m *model) tea.Cmd { m.step(-1); return nil }},
+	{keys: []string{"right", "l"}, act: func(m *model) tea.Cmd { m.step(1); return nil }},
 }
 
 func (m *model) refreshManually() tea.Cmd {
